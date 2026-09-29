@@ -1,0 +1,11 @@
+{
+  "name": "MatMul",
+  "description": "Applies torch.matmul semantics to two or more vectors, matrices, or batched tensors from left to right.",
+  "kind": "join",
+  "view": {
+    "color": "#4779c4",
+    "width": 180,
+    "height": 100
+  },
+  "parameters": {}
+}

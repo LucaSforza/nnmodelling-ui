@@ -1,0 +1,15 @@
+{
+  "name": "Input",
+  "description": "Introduces a declared tensor type as a model input.",
+  "kind": "input",
+  "view": {
+    "color": "#3f8f68",
+    "width": 180,
+    "height": 100
+  },
+  "parameters": {
+    "binding": {
+      "type": "string"
+    }
+  }
+}

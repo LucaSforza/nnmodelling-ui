@@ -1,0 +1,80 @@
+@startuml
+
+skinparam classAttributeIconSize 0
+skinparam backgroundColor #FEFEFE
+
+' === NNModelling Metamodel (generated from Visual Paradigm .vpp) ===
+
+abstract class Node {
+  +id: string
+  +name: string
+  +type: string
+}
+
+class ExternalConnection {
+}
+Node <|-- ExternalConnection
+
+class Input {
+}
+Node <|-- Input
+
+class Join {
+}
+Node <|-- Join
+
+class Layer {
+}
+Node <|-- Layer
+
+class LayerConnection {
+}
+Node <|-- LayerConnection
+
+class Module {
+}
+Node <|-- Module
+
+class SourceHandle {
+}
+Node <|-- SourceHandle
+
+class Subflow {
+}
+Node <|-- Subflow
+
+class TargetHandle {
+}
+Node <|-- TargetHandle
+
+class Connection {
+}
+
+class Handle {
+}
+
+class ParameterIstance {
+}
+
+class Parameters {
+}
+
+class Stereotype {
+}
+
+class StereotypeApplication {
+}
+
+Subflow "1" --> "0..*" Node : mod_lay
+Input "0..1" --> "0..*" Layer : ini_lay
+Handle "0..*" --> "" Node : nod_han
+Connection "0..*" --> "1" SourceHandle : source_handle
+Connection "0..1" --> "1" TargetHandle : target_handle
+Stereotype "1" --> "0..*" Parameters : par_ster
+StereotypeApplication "1" --> "0..*" ParameterIstance : ster_par_istance
+ParameterIstance "0..*" --> "1" Parameters : istance_par
+Stereotype "1" --> "0..*" Module : ster_mod
+
+hide empty members
+
+@enduml

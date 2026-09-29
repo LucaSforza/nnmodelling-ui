@@ -1,0 +1,8 @@
+{
+  "name":"MNIST",
+  "description":"28x28 grayscale image and integer digit label",
+  "batch":{
+    "inputs":{"image":{"dtype":"float32","shape":["B",1,28,28]}},
+    "targets":{"target":{"dtype":"int64","shape":["B"]}}
+  }
+}
