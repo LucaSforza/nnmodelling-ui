@@ -25,9 +25,9 @@ test-ui: build
 test-cli: build
     ctest --test-dir build/qt --output-on-failure -R cli_ui
 
-# Count C and C++ source/header lines, excluding tests and generated build trees.
+# Count project C and C++ source/header lines, excluding tests, dependencies and generated build trees.
 count-lines:
-    find . -type d \( -name .git -o -name build -o -name tests \) -prune -o -type f \( -name '*.c' -o -name '*.h' -o -name '*.C' -o -name '*.cc' -o -name '*.cpp' -o -name '*.cxx' -o -name '*.hh' -o -name '*.hpp' -o -name '*.hxx' -o -name '*.h++' -o -name '*.c++' \) -print0 | xargs -0 wc -l
+    find . -type d \( -name .git -o -name build -o -name tests -o -name third_party \) -prune -o -type f \( -name '*.c' -o -name '*.h' -o -name '*.C' -o -name '*.cc' -o -name '*.cpp' -o -name '*.cxx' -o -name '*.hh' -o -name '*.hpp' -o -name '*.hxx' -o -name '*.h++' -o -name '*.c++' \) -print0 | xargs -0 wc -l
 
 # Repository-local OpenCode V2 development tooling.
 swarm-setup:
