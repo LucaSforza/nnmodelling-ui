@@ -26,4 +26,7 @@ C owns graph, coordinates and application mutations. Edge endpoints follow PortI
 positions only for rendering. On release, positions commit to C and failed
 commits restore C positions. Painting is read-only. SubflowItem owns no child
 model: navigation filters C nodes by scope ID, and collapse is transient.
+The graphical entry point is `gui/qt/main.cpp`; the C application/core has no
+graphical entry point. The former `NNPlatform` adapter and `nn_editor_run` loop
+were removed on 2026-09-30, together with their SDL lifecycle smoke test.
 No SDL adapter, draw list, custom camera math or C++ graph exists.

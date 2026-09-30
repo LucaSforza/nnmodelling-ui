@@ -1,6 +1,11 @@
 # Graphics and editor contract
 
 Accepted 2026-09-29: Qt 6 Widgets and Graphics View replace the SDL draw API.
+Cleanup accepted 2026-09-30: remove the superseded SDL adapter, C editor loop,
+C graphical entry point and platform smoke test. Qt is the only graphical
+frontend; no compatibility platform/draw API is retained. C application/model
+APIs and behavior are unchanged; vendored font/rasterization assets remain
+preserved per the native-client decision.
 
 ## Ownership
 

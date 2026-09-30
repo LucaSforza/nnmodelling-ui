@@ -35,8 +35,12 @@ packages, validates parameters and handles, delegates graph invariants to the
 model and marks successful changes dirty. Snapshots are borrowed until mutation.
 Analysis remains read-only and may be refreshed after a semantic mutation.
 
-SDL platform, custom rasterization, generic input translation, manually drawn
-widgets and their smoke test are retired after the Qt replacement passes.
+Completed 2026-09-30: the SDL platform, custom rasterization, generic input
+translation, manually drawn widgets and their smoke test are removed after
+the Qt replacement passed the recorded core/GUI and visible QA gates.
+Removed sources: `src/platform.h`, `src/platform_sdl3.c`, `src/editor.h`,
+`src/editor.c`, `src/main.c` and `tests/platform_smoke.c`. The sole graphical
+entry point is `gui/qt/main.cpp`; no SDL fallback or C drawing API remains.
 Preserved stereotype packages, historical UML and unrelated vendored assets
 are unchanged. Backend and training remain deferred. C11 local automation serves
 the same application owner; Qt schedules nonblocking IPC dispatch on its thread.

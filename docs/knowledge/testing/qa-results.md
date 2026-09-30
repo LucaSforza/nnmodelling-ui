@@ -70,3 +70,22 @@ overflow; long labels are elided, and tall graphs require pan/zoom. Offscreen
 form coverage and visible graph review do not claim exhaustive manual testing
 of every native desktop dialog. Evidence is local temporary output, not tracked
 project assets.
+
+## SDL legacy cleanup — 2026-09-30
+
+Removed the six unused SDL adapter/editor/entry-point/smoke sources listed in
+the architecture and Qt migration plan. No active C core, Qt, build recipe,
+package or vendored asset changed. Repository reference audit found only
+historical/removal documentation references, with no remaining SDL adapter or
+old editor references in active code/build/tests.
+
+Post-removal verification:
+
+* `just test`: exit 0, C-only configure/build and 8/8 core tests.
+* `just test-ui`: exit 0, Qt configure/build and 3/3 GUI tests, including live
+  CLI/UI integration.
+* `git diff --check`: exit 0.
+
+These are automated regression checks for source cleanup; no new manual desktop
+or visual review was performed. The visible review above is prior Qt migration
+evidence, not a newly repeated check.
