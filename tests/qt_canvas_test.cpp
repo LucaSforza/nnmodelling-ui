@@ -252,6 +252,11 @@ private slots:
         card.paint(&painter, nullptr);
         painter.end();
         QVERIFY(!image.isNull());
+        const QColor parameterBand = image.pixelColor(image.width() / 2, 20);
+        const QColor titleBand = image.pixelColor(image.width() / 2, 72);
+        QVERIFY(parameterBand.isValid());
+        QVERIFY(titleBand.isValid());
+        QVERIFY(parameterBand != titleBand);
     }
 };
 

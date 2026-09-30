@@ -24,11 +24,11 @@ void SubflowItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *optio
     painter->setFont(footerFont);
     painter->setPen(QPen(QColor(118, 151, 183), 1.0, Qt::DashLine));
     painter->setBrush(QColor(240, 246, 252));
-    const qreal footerY = 61.0 + topParameters_.size() * 25.0;
-    painter->drawRoundedRect(QRectF(10, footerY, width_ - 19, 20), 4, 4);
-    painter->setPen(QColor(67, 103, 143));
+    const qreal footerY = height_ - 30.0 - bottomParameters_.size() * 25.0;
+    painter->drawRoundedRect(QRectF(10, footerY, width_ - 19, 21), 5, 5);
+    painter->setPen(QColor(35, 57, 81));
     painter->setFont(footerFont);
-    painter->drawText(QRectF(14, footerY + 2, width_ - 23, 15), Qt::AlignLeft | Qt::AlignVCenter,
+    painter->drawText(QRectF(14, footerY + 2, width_ - 23, 16), Qt::AlignLeft | Qt::AlignVCenter,
                       QStringLiteral("Subflow  ·  %1 nodes  ›").arg(childCount_));
 }
 
