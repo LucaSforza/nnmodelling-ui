@@ -19,6 +19,7 @@ semantics or ownership. [UI rewrite plan](../plans/ui-rewrite.md) tracks work;
 | UML | [Legacy reference](uml/legacy.md), [metamodel](uml/metamodel.md), [project/resources](uml/project.md), [graphics](uml/graphics.md), [editor](uml/editor.md), [automation](uml/automation.md), [sequences](uml/sequences.md) |
 | Reference | [Legacy mapping](reference/legacy-mapping.md) |
 | Verification | [Testing strategy](testing/strategy.md), [release QA](testing/qa.md) |
+| Development tooling | [OpenCode V2 swarm contract](contracts/agent-swarm.md), [swarm sequence](uml/agent-swarm.md) |
 
 Current explicit user requirements take precedence; update accepted contracts
 and UML before implementing a changed requirement. Otherwise accepted current

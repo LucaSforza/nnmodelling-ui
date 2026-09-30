@@ -37,6 +37,11 @@ cmake --build build/core-only
 If a sandbox disallows the configured ccache directory, use
 `CCACHE_DISABLE=1 just test` (and similarly for the GUI build).
 
+## Development agents
+
+For development with OpenCode V2 background agents and inter-agent messaging,
+see [the OpenCode V2 swarm setup](docs/opencode2.md).
+
 ## Editor
 
 Search the Components palette and double-click a package to create a node.

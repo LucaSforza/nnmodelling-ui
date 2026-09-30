@@ -11,6 +11,13 @@ they may write narrowly specified C core, Qt frontend, build and test changes af
 provides accepted contract and plan. They must return architectural ambiguity
 to the principal rather than choose a new contract.
 
+OpenCode V2 local swarm setup is in `docs/opencode2.md`; its normative tooling
+contract and sequence are `docs/knowledge/contracts/agent-swarm.md` and
+`docs/knowledge/uml/agent-swarm.md`. `/swarm` explicitly requests delegation.
+Use native background child sessions and registered `swarm` mailbox tools for
+actionable coordination, with at most three concurrent workers and disjoint
+file ownership. Native completion notifications require no polling.
+
 Use `fff` MCP tools for every file search. Preserve user changes. Do not expose
 secrets. Keep implementation small and idiomatic C. Use `justfile` for build
 recipes, put test sources under `tests/`, keep model/application code C11, and restrict C++/Qt to gui/qt. Run relevant tests and `git diff --check`; report missing
