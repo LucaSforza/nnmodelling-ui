@@ -29,6 +29,11 @@ switching projects.
 
 ## Application operations
 
+Accepted 2026-09-30 additions and exact C ABI: see
+[resource authoring](resource-authoring.md). Parameters additionally carry
+optional top/bottom presentation position; nested scopes now have bounded
+single-tensor inference, without cross-scope edges or compiler changes.
+
 | Operation | Parameters and result | Mutation/failure |
 | --- | --- | --- |
 | `project_open(path) -> Result` | Validated project directory and model snapshot | Stage full package closure and graph; commit atomically or preserve previous active project. |
@@ -40,7 +45,7 @@ switching projects.
 | `node_set_parameter(id, key, value) -> Result` | Declared key and valid typed value | Change one value; invalidate dependent type analysis; no change on error. |
 | `graph_validate() -> Diagnostics` | Borrowed active model | No mutation; distinguish structural, semantic, unresolved, runtime faults. |
 
-The application C ABI is specified below. UI and future automation call it
+The application C ABI is specified below. UI and local automation call it
 without reimplementing validation.
 
 The current C graph API is `src/model.h`: `nn_model_new/free`,

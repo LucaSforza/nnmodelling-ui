@@ -11,4 +11,4 @@ Before changing architecture, ownership, public APIs, model/graph/stereotype sem
 
 Implementation tasks for GPT-6 Luna must cite exact relevant KB documents and UML, accepted contract, files/modules, constraints, acceptance criteria and tests. Luna implements only bounded tasks; it does not set architecture or normative text. Principal reviews implementation against KB, runs/inspects relevant tests, updates plan/status, and checks for stale contracts.
 
-Current scope is client UI only. Backend and `nnmodelctl` diagrams are future boundaries, not implementation instructions. Preserve exact core package assets and historical UML. Run relevant tests and `git diff --check` before completion; report open questions and missing tooling accurately.
+Current scope is client UI only. Local `nnmodelctl` is accepted by `docs/knowledge/contracts/automation.md`; backend and training remain future boundaries. Preserve exact core package assets and historical UML. Run relevant tests and `git diff --check` before completion; report open questions and missing tooling accurately.

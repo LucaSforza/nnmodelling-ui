@@ -43,9 +43,21 @@ positive slot (at least two initially); C generates and validates these IDs.
 
 ## Appearance and interaction
 
+2026-09-30 additions: [resource authoring](resource-authoring.md) governs
+positioned parameter rows, theme-independent contrast, visual creation dialogs,
+dataset selection and New MNIST VAE. [Automation](automation.md) governs local
+CLI integration. Subflow navigation remains scope-local; recursive type analysis
+now delegates through the existing Proxy Lua rule.
+
 Use white canvas, light gray dock panels, compact text, restrained blue accents,
 colored stereotype cards, visible dark ports and directed Bezier connections.
 Respect package colors and show package identity/details in inspector. Subflows
 must look like containers and remain distinguishable from ordinary layers.
 Use Qt font metrics, clipping, high-DPI support and events directly, without a
 new event dispatch or drawing abstraction. All errors stay visible.
+
+Wheel zoom is bounded using the actual next/current scale ratio and anchored to
+the wheel event's viewport position with native QGraphicsView mapping/transforms,
+not global cursor state (which is unavailable in offscreen tests). This is Qt
+presentation state only; model coordinates remain unchanged. Native scrollbar
+rounding is tolerated within two scene units by interaction tests.

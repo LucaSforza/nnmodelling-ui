@@ -1,0 +1,9 @@
+{
+  "name": "Reparameterize z",
+  "description": "z = mu + exp(0.5*log_variance)*epsilon; epsilon ~ N(0,I). [B,2,L] -> [B,L]. Shape only; no sampling.",
+  "kind": "layer",
+  "view": { "color": "#7655ab", "width": 250, "height": 120 },
+  "parameters": {
+    "latent_features": { "type": "integer", "minimum": 1, "default": 32, "position": "bottom" }
+  }
+}

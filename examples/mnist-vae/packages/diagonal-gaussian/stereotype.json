@@ -1,0 +1,9 @@
+{
+  "name": "Diagonal Gaussian q(z|x)",
+  "description": "Ordered inputs: mean then log_variance, both [B,L]; packs [B,2,L]. Shape analysis only.",
+  "kind": "join",
+  "view": { "color": "#7655ab", "width": 270, "height": 120 },
+  "parameters": {
+    "latent_features": { "type": "integer", "minimum": 1, "default": 32, "position": "bottom" }
+  }
+}

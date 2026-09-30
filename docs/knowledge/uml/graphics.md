@@ -19,8 +19,10 @@ classDiagram
     NNProject *-- NNModel
 ```
 
-Qt owns items, clipping, fonts, transforms and event delivery. C owns graph,
-coordinates and application mutations. Edge endpoints follow PortItem scene
+Qt owns items, clipping, fonts, transforms and event delivery.
+Card geometry includes definition-positioned top/bottom parameter rows and
+central title; Qt copies text for painting and adapts port positions to height.
+C owns graph, coordinates and application mutations. Edge endpoints follow PortItem scene
 positions only for rendering. On release, positions commit to C and failed
 commits restore C positions. Painting is read-only. SubflowItem owns no child
 model: navigation filters C nodes by scope ID, and collapse is transient.

@@ -39,6 +39,7 @@ typedef struct {
     NNParameterValue default_value;
     const char *const *choices;
     size_t choice_count;
+    const char *position;
 } NNParameterDef;
 
 typedef struct {

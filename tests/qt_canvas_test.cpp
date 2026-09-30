@@ -9,6 +9,8 @@
 #include "model.h"
 
 #include <QTemporaryDir>
+#include <QImage>
+#include <QPainter>
 #include <QUuid>
 #include <QWheelEvent>
 #include <QtTest>
@@ -114,6 +116,11 @@ private slots:
     void selectionDeleteAndScopeNavigation() {
         NodeItem *flow = scene_->nodeItem(QStringLiteral("flow"));
         QVERIFY(dynamic_cast<SubflowItem *>(flow));
+        QCOMPARE(flow->boundingRect().height(), 135.0);
+        PortItem *flowOutput = nullptr;
+        for (PortItem *port : flow->ports()) if (port->isOutput()) flowOutput = port;
+        QVERIFY(flowOutput);
+        QCOMPARE(flowOutput->y(), flow->boundingRect().height() + 1.0 - 9.0);
         QVERIFY(scene_->nodeItem(QStringLiteral("child")) == nullptr);
         QSignalSpy scopeSpy(scene_, &GraphScene::scopeChanged);
         const QPoint center = view_->mapFromScene(flow->sceneBoundingRect().center());
@@ -230,6 +237,21 @@ private slots:
             QApplication::sendEvent(view_->viewport(), &event);
         }
         QVERIFY(view_->transform().m11() >= 0.199);
+    }
+
+    void positionedParameterRowsSizeCards() {
+        NodeItem card(nullptr, QStringLiteral("positioned"), QStringLiteral("Positioned layer"),
+                      QStringLiteral("custom.layer"), QPointF(), QColor("#48d1cc"),
+                      {{QStringLiteral("stride"), QStringLiteral("2")}},
+                      {{QStringLiteral("padding"), QStringLiteral("same")}});
+        QCOMPARE(card.boundingRect().height(), 145.0);
+        QVERIFY(card.boundingRect().width() >= 189.0);
+        QImage image(card.boundingRect().size().toSize(), QImage::Format_ARGB32_Premultiplied);
+        image.fill(Qt::transparent);
+        QPainter painter(&image);
+        card.paint(&painter, nullptr);
+        painter.end();
+        QVERIFY(!image.isNull());
     }
 };
 

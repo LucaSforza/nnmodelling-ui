@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "id": "vae.reparameterize",
+  "version": "0.1.0",
+  "dependencies": { "vae.diagonal-gaussian": "0.1.0" },
+  "entrypoints": {
+    "definition": "stereotype.json",
+    "inference": { "language": "lua", "file": "inference.lua" }
+  }
+}

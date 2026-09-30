@@ -5,6 +5,7 @@
 #include <QColor>
 #include <QList>
 #include <QString>
+#include <QPair>
 
 class GraphScene;
 class PortItem;
@@ -13,13 +14,17 @@ class NodeItem : public QGraphicsObject {
     Q_OBJECT
 public:
     NodeItem(GraphScene *owner, QString id, QString label, QString packageId,
-             const QPointF &position, const QColor &color);
+             const QPointF &position, const QColor &color,
+             QList<QPair<QString, QString>> topParameters = {},
+             QList<QPair<QString, QString>> bottomParameters = {});
     QRectF boundingRect() const override;
     void paint(QPainter *painter, const QStyleOptionGraphicsItem *option,
                QWidget *widget = nullptr) override;
     QString id() const { return id_; }
     void addPort(PortItem *port);
     QList<PortItem *> ports() const { return ports_; }
+    QList<QPair<QString, QString>> topParameters() const { return topParameters_; }
+    QList<QPair<QString, QString>> bottomParameters() const { return bottomParameters_; }
     virtual void setChildCount(int count);
 
 protected:
@@ -32,6 +37,8 @@ protected:
     QString packageId_;
     QColor color_;
     QList<PortItem *> ports_;
+    QList<QPair<QString, QString>> topParameters_;
+    QList<QPair<QString, QString>> bottomParameters_;
     qreal width_ = 190.0;
     qreal height_ = 96.0;
 };

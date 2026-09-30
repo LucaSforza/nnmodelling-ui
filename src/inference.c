@@ -21,13 +21,30 @@
 typedef struct { size_t used; unsigned instructions; } LuaBudget;
 typedef struct { char *dtype; char **dimensions; size_t count; } Tensor;
 typedef struct { const NNEdge *edge; size_t order; } Incoming;
-typedef struct {
-    const NNDataset *dataset;
-    const NNNode *node;
-} LuaContext;
 typedef struct { NNInferenceResult view; char *id, *message, *dtype; char **dimensions; } Result;
 
 struct NNInferenceReport { Result *items; size_t count; };
+
+typedef struct Evaluation Evaluation;
+typedef struct {
+    Evaluation *evaluation;
+    const NNNode *node;
+    size_t depth;
+    const Tensor *inherited;
+} LuaContext;
+struct Evaluation {
+    const NNModel *model;
+    const NNCatalog *catalog;
+    NNInferenceReport *report;
+    const NNDataset *dataset;
+    size_t invocations;
+};
+
+static NNInferenceStatus evaluate_scope(Evaluation *evaluation, const char *scope,
+                                        const Tensor *inherited, size_t depth,
+                                        Tensor *output, char **message);
+static int inference_subflow(lua_State *state);
+static const char *package_kind(Evaluation *evaluation, const NNNode *node);
 
 static void *limited_alloc(void *data, void *ptr, size_t old_size, size_t new_size)
 {
@@ -259,13 +276,32 @@ static int resolve_input(lua_State *state)
 {
     LuaContext *context = lua_touserdata(state, lua_upvalueindex(1));
     const char *binding = lua_tostring(state, 1);
-    if (!context || !binding || !context->dataset) {
+    if (!context) {
+        lua_newtable(state); lua_pushliteral(state, "unresolved"); lua_setfield(state, -2, "status");
+        lua_pushliteral(state, "input binding is unavailable"); lua_setfield(state, -2, "message");
+        return 1;
+    }
+    if (context->inherited) {
+        lua_newtable(state); lua_pushliteral(state, "success"); lua_setfield(state, -2, "status");
+        tensor_push(state, context->inherited->dtype,
+                    (const char *const *)context->inherited->dimensions,
+                    context->inherited->count);
+        lua_setfield(state, -2, "output");
+        return 1;
+    }
+    if (!binding) {
+        lua_newtable(state); lua_pushliteral(state, "unresolved"); lua_setfield(state, -2, "status");
+        lua_pushliteral(state, "input binding is unavailable"); lua_setfield(state, -2, "message");
+        return 1;
+    }
+    const NNDataset *dataset = context->evaluation->dataset;
+    if (!dataset) {
         lua_newtable(state); lua_pushliteral(state, "unresolved"); lua_setfield(state, -2, "status");
         lua_pushliteral(state, "input binding has no selected dataset"); lua_setfield(state, -2, "message");
         return 1;
     }
-    for (size_t i = 0; i < context->dataset->input_count; ++i) {
-        const NNTensorSlot *slot = &context->dataset->inputs[i];
+    for (size_t i = 0; i < dataset->input_count; ++i) {
+        const NNTensorSlot *slot = &dataset->inputs[i];
         if (strcmp(slot->name, binding)) continue;
         if (slot->shape.type != NN_VALUE_ARRAY) break;
         size_t count = slot->shape.as.array.count;
@@ -298,6 +334,12 @@ static void set_services(lua_State *state, LuaContext *context)
     lua_pushlightuserdata(state, context);
     lua_pushcclosure(state, resolve_input, 1);
     lua_setfield(state, -2, "resolve_input");
+    const char *kind = package_kind(context->evaluation, context->node);
+    if (kind && !strcmp(kind, "subflow")) {
+        lua_pushlightuserdata(state, context);
+        lua_pushcclosure(state, inference_subflow, 1);
+        lua_setfield(state, -2, "infer_subflow");
+    }
     lua_setglobal(state, "services");
 }
 
@@ -365,13 +407,59 @@ static void open_safe_libraries(lua_State *state)
     set_tensor_functions(state);
 }
 
+bool nn_inference_validate_source(const char *source, char *error, size_t capacity)
+{
+    if (error && capacity) error[0] = '\0';
+    if (!source) {
+        if (error && capacity) snprintf(error, capacity, "inference source is missing");
+        return false;
+    }
+    size_t length = strlen(source);
+    if (length > RULE_FILE_LIMIT) {
+        if (error && capacity) snprintf(error, capacity, "inference source exceeds 1 MiB");
+        return false;
+    }
+    LuaBudget budget = {0};
+    lua_State *state = lua_newstate(limited_alloc, &budget, 0);
+    if (!state) {
+        if (error && capacity) snprintf(error, capacity, "unable to create bounded Lua state");
+        return false;
+    }
+    *(LuaBudget **)lua_getextraspace(state) = &budget;
+    open_safe_libraries(state);
+    lua_sethook(state, instruction_hook, LUA_MASKCOUNT, 1000);
+    int status = luaL_loadbufferx(state, source, length, "inference", "t");
+    if (status == LUA_OK) status = lua_pcall(state, 0, 1, 0);
+    if (status == LUA_OK && !lua_isfunction(state, -1)) {
+        status = LUA_ERRRUN;
+        lua_pushliteral(state, "inference source must return a function");
+    }
+    bool valid = status == LUA_OK;
+    if (!valid && error && capacity) {
+        const char *message = lua_tostring(state, -1);
+        snprintf(error, capacity, "%s", message ? message : "invalid inference source");
+    }
+    lua_close(state);
+    return valid;
+}
+
 static bool tensor_from_lua(lua_State *state, int index, Tensor *tensor)
 {
     if (!tensor_read(state, index)) return false;
-    lua_getfield(state, index, "dtype"); tensor->dtype = copy_string(lua_tostring(state, -1)); lua_pop(state, 1);
+    lua_getfield(state, index, "dtype");
+    tensor->dtype = copy_string(lua_tostring(state, -1));
+    lua_pop(state, 1);
+    if (!tensor->dtype) return false;
     char **dims = NULL;
-    if (!tensor->dtype || !read_shape(state, index, &dims, &tensor->count)) return false;
+    size_t count = 0;
+    if (!read_shape(state, index, &dims, &count)) {
+        free_dimensions(dims, count);
+        free(tensor->dtype);
+        memset(tensor, 0, sizeof(*tensor));
+        return false;
+    }
     tensor->dimensions = dims;
+    tensor->count = count;
     return true;
 }
 
@@ -381,9 +469,23 @@ static void tensor_dispose(Tensor *tensor)
     memset(tensor, 0, sizeof(*tensor));
 }
 
-static NNInferenceStatus execute_rule(const NNProject *project, const NNNode *node,
-                                      const NNPackage *package,
-                                      const NNDataset *dataset,
+static bool tensor_copy(Tensor *destination, const Tensor *source)
+{
+    destination->dtype = copy_string(source->dtype);
+    destination->dimensions = calloc(source->count ? source->count : 1,
+                                     sizeof(*destination->dimensions));
+    if (!destination->dtype || !destination->dimensions) { tensor_dispose(destination); return false; }
+    destination->count = source->count;
+    for (size_t i = 0; i < source->count; ++i) {
+        destination->dimensions[i] = copy_string(source->dimensions[i]);
+        if (!destination->dimensions[i]) { tensor_dispose(destination); return false; }
+    }
+    return true;
+}
+
+static NNInferenceStatus execute_rule(Evaluation *evaluation, const NNNode *node,
+                                      const NNPackage *package, size_t depth,
+                                      const Tensor *inherited,
                                       Tensor *inputs, size_t input_count,
                                       Tensor *output, char **message)
 {
@@ -400,7 +502,8 @@ static NNInferenceStatus execute_rule(const NNProject *project, const NNNode *no
     free(source);
     if (status == LUA_OK) status = lua_pcall(state, 0, 1, 0);
     if (status == LUA_OK && !lua_isfunction(state, -1)) status = LUA_ERRRUN;
-    LuaContext context = { .dataset = dataset, .node = node };
+    LuaContext context = { .evaluation = evaluation, .node = node,
+                           .depth = depth, .inherited = inherited };
     if (status == LUA_OK) {
         lua_newtable(state);
         lua_createtable(state, (int)input_count, 0);
@@ -419,7 +522,10 @@ static NNInferenceStatus execute_rule(const NNProject *project, const NNNode *no
         lua_getfield(state, -1, "status"); const char *kind = lua_tostring(state, -1); lua_pop(state, 1);
         if (kind && !strcmp(kind, "success")) {
             lua_getfield(state, -1, "output");
-            if (tensor_from_lua(state, -1, output)) result = NN_INFERENCE_SUCCESS;
+            if (lua_isnil(state, -1)) {
+                result = NN_INFERENCE_UNRESOLVED;
+                *message = copy_string("rule output is missing because its upstream tensor is unresolved");
+            } else if (tensor_from_lua(state, -1, output)) result = NN_INFERENCE_SUCCESS;
             else *message = copy_string("rule returned an invalid tensor");
             lua_pop(state, 1);
         } else if (kind && (!strcmp(kind, "error") || !strcmp(kind, "unresolved"))) {
@@ -432,7 +538,6 @@ static NNInferenceStatus execute_rule(const NNProject *project, const NNNode *no
         *message = copy_string(error ? error : "Lua inference failed");
     }
     lua_close(state);
-    (void)project;
     return result;
 }
 
@@ -446,6 +551,9 @@ static size_t find_node_index(const NNModel *model, const char *id)
 static void result_set(Result *result, const NNNode *node, NNInferenceStatus status,
                        char *message, Tensor *tensor)
 {
+    free(result->id); free(result->message); free(result->dtype);
+    free_dimensions(result->dimensions, result->view.dimension_count);
+    memset(result, 0, sizeof(*result));
     result->id = copy_string(node->id); result->message = message;
     result->view.node_id = result->id; result->view.status = status;
     result->view.message = result->message;
@@ -457,6 +565,31 @@ static void result_set(Result *result, const NNNode *node, NNInferenceStatus sta
         result->view.dtype = result->dtype;
         result->view.dimensions = (const char *const *)result->dimensions;
         result->view.dimension_count = tensor->count;
+    }
+}
+
+static Result *report_result(Evaluation *evaluation, const NNNode *node)
+{
+    size_t index = find_node_index(evaluation->model, node->id);
+    if (index == (size_t)-1) return NULL;
+    return &evaluation->report->items[index];
+}
+
+static const char *package_kind(Evaluation *evaluation, const NNNode *node)
+{
+    const NNPackage *package = nn_catalog_find(evaluation->catalog,
+                                               node->package_id, node->package_version);
+    return package ? package->kind : NULL;
+}
+
+static void scope_set_status(Evaluation *evaluation, const char *scope,
+                             NNInferenceStatus status, const char *message)
+{
+    for (size_t i = 0; i < nn_model_node_count(evaluation->model); ++i) {
+        const NNNode *node = nn_model_node_at(evaluation->model, i);
+        if (strcmp(node->scope_id ? node->scope_id : "", scope ? scope : "")) continue;
+        Result *result = report_result(evaluation, node);
+        if (result) result_set(result, node, status, copy_string(message), NULL);
     }
 }
 
@@ -479,92 +612,243 @@ static int incoming_compare(const void *left, const void *right)
     return a->order < b->order ? -1 : a->order > b->order ? 1 : 0;
 }
 
-NNInferenceReport *nn_infer_project(const NNProject *project)
+static int inference_subflow(lua_State *state)
 {
-    if (!project) return NULL;
-    const NNModel *model = nn_project_model((NNProject *)project);
-    const NNCatalog *catalog = nn_project_catalog(project);
+    LuaContext *context = lua_touserdata(state, lua_upvalueindex(1));
+    const char *kind = context ? package_kind(context->evaluation, context->node) : NULL;
+    if (!context || !kind || strcmp(kind, "subflow"))
+        return luaL_error(state, "infer_subflow is only available to subflow packages");
+    if (++context->evaluation->invocations > 256 || context->depth >= 32)
+        return luaL_error(state, "subflow inference limit exceeded");
+    if (lua_isnil(state, 1)) {
+        lua_newtable(state);
+        lua_pushliteral(state, "unresolved"); lua_setfield(state, -2, "status");
+        lua_pushliteral(state, "subflow input tensor is unresolved");
+        lua_setfield(state, -2, "message");
+        return 1;
+    }
+    Tensor inherited = {0}, output = {0}; char *message = NULL;
+    if (!tensor_from_lua(state, 1, &inherited)) {
+        tensor_dispose(&inherited);
+        return luaL_error(state, "infer_subflow expects a tensor");
+    }
+    NNInferenceStatus status = evaluate_scope(context->evaluation, context->node->id,
+                                              &inherited, context->depth + 1,
+                                              &output, &message);
+    tensor_dispose(&inherited);
+    if (status == NN_INFERENCE_RUNTIME_FAULT) {
+        lua_pushstring(state, message ? message : "nested inference runtime fault");
+        free(message); tensor_dispose(&output);
+        return lua_error(state);
+    }
+    lua_newtable(state);
+    if (status == NN_INFERENCE_SUCCESS) {
+        lua_pushliteral(state, "success"); lua_setfield(state, -2, "status");
+        tensor_push(state, output.dtype, (const char *const *)output.dimensions, output.count);
+        lua_setfield(state, -2, "output");
+    } else {
+        lua_pushstring(state, status == NN_INFERENCE_SEMANTIC_ERROR ? "error" : "unresolved");
+        lua_setfield(state, -2, "status");
+        lua_pushstring(state, message ? message : "nested scope is unresolved");
+        lua_setfield(state, -2, "message");
+    }
+    free(message); tensor_dispose(&output);
+    return 1;
+}
+
+static NNInferenceStatus evaluate_scope(Evaluation *evaluation, const char *scope,
+                                        const Tensor *inherited, size_t depth,
+                                        Tensor *scope_output, char **scope_message)
+{
+    const NNModel *model = evaluation->model;
     size_t count = nn_model_node_count(model);
-    NNInferenceReport *report = calloc(1, sizeof(*report));
     Tensor *outputs = calloc(count ? count : 1, sizeof(*outputs));
     size_t *indegree = calloc(count ? count : 1, sizeof(*indegree));
     bool *done = calloc(count ? count : 1, sizeof(*done));
-    if (!report || !outputs || !indegree || !done) goto fail;
-    report->items = calloc(count ? count : 1, sizeof(*report->items));
-    if (!report->items) goto fail;
-    const NNDataset *dataset = nn_project_active_dataset(project);
+    if (!outputs || !indegree || !done) {
+        free(outputs); free(indegree); free(done);
+        *scope_message = copy_string("unable to allocate scope inference state");
+        return NN_INFERENCE_RUNTIME_FAULT;
+    }
+    size_t scope_nodes = 0, inputs_n = 0, outputs_n = 0, input_index = count, output_index = count;
+    for (size_t i = 0; i < count; ++i) {
+        const NNNode *node = nn_model_node_at(model, i);
+        if (strcmp(node->scope_id ? node->scope_id : "", scope ? scope : "")) continue;
+        ++scope_nodes;
+        const char *kind = package_kind(evaluation, node);
+        if (kind && !strcmp(kind, "input")) { ++inputs_n; input_index = i; }
+        if (kind && !strcmp(kind, "output")) { ++outputs_n; output_index = i; }
+    }
+    bool nested_scope = scope && *scope;
+    if (!scope_nodes || (nested_scope && (!inputs_n || !outputs_n))) {
+        *scope_message = copy_string("subflow scope is empty or missing an Input/Output boundary");
+        scope_set_status(evaluation, scope, NN_INFERENCE_UNRESOLVED, *scope_message);
+        free(outputs); free(indegree); free(done); return NN_INFERENCE_UNRESOLVED;
+    }
+    if (nested_scope && (inputs_n != 1 || outputs_n != 1)) {
+        *scope_message = copy_string("subflow scope must contain exactly one immediate Input and Output");
+        scope_set_status(evaluation, scope, NN_INFERENCE_SEMANTIC_ERROR, *scope_message);
+        free(outputs); free(indegree); free(done); return NN_INFERENCE_SEMANTIC_ERROR;
+    }
     for (size_t e = 0; e < nn_model_edge_count(model); ++e) {
         const NNEdge *edge = nn_model_edge_at(model, e);
-        size_t target = find_node_index(model, edge->target_id);
-        if (target != (size_t)-1) ++indegree[target];
+        const NNNode *source = nn_model_find_node(model, edge->source_id);
+        const NNNode *target = nn_model_find_node(model, edge->target_id);
+        bool edge_claims_scope = !strcmp(edge->scope_id ? edge->scope_id : "", scope ? scope : "");
+        bool touches_scope = (source && !strcmp(source->scope_id ? source->scope_id : "", scope ? scope : "")) ||
+                             (target && !strcmp(target->scope_id ? target->scope_id : "", scope ? scope : ""));
+        bool endpoint_mismatch = edge_claims_scope &&
+            (!source || !target || strcmp(source->scope_id ? source->scope_id : "", scope ? scope : "") ||
+             strcmp(target->scope_id ? target->scope_id : "", scope ? scope : ""));
+        if (endpoint_mismatch || (touches_scope && !edge_claims_scope)) {
+            *scope_message = copy_string("scope contains a cross-scope or malformed edge");
+            scope_set_status(evaluation, scope, NN_INFERENCE_SEMANTIC_ERROR, *scope_message);
+            free(outputs); free(indegree); free(done); return NN_INFERENCE_SEMANTIC_ERROR;
+        }
     }
-    for (size_t step = 0; step < count; ++step) {
+    for (size_t e = 0; e < nn_model_edge_count(model); ++e) {
+        const NNEdge *edge = nn_model_edge_at(model, e);
+        if (strcmp(edge->scope_id ? edge->scope_id : "", scope ? scope : "")) continue;
+        size_t target = find_node_index(model, edge->target_id);
+        const NNNode *target_node = target != (size_t)-1 ? nn_model_node_at(model, target) : NULL;
+        if (target_node && !strcmp(target_node->scope_id ? target_node->scope_id : "", scope ? scope : "")) ++indegree[target];
+    }
+    NNInferenceStatus output_status = NN_INFERENCE_UNRESOLVED;
+    NNInferenceStatus scope_failure = NN_INFERENCE_UNRESOLVED;
+    char *failure_message = NULL;
+    for (size_t step = 0; step < scope_nodes; ++step) {
         size_t index = count;
-        for (size_t i = 0; i < count; ++i) if (!done[i] && !indegree[i]) { index = i; break; }
+        for (size_t i = 0; i < count; ++i) {
+            const NNNode *candidate = nn_model_node_at(model, i);
+            if (!done[i] && !strcmp(candidate->scope_id ? candidate->scope_id : "", scope ? scope : "") && !indegree[i]) { index = i; break; }
+        }
         if (index == count) break;
         done[index] = true;
         const NNNode *node = nn_model_node_at(model, index);
-        Result *result = &report->items[report->count++];
-        const NNPackage *package = nn_catalog_find(catalog, node->package_id, node->package_version);
+        const NNPackage *package = nn_catalog_find(evaluation->catalog, node->package_id, node->package_version);
         size_t incoming_count = 0;
-        for (size_t e = 0; e < nn_model_edge_count(model); ++e)
-            if (!strcmp(nn_model_edge_at(model, e)->target_id, node->id)) ++incoming_count;
+        for (size_t e = 0; e < nn_model_edge_count(model); ++e) {
+            const NNEdge *edge = nn_model_edge_at(model, e);
+            if (!strcmp(edge->target_id, node->id) && !strcmp(edge->scope_id ? edge->scope_id : "", scope ? scope : "")) ++incoming_count;
+        }
         Tensor *inputs = calloc(incoming_count ? incoming_count : 1, sizeof(*inputs));
         Incoming *incoming = calloc(incoming_count ? incoming_count : 1, sizeof(*incoming));
-        size_t used = 0; bool missing = inputs == NULL || incoming == NULL;
-        bool malformed_join_handle = false;
+        size_t used = 0; bool missing = !inputs || !incoming, malformed = false;
         if (inputs && incoming) for (size_t e = 0; e < nn_model_edge_count(model); ++e) {
             const NNEdge *edge = nn_model_edge_at(model, e);
-            if (strcmp(edge->target_id, node->id)) continue;
-            size_t order = 0;
-            if (package && !strcmp(package->kind, "join")) {
-                if (!join_handle_order(edge->target_handle_id, &order)) {
-                    malformed_join_handle = true; break;
-                }
-            } else order = e;
+            if (strcmp(edge->target_id, node->id) || strcmp(edge->scope_id ? edge->scope_id : "", scope ? scope : "")) continue;
+            size_t order = e;
+            if (package && !strcmp(package->kind, "join") && !join_handle_order(edge->target_handle_id, &order)) { malformed = true; break; }
             incoming[used++] = (Incoming){ .edge = edge, .order = order };
         }
-        if (package && !strcmp(package->kind, "join") && !malformed_join_handle) {
+        if (package && !strcmp(package->kind, "join") && !malformed) {
             qsort(incoming, used, sizeof(*incoming), incoming_compare);
-            for (size_t i = 1; i < used; ++i)
-                if (incoming[i - 1].order == incoming[i].order) malformed_join_handle = true;
+            for (size_t i = 1; i < used; ++i) if (incoming[i-1].order == incoming[i].order) malformed = true;
         }
-        size_t edge_count = used;
-        used = 0;
-        if (inputs && incoming && !malformed_join_handle) for (size_t i = 0; i < edge_count; ++i) {
-            const NNEdge *edge = incoming[i].edge;
-            size_t source = find_node_index(model, edge->source_id);
+        size_t edge_count = used; used = 0;
+        if (inputs && incoming && !malformed) for (size_t i = 0; i < edge_count; ++i) {
+            size_t source = find_node_index(model, incoming[i].edge->source_id);
             if (source == (size_t)-1 || !outputs[source].dtype) { missing = true; break; }
             inputs[used++] = outputs[source];
         }
         char *message = NULL; Tensor output = {0}; NNInferenceStatus status;
-        if (malformed_join_handle) {
-            status = NN_INFERENCE_SEMANTIC_ERROR;
-            message = copy_string("join target handle must be in-<positive integer>");
-        } else if (missing) {
+        if (malformed) { status = NN_INFERENCE_SEMANTIC_ERROR; message = copy_string("join target handle must be in-<positive integer>"); }
+        else if (missing) { status = NN_INFERENCE_UNRESOLVED; message = copy_string("an upstream tensor is unresolved"); }
+        else if (!package) { status = NN_INFERENCE_RUNTIME_FAULT; message = copy_string("package is absent from active catalog"); }
+        else if (incoming_count == 0 && (!package->kind || strcmp(package->kind, "input"))) {
             status = NN_INFERENCE_UNRESOLVED;
-            message = copy_string("an upstream tensor is unresolved");
-        } else if (!package) {
-            status = NN_INFERENCE_RUNTIME_FAULT; message = copy_string("package is absent from active catalog");
-        } else status = execute_rule(project, node, package, dataset, inputs, used, &output, &message);
-        result_set(result, node, status, message, status == NN_INFERENCE_SUCCESS ? &output : NULL);
+            message = copy_string("node has no upstream tensor");
+        }
+        else status = execute_rule(evaluation, node, package, depth,
+                                   node == nn_model_node_at(model, input_index) ? inherited : NULL,
+                                   inputs, used, &output, &message);
+        Result *result = report_result(evaluation, node);
+        if (result) result_set(result, node, status, message, status == NN_INFERENCE_SUCCESS ? &output : NULL);
+        if (status == NN_INFERENCE_RUNTIME_FAULT) {
+            scope_failure = status;
+            free(failure_message);
+            failure_message = copy_string(message ? message : "nested inference runtime fault");
+        } else if (status == NN_INFERENCE_SEMANTIC_ERROR && scope_failure == NN_INFERENCE_UNRESOLVED) {
+            scope_failure = status;
+            failure_message = copy_string(message ? message : "nested semantic error");
+        }
         if (status == NN_INFERENCE_SUCCESS) outputs[index] = output;
         else tensor_dispose(&output);
+        if (index == output_index) {
+            output_status = status;
+            if (status == NN_INFERENCE_SUCCESS && !tensor_copy(scope_output, &outputs[index])) {
+                output_status = NN_INFERENCE_RUNTIME_FAULT;
+                *scope_message = copy_string("unable to copy subflow output tensor");
+            }
+            else *scope_message = copy_string(message ? message : "subflow Output is unresolved");
+        }
         free(inputs); free(incoming);
         for (size_t e = 0; e < nn_model_edge_count(model); ++e) {
             const NNEdge *edge = nn_model_edge_at(model, e);
-            if (!strcmp(edge->source_id, node->id)) {
-                size_t target = find_node_index(model, edge->target_id);
-                if (target != (size_t)-1 && indegree[target]) --indegree[target];
-            }
+            if (strcmp(edge->source_id, node->id) || strcmp(edge->scope_id ? edge->scope_id : "", scope ? scope : "")) continue;
+            size_t target = find_node_index(model, edge->target_id);
+            if (target != (size_t)-1 && indegree[target]) --indegree[target];
         }
     }
+    if (output_index < count && !done[output_index]) {
+        output_status = NN_INFERENCE_UNRESOLVED;
+        *scope_message = copy_string("subflow Output is disconnected or cyclic");
+    }
+    if (output_status != NN_INFERENCE_SUCCESS && scope_failure != NN_INFERENCE_UNRESOLVED) {
+        output_status = scope_failure;
+        free(*scope_message);
+        *scope_message = failure_message;
+        failure_message = NULL;
+    }
+    free(failure_message);
     for (size_t i = 0; i < count; ++i) tensor_dispose(&outputs[i]);
     free(outputs); free(indegree); free(done);
+    return output_status;
+}
+
+NNInferenceReport *nn_infer_project(const NNProject *project)
+{
+    if (!project) return NULL;
+    const NNModel *model = nn_project_model((NNProject *)project);
+    size_t count = nn_model_node_count(model);
+    NNInferenceReport *report = calloc(1, sizeof(*report));
+    if (!report) return NULL;
+    report->items = calloc(count ? count : 1, sizeof(*report->items));
+    if (!report->items) { free(report); return NULL; }
+    Evaluation evaluation = { .model = model,
+        .catalog = nn_project_catalog(project), .report = report,
+        .dataset = nn_project_active_dataset(project) };
+    Tensor ignored = {0}; char *message = NULL;
+    (void)evaluate_scope(&evaluation, "", NULL, 0, &ignored, &message);
+    free(message); tensor_dispose(&ignored);
+    for (size_t i = 0; i < count; ++i) {
+        const NNNode *node = nn_model_node_at(model, i);
+        if (report->items[i].id) continue;
+        const char *scope = node->scope_id ? node->scope_id : "";
+        Result *result = report_result(&evaluation, node);
+        if (!*scope) {
+            if (result) result_set(result, node, NN_INFERENCE_UNRESOLVED,
+                                   copy_string("node could not be evaluated"), NULL);
+        } else {
+            const NNNode *owner = nn_model_find_node(model, scope);
+            const char *owner_kind = owner ? package_kind(&evaluation, owner) : NULL;
+            if (owner_kind && !strcmp(owner_kind, "subflow")) {
+                /* Valid children skipped because their owner never delegated. */
+                for (size_t child = 0; child < count; ++child) {
+                    const NNNode *nested = nn_model_node_at(model, child);
+                    if (strcmp(nested->scope_id ? nested->scope_id : "", scope)) continue;
+                    Result *unseen = report_result(&evaluation, nested);
+                    if (unseen && !unseen->id)
+                        result_set(unseen, nested, NN_INFERENCE_UNRESOLVED,
+                                   copy_string("subflow was not invoked by its owner"), NULL);
+                }
+            } else if (result) result_set(result, node, NN_INFERENCE_UNRESOLVED,
+                                           copy_string("orphan scope has no subflow owner"), NULL);
+        }
+    }
+    report->count = 0;
+    for (size_t i = 0; i < count; ++i) if (report->items[i].id) ++report->count;
     return report;
-fail:
-    if (outputs) { for (size_t i = 0; i < count; ++i) tensor_dispose(&outputs[i]); }
-    free(outputs); free(indegree); free(done); nn_inference_free(report); return NULL;
 }
 
 void nn_inference_free(NNInferenceReport *report)

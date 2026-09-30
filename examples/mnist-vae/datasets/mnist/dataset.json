@@ -1,0 +1,12 @@
+{
+  "name": "MNIST reconstruction",
+  "description": "Design metadata: normalized grayscale image and flattened image target; no download or execution",
+  "batch": {
+    "inputs": {
+      "image": { "dtype": "float32", "shape": ["B", 1, 28, 28] }
+    },
+    "targets": {
+      "reconstruction": { "dtype": "float32", "shape": ["B", 784] }
+    }
+  }
+}

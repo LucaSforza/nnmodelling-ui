@@ -5,6 +5,9 @@
 #include "PortItem.hpp"
 #include "SubflowItem.hpp"
 
+#include "catalog.h"
+#include "project.h"
+
 #include <QGraphicsPathItem>
 #include <QKeyEvent>
 #include <QPainterPath>
@@ -105,10 +108,30 @@ void GraphScene::refresh() {
                                                 data.id.toUtf8().constData());
         const QColor color = packageColor(application_, data.packageId,
                                           node ? copyText(node->package_version) : QString());
+        QList<QPair<QString, QString>> topParameters;
+        QList<QPair<QString, QString>> bottomParameters;
+        const NNProject *project = nn_app_project(application_);
+        const NNCatalog *catalog = project ? nn_project_catalog(project) : nullptr;
+        const QByteArray packageId = data.packageId.toUtf8();
+        const QByteArray packageVersion = node ? QByteArray(node->package_version) : QByteArray();
+        const NNPackage *package = catalog
+            ? nn_catalog_find(catalog, packageId.constData(), packageVersion.constData()) : nullptr;
+        for (size_t i = 0; package && i < package->parameter_count; ++i) {
+            const NNParameterDef &definition = package->parameters[i];
+            if (!definition.position || !definition.key) continue;
+            const QByteArray nodeId = data.id.toUtf8();
+            char *raw = nn_app_parameter_text(application_, nodeId.constData(), definition.key);
+            const QString value = copyText(raw);
+            nn_app_free_text(raw);
+            auto &rows = std::strcmp(definition.position, "top") == 0
+                ? topParameters : bottomParameters;
+            rows.append(qMakePair(QString::fromUtf8(definition.key), value));
+        }
         NodeItem *item = data.subflow
             ? static_cast<NodeItem *>(new SubflowItem(this, data.id, data.label, data.packageId,
-                                                       data.position, color))
-            : new NodeItem(this, data.id, data.label, data.packageId, data.position, color);
+                                                       data.position, color, topParameters, bottomParameters))
+            : new NodeItem(this, data.id, data.label, data.packageId, data.position, color,
+                           topParameters, bottomParameters);
         nodes_.insert(data.id, item);
         addItem(item);
         for (bool output : {true, false}) {
@@ -149,7 +172,7 @@ void GraphScene::refresh() {
     }
     for (const QString &id : selectedNodes)
         if (nodes_.contains(id)) nodes_.value(id)->setSelected(true);
-    const QRectF content = itemsBoundingRect().adjusted(-90, -90, 90, 90);
+    const QRectF content = itemsBoundingRect().adjusted(-5090, -5090, 5090, 5090);
     if (content.isValid() && !content.isEmpty()) setSceneRect(content);
     refreshing_ = false;
     signalBlocker.unblock();

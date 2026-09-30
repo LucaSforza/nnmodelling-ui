@@ -38,6 +38,12 @@ Analysis remains read-only and may be refreshed after a semantic mutation.
 SDL platform, custom rasterization, generic input translation, manually drawn
 widgets and their smoke test are retired after the Qt replacement passes.
 Preserved stereotype packages, historical UML and unrelated vendored assets
-are unchanged. Backend, training and command service remain deferred.
+are unchanged. Backend and training remain deferred. C11 local automation serves
+the same application owner; Qt schedules nonblocking IPC dispatch on its thread.
+Resource authoring and recursive subflow analysis follow resource-authoring.md.
+`src/automation.c` supplies the optional Linux local command service and C
+dispatcher; `src/nnmodelctl.c` is the C11 companion CLI. The GUI starts IPC only
+when requested with --socket. Native visual forms generate boundary JSON but
+C remains resource validator, catalog owner and filesystem writer.
 `justfile` owns developer recipes; CMake separates C and optional Qt targets.
 Tests live under tests; core tests never instantiate QApplication.

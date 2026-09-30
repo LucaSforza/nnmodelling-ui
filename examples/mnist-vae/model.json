@@ -1,0 +1,127 @@
+{
+  "manifest": {
+    "schemaVersion": 2,
+    "id": "mnist-vae",
+    "version": "0.1.0",
+    "name": "MNIST VAE",
+    "description": "Untrained variational autoencoder design with nested encoder and decoder",
+    "customPackages": [
+      { "id": "vae.diagonal-gaussian", "version": "0.1.0", "path": "packages/diagonal-gaussian" },
+      { "id": "vae.reparameterize", "version": "0.1.0", "path": "packages/reparameterize" },
+      { "id": "vae.kl-divergence", "version": "0.1.0", "path": "packages/kl-divergence" },
+      { "id": "vae.sigmoid", "version": "0.1.0", "path": "packages/sigmoid" }
+    ],
+    "customDatasets": [
+      { "id": "mnist-reconstruction", "version": "0.1.0", "path": "datasets/mnist" }
+    ],
+    "activeDataset": { "id": "mnist-reconstruction", "version": "0.1.0" }
+  },
+  "layoutDirection": "vertical",
+  "nodes": [
+    {
+      "id": "image", "type": "custom", "position": { "x": 60, "y": 20 },
+      "data": { "name": "image", "scope": "", "package": { "id": "core.input", "version": "0.1.0" }, "params": { "binding": "image" } }
+    },
+    {
+      "id": "flatten", "type": "custom", "position": { "x": 60, "y": 180 },
+      "data": { "name": "Flatten image", "scope": "", "package": { "id": "core.flatten", "version": "0.1.0" }, "params": { "start_dim": 1, "end_dim": -1 } }
+    },
+    {
+      "id": "encoder", "type": "custom", "position": { "x": 60, "y": 360 },
+      "data": { "name": "Encoder q(z|x)", "scope": "", "package": { "id": "core.subflow-proxy", "version": "0.1.0" }, "params": {} }
+    },
+    {
+      "id": "sample", "type": "custom", "position": { "x": 60, "y": 540 },
+      "data": { "name": "Reparameterize z", "scope": "", "package": { "id": "vae.reparameterize", "version": "0.1.0" }, "params": { "latent_features": 32 } }
+    },
+    {
+      "id": "decoder", "type": "custom", "position": { "x": 60, "y": 750 },
+      "data": { "name": "Decoder p(x|z)", "scope": "", "package": { "id": "core.subflow-proxy", "version": "0.1.0" }, "params": {} }
+    },
+    {
+      "id": "reconstruction", "type": "custom", "position": { "x": 60, "y": 930 },
+      "data": { "name": "reconstruction [B,784]", "scope": "", "package": { "id": "core.output", "version": "0.1.0" }, "params": {} }
+    },
+    {
+      "id": "kl", "type": "custom", "position": { "x": 400, "y": 540 },
+      "data": { "name": "KL to standard normal", "scope": "", "package": { "id": "vae.kl-divergence", "version": "0.1.0" }, "params": { "latent_features": 32 } }
+    },
+    {
+      "id": "kl-output", "type": "custom", "position": { "x": 400, "y": 750 },
+      "data": { "name": "KL per sample [B]", "scope": "", "package": { "id": "core.output", "version": "0.1.0" }, "params": {} }
+    },
+    {
+      "id": "encoder-input", "type": "custom", "position": { "x": 180, "y": 20 },
+      "data": { "name": "inherited image features", "scope": "encoder", "package": { "id": "core.input", "version": "0.1.0" }, "params": { "binding": "" } }
+    },
+    {
+      "id": "encoder-hidden", "type": "custom", "position": { "x": 180, "y": 180 },
+      "data": { "name": "Encoder hidden", "scope": "encoder", "package": { "id": "core.linear", "version": "0.1.0" }, "params": { "in_features": 784, "out_features": 128, "bias": true, "dtype": "float32" } }
+    },
+    {
+      "id": "encoder-relu", "type": "custom", "position": { "x": 180, "y": 410 },
+      "data": { "name": "ReLU", "scope": "encoder", "package": { "id": "core.relu", "version": "0.1.0" }, "params": {} }
+    },
+    {
+      "id": "mean", "type": "custom", "position": { "x": 0, "y": 580 },
+      "data": { "name": "mean", "scope": "encoder", "package": { "id": "core.linear", "version": "0.1.0" }, "params": { "in_features": 128, "out_features": 32, "bias": true, "dtype": "float32" } }
+    },
+    {
+      "id": "log-variance", "type": "custom", "position": { "x": 360, "y": 580 },
+      "data": { "name": "log_variance", "scope": "encoder", "package": { "id": "core.linear", "version": "0.1.0" }, "params": { "in_features": 128, "out_features": 32, "bias": true, "dtype": "float32" } }
+    },
+    {
+      "id": "gaussian", "type": "custom", "position": { "x": 180, "y": 820 },
+      "data": { "name": "q(z|x): mean, log variance", "scope": "encoder", "package": { "id": "vae.diagonal-gaussian", "version": "0.1.0" }, "params": { "latent_features": 32 } }
+    },
+    {
+      "id": "encoder-output", "type": "custom", "position": { "x": 180, "y": 1020 },
+      "data": { "name": "Gaussian parameters [B,2,32]", "scope": "encoder", "package": { "id": "core.output", "version": "0.1.0" }, "params": {} }
+    },
+    {
+      "id": "decoder-input", "type": "custom", "position": { "x": 60, "y": 20 },
+      "data": { "name": "inherited z [B,32]", "scope": "decoder", "package": { "id": "core.input", "version": "0.1.0" }, "params": { "binding": "" } }
+    },
+    {
+      "id": "decoder-hidden", "type": "custom", "position": { "x": 60, "y": 180 },
+      "data": { "name": "Decoder hidden", "scope": "decoder", "package": { "id": "core.linear", "version": "0.1.0" }, "params": { "in_features": 32, "out_features": 128, "bias": true, "dtype": "float32" } }
+    },
+    {
+      "id": "decoder-relu", "type": "custom", "position": { "x": 60, "y": 410 },
+      "data": { "name": "ReLU", "scope": "decoder", "package": { "id": "core.relu", "version": "0.1.0" }, "params": {} }
+    },
+    {
+      "id": "decoder-pixels", "type": "custom", "position": { "x": 60, "y": 580 },
+      "data": { "name": "Pixel logits", "scope": "decoder", "package": { "id": "core.linear", "version": "0.1.0" }, "params": { "in_features": 128, "out_features": 784, "bias": true, "dtype": "float32" } }
+    },
+    {
+      "id": "sigmoid", "type": "custom", "position": { "x": 60, "y": 820 },
+      "data": { "name": "Sigmoid reconstruction", "scope": "decoder", "package": { "id": "vae.sigmoid", "version": "0.1.0" }, "params": {} }
+    },
+    {
+      "id": "decoder-output", "type": "custom", "position": { "x": 60, "y": 990 },
+      "data": { "name": "reconstructed pixels", "scope": "decoder", "package": { "id": "core.output", "version": "0.1.0" }, "params": {} }
+    }
+  ],
+  "edges": [
+    { "id": "image-flatten", "source": "image", "sourceHandle": "out", "target": "flatten", "targetHandle": "in" },
+    { "id": "flatten-encoder", "source": "flatten", "sourceHandle": "out", "target": "encoder", "targetHandle": "in" },
+    { "id": "encoder-sample", "source": "encoder", "sourceHandle": "out", "target": "sample", "targetHandle": "in" },
+    { "id": "sample-decoder", "source": "sample", "sourceHandle": "out", "target": "decoder", "targetHandle": "in" },
+    { "id": "decoder-reconstruction", "source": "decoder", "sourceHandle": "out", "target": "reconstruction", "targetHandle": "in" },
+    { "id": "encoder-kl", "source": "encoder", "sourceHandle": "out", "target": "kl", "targetHandle": "in" },
+    { "id": "kl-output-edge", "source": "kl", "sourceHandle": "out", "target": "kl-output", "targetHandle": "in" },
+    { "id": "enc-in-hidden", "source": "encoder-input", "sourceHandle": "out", "target": "encoder-hidden", "targetHandle": "in" },
+    { "id": "enc-hidden-relu", "source": "encoder-hidden", "sourceHandle": "out", "target": "encoder-relu", "targetHandle": "in" },
+    { "id": "enc-relu-mean", "source": "encoder-relu", "sourceHandle": "out", "target": "mean", "targetHandle": "in" },
+    { "id": "enc-relu-logvar", "source": "encoder-relu", "sourceHandle": "out", "target": "log-variance", "targetHandle": "in" },
+    { "id": "mean-gaussian", "source": "mean", "sourceHandle": "out", "target": "gaussian", "targetHandle": "in-1" },
+    { "id": "logvar-gaussian", "source": "log-variance", "sourceHandle": "out", "target": "gaussian", "targetHandle": "in-2" },
+    { "id": "gaussian-enc-out", "source": "gaussian", "sourceHandle": "out", "target": "encoder-output", "targetHandle": "in" },
+    { "id": "dec-in-hidden", "source": "decoder-input", "sourceHandle": "out", "target": "decoder-hidden", "targetHandle": "in" },
+    { "id": "dec-hidden-relu", "source": "decoder-hidden", "sourceHandle": "out", "target": "decoder-relu", "targetHandle": "in" },
+    { "id": "dec-relu-pixels", "source": "decoder-relu", "sourceHandle": "out", "target": "decoder-pixels", "targetHandle": "in" },
+    { "id": "dec-pixels-sigmoid", "source": "decoder-pixels", "sourceHandle": "out", "target": "sigmoid", "targetHandle": "in" },
+    { "id": "sigmoid-dec-out", "source": "sigmoid", "sourceHandle": "out", "target": "decoder-output", "targetHandle": "in" }
+  ]
+}

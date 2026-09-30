@@ -30,14 +30,22 @@ void GraphView::fitGraph() {
 }
 
 void GraphView::wheelEvent(QWheelEvent *event) {
-    const qreal factor = event->angleDelta().y() > 0 ? 1.15 : 1.0 / 1.15;
-    const qreal next = qBound<qreal>(0.2, zoom_ * factor, 3.0);
-    if (qFuzzyCompare(next, zoom_)) return;
+    const qreal requestedFactor = event->angleDelta().y() > 0 ? 1.15 : 1.0 / 1.15;
+    const qreal next = qBound<qreal>(0.2, zoom_ * requestedFactor, 3.0);
+    if (qFuzzyCompare(next, zoom_)) {
+        event->accept();
+        return;
+    }
+    const qreal factor = next / zoom_;
+    const QPoint viewportPosition = event->position().toPoint();
+    const QPointF scenePositionBefore = mapToScene(viewportPosition);
     zoom_ = next;
-    const QGraphicsView::ViewportAnchor previousAnchor = transformationAnchor();
-    setTransformationAnchor(QGraphicsView::AnchorUnderMouse);
     scale(factor, factor);
-    setTransformationAnchor(previousAnchor);
+    const QPoint mappedAnchor = mapFromScene(scenePositionBefore);
+    horizontalScrollBar()->setValue(horizontalScrollBar()->value() +
+                                    mappedAnchor.x() - viewportPosition.x());
+    verticalScrollBar()->setValue(verticalScrollBar()->value() +
+                                  mappedAnchor.y() - viewportPosition.y());
     event->accept();
 }
 

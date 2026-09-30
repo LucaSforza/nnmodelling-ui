@@ -36,3 +36,13 @@ Natural: Lua computes type results but never changes graph.
 Formal: `∀node: package(node)=(id,version)∈activeCatalog`, and
 `runtimeFault ≠ semanticError ≠ unresolved`.
 Natural: exact package identity and diagnostic class are preserved.
+
+Accepted 2026-09-30: services.infer_subflow evaluates the caller's immediate
+scope using inherited input and its unique Output, with depth/invocation limits
+and fault propagation specified in resource-authoring.md. New authored Lua
+is validated as a bounded returned function before resource activation.
+`nn_inference_validate_source(const char *source,char *error,size_t capacity)`
+returns bool, compiles <=1 MiB source in protected isolated bounded Lua state,
+evaluates only package initialization, requires a returned function, then frees
+state. Application calls it before the project module stages resource files.
+No project-module inference dependency is required.

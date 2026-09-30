@@ -11,4 +11,5 @@ Accepted 2026-09-29, in progress.
 
 Existing compiler/IR and cross-scope execution are not implemented in this
 checkout; migration preserves existing semantics rather than inventing them.
-Backend, training and command service remain deferred.
+Backend and training remain deferred. The subsequent accepted resource/VAE/CLI
+milestone is tracked in [UI improvements](ui-improvements.md).

@@ -1,0 +1,9 @@
+{
+  "name": "KL(q(z|x) || N(0,I))",
+  "description": "Per-sample -0.5*sum(1+log_variance-mu^2-exp(log_variance)); [B,2,L] -> [B]. Shape only.",
+  "kind": "layer",
+  "view": { "color": "#aa493c", "width": 270, "height": 120 },
+  "parameters": {
+    "latent_features": { "type": "integer", "minimum": 1, "default": 32, "position": "top" }
+  }
+}

@@ -141,15 +141,20 @@ static void package_dispose(Package *p) {
     free((char *)p->pub.directory); free((char *)p->pub.id); free((char *)p->pub.version);
     free((char *)p->pub.name); free((char *)p->pub.description); free((char *)p->pub.kind);
     free((char *)p->pub.color); free((char *)p->pub.inference_file);
-    for (i = 0; i < p->pub.parameter_count; ++i) {
+    for (i = 0; p->parameters && i < p->pub.parameter_count; ++i) {
         free((char *)p->parameters[i].key); free((char *)p->parameters[i].type);
+        free((char *)p->parameters[i].position);
         if (p->parameters[i].has_default && (p->parameters[i].default_value.type == NN_PARAMETER_STRING ||
             p->parameters[i].default_value.type == NN_PARAMETER_JSON))
             free((char *)p->parameters[i].default_value.as.string);
-        free(p->choice_storage ? p->choice_storage[i] : NULL);
+        if (p->choice_storage && p->choice_storage[i]) {
+            for (size_t j = 0; p->choice_storage[i][j]; ++j)
+                free(p->choice_storage[i][j]);
+            free(p->choice_storage[i]);
+        }
     }
     free(p->choice_storage); free(p->parameters);
-    for (i = 0; i < p->pub.dependency_count; ++i) {
+    for (i = 0; p->dependencies && i < p->pub.dependency_count; ++i) {
         free((char *)p->dependencies[i].id); free((char *)p->dependencies[i].version_constraint);
     }
     free(p->dependencies); memset(p, 0, sizeof(*p));
@@ -194,9 +199,24 @@ static bool parse_definition(Package *p, yyjson_val *root) {
             NNParameterDef *d = &p->parameters[i];
             const char *key = yyjson_get_str(v);
             d->key = copystr(key); d->type = copystr(strval(get(val, "type")));
-            if (!d->key || !d->type || !*d->type) return false;
+            if (!d->key || !*d->key || !d->type ||
+                (strcmp(d->type, "boolean") && strcmp(d->type, "integer") &&
+                 strcmp(d->type, "number") && strcmp(d->type, "string") &&
+                 strcmp(d->type, "dtype") && strcmp(d->type, "json") &&
+                 strcmp(d->type, "stereotype"))) return false;
+            for (size_t previous = 0; previous < i; ++previous)
+                if (!strcmp(p->parameters[previous].key, d->key)) return false;
+            {
+                const char *position = strval(get(val, "position"));
+                if (get(val, "position")) {
+                    if (!position || (strcmp(position, "top") && strcmp(position, "bottom"))) return false;
+                    d->position = copystr(position);
+                    if (!d->position) return false;
+                }
+            }
             if (get(val, "minimum")) {
-                if (!number(get(val, "minimum"), &d->minimum)) return false;
+                if (!number(get(val, "minimum"), &d->minimum) ||
+                    (strcmp(d->type, "integer") && strcmp(d->type, "number"))) return false;
                 d->has_minimum = true;
             }
             {
@@ -204,7 +224,8 @@ static bool parse_definition(Package *p, yyjson_val *root) {
                 if (dv) {
                     d->has_default = true;
                     if (yyjson_is_bool(dv)) { d->default_value.type = NN_PARAMETER_BOOLEAN; d->default_value.as.boolean = yyjson_get_bool(dv); }
-                    else if (yyjson_is_int(dv)) { d->default_value.type = NN_PARAMETER_INTEGER; d->default_value.as.integer = yyjson_get_sint(dv); }
+                    else if (!strcmp(d->type, "number") && yyjson_is_num(dv)) { d->default_value.type = NN_PARAMETER_NUMBER; d->default_value.as.number = yyjson_get_num(dv); }
+                    else if (!strcmp(d->type, "integer") && yyjson_is_int(dv)) { d->default_value.type = NN_PARAMETER_INTEGER; d->default_value.as.integer = yyjson_get_sint(dv); }
                     else if (yyjson_is_num(dv)) { d->default_value.type = NN_PARAMETER_NUMBER; d->default_value.as.number = yyjson_get_num(dv); }
                     else if (yyjson_is_str(dv)) { d->default_value.type = NN_PARAMETER_STRING; d->default_value.as.string = copystr(yyjson_get_str(dv)); }
                     else if (yyjson_is_arr(dv) || yyjson_is_obj(dv)) {
@@ -219,7 +240,8 @@ static bool parse_definition(Package *p, yyjson_val *root) {
                 yyjson_val *choices = get(val, "choices");
                 if (choices) {
                     size_t j, count = yyjson_arr_size(choices);
-                    if (!yyjson_is_arr(choices) || count > CATALOG_ITEM_LIMIT) return false;
+                    if (!yyjson_is_arr(choices) || count > CATALOG_ITEM_LIMIT ||
+                        (strcmp(d->type, "string") && strcmp(d->type, "dtype"))) return false;
                     p->choice_storage[i] = calloc(count + 1, sizeof(char *));
                     if (!p->choice_storage[i]) return false;
                     for (j = 0; j < count; ++j) {

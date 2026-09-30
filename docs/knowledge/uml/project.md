@@ -19,6 +19,9 @@ classDiagram
       +open(ProjectPath) Result
       +save() Result
       +close() Result
+      +createStereotype(definition,Lua,dependencies) Result
+      +createDataset(definition,select) Result
+      +selectDataset(identity) Result
     }
     class ModelManifest {
       +int schemaVersion = 2
@@ -96,6 +99,12 @@ classDiagram
 
 ## Operations and ownership
 
+Accepted 2026-09-30: resource creation transactions follow
+[resource authoring](../contracts/resource-authoring.md). C stages files and
+catalogs, validates against current unsaved graph, atomically saves candidate
+manifest, then publishes; failure preserves active state and old model.json.
+All generated JSON is indented two spaces with a final newline.
+
 `Project.open(path) -> Result` reads `model.json`, parses typed graph and
 manifest, validates all declared package/dataset paths and their exact
 identities, resolves each dependency within `core ∪ projectOwned`, then swaps
@@ -153,3 +162,5 @@ metadata. References carry copied ID/version/relative path strings, not raw
 filesystem handles. Dependency edges use package indices or exact identity
 after validation; no global package map becomes project authority. JSON DOM is
 temporary parse/write state. Only project module owns filesystem mutations.
+Borrowed `nn_project_id/name/version` getters expose manifest identity to the
+read-only automation snapshot; no mutable project struct crosses the ABI.

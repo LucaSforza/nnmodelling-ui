@@ -20,6 +20,9 @@ run *args: build
 test-ui: build
     ctest --test-dir build/qt --output-on-failure -L gui
 
+test-cli: build
+    ctest --test-dir build/qt --output-on-failure -R cli_ui
+
 # Repository-local OpenCode V2 development tooling.
 swarm-setup:
     node -e 'import("./.opencode/swarm-mailbox/index.js").then(p => console.log(p.default.id))'

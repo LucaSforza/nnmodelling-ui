@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "id": "vae.sigmoid",
+  "version": "0.1.0",
+  "dependencies": {},
+  "entrypoints": {
+    "definition": "stereotype.json",
+    "inference": { "language": "lua", "file": "inference.lua" }
+  }
+}

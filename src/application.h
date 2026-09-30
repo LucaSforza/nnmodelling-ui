@@ -14,6 +14,16 @@ void nn_app_free(NNApplication *app);
 bool nn_app_open(NNApplication *app, const char *directory, char *error, size_t cap);
 bool nn_app_create(NNApplication *app, const char *parent, const char *id,
                    const char *name, bool mnist, char *error, size_t cap);
+bool nn_app_create_stereotype(NNApplication *app, const char *id, const char *version,
+                              const char *definition_json, const char *inference_lua,
+                              const char *dependencies_json, char *error, size_t cap);
+bool nn_app_create_dataset(NNApplication *app, const char *id, const char *version,
+                           const char *definition_json, bool select,
+                           char *error, size_t cap);
+bool nn_app_select_dataset(NNApplication *app, const char *id, const char *version,
+                           char *error, size_t cap);
+bool nn_app_create_vae(NNApplication *app, const char *parent, const char *id,
+                      const char *name, char *error, size_t cap);
 bool nn_app_save(NNApplication *app, char *error, size_t cap);
 bool nn_app_close(NNApplication *app, bool discard, char *error, size_t cap);
 /* Borrowed read-only state; do not retain pointers across mutations. */

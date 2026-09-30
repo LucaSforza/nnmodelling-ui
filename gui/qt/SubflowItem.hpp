@@ -6,7 +6,10 @@
 class SubflowItem final : public NodeItem {
     Q_OBJECT
 public:
-    using NodeItem::NodeItem;
+    SubflowItem(GraphScene *owner, QString id, QString label, QString packageId,
+                const QPointF &position, const QColor &color,
+                QList<QPair<QString, QString>> topParameters = {},
+                QList<QPair<QString, QString>> bottomParameters = {});
     void setChildCount(int count) override;
     void paint(QPainter *painter, const QStyleOptionGraphicsItem *option,
                QWidget *widget = nullptr) override;

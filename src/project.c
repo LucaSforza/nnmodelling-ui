@@ -17,6 +17,7 @@
 
 struct NNProject {
     char *directory;
+    char *core_root;
     char *id;
     char *version;
     char *name;
@@ -67,11 +68,28 @@ static const char *string_field(yyjson_val *object, const char *key)
 
 static bool valid_id(const char *id)
 {
-    if (!id || !*id || strlen(id) > 96) return false;
+    if (!id || !*id || strlen(id) > 96 || !strcmp(id, ".") || !strcmp(id, "..")) return false;
     for (const unsigned char *c = (const unsigned char *)id; *c; ++c)
         if (!((*c >= 'a' && *c <= 'z') || (*c >= 'A' && *c <= 'Z') ||
               (*c >= '0' && *c <= '9') || *c == '-' || *c == '_' || *c == '.'))
             return false;
+    return true;
+}
+
+static bool valid_semver(const char *text)
+{
+    if (!text || !*text) return false;
+    for (unsigned part = 0; part < 3; ++part) {
+        unsigned long value = 0;
+        if (*text < '0' || *text > '9' || (*text == '0' && text[1] >= '0' && text[1] <= '9')) return false;
+        while (*text >= '0' && *text <= '9') {
+            unsigned digit = (unsigned)(*text++ - '0');
+            if (value > (ULONG_MAX - digit) / 10) return false;
+            value = value * 10 + digit;
+        }
+        if (part < 2) { if (*text++ != '.') return false; }
+        else if (*text) return false;
+    }
     return true;
 }
 
@@ -186,7 +204,12 @@ static bool parse_slots(yyjson_val *object, NNTensorSlot **slots, size_t *count,
         NNTensorSlot *slot = &(*slots)[index++];
         const char *dtype = string_field(value, "dtype");
         yyjson_val *shape = yyjson_obj_get(value, "shape");
-        if (!dtype || !yyjson_is_arr(shape) || !yyjson_arr_size(shape) ||
+        const char *allowed[] = {"float16","bfloat16","float32","float64","int8","int16","int32","int64","uint8","bool"};
+        bool dtype_ok = false;
+        for (size_t d = 0; dtype && d < sizeof(allowed) / sizeof(allowed[0]); ++d)
+            if (!strcmp(dtype, allowed[d])) dtype_ok = true;
+        if (!yyjson_get_str(key) || !*yyjson_get_str(key) || !dtype_ok ||
+            !yyjson_is_arr(shape) || !yyjson_arr_size(shape) || yyjson_arr_size(shape) > 64 ||
             !parse_value(shape, &slot->shape)) {
             problem(error, capacity, "invalid dataset tensor slot");
             return false;
@@ -194,6 +217,11 @@ static bool parse_slots(yyjson_val *object, NNTensorSlot **slots, size_t *count,
         slot->name = copy_string(yyjson_get_str(key));
         slot->dtype = copy_string(dtype);
         if (!slot->name || !slot->dtype) return false;
+        for (size_t previous = 0; previous + 1 < index; ++previous)
+            if (!strcmp((*slots)[previous].name, slot->name)) {
+                problem(error, capacity, "duplicate dataset slot name: %s", slot->name);
+                return false;
+            }
         for (size_t i = 0; i < slot->shape.as.array.count; ++i) {
             NNValue *dimension = &slot->shape.as.array.items[i];
             if (!((dimension->type == NN_VALUE_INT && dimension->as.integer > 0) ||
@@ -234,11 +262,19 @@ static bool load_dataset(NNProject *project, NNDataset *dataset,
     root = yyjson_doc_get_root(definition_doc);
     const char *name = string_field(root, "name");
     yyjson_val *batch = yyjson_obj_get(root, "batch");
-    okay = name && batch && (dataset->name = copy_string(name)) &&
+    okay = name && *name && batch && (dataset->name = copy_string(name)) &&
            parse_slots(yyjson_obj_get(batch, "inputs"), &dataset->inputs,
-                       &dataset->input_count, error, capacity) &&
+                        &dataset->input_count, error, capacity) &&
            parse_slots(yyjson_obj_get(batch, "targets"), &dataset->targets,
-                       &dataset->target_count, error, capacity);
+                        &dataset->target_count, error, capacity);
+    if (okay && !dataset->input_count) { problem(error, capacity, "dataset requires at least one input slot"); okay = false; }
+    for (size_t i = 0; okay && i < dataset->input_count; ++i)
+        for (size_t j = 0; j < dataset->target_count; ++j)
+            if (!strcmp(dataset->inputs[i].name, dataset->targets[j].name)) {
+                problem(error, capacity, "duplicate dataset slot name: %s", dataset->inputs[i].name);
+                okay = false;
+                break;
+            }
     if (!okay && error && !error[0]) problem(error, capacity, "invalid dataset definition");
     yyjson_doc_free(definition_doc);
     return okay;
@@ -339,6 +375,7 @@ NNProject *nn_project_open(const char *directory, const char *core_root,
     NNProject *project = calloc(1, sizeof(*project));
     if (!project) { yyjson_doc_free(document); free(resolved); return NULL; }
     project->directory = resolved;
+    project->core_root = realpath(core_root, NULL);
     yyjson_val *root = yyjson_doc_get_root(document);
     yyjson_val *manifest = yyjson_obj_get(root, "manifest");
     const char *id = string_field(manifest, "id");
@@ -353,7 +390,7 @@ NNProject *nn_project_open(const char *directory, const char *core_root,
                 (project->description = copy_string(description ? description : ""));
     const char *layout = string_field(root, "layoutDirection");
     project->layout_direction = copy_string(layout ? layout : "horizontal");
-    if (!project->layout_direction) okay = false;
+    if (!project->layout_direction || !project->core_root) okay = false;
     if (!okay) problem(error, capacity, "invalid schema-v2 project manifest");
     if (okay) okay = parse_references(yyjson_obj_get(manifest, "customPackages"),
                                       &project->packages, &project->package_count, error, capacity);
@@ -516,8 +553,13 @@ static bool write_project_document(NNProject *project, char **json, size_t *leng
     }
     if (okay) {
         yyjson_mut_doc_set_root(doc, root);
-        *json = yyjson_mut_write_opts(doc, 0, NULL, length, NULL);
+        *json = yyjson_mut_write_opts(doc, YYJSON_WRITE_PRETTY_TWO_SPACES, NULL, length, NULL);
         okay = *json != NULL;
+        if (okay) {
+            char *terminated = realloc(*json, *length + 2);
+            if (!terminated) { free(*json); *json = NULL; okay = false; }
+            else { terminated[(*length)++] = '\n'; terminated[*length] = '\0'; *json = terminated; }
+        }
     }
     yyjson_mut_doc_free(doc);
     return okay;
@@ -604,7 +646,7 @@ void nn_project_close(NNProject *project)
     }
     for (size_t i = 0; i < project->dataset_count; ++i) dataset_dispose(&project->datasets[i]);
     free(project->packages); free(project->datasets);
-    free(project->directory); free(project->id); free(project->version);
+    free(project->directory); free(project->core_root); free(project->id); free(project->version);
     free(project->name); free(project->description); free(project->layout_direction);
     free(project->active_dataset_id); free(project->active_dataset_version);
     free(project);
@@ -613,6 +655,7 @@ void nn_project_close(NNProject *project)
 void nn_project_mark_dirty(NNProject *project) { if (project) project->dirty = true; }
 const char *nn_project_directory(const NNProject *project) { return project ? project->directory : NULL; }
 const char *nn_project_id(const NNProject *project) { return project ? project->id : NULL; }
+const char *nn_project_version(const NNProject *project) { return project ? project->version : NULL; }
 const char *nn_project_name(const NNProject *project) { return project ? project->name : NULL; }
 bool nn_project_dirty(const NNProject *project) { return project && project->dirty; }
 NNModel *nn_project_model(NNProject *project) { return project ? project->model : NULL; }
@@ -630,6 +673,26 @@ const NNDataset *nn_project_active_dataset(const NNProject *project)
             !strcmp(project->datasets[i].version, project->active_dataset_version))
             return &project->datasets[i];
     return NULL;
+}
+
+bool nn_project_select_dataset(NNProject *project, const char *id, const char *version,
+                               char *error, size_t capacity)
+{
+    if (error && capacity) error[0] = '\0';
+    if (!project || !id || !version) { problem(error, capacity, "invalid dataset identity"); return false; }
+    const NNDataset *selected = NULL;
+    for (size_t i = 0; i < project->dataset_count; ++i)
+        if (!strcmp(project->datasets[i].id, id) && !strcmp(project->datasets[i].version, version)) selected = &project->datasets[i];
+    if (!selected) { problem(error, capacity, "dataset identity is not declared"); return false; }
+    char *new_id = copy_string(id), *new_version = copy_string(version);
+    if (!new_id || !new_version) { free(new_id); free(new_version); problem(error, capacity, "out of memory"); return false; }
+    char *old_id = project->active_dataset_id, *old_version = project->active_dataset_version;
+    project->active_dataset_id = new_id;
+    project->active_dataset_version = new_version;
+    project->dirty = true;
+    free(old_id); free(old_version);
+    if (error && capacity) error[0] = '\0';
+    return true;
 }
 
 static bool copy_file(const char *source, const char *destination)
@@ -653,10 +716,12 @@ static bool copy_file(const char *source, const char *destination)
     return okay;
 }
 
-static bool copy_tree(const char *source, const char *destination)
+static bool copy_tree(const char *source, const char *destination);
+
+static bool copy_tree_contents(const char *source, const char *destination)
 {
     struct stat st;
-    if (lstat(source, &st) || !S_ISDIR(st.st_mode) || mkdir(destination, st.st_mode & 0777)) return false;
+    if (lstat(source, &st) || !S_ISDIR(st.st_mode)) return false;
     DIR *dir = opendir(source);
     if (!dir) return false;
     bool okay = true;
@@ -674,10 +739,18 @@ static bool copy_tree(const char *source, const char *destination)
     return okay;
 }
 
+static bool copy_tree(const char *source, const char *destination)
+{
+    struct stat st;
+    if (lstat(source, &st) || !S_ISDIR(st.st_mode) ||
+        mkdir(destination, st.st_mode & 0777)) return false;
+    return copy_tree_contents(source, destination);
+}
+
 static void remove_tree(const char *path)
 {
     struct stat st;
-    if (lstat(path, &st)) return;
+    if (!path || lstat(path, &st)) return;
     if (S_ISDIR(st.st_mode)) {
         DIR *dir = opendir(path);
         if (dir) {
@@ -783,4 +856,231 @@ NNProject *nn_project_create(const char *parent, const char *id, const char *nam
         }
     }
     return project;
+}
+
+static bool write_new_text(const char *path, const char *text)
+{
+    int fd = open(path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0644);
+    if (fd < 0) return false;
+    size_t length = strlen(text);
+    bool okay = write_all(fd, text, length) && fsync(fd) == 0;
+    if (close(fd)) okay = false;
+    return okay;
+}
+
+static char *resource_manifest(const char *id, const char *version,
+                               const char *definition, const char *lua,
+                               const char *dependencies)
+{
+    yyjson_doc *deps_doc = dependencies ? yyjson_read(dependencies, strlen(dependencies), 0) : NULL;
+    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
+    if (!doc || !deps_doc || !yyjson_is_obj(yyjson_doc_get_root(deps_doc))) {
+        if (doc) yyjson_mut_doc_free(doc);
+        if (deps_doc) yyjson_doc_free(deps_doc);
+        return NULL;
+    }
+    yyjson_mut_val *root = yyjson_mut_obj(doc), *entry = yyjson_mut_obj(doc), *inf = yyjson_mut_obj(doc);
+    yyjson_mut_val *deps = yyjson_val_mut_copy(doc, yyjson_doc_get_root(deps_doc));
+    bool okay = root && entry && inf && deps &&
+        yyjson_mut_obj_add_int(doc, root, "schemaVersion", 1) &&
+        yyjson_mut_obj_add_strcpy(doc, root, "id", id) &&
+        yyjson_mut_obj_add_strcpy(doc, root, "version", version) &&
+        yyjson_mut_obj_add_val(doc, root, "dependencies", deps) &&
+        yyjson_mut_obj_add_val(doc, root, "entrypoints", entry) &&
+        yyjson_mut_obj_add_strcpy(doc, entry, "definition", definition) &&
+        yyjson_mut_obj_add_val(doc, entry, "inference", inf) &&
+        yyjson_mut_obj_add_strcpy(doc, inf, "language", "lua") &&
+        yyjson_mut_obj_add_strcpy(doc, inf, "file", lua);
+    char *json = NULL;
+    size_t length = 0;
+    if (okay) { yyjson_mut_doc_set_root(doc, root); json = yyjson_mut_write_opts(doc, YYJSON_WRITE_PRETTY_TWO_SPACES, NULL, &length, NULL); }
+    if (json) { char *grown = realloc(json, length + 2); if (!grown) { free(json); json = NULL; } else { grown[length++] = '\n'; grown[length] = 0; json = grown; } }
+    yyjson_mut_doc_free(doc); yyjson_doc_free(deps_doc);
+    return json;
+}
+
+static char *dataset_manifest(const char *id, const char *version)
+{
+    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
+    if (!doc) return NULL;
+    yyjson_mut_val *root = yyjson_mut_obj(doc), *entry = yyjson_mut_obj(doc);
+    bool okay = root && entry && yyjson_mut_obj_add_int(doc, root, "schemaVersion", 1) &&
+        yyjson_mut_obj_add_strcpy(doc, root, "id", id) &&
+        yyjson_mut_obj_add_strcpy(doc, root, "version", version) &&
+        yyjson_mut_obj_add_val(doc, root, "entrypoints", entry) &&
+        yyjson_mut_obj_add_strcpy(doc, entry, "definition", "dataset.json");
+    char *json = NULL; size_t length = 0;
+    if (okay) { yyjson_mut_doc_set_root(doc, root); json = yyjson_mut_write_opts(doc, YYJSON_WRITE_PRETTY_TWO_SPACES, NULL, &length, NULL); }
+    if (json) { char *grown = realloc(json, length + 2); if (!grown) { free(json); json = NULL; } else { grown[length++] = '\n'; grown[length] = 0; json = grown; } }
+    yyjson_mut_doc_free(doc); return json;
+}
+
+static char *pretty_json(const char *source)
+{
+    if (!source) return NULL;
+    yyjson_doc *doc = yyjson_read(source, strlen(source), 0);
+    if (!doc) return NULL;
+    size_t length = 0;
+    char *text = yyjson_val_write_opts(yyjson_doc_get_root(doc), YYJSON_WRITE_PRETTY_TWO_SPACES,
+                                       NULL, &length, NULL);
+    yyjson_doc_free(doc);
+    if (!text) return NULL;
+    char *grown = realloc(text, length + 2);
+    if (!grown) { free(text); return NULL; }
+    grown[length++] = '\n'; grown[length] = '\0';
+    return grown;
+}
+
+static bool make_resource_directory(const char *root, const char *category,
+                                    const char *name, char **relative, char **absolute,
+                                    bool *category_created)
+{
+    *relative = NULL; *absolute = NULL;
+    *category_created = false;
+    char *base = join_path(root, category);
+    if (!base) return false;
+    struct stat st;
+    if (lstat(base, &st)) {
+        if (errno != ENOENT || mkdir(base, 0755)) { free(base); return false; }
+        *category_created = true;
+    } else if (!S_ISDIR(st.st_mode)) { free(base); return false; }
+    size_t n = strlen(name) + 1;
+    char *rel = malloc(strlen(category) + n + 1);
+    if (rel) snprintf(rel, strlen(category) + n + 1, "%s/%s", category, name);
+    char *dir = rel ? join_path(root, rel) : NULL;
+    free(base);
+    if (!rel || !dir) {
+        free(rel); free(dir);
+        if (*category_created) { char *created = join_path(root, category); if (created) { rmdir(created); free(created); } }
+        return false;
+    }
+    if (mkdir(dir, 0755)) {
+        free(rel); free(dir);
+        if (*category_created) { char *created = join_path(root, category); if (created) { rmdir(created); free(created); } }
+        return false;
+    }
+    *relative = rel; *absolute = dir; return true;
+}
+
+bool nn_project_create_stereotype(NNProject *p, const char *id, const char *version,
+                                  const char *definition_json, const char *lua,
+                                  const char *dependencies_json, char *error, size_t cap)
+{
+    if (error && cap) error[0] = '\0';
+    if (!p || !valid_id(id) || !version || !definition_json || !lua || strlen(definition_json) > 4u * 1024u * 1024u ||
+        (dependencies_json && strlen(dependencies_json) > 4u * 1024u * 1024u) || strlen(lua) > 1024 * 1024 ||
+        !valid_semver(version)) { problem(error, cap, "invalid stereotype identity or payload"); return false; }
+    if (p->package_count >= 128) { problem(error, cap, "package catalog limit reached"); return false; }
+    for (size_t i = 0; i < p->package_count; ++i) if (!strcmp(p->packages[i].id, id) && !strcmp(p->packages[i].version, version)) { problem(error, cap, "duplicate package identity"); return false; }
+    for (size_t i = 0; i < nn_catalog_count(p->catalog); ++i) { const NNPackage *x = nn_catalog_at(p->catalog, i); if (!strcmp(x->id, id) && !strcmp(x->version, version)) { problem(error, cap, "core package identity is immutable"); return false; } }
+    char name[256]; if (snprintf(name, sizeof(name), "%s-%s", id, version) >= (int)sizeof(name)) { problem(error, cap, "resource path too long"); return false; }
+    char *rel = NULL, *dir = NULL, *definition = pretty_json(definition_json); bool category_created = false;
+    char *manifest = resource_manifest(id, version, "definition.json", "inference.lua", dependencies_json ? dependencies_json : "{}");
+    if ((definition && strlen(definition) > 4u * 1024u * 1024u) ||
+        (manifest && strlen(manifest) > 4u * 1024u * 1024u)) {
+        free(manifest); free(definition); problem(error, cap, "package JSON exceeds catalog file limit"); return false;
+    }
+    if (!manifest || !definition || !make_resource_directory(p->directory, "packages", name, &rel, &dir, &category_created)) { free(manifest); free(definition); free(rel); free(dir); problem(error, cap, "cannot create package resource directory"); return false; }
+    char *mp = join_path(dir, "manifest.json"), *dp = join_path(dir, "definition.json"), *lp = join_path(dir, "inference.lua");
+    bool okay = mp && dp && lp && write_new_text(mp, manifest) && write_new_text(dp, definition) && write_new_text(lp, lua);
+    free(manifest); free(definition); free(mp); free(dp); free(lp);
+    NNResourceRef *refs = NULL; NNCatalog *candidate = NULL;
+    if (okay) {
+        refs = calloc(p->package_count + 1, sizeof(*refs)); okay = refs != NULL;
+        for (size_t i = 0; okay && i < p->package_count; ++i) {
+            refs[i] = (NNResourceRef){copy_string(p->packages[i].id), copy_string(p->packages[i].version), copy_string(p->packages[i].path)};
+            okay = refs[i].id && refs[i].version && refs[i].path;
+        }
+        if (okay) refs[p->package_count] = (NNResourceRef){copy_string(id), copy_string(version), copy_string(rel)};
+        if (okay) okay = refs[p->package_count].id && refs[p->package_count].version && refs[p->package_count].path;
+        if (okay) candidate = nn_catalog_load(p->core_root, p->directory, refs, p->package_count + 1, error, cap);
+        okay = okay && candidate != NULL;
+    }
+    for (size_t i = 0; okay && i < nn_model_node_count(p->model); ++i) {
+        const NNNode *node = nn_model_node_at(p->model, i);
+        if (!nn_catalog_find(candidate, node->package_id, node->package_version)) { problem(error, cap, "candidate catalog invalidates graph package"); okay = false; }
+    }
+    if (okay) {
+        NNResourceRef *old_refs = p->packages; size_t old_count = p->package_count;
+        NNCatalog *old_catalog = p->catalog; bool old_dirty = p->dirty;
+        p->packages = refs; p->package_count++; p->catalog = candidate;
+        p->dirty = true;
+        okay = nn_project_save(p, error, cap);
+        if (okay) { for (size_t i = 0; i < old_count; ++i) { free((char *)old_refs[i].id); free((char *)old_refs[i].version); free((char *)old_refs[i].path); } free(old_refs); nn_catalog_free(old_catalog); refs = NULL; candidate = NULL; }
+        else { p->packages = old_refs; p->package_count--; p->catalog = old_catalog; p->dirty = old_dirty; }
+    }
+    if (refs) { for (size_t i = 0; i <= p->package_count; ++i) { free((char *)refs[i].id); free((char *)refs[i].version); free((char *)refs[i].path); } free(refs); }
+    nn_catalog_free(candidate); if (!okay) { remove_tree(dir); if (category_created) { char *base = join_path(p->directory, "packages"); if (base) { rmdir(base); free(base); } } }
+    free(rel); free(dir);
+    if (!okay && error && cap && !error[0]) problem(error, cap, "stereotype creation failed");
+    return okay;
+}
+
+bool nn_project_create_dataset(NNProject *p, const char *id, const char *version,
+                               const char *definition_json, bool select,
+                               char *error, size_t cap)
+{
+    if (error && cap) error[0] = '\0';
+    if (!p || !valid_id(id) || !valid_semver(version) || !definition_json) { problem(error, cap, "invalid dataset identity or payload"); return false; }
+    if (p->dataset_count >= 128) { problem(error, cap, "dataset catalog limit reached"); return false; }
+    for (size_t i = 0; i < p->dataset_count; ++i) if (!strcmp(p->datasets[i].id, id) && !strcmp(p->datasets[i].version, version)) { problem(error, cap, "duplicate dataset identity"); return false; }
+    char name[256]; if (snprintf(name, sizeof(name), "%s-%s", id, version) >= (int)sizeof(name)) { problem(error, cap, "resource path too long"); return false; }
+    if (strlen(definition_json) > 16u * 1024u * 1024u) { problem(error, cap, "dataset JSON exceeds resource file limit"); return false; }
+    char *rel = NULL, *dir = NULL, *definition = pretty_json(definition_json), *manifest = dataset_manifest(id, version); bool category_created = false;
+    if (definition && strlen(definition) > 16u * 1024u * 1024u) {
+        free(manifest); free(definition); problem(error, cap, "dataset JSON exceeds resource file limit"); return false;
+    }
+    if (!manifest || !definition || !make_resource_directory(p->directory, "datasets", name, &rel, &dir, &category_created)) { free(manifest); free(definition); free(rel); free(dir); problem(error, cap, "cannot create dataset resource directory"); return false; }
+    char *mp = join_path(dir, "manifest.json"), *dp = join_path(dir, "dataset.json");
+    bool okay = mp && dp && write_new_text(mp, manifest) && write_new_text(dp, definition);
+    free(manifest); free(definition); free(mp); free(dp);
+    NNDataset candidate = { .id = copy_string(id), .version = copy_string(version), .path = copy_string(rel) };
+    if (okay) okay = candidate.id && candidate.version && candidate.path && load_dataset(p, &candidate, error, cap);
+    NNDataset *grown = okay ? malloc((p->dataset_count + 1) * sizeof(*grown)) : NULL;
+    if (okay && !grown) okay = false;
+    if (okay) {
+        NNDataset *old = p->datasets; size_t old_count = p->dataset_count;
+        if (old_count) memcpy(grown, old, old_count * sizeof(*grown));
+        char *old_id = p->active_dataset_id, *old_version = p->active_dataset_version; bool old_dirty = p->dirty;
+        p->datasets = grown; p->datasets[p->dataset_count++] = candidate; memset(&candidate, 0, sizeof(candidate));
+        if (select) { p->active_dataset_id = copy_string(id); p->active_dataset_version = copy_string(version); if (!p->active_dataset_id || !p->active_dataset_version) okay = false; }
+        p->dirty = true;
+        if (okay) okay = nn_project_save(p, error, cap);
+        if (okay) { free(old); if (select) { free(old_id); free(old_version); } }
+        else {
+            if (select) { free(p->active_dataset_id); free(p->active_dataset_version); p->active_dataset_id = old_id; p->active_dataset_version = old_version; }
+            p->dataset_count = old_count; p->datasets = old; p->dirty = old_dirty;
+            dataset_dispose(&grown[old_count]);
+            free(grown);
+        }
+    }
+    dataset_dispose(&candidate);
+    if (!okay) { remove_tree(dir); if (category_created) { char *base = join_path(p->directory, "datasets"); if (base) { rmdir(base); free(base); } } }
+    free(rel); free(dir);
+    if (!okay && error && cap && !error[0]) problem(error, cap, "dataset creation failed");
+    return okay;
+}
+
+bool nn_project_create_vae(const char *parent, const char *id, const char *name,
+                           const char *core_root, NNProject **result,
+                           char *error, size_t cap)
+{
+    if (!result) { problem(error, cap, "invalid project result"); return false; }
+    *result = NULL;
+    if (!parent || !valid_id(id) || !name || !*name || !core_root) { problem(error, cap, "invalid project identity"); return false; }
+    struct stat st; if (lstat(parent, &st) || !S_ISDIR(st.st_mode)) { problem(error, cap, "project parent unavailable or symlinked"); return false; }
+    char *root = repo_root_from_core(core_root), *template = root ? join_path(root, "examples/mnist-vae") : NULL;
+    char *destination = join_path(parent, id);
+    bool destination_owned = template && destination && mkdir(destination, 0755) == 0;
+    bool okay = destination_owned && copy_tree_contents(template, destination);
+    free(root); free(template);
+    if (!okay) { if (destination_owned) remove_tree(destination); free(destination); problem(error, cap, "cannot copy MNIST VAE template"); return false; }
+    NNProject *project = nn_project_open(destination, core_root, error, cap);
+    free(destination);
+    if (!project) { char *failed = join_path(parent, id); if (failed) { remove_tree(failed); free(failed); } return false; }
+    char *new_name = copy_string(name), *new_id = copy_string(id);
+    if (!new_name || !new_id) { free(new_name); free(new_id); nn_project_close(project); char *failed = join_path(parent, id); if (failed) { remove_tree(failed); free(failed); } problem(error, cap, "out of memory"); return false; }
+    free(project->name); free(project->id); project->name = new_name; project->id = new_id; project->dirty = true;
+    if (!nn_project_save(project, error, cap)) { nn_project_close(project); char *failed = join_path(parent, id); if (failed) { remove_tree(failed); free(failed); } return false; }
+    *result = project; return true;
 }

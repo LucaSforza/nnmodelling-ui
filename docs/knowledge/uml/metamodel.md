@@ -67,6 +67,7 @@ classDiagram
       +string key
       +ValueType type
       +Value defaultValue
+      +string position optional top or bottom
     }
     class Parameters {
       +ParameterValue[] entries
@@ -96,6 +97,10 @@ classDiagram
 ```
 
 ## Operations
+
+Accepted 2026-09-30: a subflow's single Input inherits owner tensor and its
+single Output supplies owner output through Lua services.infer_subflow.
+Nested inference follows resource-authoring.md and includes hidden children.
 
 `Graph.connect(s,sh,t,th) -> Result<EdgeId>` requires both nodes in graph,
 source/output and target/input handles on those nodes, equal immediate scope,

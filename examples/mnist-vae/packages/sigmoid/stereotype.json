@@ -1,0 +1,7 @@
+{
+  "name": "Sigmoid reconstruction",
+  "description": "Elementwise sigmoid constrains reconstruction to (0,1). Shape/dtype pass through; no numerical execution.",
+  "kind": "layer",
+  "view": { "color": "#a96124", "width": 270, "height": 100 },
+  "parameters": {}
+}

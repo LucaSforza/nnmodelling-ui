@@ -3,8 +3,8 @@
 This tree is normative for the native client. Legacy NNModelling is evidence;
 its browser and backend mechanisms do not define this implementation. An `OPEN`
 item is a question, not an implementation license. Current scope is UI/client
-only; command automation and backend connection are designed boundaries but
-not bootstrap deliverables.
+only. Local command automation is accepted for this milestone; backend connection
+and numerical training/execution remain deferred boundaries.
 
 Read [architecture](architecture/overview.md), then relevant contracts and UML
 before changing code. Update contract and UML before changing accepted
@@ -20,10 +20,13 @@ semantics or ownership. [UI rewrite plan](../plans/ui-rewrite.md) tracks work;
 | Reference | [Legacy mapping](reference/legacy-mapping.md) |
 | Verification | [Testing strategy](testing/strategy.md), [release QA](testing/qa.md) |
 | Development tooling | [OpenCode V2 swarm contract](contracts/agent-swarm.md), [swarm sequence](uml/agent-swarm.md) |
+| Resources, VAE and LLM commands | [Authoring and subflows](contracts/resource-authoring.md), [local CLI protocol](contracts/automation.md), [command use cases](uml/automation.md) |
 
 Current explicit user requirements take precedence; update accepted contracts
 and UML before implementing a changed requirement. Otherwise accepted current
 contracts and UML take precedence over legacy documentation and implementation.
 Conflicts require a documented decision. Current release builds full native
 project and graph editor, including project-owned datasets and stereotype
-dependencies. Training, backend execution and `nnmodelctl` remain deferred.
+dependencies. Training and backend execution remain deferred. Resource authoring
+and local `nnmodelctl` are accepted in [resource authoring](contracts/resource-authoring.md)
+and [automation](contracts/automation.md).

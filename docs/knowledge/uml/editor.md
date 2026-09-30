@@ -11,12 +11,17 @@ classDiagram
       +addNode(id,package,scope,position) bool
       +connect(id,source,handle,target,handle) bool
       +setParameter(node,key,value) bool
+      +createStereotype(definition,Lua,dependencies) bool
+      +createDataset(definition,select) bool
+      +selectDataset(identity) bool
     }
     class MainWindow {
       +palette
       +inspector
       +resources
       +diagnostics
+      +visualResourceDialogs
+      +localAutomationCallback
     }
     class GraphScene {
       +scopeId

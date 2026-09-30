@@ -24,15 +24,21 @@ add_library(nn_json STATIC third_party/yyjson/yyjson.c)
 target_include_directories(nn_json PUBLIC third_party/yyjson)
 
 add_library(nnmodelling_core STATIC src/model.c src/catalog.c src/project.c
-    src/inference.c src/application.c)
+    src/inference.c src/application.c src/automation.c)
 target_include_directories(nnmodelling_core PUBLIC src)
 target_link_libraries(nnmodelling_core PRIVATE nn_json nn_lua)
 if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(nnmodelling_core PRIVATE -Wall -Wextra -Werror -pedantic)
 endif()
 
+add_executable(nnmodelctl src/nnmodelctl.c)
+target_link_libraries(nnmodelctl PRIVATE nn_json)
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(nnmodelctl PRIVATE -Wall -Wextra -Werror -pedantic)
+endif()
+
 if(BUILD_TESTING)
-    foreach(name IN ITEMS model catalog inference application)
+    foreach(name IN ITEMS model catalog inference application resources automation)
         add_executable(${name}_test tests/${name}_test.c)
         target_link_libraries(${name}_test PRIVATE nnmodelling_core)
         add_test(NAME ${name} COMMAND ${name}_test)
@@ -49,7 +55,7 @@ if(BUILD_TESTING)
     add_test(NAME lua COMMAND lua_smoke)
     set_tests_properties(lua PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}" LABELS core)
     # Existing tests use assert for their checks, including in Release builds.
-    foreach(name IN ITEMS model_test catalog_test inference_test application_test project_test lua_smoke)
+    foreach(name IN ITEMS model_test catalog_test inference_test application_test resources_test automation_test project_test lua_smoke)
         if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
             target_compile_options(${name} PRIVATE -Wall -Wextra -Werror -pedantic -UNDEBUG)
         endif()
@@ -97,5 +103,10 @@ if(NN_BUILD_GUI)
         add_test(NAME qt_canvas COMMAND qt_canvas_test)
         set_tests_properties(qt_canvas PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
             ENVIRONMENT "QT_QPA_PLATFORM=offscreen" LABELS gui TIMEOUT 45)
+        find_package(Python3 COMPONENTS Interpreter REQUIRED)
+        add_test(NAME cli_ui COMMAND "${Python3_EXECUTABLE}"
+            "${CMAKE_SOURCE_DIR}/tests/cli_test.py" "$<TARGET_FILE:nnmodelling-ui>" "$<TARGET_FILE:nnmodelctl>")
+        set_tests_properties(cli_ui PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+            LABELS gui TIMEOUT 60)
     endif()
 endif()

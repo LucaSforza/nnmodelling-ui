@@ -47,6 +47,11 @@ inputs and ten digit logits, not trained model or live classifier.
 
 ## Completion conditions
 
+Accepted 2026-09-30 additions: New MNIST VAE, indented JSON, positioned card
+parameters, visual stereotype/dataset authoring and local CLI service follow
+resource-authoring.md and automation.md. These supersede earlier authoring and
+command deferrals; training/backend remain separate.
+
 1. Build and run Qt 6 client through a pure C application API and `justfile`.
 2. Create, save, close and reopen project through UI without graph or resource
    loss; invalid open/save reports error and preserves active state.
@@ -60,4 +65,4 @@ inputs and ten digit logits, not trained model or live classifier.
    and real headless UI lifecycle. Review a screenshot from rendered client.
 
 These conditions define current release stop point. Additional backend,
-training and command automation remain separate future milestones.
+training remain separate future milestones.

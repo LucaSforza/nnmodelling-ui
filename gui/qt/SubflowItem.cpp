@@ -4,6 +4,16 @@
 
 #include <QGraphicsSceneMouseEvent>
 #include <QPainter>
+#include <utility>
+
+SubflowItem::SubflowItem(GraphScene *owner, QString id, QString label, QString packageId,
+                         const QPointF &position, const QColor &color,
+                         QList<QPair<QString, QString>> topParameters,
+                         QList<QPair<QString, QString>> bottomParameters)
+    : NodeItem(owner, std::move(id), std::move(label), std::move(packageId), position, color,
+               std::move(topParameters), std::move(bottomParameters)) {
+    height_ += 40.0;
+}
 
 void SubflowItem::setChildCount(int count) { childCount_ = count; }
 
@@ -14,10 +24,11 @@ void SubflowItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *optio
     painter->setFont(footerFont);
     painter->setPen(QPen(QColor(118, 151, 183), 1.0, Qt::DashLine));
     painter->setBrush(QColor(240, 246, 252));
-    painter->drawRoundedRect(QRectF(10, 53, width_ - 19, 20), 4, 4);
+    const qreal footerY = 61.0 + topParameters_.size() * 25.0;
+    painter->drawRoundedRect(QRectF(10, footerY, width_ - 19, 20), 4, 4);
     painter->setPen(QColor(67, 103, 143));
     painter->setFont(footerFont);
-    painter->drawText(QRectF(14, 55, width_ - 23, 15), Qt::AlignLeft | Qt::AlignVCenter,
+    painter->drawText(QRectF(14, footerY + 2, width_ - 23, 15), Qt::AlignLeft | Qt::AlignVCenter,
                       QStringLiteral("Subflow  ·  %1 nodes  ›").arg(childCount_));
 }
 

@@ -22,6 +22,7 @@ Use `fff` MCP tools for every file search. Preserve user changes. Do not expose
 secrets. Keep implementation small and idiomatic C. Use `justfile` for build
 recipes, put test sources under `tests/`, keep model/application code C11, and restrict C++/Qt to gui/qt. Run relevant tests and `git diff --check`; report missing
 Qt/tooling instead of claiming success.
-The current project is UI/client only; no backend or command service code is
-authorized in bootstrap. Legacy files under `stereotype-packages/` and
+The current project is UI/client only; backend and training remain deferred.
+Local command service is accepted by `docs/knowledge/contracts/automation.md`.
+Legacy files under `stereotype-packages/` and
 `analysis/uml/nn.vpp` are preserved references, not code to port mechanically.

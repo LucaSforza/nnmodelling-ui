@@ -157,7 +157,32 @@ sequenceDiagram
     Note over Project,Graph: Any failure discards entire staged project
 ```
 
-## Deferred command, introspection and screenshot
+## Local command, introspection and screenshot
+
+Accepted 2026-09-30 per automation.md; transport is nonblocking AF_UNIX and
+dispatch occurs on Qt application thread. Resource creation sequence:
+
+```mermaid
+sequenceDiagram
+    actor Author as User or LLM
+    participant Entry as Qt form or nnmodelctl
+    participant App as C application
+    participant Project as C project
+    participant Catalog
+    Author->>Entry: create stereotype or dataset
+    Entry->>App: typed identity + definition payload
+    App->>App: validate definition and bounded Lua initialization
+    App->>Project: stage generated resource and candidate manifest
+    Project->>Catalog: validate identities, schema and dependencies
+    alt valid
+        Project->>Project: atomic candidate model.json save
+        Project-->>App: publish owned resources
+        App-->>Entry: success and refreshed snapshot
+    else invalid or write failure
+        Project->>Project: remove transaction-created files only
+        App-->>Entry: error, prior graph/resources/dirty preserved
+    end
+```
 
 ```mermaid
 sequenceDiagram
@@ -195,7 +220,7 @@ Natural: failed commands/load and frame rendering do not corrupt active model.
 Formal: `∀join: inputOrder=targetHandleOrder`; `screenshotFrame≥layoutFrame`.
 Natural: semantic join order and visible screenshot order are deterministic.
 
-In C, sequences call explicit application functions; event handlers and future
+In C, sequences call explicit application functions; event handlers and local
 transport adapters hold pointers/IDs to the same application owner. Project
 staging uses temporary owned structs, swapped only after validation. No second
 graph is allocated for command service beyond immutable response snapshots.

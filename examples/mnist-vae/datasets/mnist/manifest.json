@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "id": "mnist-reconstruction",
+  "version": "0.1.0",
+  "entrypoints": {
+    "definition": "dataset.json"
+  }
+}
