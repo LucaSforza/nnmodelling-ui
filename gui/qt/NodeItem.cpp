@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cmath>
 #include <QPainter>
+#include <QPainterPath>
 #include <QPen>
 #include <QStyleOptionGraphicsItem>
 
@@ -64,18 +65,28 @@ void NodeItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWidge
     painter->drawRoundedRect(card, 12, 12);
 
     const qreal bandHeight = 25.0;
+    QPainterPath cardClip;
+    cardClip.addRoundedRect(card, 12, 12);
+    painter->save();
+    painter->setClipPath(cardClip);
     for (int i = 0; i < topParameters_.size(); ++i) {
         const qreal y = 9.5 + i * bandHeight;
-        painter->fillRect(QRectF(4.5, y, width_ - 9.0, bandHeight), band);
+        painter->fillRect(QRectF(card.left(), y, card.width(), bandHeight), band);
         painter->setPen(QPen(QColor(25, 42, 59, 105), 1.0));
-        painter->drawLine(QPointF(4.5, y + bandHeight), QPointF(width_ - 4.5, y + bandHeight));
+        painter->drawLine(QPointF(card.left(), y + bandHeight),
+                          QPointF(card.right(), y + bandHeight));
     }
     for (int i = 0; i < bottomParameters_.size(); ++i) {
         const qreal y = height_ - 9.5 - (i + 1) * bandHeight;
-        painter->fillRect(QRectF(4.5, y, width_ - 9.0, bandHeight), band);
+        painter->fillRect(QRectF(card.left(), y, card.width(), bandHeight), band);
         painter->setPen(QPen(QColor(25, 42, 59, 105), 1.0));
-        painter->drawLine(QPointF(4.5, y), QPointF(width_ - 4.5, y));
+        painter->drawLine(QPointF(card.left(), y), QPointF(card.right(), y));
     }
+    painter->restore();
+    painter->setBrush(Qt::NoBrush);
+    painter->setPen(QPen(isSelected() ? QColor(30, 83, 142) : QColor(40, 49, 59),
+                         isSelected() ? 3.2 : 3.0));
+    painter->drawRoundedRect(card, 12, 12);
 
     painter->setPen(foregroundFor(face));
     QFont title = painter->font();

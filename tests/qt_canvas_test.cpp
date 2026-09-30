@@ -257,6 +257,7 @@ private slots:
         QVERIFY(parameterBand.isValid());
         QVERIFY(titleBand.isValid());
         QVERIFY(parameterBand != titleBand);
+        QVERIFY(image.pixelColor(5, 10).alpha() < parameterBand.alpha());
     }
 };
 
