@@ -11,6 +11,9 @@ separate offscreen Qt interaction tests. Exercise real scene item movement,
 connections, selection/deletion, scope navigation and project lifetimes. Core
 tests never instantiate QApplication. Capture actual widget rendering and
 inspect at normal/small size; offscreen is not proof of desktop integration.
+Both `just build` and `just core` export the active CMake compilation database
+to the repository-root `compile_commands.json` for clangd; the file is generated
+and ignored by git.
 Run `git diff --check`. Report missing tooling/desktop limitations honestly.
 
 Resource gate covers indented JSON, positioned definition metadata, typed

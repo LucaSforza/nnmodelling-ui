@@ -4,15 +4,17 @@ default: build
 
 # Core configuration does not enable C++ or discover Qt.
 core:
-    cmake -S . -B build/core -DNN_BUILD_GUI=OFF -DBUILD_TESTING=ON
+    cmake -S . -B build/core -DNN_BUILD_GUI=OFF -DBUILD_TESTING=ON -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
     cmake --build build/core --parallel 4
+    ln -sfn build/core/compile_commands.json compile_commands.json
 
 test: core
     ctest --test-dir build/core --output-on-failure -L core
 
 build:
-    cmake -S . -B build/qt -DNN_BUILD_GUI=ON -DBUILD_TESTING=ON
+    cmake -S . -B build/qt -DNN_BUILD_GUI=ON -DBUILD_TESTING=ON -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
     cmake --build build/qt --parallel 4
+    ln -sfn build/qt/compile_commands.json compile_commands.json
 
 run *args: build
     ./build/qt/nnmodelling-ui {{args}}
