@@ -61,9 +61,38 @@ void NodeItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWidge
     title.setPointSizeF(11.0);
     painter->setFont(title);
     QFontMetricsF metrics(title);
-    const QString displayLabel = metrics.elidedText(label_, Qt::ElideRight, width_ - 24);
     const qreal titleY = 18.0 + topParameters_.size() * 25.0;
-    painter->drawText(QRectF(14, titleY, width_ - 23, 19), Qt::AlignLeft | Qt::AlignVCenter,
+    qreal titleX = 14.0;
+    qreal titleWidth = width_ - 23.0;
+    if (!problemCategory_.isEmpty()) {
+        QColor marker = QColor("#b23b35");
+        QString symbol = QStringLiteral("!");
+        if (problemCategory_ == QStringLiteral("lua-compilation")) {
+            marker = QColor("#9c3d79");
+            symbol = QStringLiteral("L");
+        } else if (problemCategory_ == QStringLiteral("incomplete")) {
+            marker = QColor("#a66a12");
+            symbol = QStringLiteral("?");
+        } else if (problemCategory_ == QStringLiteral("internal")) {
+            marker = QColor("#554d79");
+            symbol = QStringLiteral("×");
+        }
+        const QRectF markerRect(12, titleY + 2, 14, 14);
+        painter->setPen(Qt::NoPen);
+        painter->setBrush(marker);
+        painter->drawEllipse(markerRect);
+        painter->setPen(Qt::white);
+        QFont markerFont = title;
+        markerFont.setPointSizeF(8.0);
+        painter->setFont(markerFont);
+        painter->drawText(markerRect, Qt::AlignCenter, symbol);
+        painter->setPen(QColor(37, 49, 64));
+        titleX = 31.0;
+        titleWidth -= 17.0;
+    }
+    const QString displayLabel = metrics.elidedText(label_, Qt::ElideRight, titleWidth);
+    painter->setFont(title);
+    painter->drawText(QRectF(titleX, titleY, titleWidth, 19), Qt::AlignLeft | Qt::AlignVCenter,
                       displayLabel);
     QFont detail = painter->font();
     detail.setBold(false);
@@ -133,6 +162,12 @@ void NodeItem::addPort(PortItem *port) {
 }
 
 void NodeItem::setChildCount(int) {}
+
+void NodeItem::setProblemCategory(const QString &category) {
+    if (problemCategory_ == category) return;
+    problemCategory_ = category;
+    update();
+}
 
 QVariant NodeItem::itemChange(GraphicsItemChange change, const QVariant &value) {
     if (change == ItemPositionHasChanged && owner_)

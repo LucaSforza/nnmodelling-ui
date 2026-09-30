@@ -43,6 +43,9 @@ CLI help lists operations and resource payloads. Payload keys:
 * ui.scope {id:string} navigates root (empty) or existing scope.
 * ui.arrange {} arranges current scope and refreshes model-backed layout.
 * ui.screenshot {path} refreshes scene/widgets and commits layout before capture.
+* analysis.diagnostics {} returns the same structured C problems and successful
+  tensors used by the UI, per diagnostics.md; it is read-only.
+* ui.reveal {id} selects/centers an existing node, opening its scope as needed.
 
 Qt refreshes panels after successful commands; invalid scope rejected. GUI
 operations use a narrow callback, never Qt types in C ABI. No arbitrary widget

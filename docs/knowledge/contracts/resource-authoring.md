@@ -43,6 +43,8 @@ integers or B; dtypes float16/bfloat16/float32/float64/int8/int16/int32/int64/ui
 bool. Reject duplicate/empty parameter keys, invalid type/position, nonfinite
 numbers, invalid schema and malformed Lua. Lua source is <=1 MiB and must compile
 and return a function in a protected bounded runtime before activation.
+Validation failures keep the Qt form open, preserve fields and display English
+errors beside the form/Lua source, with Lua line when available (diagnostics.md).
 
 Only project.c writes files. Generated paths: packages/<id>-<version> or
 datasets/<id>-<version>; safe IDs and semantic versions required. Reject core

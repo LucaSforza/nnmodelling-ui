@@ -34,6 +34,11 @@ discarded. Frontends request mutations through application.h; it resolves
 packages, validates parameters and handles, delegates graph invariants to the
 model and marks successful changes dirty. Snapshots are borrowed until mutation.
 Analysis remains read-only and may be refreshed after a semantic mutation.
+Accepted 2026-09-30: application owns the lazy analysis cache and UI/CLI consume
+the same structured problems per contracts/diagnostics.md and uml/diagnostics.md.
+utils.c/h centralizes allocation-free error formatting and owned text copying;
+path joining uses checked malloc; JSON text construction uses existing yyjson.
+SDS was reconsidered and is not a dependency (diagnostics.md).
 
 Completed 2026-09-30: the SDL platform, custom rasterization, generic input
 translation, manually drawn widgets and their smoke test are removed after

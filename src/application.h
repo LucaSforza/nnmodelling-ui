@@ -2,6 +2,7 @@
 #define NN_APPLICATION_H
 
 #include "project.h"
+#include "inference.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -29,6 +30,7 @@ bool nn_app_close(NNApplication *app, bool discard, char *error, size_t cap);
 /* Borrowed read-only state; do not retain pointers across mutations. */
 const NNProject *nn_app_project(const NNApplication *app);
 const NNModel *nn_app_model(const NNApplication *app);
+const NNInferenceReport *nn_app_analysis(NNApplication *app, char *error, size_t cap);
 bool nn_app_add_node(NNApplication *app, const char *id, const char *package_id,
                      const char *version, const char *scope, double x, double y,
                      char *error, size_t cap);

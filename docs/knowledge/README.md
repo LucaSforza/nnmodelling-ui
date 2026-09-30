@@ -21,6 +21,7 @@ semantics or ownership. [UI rewrite plan](../plans/ui-rewrite.md) tracks work;
 | Verification | [Testing strategy](testing/strategy.md), [release QA](testing/qa.md) |
 | Development tooling | [OpenCode V2 swarm contract](contracts/agent-swarm.md), [swarm sequence](uml/agent-swarm.md) |
 | Resources, VAE and LLM commands | [Authoring and subflows](contracts/resource-authoring.md), [local CLI protocol](contracts/automation.md), [command use cases](uml/automation.md) |
+| Errors and strings | [Diagnostics and common helpers](contracts/diagnostics.md), [report ownership and UI sequence](uml/diagnostics.md) |
 
 Current explicit user requirements take precedence; update accepted contracts
 and UML before implementing a changed requirement. Otherwise accepted current

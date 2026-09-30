@@ -31,6 +31,14 @@ int main(void)
 {
     NNApplication *app = nn_app_new("stereotype-packages/core"); assert(app);
     dispatch(app, "{bad", false);
+    char *invalid = nn_automation_dispatch(app, "{bad", NULL, NULL);
+    assert(invalid && strstr(invalid, "\"ok\":false") && strstr(invalid, "\"error\":\""));
+    free(invalid);
+    char *no_project = nn_automation_dispatch(app,
+        "{\"operation\":\"analysis.diagnostics\",\"args\":{}}", NULL, NULL);
+    assert(no_project && strstr(no_project, "\"ok\":false") &&
+           strstr(no_project, "no active project"));
+    free(no_project);
     dispatch(app, "{\"operation\":\"project.snapshot\",\"operation\":\"project.close\",\"args\":{}}", false);
     dispatch(app, "{\"operation\":\"project.snapshot\\u0000\",\"args\":{}}", false);
     dispatch(app, "{\"operation\":\"unknown\",\"args\":{}}", false);
@@ -40,6 +48,18 @@ int main(void)
     char request[4096];
     snprintf(request, sizeof(request), "{\"operation\":\"project.create\",\"args\":{\"parent\":\"%s\",\"id\":\"test\",\"name\":\"Test\"}}", root);
     dispatch(app, request, true);
+    char *before_analysis = nn_automation_dispatch(app,
+        "{\"operation\":\"project.snapshot\",\"args\":{}}", NULL, NULL);
+    char *report = nn_automation_dispatch(app,
+        "{\"operation\":\"analysis.diagnostics\",\"args\":{}}", NULL, NULL);
+    char *after_analysis = nn_automation_dispatch(app,
+        "{\"operation\":\"project.snapshot\",\"args\":{}}", NULL, NULL);
+    assert(before_analysis && report && after_analysis &&
+           strstr(report, "\"available\":true") &&
+           strstr(report, "\"problems\":[") && strstr(report, "\"tensors\":[") &&
+           strstr(before_analysis, "\"dirty\":false") &&
+           strstr(after_analysis, "\"dirty\":false"));
+    free(before_analysis); free(report); free(after_analysis);
     dispatch(app, "{\"operation\":\"node.add\",\"args\":{\"id\":\"input\",\"package\":\"core.input\",\"version\":\"0.1.0\"}}", true);
     dispatch(app, "{\"operation\":\"node.add\",\"args\":{\"id\":\"relu\",\"package\":\"core.relu\",\"version\":\"0.1.0\"}}", true);
     dispatch(app, "{\"operation\":\"node.move\",\"args\":{\"id\":\"relu\",\"x\":\"bad\",\"y\":2}}", false);

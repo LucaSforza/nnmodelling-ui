@@ -26,6 +26,8 @@ public:
     QList<QPair<QString, QString>> topParameters() const { return topParameters_; }
     QList<QPair<QString, QString>> bottomParameters() const { return bottomParameters_; }
     virtual void setChildCount(int count);
+    void setProblemCategory(const QString &category);
+    QString problemCategory() const { return problemCategory_; }
 
 protected:
     QVariant itemChange(GraphicsItemChange change, const QVariant &value) override;
@@ -36,6 +38,7 @@ protected:
     QString label_;
     QString packageId_;
     QColor color_;
+    QString problemCategory_;
     QList<PortItem *> ports_;
     QList<QPair<QString, QString>> topParameters_;
     QList<QPair<QString, QString>> bottomParameters_;

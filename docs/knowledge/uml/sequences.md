@@ -224,3 +224,4 @@ In C, sequences call explicit application functions; event handlers and local
 transport adapters hold pointers/IDs to the same application owner. Project
 staging uses temporary owned structs, swapped only after validation. No second
 graph is allocated for command service beyond immutable response snapshots.
+Analysis queries/invalidation and problem navigation follow diagnostics.md.

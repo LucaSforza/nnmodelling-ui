@@ -20,6 +20,8 @@ classDiagram
 ```
 
 Qt owns items, clipping, fonts, transforms and event delivery.
+GraphScene copies diagnostic category markers from the application's borrowed
+report; NodeItem renders them without storing report pointers (diagnostics.md).
 Card geometry includes definition-positioned top/bottom parameter rows and
 central title; Qt copies text for painting and adapts port positions to height.
 C owns graph, coordinates and application mutations. Edge endpoints follow PortItem scene

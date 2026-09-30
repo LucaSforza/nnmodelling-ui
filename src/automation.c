@@ -1,5 +1,6 @@
 #define _GNU_SOURCE
 #include "automation.h"
+#include "utils.h"
 #include "yyjson.h"
 
 #include <errno.h>
@@ -37,17 +38,12 @@ struct NNAutomation {
 
 typedef struct { yyjson_val *args; char error[512]; } Query;
 
-static void error_text(char *error, size_t cap, const char *text)
-{
-    if (error && cap) snprintf(error, cap, "%s", text);
-}
-
 static const char *string_arg(Query *q, const char *key, const char *fallback)
 {
     yyjson_val *value = yyjson_obj_get(q->args, key);
     if (!value && fallback) return fallback;
     if (!yyjson_is_str(value)) {
-        snprintf(q->error, sizeof(q->error), "argument '%s' must be a string", key);
+        nn_errorf(q->error, sizeof(q->error), "argument '%s' must be a string", key);
         return NULL;
     }
     return yyjson_get_str(value);
@@ -57,7 +53,7 @@ static bool bool_arg(Query *q, const char *key, bool fallback)
 {
     yyjson_val *value = yyjson_obj_get(q->args, key);
     if (!value) return fallback;
-    if (!yyjson_is_bool(value)) snprintf(q->error, sizeof(q->error), "argument '%s' must be boolean", key);
+    if (!yyjson_is_bool(value)) nn_errorf(q->error, sizeof(q->error), "argument '%s' must be boolean", key);
     return yyjson_get_bool(value);
 }
 
@@ -65,19 +61,25 @@ static double number_arg(Query *q, const char *key, bool required)
 {
     yyjson_val *value = yyjson_obj_get(q->args, key);
     if (!value && !required) return 0;
-    if (!yyjson_is_num(value)) snprintf(q->error, sizeof(q->error), "argument '%s' must be numeric", key);
+    if (!yyjson_is_num(value)) nn_errorf(q->error, sizeof(q->error), "argument '%s' must be numeric", key);
     return yyjson_get_num(value);
 }
 
 static char *object_arg(Query *q, const char *key, bool required)
 {
     yyjson_val *value = yyjson_obj_get(q->args, key);
-    if (!value && !required) return strdup("{}");
+    if (!value && !required) {
+        char *text = nn_text_copy("{}");
+        if (!text) nn_error_set(q->error, sizeof(q->error), "out of memory copying arguments");
+        return text;
+    }
     if (!yyjson_is_obj(value)) {
-        snprintf(q->error, sizeof(q->error), "argument '%s' must be an object", key);
+        nn_errorf(q->error, sizeof(q->error), "argument '%s' must be an object", key);
         return NULL;
     }
-    return yyjson_val_write(value, 0, NULL);
+    char *text = yyjson_val_write(value, 0, NULL);
+    if (!text) nn_error_set(q->error, sizeof(q->error), "out of memory serializing arguments");
+    return text;
 }
 
 static bool valid_json_tree(yyjson_val *value, unsigned depth)
@@ -108,36 +110,40 @@ static yyjson_mut_val *snapshot_value(yyjson_mut_doc *doc, const NNValue *value)
     case NN_VALUE_STRING: return yyjson_mut_strcpy(doc, value->as.string);
     case NN_VALUE_ARRAY: {
         yyjson_mut_val *array = yyjson_mut_arr(doc);
-        for (size_t i = 0; i < value->as.array.count; ++i)
-            yyjson_mut_arr_append(array, snapshot_value(doc, &value->as.array.items[i]));
+        if (!array) return NULL;
+        for (size_t i = 0; i < value->as.array.count; ++i) {
+            yyjson_mut_val *item = snapshot_value(doc, &value->as.array.items[i]);
+            if (!item || !yyjson_mut_arr_append(array, item)) return NULL;
+        }
         return array;
     }
     default: return yyjson_mut_null(doc);
     }
 }
 
-static void json_string(yyjson_mut_doc *doc, yyjson_mut_val *obj, const char *key, const char *value)
+static bool json_string(yyjson_mut_doc *doc, yyjson_mut_val *obj, const char *key, const char *value)
 {
-    yyjson_mut_obj_add_strcpy(doc, obj, key, value ? value : "");
+    return yyjson_mut_obj_add_strcpy(doc, obj, key, value ? value : "");
 }
 
 static yyjson_mut_val *identity(yyjson_mut_doc *doc, const char *id, const char *version)
 {
     yyjson_mut_val *value = yyjson_mut_obj(doc);
-    json_string(doc, value, "id", id);
-    json_string(doc, value, "version", version);
+    if (!value || !json_string(doc, value, "id", id) || !json_string(doc, value, "version", version)) return NULL;
     return value;
 }
 
 static yyjson_mut_val *slots_json(yyjson_mut_doc *doc, const NNTensorSlot *slots, size_t count)
 {
     yyjson_mut_val *array = yyjson_mut_arr(doc);
+    if (!array) return NULL;
     for (size_t i = 0; i < count; ++i) {
         yyjson_mut_val *slot = yyjson_mut_obj(doc);
-        json_string(doc, slot, "name", slots[i].name);
-        json_string(doc, slot, "dtype", slots[i].dtype);
-        yyjson_mut_obj_add_val(doc, slot, "shape", snapshot_value(doc, &slots[i].shape));
-        yyjson_mut_arr_append(array, slot);
+        yyjson_mut_val *shape = snapshot_value(doc, &slots[i].shape);
+        if (!slot || !shape || !json_string(doc, slot, "name", slots[i].name) ||
+            !json_string(doc, slot, "dtype", slots[i].dtype) ||
+            !yyjson_mut_obj_add_val(doc, slot, "shape", shape) ||
+            !yyjson_mut_arr_append(array, slot)) return NULL;
     }
     return array;
 }
@@ -147,64 +153,115 @@ static yyjson_mut_val *snapshot(yyjson_mut_doc *doc, NNApplication *app)
     const NNProject *project = nn_app_project(app);
     if (!project) return yyjson_mut_null(doc);
     yyjson_mut_val *result = yyjson_mut_obj(doc);
-    json_string(doc, result, "id", nn_project_id(project));
-    json_string(doc, result, "version", nn_project_version(project));
-    json_string(doc, result, "name", nn_project_name(project));
-    yyjson_mut_obj_add_bool(doc, result, "dirty", nn_project_dirty(project));
+    if (!result || !json_string(doc, result, "id", nn_project_id(project)) ||
+        !json_string(doc, result, "version", nn_project_version(project)) ||
+        !json_string(doc, result, "name", nn_project_name(project)) ||
+        !yyjson_mut_obj_add_bool(doc, result, "dirty", nn_project_dirty(project))) return NULL;
     const NNDataset *active = nn_project_active_dataset(project);
-    yyjson_mut_obj_add_val(doc, result, "activeDataset", active
-        ? identity(doc, active->id, active->version) : yyjson_mut_null(doc));
+    yyjson_mut_val *active_value = active ? identity(doc, active->id, active->version) : yyjson_mut_null(doc);
+    if (!active_value || !yyjson_mut_obj_add_val(doc, result, "activeDataset", active_value)) return NULL;
     yyjson_mut_val *packages = yyjson_mut_arr(doc), *datasets = yyjson_mut_arr(doc);
+    if (!packages || !datasets) return NULL;
     const NNCatalog *catalog = nn_project_catalog(project);
     for (size_t i = 0; i < nn_catalog_count(catalog); ++i) {
         const NNPackage *p = nn_catalog_at(catalog, i);
         yyjson_mut_val *item = identity(doc, p->id, p->version);
-        json_string(doc, item, "name", p->name);
-        json_string(doc, item, "kind", p->kind);
-        yyjson_mut_arr_append(packages, item);
+        if (!item || !json_string(doc, item, "name", p->name) ||
+            !json_string(doc, item, "kind", p->kind) || !yyjson_mut_arr_append(packages, item)) return NULL;
     }
     for (size_t i = 0; i < nn_project_dataset_count(project); ++i) {
         const NNDataset *d = nn_project_dataset_at(project, i);
         yyjson_mut_val *item = identity(doc, d->id, d->version);
-        json_string(doc, item, "name", d->name);
-        yyjson_mut_obj_add_val(doc, item, "inputs", slots_json(doc, d->inputs, d->input_count));
-        yyjson_mut_obj_add_val(doc, item, "targets", slots_json(doc, d->targets, d->target_count));
-        yyjson_mut_arr_append(datasets, item);
+        yyjson_mut_val *inputs = slots_json(doc, d->inputs, d->input_count);
+        yyjson_mut_val *targets = slots_json(doc, d->targets, d->target_count);
+        if (!item || !inputs || !targets || !json_string(doc, item, "name", d->name) ||
+            !yyjson_mut_obj_add_val(doc, item, "inputs", inputs) ||
+            !yyjson_mut_obj_add_val(doc, item, "targets", targets) ||
+            !yyjson_mut_arr_append(datasets, item)) return NULL;
     }
-    yyjson_mut_obj_add_val(doc, result, "packages", packages);
-    yyjson_mut_obj_add_val(doc, result, "datasets", datasets);
+    if (!yyjson_mut_obj_add_val(doc, result, "packages", packages) ||
+        !yyjson_mut_obj_add_val(doc, result, "datasets", datasets)) return NULL;
     yyjson_mut_val *nodes = yyjson_mut_arr(doc), *edges = yyjson_mut_arr(doc);
+    if (!nodes || !edges) return NULL;
     const NNModel *model = nn_app_model(app);
     for (size_t i = 0; i < nn_model_node_count(model); ++i) {
         const NNNode *n = nn_model_node_at(model, i);
         yyjson_mut_val *item = yyjson_mut_obj(doc), *params = yyjson_mut_obj(doc);
-        json_string(doc, item, "id", n->id);
-        json_string(doc, item, "name", n->label);
-        json_string(doc, item, "scope", n->scope_id);
-        yyjson_mut_obj_add_val(doc, item, "package", identity(doc, n->package_id, n->package_version));
-        yyjson_mut_obj_add_double(doc, item, "x", n->x);
-        yyjson_mut_obj_add_double(doc, item, "y", n->y);
+        yyjson_mut_val *package = identity(doc, n->package_id, n->package_version);
+        if (!item || !params || !package || !json_string(doc, item, "id", n->id) ||
+            !json_string(doc, item, "name", n->label) || !json_string(doc, item, "scope", n->scope_id) ||
+            !yyjson_mut_obj_add_val(doc, item, "package", package) ||
+            !yyjson_mut_obj_add_double(doc, item, "x", n->x) ||
+            !yyjson_mut_obj_add_double(doc, item, "y", n->y)) return NULL;
         for (size_t j = 0; j < n->parameter_count; ++j) {
             yyjson_mut_val *key = yyjson_mut_strcpy(doc, n->parameters[j].key);
-            yyjson_mut_obj_add(params, key, snapshot_value(doc, &n->parameters[j].value));
+            yyjson_mut_val *value = snapshot_value(doc, &n->parameters[j].value);
+            if (!key || !value || !yyjson_mut_obj_add(params, key, value)) return NULL;
         }
-        yyjson_mut_obj_add_val(doc, item, "parameters", params);
-        yyjson_mut_arr_append(nodes, item);
+        if (!yyjson_mut_obj_add_val(doc, item, "parameters", params) || !yyjson_mut_arr_append(nodes, item)) return NULL;
     }
     for (size_t i = 0; i < nn_model_edge_count(model); ++i) {
         const NNEdge *e = nn_model_edge_at(model, i);
         yyjson_mut_val *item = yyjson_mut_obj(doc);
-        json_string(doc, item, "id", e->id);
-        json_string(doc, item, "source", e->source_id);
-        json_string(doc, item, "sourceHandle", e->source_handle_id);
-        json_string(doc, item, "target", e->target_id);
-        json_string(doc, item, "targetHandle", e->target_handle_id);
-        json_string(doc, item, "scope", e->scope_id);
-        yyjson_mut_arr_append(edges, item);
+        if (!item || !json_string(doc, item, "id", e->id) || !json_string(doc, item, "source", e->source_id) ||
+            !json_string(doc, item, "sourceHandle", e->source_handle_id) || !json_string(doc, item, "target", e->target_id) ||
+            !json_string(doc, item, "targetHandle", e->target_handle_id) || !json_string(doc, item, "scope", e->scope_id) ||
+            !yyjson_mut_arr_append(edges, item)) return NULL;
     }
-    yyjson_mut_obj_add_val(doc, result, "nodes", nodes);
-    yyjson_mut_obj_add_val(doc, result, "edges", edges);
+    if (!yyjson_mut_obj_add_val(doc, result, "nodes", nodes) || !yyjson_mut_obj_add_val(doc, result, "edges", edges)) return NULL;
     return result;
+}
+
+static bool nullable_string(yyjson_mut_doc *doc, yyjson_mut_val *object,
+                            const char *key, const char *text)
+{
+    return text ? json_string(doc, object, key, text) : yyjson_mut_obj_add_null(doc, object, key);
+}
+
+static yyjson_mut_val *diagnostics(yyjson_mut_doc *doc, NNApplication *app, Query *q)
+{
+    const NNInferenceReport *report = nn_app_analysis(app, q->error, sizeof(q->error));
+    if (!report) return NULL;
+    yyjson_mut_val *result = yyjson_mut_obj(doc), *problems = yyjson_mut_arr(doc), *tensors = yyjson_mut_arr(doc);
+    if (!result || !problems || !tensors) goto oom;
+    bool complete = true;
+    const NNModel *model = nn_app_model(app);
+    for (size_t i = 0; i < nn_inference_count(report); ++i) {
+        const NNInferenceResult *r = nn_inference_at(report, i);
+        const NNNode *node = nn_model_find_node(model, r->node_id);
+        yyjson_mut_val *item = yyjson_mut_obj(doc);
+        if (!item || !json_string(doc, item, "node", r->node_id)) goto oom;
+        if (r->status == NN_INFERENCE_SUCCESS) {
+            yyjson_mut_val *shape = yyjson_mut_arr(doc);
+            if (!shape || !json_string(doc, item, "dtype", r->dtype)) goto oom;
+            for (size_t d = 0; d < r->dimension_count; ++d) {
+                yyjson_mut_val *dimension = yyjson_mut_strcpy(doc, r->dimensions[d]);
+                if (!dimension || !yyjson_mut_arr_append(shape, dimension)) goto oom;
+            }
+            if (!yyjson_mut_obj_add_val(doc, item, "shape", shape) || !yyjson_mut_arr_append(tensors, item)) goto oom;
+        } else {
+            complete = false;
+            yyjson_mut_val *package = node ? identity(doc, node->package_id, node->package_version) : yyjson_mut_null(doc);
+            if (!package || !json_string(doc, item, "code", r->code) ||
+                !json_string(doc, item, "category", nn_inference_category(r->status)) ||
+                !json_string(doc, item, "severity", nn_inference_severity(r->status)) ||
+                !json_string(doc, item, "scope", node ? node->scope_id : "") ||
+                !yyjson_mut_obj_add_val(doc, item, "package", package) ||
+                !nullable_string(doc, item, "file", r->source_file) ||
+                !yyjson_mut_obj_add_uint(doc, item, "line", r->source_line) ||
+                !json_string(doc, item, "message", r->message) ||
+                !nullable_string(doc, item, "causeNode", r->cause_node_id) ||
+                !yyjson_mut_arr_append(problems, item)) goto oom;
+        }
+    }
+    if (!yyjson_mut_obj_add_bool(doc, result, "available", true) ||
+        !yyjson_mut_obj_add_bool(doc, result, "complete", complete) ||
+        !yyjson_mut_obj_add_val(doc, result, "problems", problems) ||
+        !yyjson_mut_obj_add_val(doc, result, "tensors", tensors)) goto oom;
+    return result;
+oom:
+    nn_error_set(q->error, sizeof(q->error), "out of memory serializing analysis");
+    return NULL;
 }
 
 static bool execute(NNApplication *app, const char *op, Query *q)
@@ -218,7 +275,7 @@ static bool execute(NNApplication *app, const char *op, Query *q)
     if (!strcmp(op, "project.open")) {
         const char *path = string_arg(q, "path", NULL);
         if (!q->error[0] && nn_project_dirty(nn_app_project(app)))
-            error_text(q->error, sizeof(q->error), "save or explicitly discard the dirty project before replacement");
+            nn_error_set(q->error, sizeof(q->error), "save or explicitly discard the dirty project before replacement");
         return !q->error[0] && nn_app_open(app, path, q->error, sizeof(q->error));
     }
     if (!strcmp(op, "project.create")) {
@@ -228,11 +285,11 @@ static bool execute(NNApplication *app, const char *op, Query *q)
         const char *kind = string_arg(q, "template", "blank");
         if (q->error[0]) return false;
         if (nn_project_dirty(nn_app_project(app))) {
-            error_text(q->error, sizeof(q->error), "save or explicitly discard the dirty project before replacement"); return false;
+            nn_error_set(q->error, sizeof(q->error), "save or explicitly discard the dirty project before replacement"); return false;
         }
         if (!strcmp(kind, "mnist-vae")) return nn_app_create_vae(app, parent, id, name, q->error, sizeof(q->error));
         if (strcmp(kind, "blank") && strcmp(kind, "mnist-mlp")) {
-            error_text(q->error, sizeof(q->error), "unknown project template"); return false;
+            nn_error_set(q->error, sizeof(q->error), "unknown project template"); return false;
         }
         return nn_app_create(app, parent, id, name, !strcmp(kind, "mnist-mlp"), q->error, sizeof(q->error));
     }
@@ -286,7 +343,7 @@ static bool execute(NNApplication *app, const char *op, Query *q)
         const char *sh = string_arg(q, "sourceHandle", NULL), *th = string_arg(q, "targetHandle", NULL);
         return !q->error[0] && nn_app_connect(app, id, source, sh, target, th, q->error, sizeof(q->error));
     }
-    error_text(q->error, sizeof(q->error), "unknown operation");
+    nn_error_set(q->error, sizeof(q->error), "unknown operation");
     return false;
 }
 
@@ -304,11 +361,12 @@ char *nn_automation_dispatch(NNApplication *app, const char *request,
     yyjson_doc *ui_result = NULL;
     bool okay = false;
     if (!app || !yyjson_is_obj(root) || !op || !yyjson_is_obj(query.args) || !valid_json_tree(root, 0))
-        error_text(query.error, sizeof(query.error), "request requires operation string and args object");
-    else if (!strcmp(op, "project.snapshot")) { result = snapshot(out, app); okay = true; }
+        nn_error_set(query.error, sizeof(query.error), "request requires operation string and args object");
+    else if (!strcmp(op, "project.snapshot")) { result = snapshot(out, app); okay = result != NULL; }
+    else if (!strcmp(op, "analysis.diagnostics")) { result = diagnostics(out, app, &query); okay = result != NULL; }
     else if (!strncmp(op, "ui.", 3)) {
-        if (!strcmp(op, "ui.inspect") || !strcmp(op, "ui.arrange") || !strcmp(op, "ui.scope") || !strcmp(op, "ui.screenshot")) {
-            if (!callback) error_text(query.error, sizeof(query.error), "UI callback unavailable");
+        if (!strcmp(op, "ui.inspect") || !strcmp(op, "ui.arrange") || !strcmp(op, "ui.scope") || !strcmp(op, "ui.screenshot") || !strcmp(op, "ui.reveal")) {
+            if (!callback) nn_error_set(query.error, sizeof(query.error), "UI callback unavailable");
             else {
                 char *args = yyjson_val_write(query.args, 0, NULL);
                 char *json = args ? callback(user, op, args, query.error, sizeof(query.error)) : NULL;
@@ -317,16 +375,16 @@ char *nn_automation_dispatch(NNApplication *app, const char *request,
                 free(json);
                 if (ui_result) { result = yyjson_val_mut_copy(out, yyjson_doc_get_root(ui_result)); okay = result != NULL; }
             }
-        } else error_text(query.error, sizeof(query.error), "unknown UI operation");
+        } else nn_error_set(query.error, sizeof(query.error), "unknown UI operation");
     } else okay = execute(app, op, &query);
-    if (!okay && !query.error[0]) error_text(query.error, sizeof(query.error), "operation failed");
-    yyjson_mut_obj_add_bool(out, response, "ok", okay);
-    if (okay) yyjson_mut_obj_add_val(out, response, "result", result);
-    else json_string(out, response, "error", query.error);
+    if (!okay && !query.error[0]) nn_error_set(query.error, sizeof(query.error), "operation failed");
+    bool serialized = response && yyjson_mut_obj_add_bool(out, response, "ok", okay);
+    if (okay) serialized = serialized && result && yyjson_mut_obj_add_val(out, response, "result", result);
+    else serialized = serialized && json_string(out, response, "error", query.error);
     yyjson_mut_doc_set_root(out, response);
-    char *json = yyjson_mut_write(out, YYJSON_WRITE_NEWLINE_AT_END, NULL);
+    char *json = serialized ? yyjson_mut_write(out, YYJSON_WRITE_NEWLINE_AT_END, NULL) : NULL;
     yyjson_doc_free(ui_result); yyjson_doc_free(input); yyjson_mut_doc_free(out);
-    return json;
+    return json ? json : nn_text_copy("{\"ok\":false,\"error\":\"out of memory serializing response\"}\n");
 }
 
 static double now(void)
@@ -350,20 +408,25 @@ NNAutomation *nn_automation_start(NNApplication *app, const char *path,
     struct sockaddr_un address = { .sun_family = AF_UNIX };
     struct stat info;
     if (!app || !path || !*path || strlen(path) >= sizeof(address.sun_path)) {
-        error_text(error, cap, "invalid or overlong local socket path"); return NULL;
+        nn_error_set(error, cap, "invalid or overlong local socket path"); return NULL;
     }
     if (!lstat(path, &info) || errno != ENOENT) {
-        error_text(error, cap, "socket path already exists or cannot be inspected"); return NULL;
+        nn_error_set(error, cap, "socket path already exists or cannot be inspected"); return NULL;
     }
     NNAutomation *service = calloc(1, sizeof(*service));
-    if (!service) return NULL;
+    if (!service) { nn_error_set(error, cap, "out of memory starting local service"); return NULL; }
     service->fd = -1;
     for (size_t i = 0; i < CLIENT_LIMIT; ++i) service->clients[i].fd = -1;
     service->app = app; service->callback = callback; service->user = user;
-    service->path = strdup(path);
+    service->path = nn_text_copy(path);
+    if (!service->path) {
+        nn_error_set(error, cap, "out of memory copying local socket path");
+        nn_automation_stop(service);
+        return NULL;
+    }
     strcpy(address.sun_path, path);
     service->fd = socket(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
-    if (!service->path || service->fd < 0) goto fail;
+    if (service->fd < 0) goto fail;
     mode_t mask = umask(0077);
     int bound = bind(service->fd, (struct sockaddr *)&address, sizeof(address));
     umask(mask);
@@ -371,10 +434,10 @@ NNAutomation *nn_automation_start(NNApplication *app, const char *path,
     if (lstat(path, &info)) goto fail;
     service->device = info.st_dev; service->inode = info.st_ino;
     if (!S_ISSOCK(info.st_mode) || info.st_uid != getuid() || chmod(path, 0600) || listen(service->fd, CLIENT_LIMIT)) goto fail;
-    error_text(error, cap, "");
+    nn_error_set(error, cap, "");
     return service;
 fail:
-    error_text(error, cap, "unable to bind private local socket");
+    nn_error_set(error, cap, "unable to bind private local socket");
     nn_automation_stop(service);
     return NULL;
 }
@@ -411,19 +474,19 @@ bool nn_automation_poll(NNAutomation *service)
                 if (newline) {
                     *newline = '\0';
                     if (memchr(client->input, '\0', (size_t)(newline - client->input)))
-                        client->output = strdup("{\"ok\":false,\"error\":\"embedded NUL in request\"}\n");
+                        client->output = nn_text_copy("{\"ok\":false,\"error\":\"embedded NUL in request\"}\n");
                     else client->output = nn_automation_dispatch(service->app, client->input, service->callback, service->user);
                     if (client->output) {
                         yyjson_doc *response = yyjson_read(client->output, strlen(client->output), 0);
                         yyjson_doc *request = yyjson_read(client->input, strlen(client->input), 0);
                         const char *op = request ? yyjson_get_str(yyjson_obj_get(yyjson_doc_get_root(request), "operation")) : NULL;
-                        bool readonly = op && (!strcmp(op, "project.snapshot") || !strcmp(op, "ui.inspect") || !strcmp(op, "ui.screenshot"));
+                        bool readonly = op && (!strcmp(op, "project.snapshot") || !strcmp(op, "analysis.diagnostics") || !strcmp(op, "ui.inspect") || !strcmp(op, "ui.screenshot"));
                         changed |= !readonly && response && yyjson_get_bool(yyjson_obj_get(yyjson_doc_get_root(response), "ok"));
                         yyjson_doc_free(request);
                         yyjson_doc_free(response);
                     }
                 } else if (client->used == REQUEST_LIMIT)
-                    client->output = strdup("{\"ok\":false,\"error\":\"request too large\"}\n");
+                    client->output = nn_text_copy("{\"ok\":false,\"error\":\"request too large\"}\n");
                 if (client->output) client->length = strlen(client->output);
             } else if (!count || (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)) { close_client(client); continue; }
         }

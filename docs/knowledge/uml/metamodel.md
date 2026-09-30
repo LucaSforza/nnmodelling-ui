@@ -109,8 +109,9 @@ dependent inference. Failure adds none. `Graph.addNode(ref,scope,pos,values)`
 requires exact active package and validated values; success owns one new node.
 `Parameters.set(key,value)` validates definition type/range before replacing
 one value, then invalidates dependent analysis. `Stereotype.infer` is read-only,
-calls isolated Lua and returns success, semantic error, unresolved, or fault.
-Caller owns returned result values; graph owns committed nodes/edges.
+calls isolated Lua and returns success, Lua compilation error, semantic error,
+unresolved, or fault. Application owns cached result values per diagnostics.md;
+graph owns committed nodes/edges.
 Project/resource ownership, dataset slots and package dependency resolution
 are normative in [project UML](project.md).
 

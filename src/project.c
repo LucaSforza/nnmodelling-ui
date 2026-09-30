@@ -1,6 +1,7 @@
 #define _XOPEN_SOURCE 700
 #define _POSIX_C_SOURCE 200809L
 #include "project.h"
+#include "utils.h"
 
 #include "yyjson.h"
 
@@ -8,7 +9,6 @@
 #include <fcntl.h>
 #include <math.h>
 #include <dirent.h>
-#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -33,33 +33,6 @@ struct NNProject {
     NNCatalog *catalog;
     bool dirty;
 };
-
-static void problem(char *error, size_t capacity, const char *format, ...)
-{
-    if (!error || !capacity) return;
-    va_list args;
-    va_start(args, format);
-    vsnprintf(error, capacity, format, args);
-    va_end(args);
-}
-
-static char *copy_string(const char *text)
-{
-    if (!text) return NULL;
-    size_t size = strlen(text) + 1;
-    char *copy = malloc(size);
-    if (copy) memcpy(copy, text, size);
-    return copy;
-}
-
-static char *join_path(const char *left, const char *right)
-{
-    size_t a = strlen(left), b = strlen(right);
-    if (a > SIZE_MAX - b - 2) return NULL;
-    char *path = malloc(a + b + 2);
-    if (path) snprintf(path, a + b + 2, "%s/%s", left, right);
-    return path;
-}
 
 static const char *string_field(yyjson_val *object, const char *key)
 {
@@ -98,18 +71,18 @@ static char *safe_resource_dir(const char *root, const char *relative,
                                char *error, size_t capacity)
 {
     if (!relative || !*relative || relative[0] == '/' || strlen(relative) > 512) {
-        problem(error, capacity, "invalid resource path");
+        nn_errorf(error, capacity, "invalid resource path");
         return NULL;
     }
-    char *path = copy_string(root);
-    if (!path) return NULL;
+    char *path = nn_text_copy(root);
+    if (!path) { nn_error_set(error, capacity, "out of memory building resource path"); return NULL; }
     const char *part = relative;
     for (const char *end = relative;; ++end) {
         if (*end != '/' && *end != '\0') continue;
         size_t length = (size_t)(end - part);
         if (!length || (length == 1 && part[0] == '.') ||
             (length == 2 && part[0] == '.' && part[1] == '.')) {
-            problem(error, capacity, "resource path traversal rejected: %s", relative);
+            nn_errorf(error, capacity, "resource path traversal rejected: %s", relative);
             free(path);
             return NULL;
         }
@@ -117,23 +90,23 @@ static char *safe_resource_dir(const char *root, const char *relative,
             unsigned char c = (unsigned char)part[i];
             if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
                   (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.')) {
-                problem(error, capacity, "invalid resource path: %s", relative);
+                nn_errorf(error, capacity, "invalid resource path: %s", relative);
                 free(path);
                 return NULL;
             }
         }
         char *segment = malloc(length + 1);
-        if (!segment) { free(path); return NULL; }
+        if (!segment) { free(path); nn_error_set(error, capacity, "out of memory building resource path"); return NULL; }
         memcpy(segment, part, length);
         segment[length] = '\0';
-        char *next = join_path(path, segment);
+        char *next = nn_path_join(path, segment);
         free(segment);
         free(path);
         path = next;
-        if (!path) return NULL;
+        if (!path) { nn_error_set(error, capacity, "unable to build resource path"); return NULL; }
         struct stat st;
         if (lstat(path, &st) || !S_ISDIR(st.st_mode)) {
-            problem(error, capacity, "resource directory missing or symlinked: %s", relative);
+            nn_errorf(error, capacity, "resource directory missing or symlinked: %s", relative);
             free(path);
             return NULL;
         }
@@ -147,12 +120,12 @@ static yyjson_doc *read_document(const char *path, char *error, size_t capacity)
 {
     struct stat st;
     if (lstat(path, &st) || !S_ISREG(st.st_mode) || st.st_size > 16 * 1024 * 1024) {
-        problem(error, capacity, "missing, symlinked or oversized JSON: %s", path);
+        nn_errorf(error, capacity, "missing, symlinked or oversized JSON: %s", path);
         return NULL;
     }
     yyjson_read_err parse_error;
     yyjson_doc *document = yyjson_read_file(path, 0, NULL, &parse_error);
-    if (!document) problem(error, capacity, "JSON parse error in %s: %s", path, parse_error.msg);
+    if (!document) nn_errorf(error, capacity, "JSON parse error in %s: %s", path, parse_error.msg);
     return document;
 }
 
@@ -170,15 +143,16 @@ static bool parse_value(yyjson_val *source, NNValue *target)
         target->as.real = yyjson_get_real(source);
     } else if (yyjson_is_str(source)) {
         target->type = NN_VALUE_STRING;
-        target->as.string = copy_string(yyjson_get_str(source));
+        target->as.string = nn_text_copy(yyjson_get_str(source));
         if (!target->as.string) return false;
     } else if (yyjson_is_arr(source)) {
         target->type = NN_VALUE_ARRAY;
-        target->as.array.count = yyjson_arr_size(source);
-        if (target->as.array.count > 1024) return false;
-        target->as.array.items = calloc(target->as.array.count ? target->as.array.count : 1,
+        size_t count = yyjson_arr_size(source);
+        if (count > 1024) return false;
+        target->as.array.items = calloc(count ? count : 1,
                                         sizeof(NNValue));
         if (!target->as.array.items) return false;
+        target->as.array.count = count;
         for (size_t i = 0; i < target->as.array.count; ++i)
             if (!parse_value(yyjson_arr_get(source, i), &target->as.array.items[i])) {
                 nn_value_dispose(target);
@@ -191,11 +165,11 @@ static bool parse_value(yyjson_val *source, NNValue *target)
 static bool parse_slots(yyjson_val *object, NNTensorSlot **slots, size_t *count,
                         char *error, size_t capacity)
 {
-    if (!yyjson_is_obj(object)) { problem(error, capacity, "dataset slots must be an object"); return false; }
+    if (!yyjson_is_obj(object)) { nn_errorf(error, capacity, "dataset slots must be an object"); return false; }
     size_t total = yyjson_obj_size(object);
-    if (total > 64) { problem(error, capacity, "too many dataset slots"); return false; }
+    if (total > 64) { nn_errorf(error, capacity, "too many dataset slots"); return false; }
     *slots = calloc(total ? total : 1, sizeof(**slots));
-    if (!*slots) return false;
+    if (!*slots) return nn_fail(error, capacity, "out of memory loading dataset slots");
     *count = total;
     size_t object_index, object_max;
     yyjson_val *key, *value;
@@ -211,15 +185,15 @@ static bool parse_slots(yyjson_val *object, NNTensorSlot **slots, size_t *count,
         if (!yyjson_get_str(key) || !*yyjson_get_str(key) || !dtype_ok ||
             !yyjson_is_arr(shape) || !yyjson_arr_size(shape) || yyjson_arr_size(shape) > 64 ||
             !parse_value(shape, &slot->shape)) {
-            problem(error, capacity, "invalid dataset tensor slot");
+            nn_errorf(error, capacity, "invalid dataset tensor slot");
             return false;
         }
-        slot->name = copy_string(yyjson_get_str(key));
-        slot->dtype = copy_string(dtype);
-        if (!slot->name || !slot->dtype) return false;
+        slot->name = nn_text_copy(yyjson_get_str(key));
+        slot->dtype = nn_text_copy(dtype);
+        if (!slot->name || !slot->dtype) return nn_fail(error, capacity, "out of memory loading dataset slot");
         for (size_t previous = 0; previous + 1 < index; ++previous)
             if (!strcmp((*slots)[previous].name, slot->name)) {
-                problem(error, capacity, "duplicate dataset slot name: %s", slot->name);
+                nn_errorf(error, capacity, "duplicate dataset slot name: %s", slot->name);
                 return false;
             }
         for (size_t i = 0; i < slot->shape.as.array.count; ++i) {
@@ -227,7 +201,7 @@ static bool parse_slots(yyjson_val *object, NNTensorSlot **slots, size_t *count,
             if (!((dimension->type == NN_VALUE_INT && dimension->as.integer > 0) ||
                   (dimension->type == NN_VALUE_STRING &&
                    !strcmp(dimension->as.string, "B")))) {
-                problem(error, capacity, "invalid dataset tensor dimension");
+                nn_errorf(error, capacity, "invalid dataset tensor dimension");
                 return false;
             }
         }
@@ -240,8 +214,9 @@ static bool load_dataset(NNProject *project, NNDataset *dataset,
 {
     char *directory = safe_resource_dir(project->directory, dataset->path, error, capacity);
     if (!directory) return false;
-    char *manifest_path = join_path(directory, "manifest.json");
+    char *manifest_path = nn_path_join(directory, "manifest.json");
     yyjson_doc *manifest = manifest_path ? read_document(manifest_path, error, capacity) : NULL;
+    if (!manifest_path) nn_error_set(error, capacity, "unable to build dataset manifest path");
     free(manifest_path);
     if (!manifest) { free(directory); return false; }
     yyjson_val *root = yyjson_doc_get_root(manifest);
@@ -252,9 +227,10 @@ static bool load_dataset(NNProject *project, NNDataset *dataset,
                 id && version && !strcmp(id, dataset->id) &&
                 !strcmp(version, dataset->version) && definition &&
                 valid_id(definition) && !strchr(definition, '/');
-    if (!okay) problem(error, capacity, "dataset identity or definition invalid: %s", dataset->path);
-    char *definition_path = okay ? join_path(directory, definition) : NULL;
+    if (!okay) nn_errorf(error, capacity, "dataset identity or definition invalid: %s", dataset->path);
+    char *definition_path = okay ? nn_path_join(directory, definition) : NULL;
     yyjson_doc *definition_doc = definition_path ? read_document(definition_path, error, capacity) : NULL;
+    if (okay && !definition_path) nn_error_set(error, capacity, "unable to build dataset definition path");
     free(definition_path);
     free(directory);
     yyjson_doc_free(manifest);
@@ -262,20 +238,20 @@ static bool load_dataset(NNProject *project, NNDataset *dataset,
     root = yyjson_doc_get_root(definition_doc);
     const char *name = string_field(root, "name");
     yyjson_val *batch = yyjson_obj_get(root, "batch");
-    okay = name && *name && batch && (dataset->name = copy_string(name)) &&
+    okay = name && *name && batch && (dataset->name = nn_text_copy(name)) &&
            parse_slots(yyjson_obj_get(batch, "inputs"), &dataset->inputs,
                         &dataset->input_count, error, capacity) &&
            parse_slots(yyjson_obj_get(batch, "targets"), &dataset->targets,
                         &dataset->target_count, error, capacity);
-    if (okay && !dataset->input_count) { problem(error, capacity, "dataset requires at least one input slot"); okay = false; }
+    if (okay && !dataset->input_count) { nn_errorf(error, capacity, "dataset requires at least one input slot"); okay = false; }
     for (size_t i = 0; okay && i < dataset->input_count; ++i)
         for (size_t j = 0; j < dataset->target_count; ++j)
             if (!strcmp(dataset->inputs[i].name, dataset->targets[j].name)) {
-                problem(error, capacity, "duplicate dataset slot name: %s", dataset->inputs[i].name);
+                nn_errorf(error, capacity, "duplicate dataset slot name: %s", dataset->inputs[i].name);
                 okay = false;
                 break;
             }
-    if (!okay && error && !error[0]) problem(error, capacity, "invalid dataset definition");
+    if (!okay && error && capacity && !error[0]) nn_errorf(error, capacity, "invalid dataset definition");
     yyjson_doc_free(definition_doc);
     return okay;
 }
@@ -284,21 +260,23 @@ static bool parse_references(yyjson_val *array, NNResourceRef **references,
                              size_t *count, char *error, size_t capacity)
 {
     if (!yyjson_is_arr(array) || yyjson_arr_size(array) > 128) {
-        problem(error, capacity, "invalid resource reference list"); return false;
+        nn_errorf(error, capacity, "invalid resource reference list"); return false;
     }
-    *count = yyjson_arr_size(array);
-    *references = calloc(*count ? *count : 1, sizeof(**references));
-    if (!*references) return false;
+    size_t total = yyjson_arr_size(array);
+    *references = calloc(total ? total : 1, sizeof(**references));
+    if (!*references) return nn_fail(error, capacity, "out of memory loading resource references");
+    *count = total;
     for (size_t i = 0; i < *count; ++i) {
         yyjson_val *entry = yyjson_arr_get(array, i);
         const char *id = string_field(entry, "id");
         const char *version = string_field(entry, "version");
         const char *path = string_field(entry, "path");
         if (!valid_id(id) || !valid_id(version) || !path) {
-            problem(error, capacity, "invalid resource reference"); return false;
+            nn_errorf(error, capacity, "invalid resource reference"); return false;
         }
-        (*references)[i] = (NNResourceRef){copy_string(id), copy_string(version), copy_string(path)};
-        if (!(*references)[i].id || !(*references)[i].version || !(*references)[i].path) return false;
+        (*references)[i] = (NNResourceRef){nn_text_copy(id), nn_text_copy(version), nn_text_copy(path)};
+        if (!(*references)[i].id || !(*references)[i].version || !(*references)[i].path)
+            return nn_fail(error, capacity, "out of memory loading resource reference");
     }
     return true;
 }
@@ -309,10 +287,10 @@ static bool parse_graph(NNProject *project, yyjson_val *root,
     yyjson_val *nodes = yyjson_obj_get(root, "nodes"), *edges = yyjson_obj_get(root, "edges");
     if (!yyjson_is_arr(nodes) || !yyjson_is_arr(edges) ||
         yyjson_arr_size(nodes) > 10000 || yyjson_arr_size(edges) > 20000) {
-        problem(error, capacity, "invalid graph arrays"); return false;
+        nn_errorf(error, capacity, "invalid graph arrays"); return false;
     }
     project->model = nn_model_new();
-    if (!project->model) return false;
+    if (!project->model) return nn_fail(error, capacity, "out of memory creating model");
     for (size_t i = 0; i < yyjson_arr_size(nodes); ++i) {
         yyjson_val *node = yyjson_arr_get(nodes, i);
         yyjson_val *position = yyjson_obj_get(node, "position");
@@ -329,17 +307,17 @@ static bool parse_graph(NNProject *project, yyjson_val *root,
             !nn_model_add_node(project->model, id, name ? name : package_id,
                                package_id, version, scope ? scope : "",
                                yyjson_get_num(x), yyjson_get_num(y), error, capacity)) {
-            if (error && !error[0]) problem(error, capacity, "invalid node or undeclared package");
+            if (error && capacity && !error[0]) nn_errorf(error, capacity, "invalid node or undeclared package");
             return false;
         }
         yyjson_val *parameters = yyjson_obj_get(data, "params");
-        if (!yyjson_is_obj(parameters)) { problem(error, capacity, "node params missing"); return false; }
+        if (!yyjson_is_obj(parameters)) { nn_errorf(error, capacity, "node params missing"); return false; }
         size_t parameter_index, parameter_max;
         yyjson_val *key, *value;
         yyjson_obj_foreach(parameters, parameter_index, parameter_max, key, value) {
             NNValue parsed;
             if (!parse_value(value, &parsed)) {
-                problem(error, capacity, "unsupported parameter value"); return false;
+                nn_errorf(error, capacity, "unsupported parameter value"); return false;
             }
             bool set = nn_model_set_parameter(project->model, id, yyjson_get_str(key),
                                               &parsed, error, capacity);
@@ -365,15 +343,16 @@ NNProject *nn_project_open(const char *directory, const char *core_root,
                            char *error, size_t capacity)
 {
     if (error && capacity) error[0] = '\0';
-    if (!directory || !core_root) { problem(error, capacity, "project path missing"); return NULL; }
+    if (!directory || !core_root) { nn_errorf(error, capacity, "project path missing"); return NULL; }
     char *resolved = realpath(directory, NULL);
-    if (!resolved) { problem(error, capacity, "project directory unavailable: %s", directory); return NULL; }
-    char *model_path = join_path(resolved, "model.json");
+    if (!resolved) { nn_errorf(error, capacity, "project directory unavailable: %s", directory); return NULL; }
+    char *model_path = nn_path_join(resolved, "model.json");
     yyjson_doc *document = model_path ? read_document(model_path, error, capacity) : NULL;
+    if (!model_path) nn_error_set(error, capacity, "unable to build model path");
     free(model_path);
     if (!document) { free(resolved); return NULL; }
     NNProject *project = calloc(1, sizeof(*project));
-    if (!project) { yyjson_doc_free(document); free(resolved); return NULL; }
+    if (!project) { yyjson_doc_free(document); free(resolved); nn_error_set(error, capacity, "out of memory opening project"); return NULL; }
     project->directory = resolved;
     project->core_root = realpath(core_root, NULL);
     yyjson_val *root = yyjson_doc_get_root(document);
@@ -383,15 +362,24 @@ NNProject *nn_project_open(const char *directory, const char *core_root,
     const char *name = string_field(manifest, "name");
     const char *description = string_field(manifest, "description");
     bool okay = yyjson_get_int(yyjson_obj_get(manifest, "schemaVersion")) == 2 &&
-                valid_id(id) && valid_id(version) && name && *name &&
-                (project->id = copy_string(id)) &&
-                (project->version = copy_string(version)) &&
-                (project->name = copy_string(name)) &&
-                (project->description = copy_string(description ? description : ""));
+                valid_id(id) && valid_id(version) && name && *name;
+    if (!okay) nn_error_set(error, capacity, "invalid schema-v2 project manifest");
+    if (okay) {
+        project->id = nn_text_copy(id);
+        project->version = nn_text_copy(version);
+        project->name = nn_text_copy(name);
+        project->description = nn_text_copy(description ? description : "");
+        okay = project->id && project->version && project->name && project->description;
+        if (!okay) nn_error_set(error, capacity, "out of memory opening project manifest");
+    }
     const char *layout = string_field(root, "layoutDirection");
-    project->layout_direction = copy_string(layout ? layout : "horizontal");
-    if (!project->layout_direction || !project->core_root) okay = false;
-    if (!okay) problem(error, capacity, "invalid schema-v2 project manifest");
+    project->layout_direction = nn_text_copy(layout ? layout : "horizontal");
+    if (okay && !project->layout_direction) {
+        okay = nn_fail(error, capacity, "out of memory copying project layout");
+    }
+    if (okay && !project->core_root) {
+        okay = nn_fail(error, capacity, "core package directory unavailable");
+    }
     if (okay) okay = parse_references(yyjson_obj_get(manifest, "customPackages"),
                                       &project->packages, &project->package_count, error, capacity);
     if (okay) project->catalog = nn_catalog_load(core_root, project->directory,
@@ -403,21 +391,22 @@ NNProject *nn_project_open(const char *directory, const char *core_root,
     if (okay) okay = parse_references(yyjson_obj_get(manifest, "customDatasets"),
                                       &dataset_refs, &dataset_count, error, capacity);
     if (okay) {
-        project->dataset_count = dataset_count;
         project->datasets = calloc(dataset_count ? dataset_count : 1, sizeof(*project->datasets));
         okay = project->datasets != NULL;
+        if (okay) project->dataset_count = dataset_count;
+        else nn_error_set(error, capacity, "out of memory loading datasets");
     }
     for (size_t i = 0; okay && i < dataset_count; ++i) {
         NNDataset *dataset = &project->datasets[i];
-        dataset->id = copy_string(dataset_refs[i].id);
-        dataset->version = copy_string(dataset_refs[i].version);
-        dataset->path = copy_string(dataset_refs[i].path);
+        dataset->id = nn_text_copy(dataset_refs[i].id);
+        dataset->version = nn_text_copy(dataset_refs[i].version);
+        dataset->path = nn_text_copy(dataset_refs[i].path);
         okay = dataset->id && dataset->version && dataset->path &&
                load_dataset(project, dataset, error, capacity);
         for (size_t j = 0; okay && j < i; ++j)
             if (!strcmp(dataset->id, project->datasets[j].id) &&
                 !strcmp(dataset->version, project->datasets[j].version)) {
-                problem(error, capacity, "duplicate dataset identity"); okay = false;
+                nn_errorf(error, capacity, "duplicate dataset identity"); okay = false;
             }
     }
     for (size_t i = 0; i < dataset_count; ++i) {
@@ -434,13 +423,20 @@ NNProject *nn_project_open(const char *directory, const char *core_root,
         for (size_t i = 0; selected_id && selected_version && i < project->dataset_count; ++i)
             if (!strcmp(selected_id, project->datasets[i].id) &&
                 !strcmp(selected_version, project->datasets[i].version)) found = true;
-        okay = found && (project->active_dataset_id = copy_string(selected_id)) &&
-               (project->active_dataset_version = copy_string(selected_version));
-        if (!okay) problem(error, capacity, "active dataset is undeclared");
+        if (!found) okay = nn_fail(error, capacity, "active dataset is undeclared");
+        else {
+            project->active_dataset_id = nn_text_copy(selected_id);
+            project->active_dataset_version = nn_text_copy(selected_version);
+            okay = project->active_dataset_id && project->active_dataset_version;
+            if (!okay) nn_error_set(error, capacity, "out of memory selecting project dataset");
+        }
     }
     if (okay) okay = parse_graph(project, root, error, capacity);
     yyjson_doc_free(document);
-    if (!okay) { nn_project_close(project); return NULL; }
+    if (!okay) {
+        if (error && capacity && !error[0]) nn_error_set(error, capacity, "unable to load project resources");
+        nn_project_close(project); return NULL;
+    }
     return project;
 }
 
@@ -581,37 +577,37 @@ bool nn_project_save(NNProject *project, char *error, size_t capacity)
 {
     if (error && capacity) error[0] = '\0';
     if (!project || !project->model) {
-        problem(error, capacity, "no active project to save");
+        nn_errorf(error, capacity, "no active project to save");
         return false;
     }
     char *json = NULL;
     size_t length = 0;
     if (!write_project_document(project, &json, &length)) {
-        problem(error, capacity, "unable to serialize project");
+        nn_errorf(error, capacity, "unable to serialize project");
         free(json);
         return false;
     }
-    char *destination = join_path(project->directory, "model.json");
-    char *temporary = join_path(project->directory, ".model.json.tmp.XXXXXX");
+    char *destination = nn_path_join(project->directory, "model.json");
+    char *temporary = nn_path_join(project->directory, ".model.json.tmp.XXXXXX");
     if (!destination || !temporary) {
-        problem(error, capacity, "out of memory");
+        nn_errorf(error, capacity, "out of memory");
         free(destination); free(temporary); free(json);
         return false;
     }
     int fd = mkstemp(temporary);
     bool okay = fd >= 0;
-    if (!okay) problem(error, capacity, "cannot create project temporary file: %s", strerror(errno));
+    if (!okay) nn_errorf(error, capacity, "cannot create project temporary file: %s", strerror(errno));
     if (okay && !write_all(fd, json, length)) {
-        okay = false; problem(error, capacity, "cannot write project: %s", strerror(errno));
+        okay = false; nn_errorf(error, capacity, "cannot write project: %s", strerror(errno));
     }
     if (okay && fsync(fd)) {
-        okay = false; problem(error, capacity, "cannot flush project: %s", strerror(errno));
+        okay = false; nn_errorf(error, capacity, "cannot flush project: %s", strerror(errno));
     }
     if (fd >= 0 && close(fd) && okay) {
-        okay = false; problem(error, capacity, "cannot close project temporary file: %s", strerror(errno));
+        okay = false; nn_errorf(error, capacity, "cannot close project temporary file: %s", strerror(errno));
     }
     if (okay && rename(temporary, destination)) {
-        okay = false; problem(error, capacity, "cannot replace project file: %s", strerror(errno));
+        okay = false; nn_errorf(error, capacity, "cannot replace project file: %s", strerror(errno));
     }
     if (!okay) unlink(temporary);
     else project->dirty = false;
@@ -623,11 +619,11 @@ static void dataset_dispose(NNDataset *dataset)
 {
     if (!dataset) return;
     free(dataset->id); free(dataset->version); free(dataset->path); free(dataset->name);
-    for (size_t i = 0; i < dataset->input_count; ++i) {
+    for (size_t i = 0; dataset->inputs && i < dataset->input_count; ++i) {
         free(dataset->inputs[i].name); free(dataset->inputs[i].dtype);
         nn_value_dispose(&dataset->inputs[i].shape);
     }
-    for (size_t i = 0; i < dataset->target_count; ++i) {
+    for (size_t i = 0; dataset->targets && i < dataset->target_count; ++i) {
         free(dataset->targets[i].name); free(dataset->targets[i].dtype);
         nn_value_dispose(&dataset->targets[i].shape);
     }
@@ -639,12 +635,12 @@ void nn_project_close(NNProject *project)
     if (!project) return;
     nn_model_free(project->model);
     nn_catalog_free(project->catalog);
-    for (size_t i = 0; i < project->package_count; ++i) {
+    for (size_t i = 0; project->packages && i < project->package_count; ++i) {
         free((char *)project->packages[i].id);
         free((char *)project->packages[i].version);
         free((char *)project->packages[i].path);
     }
-    for (size_t i = 0; i < project->dataset_count; ++i) dataset_dispose(&project->datasets[i]);
+    for (size_t i = 0; project->datasets && i < project->dataset_count; ++i) dataset_dispose(&project->datasets[i]);
     free(project->packages); free(project->datasets);
     free(project->directory); free(project->core_root); free(project->id); free(project->version);
     free(project->name); free(project->description); free(project->layout_direction);
@@ -679,13 +675,13 @@ bool nn_project_select_dataset(NNProject *project, const char *id, const char *v
                                char *error, size_t capacity)
 {
     if (error && capacity) error[0] = '\0';
-    if (!project || !id || !version) { problem(error, capacity, "invalid dataset identity"); return false; }
+    if (!project || !id || !version) { nn_errorf(error, capacity, "invalid dataset identity"); return false; }
     const NNDataset *selected = NULL;
     for (size_t i = 0; i < project->dataset_count; ++i)
         if (!strcmp(project->datasets[i].id, id) && !strcmp(project->datasets[i].version, version)) selected = &project->datasets[i];
-    if (!selected) { problem(error, capacity, "dataset identity is not declared"); return false; }
-    char *new_id = copy_string(id), *new_version = copy_string(version);
-    if (!new_id || !new_version) { free(new_id); free(new_version); problem(error, capacity, "out of memory"); return false; }
+    if (!selected) { nn_errorf(error, capacity, "dataset identity is not declared"); return false; }
+    char *new_id = nn_text_copy(id), *new_version = nn_text_copy(version);
+    if (!new_id || !new_version) { free(new_id); free(new_version); nn_errorf(error, capacity, "out of memory"); return false; }
     char *old_id = project->active_dataset_id, *old_version = project->active_dataset_version;
     project->active_dataset_id = new_id;
     project->active_dataset_version = new_version;
@@ -728,7 +724,7 @@ static bool copy_tree_contents(const char *source, const char *destination)
     struct dirent *entry;
     while (okay && (entry = readdir(dir))) {
         if (!strcmp(entry->d_name, ".") || !strcmp(entry->d_name, "..")) continue;
-        char *from = join_path(source, entry->d_name), *to = join_path(destination, entry->d_name);
+        char *from = nn_path_join(source, entry->d_name), *to = nn_path_join(destination, entry->d_name);
         if (!from || !to || lstat(from, &st)) okay = false;
         else if (S_ISDIR(st.st_mode)) okay = copy_tree(from, to);
         else if (S_ISREG(st.st_mode)) okay = copy_file(from, to);
@@ -757,7 +753,7 @@ static void remove_tree(const char *path)
             struct dirent *entry;
             while ((entry = readdir(dir))) {
                 if (strcmp(entry->d_name, ".") && strcmp(entry->d_name, "..")) {
-                    char *child = join_path(path, entry->d_name);
+                    char *child = nn_path_join(path, entry->d_name);
                     if (child) { remove_tree(child); free(child); }
                 }
             }
@@ -785,27 +781,27 @@ NNProject *nn_project_create(const char *parent, const char *id, const char *nam
 {
     if (error && capacity) error[0] = '\0';
     if (!parent || !valid_id(id) || !name || !*name || !core_root) {
-        problem(error, capacity, "invalid project identity or parent"); return NULL;
+        nn_errorf(error, capacity, "invalid project identity or parent"); return NULL;
     }
     struct stat parent_stat;
     if (stat(parent, &parent_stat) || !S_ISDIR(parent_stat.st_mode)) {
-        problem(error, capacity, "project parent directory unavailable"); return NULL;
+        nn_errorf(error, capacity, "project parent directory unavailable"); return NULL;
     }
-    char *directory = join_path(parent, id);
-    if (!directory) { problem(error, capacity, "out of memory"); return NULL; }
+    char *directory = nn_path_join(parent, id);
+    if (!directory) { nn_errorf(error, capacity, "out of memory"); return NULL; }
     if (mkdir(directory, 0755)) {
-        problem(error, capacity, "cannot create project directory: %s", strerror(errno));
+        nn_errorf(error, capacity, "cannot create project directory: %s", strerror(errno));
         free(directory); return NULL;
     }
     bool okay = true;
     if (mnist_template) {
         char *repo = repo_root_from_core(core_root);
-        char *template_root = repo ? join_path(repo, "examples/mnist-mlp") : NULL;
-        char *source_model = template_root ? join_path(template_root, "model.json") : NULL;
-        char *destination_model = join_path(directory, "model.json");
-        char *source_dataset = template_root ? join_path(template_root, "datasets/mnist") : NULL;
-        char *destination_dataset = join_path(directory, "datasets/mnist");
-        char *destination_datasets = join_path(directory, "datasets");
+        char *template_root = repo ? nn_path_join(repo, "examples/mnist-mlp") : NULL;
+        char *source_model = template_root ? nn_path_join(template_root, "model.json") : NULL;
+        char *destination_model = nn_path_join(directory, "model.json");
+        char *source_dataset = template_root ? nn_path_join(template_root, "datasets/mnist") : NULL;
+        char *destination_dataset = nn_path_join(directory, "datasets/mnist");
+        char *destination_datasets = nn_path_join(directory, "datasets");
         okay = source_model && destination_model && source_dataset && destination_dataset &&
             destination_datasets && copy_file(source_model, destination_model) &&
             mkdir(destination_datasets, 0755) == 0 && copy_tree(source_dataset, destination_dataset);
@@ -818,7 +814,7 @@ NNProject *nn_project_create(const char *parent, const char *id, const char *nam
         okay = seed.model != NULL;
         char *json = NULL; size_t length = 0;
         if (okay) okay = write_project_document(&seed, &json, &length);
-        char *path = join_path(directory, "model.json");
+        char *path = nn_path_join(directory, "model.json");
         int fd = path && okay ? open(path, O_WRONLY | O_CREAT | O_EXCL, 0644) : -1;
         if (fd < 0) okay = false;
         if (okay) okay = write_all(fd, json, length) && fsync(fd) == 0;
@@ -826,31 +822,31 @@ NNProject *nn_project_create(const char *parent, const char *id, const char *nam
         free(path); free(json); nn_model_free(seed.model);
     }
     if (!okay) {
-        problem(error, capacity, "cannot create project from requested template");
+        nn_errorf(error, capacity, "cannot create project from requested template");
         remove_tree(directory); free(directory); return NULL;
     }
     NNProject *project = nn_project_open(directory, core_root, error, capacity);
     free(directory);
     if (!project) {
         /* Creation is one transaction: a bad template or package scope leaves no child. */
-        char *failed = join_path(parent, id);
+        char *failed = nn_path_join(parent, id);
         if (failed) { remove_tree(failed); free(failed); }
         return NULL;
     }
     if (strcmp(project->id, id) || strcmp(project->name, name)) {
-        char *new_id = copy_string(id), *new_name = copy_string(name);
+        char *new_id = nn_text_copy(id), *new_name = nn_text_copy(name);
         if (!new_id || !new_name) {
             free(new_id); free(new_name); nn_project_close(project);
-            char *failed = join_path(parent, id);
+            char *failed = nn_path_join(parent, id);
             if (failed) { remove_tree(failed); free(failed); }
-            problem(error, capacity, "out of memory"); return NULL;
+            nn_errorf(error, capacity, "out of memory"); return NULL;
         }
         free(project->id); free(project->name);
         project->id = new_id; project->name = new_name;
         project->dirty = true;
         if (!nn_project_save(project, error, capacity)) {
             nn_project_close(project);
-            char *failed = join_path(parent, id);
+            char *failed = nn_path_join(parent, id);
             if (failed) { remove_tree(failed); free(failed); }
             return NULL;
         }
@@ -937,26 +933,24 @@ static bool make_resource_directory(const char *root, const char *category,
 {
     *relative = NULL; *absolute = NULL;
     *category_created = false;
-    char *base = join_path(root, category);
+    char *base = nn_path_join(root, category);
     if (!base) return false;
     struct stat st;
     if (lstat(base, &st)) {
         if (errno != ENOENT || mkdir(base, 0755)) { free(base); return false; }
         *category_created = true;
     } else if (!S_ISDIR(st.st_mode)) { free(base); return false; }
-    size_t n = strlen(name) + 1;
-    char *rel = malloc(strlen(category) + n + 1);
-    if (rel) snprintf(rel, strlen(category) + n + 1, "%s/%s", category, name);
-    char *dir = rel ? join_path(root, rel) : NULL;
+    char *rel = nn_path_join(category, name);
+    char *dir = rel ? nn_path_join(root, rel) : NULL;
     free(base);
     if (!rel || !dir) {
         free(rel); free(dir);
-        if (*category_created) { char *created = join_path(root, category); if (created) { rmdir(created); free(created); } }
+        if (*category_created) { char *created = nn_path_join(root, category); if (created) { rmdir(created); free(created); } }
         return false;
     }
     if (mkdir(dir, 0755)) {
         free(rel); free(dir);
-        if (*category_created) { char *created = join_path(root, category); if (created) { rmdir(created); free(created); } }
+        if (*category_created) { char *created = nn_path_join(root, category); if (created) { rmdir(created); free(created); } }
         return false;
     }
     *relative = rel; *absolute = dir; return true;
@@ -969,36 +963,36 @@ bool nn_project_create_stereotype(NNProject *p, const char *id, const char *vers
     if (error && cap) error[0] = '\0';
     if (!p || !valid_id(id) || !version || !definition_json || !lua || strlen(definition_json) > 4u * 1024u * 1024u ||
         (dependencies_json && strlen(dependencies_json) > 4u * 1024u * 1024u) || strlen(lua) > 1024 * 1024 ||
-        !valid_semver(version)) { problem(error, cap, "invalid stereotype identity or payload"); return false; }
-    if (p->package_count >= 128) { problem(error, cap, "package catalog limit reached"); return false; }
-    for (size_t i = 0; i < p->package_count; ++i) if (!strcmp(p->packages[i].id, id) && !strcmp(p->packages[i].version, version)) { problem(error, cap, "duplicate package identity"); return false; }
-    for (size_t i = 0; i < nn_catalog_count(p->catalog); ++i) { const NNPackage *x = nn_catalog_at(p->catalog, i); if (!strcmp(x->id, id) && !strcmp(x->version, version)) { problem(error, cap, "core package identity is immutable"); return false; } }
-    char name[256]; if (snprintf(name, sizeof(name), "%s-%s", id, version) >= (int)sizeof(name)) { problem(error, cap, "resource path too long"); return false; }
+        !valid_semver(version)) { nn_errorf(error, cap, "invalid stereotype identity or payload"); return false; }
+    if (p->package_count >= 128) { nn_errorf(error, cap, "package catalog limit reached"); return false; }
+    for (size_t i = 0; i < p->package_count; ++i) if (!strcmp(p->packages[i].id, id) && !strcmp(p->packages[i].version, version)) { nn_errorf(error, cap, "duplicate package identity"); return false; }
+    for (size_t i = 0; i < nn_catalog_count(p->catalog); ++i) { const NNPackage *x = nn_catalog_at(p->catalog, i); if (!strcmp(x->id, id) && !strcmp(x->version, version)) { nn_errorf(error, cap, "core package identity is immutable"); return false; } }
+    char name[256]; if (snprintf(name, sizeof(name), "%s-%s", id, version) >= (int)sizeof(name)) { nn_errorf(error, cap, "resource path too long"); return false; }
     char *rel = NULL, *dir = NULL, *definition = pretty_json(definition_json); bool category_created = false;
     char *manifest = resource_manifest(id, version, "definition.json", "inference.lua", dependencies_json ? dependencies_json : "{}");
     if ((definition && strlen(definition) > 4u * 1024u * 1024u) ||
         (manifest && strlen(manifest) > 4u * 1024u * 1024u)) {
-        free(manifest); free(definition); problem(error, cap, "package JSON exceeds catalog file limit"); return false;
+        free(manifest); free(definition); nn_errorf(error, cap, "package JSON exceeds catalog file limit"); return false;
     }
-    if (!manifest || !definition || !make_resource_directory(p->directory, "packages", name, &rel, &dir, &category_created)) { free(manifest); free(definition); free(rel); free(dir); problem(error, cap, "cannot create package resource directory"); return false; }
-    char *mp = join_path(dir, "manifest.json"), *dp = join_path(dir, "definition.json"), *lp = join_path(dir, "inference.lua");
+    if (!manifest || !definition || !make_resource_directory(p->directory, "packages", name, &rel, &dir, &category_created)) { free(manifest); free(definition); free(rel); free(dir); nn_errorf(error, cap, "cannot create package resource directory"); return false; }
+    char *mp = nn_path_join(dir, "manifest.json"), *dp = nn_path_join(dir, "definition.json"), *lp = nn_path_join(dir, "inference.lua");
     bool okay = mp && dp && lp && write_new_text(mp, manifest) && write_new_text(dp, definition) && write_new_text(lp, lua);
     free(manifest); free(definition); free(mp); free(dp); free(lp);
     NNResourceRef *refs = NULL; NNCatalog *candidate = NULL;
     if (okay) {
         refs = calloc(p->package_count + 1, sizeof(*refs)); okay = refs != NULL;
         for (size_t i = 0; okay && i < p->package_count; ++i) {
-            refs[i] = (NNResourceRef){copy_string(p->packages[i].id), copy_string(p->packages[i].version), copy_string(p->packages[i].path)};
+            refs[i] = (NNResourceRef){nn_text_copy(p->packages[i].id), nn_text_copy(p->packages[i].version), nn_text_copy(p->packages[i].path)};
             okay = refs[i].id && refs[i].version && refs[i].path;
         }
-        if (okay) refs[p->package_count] = (NNResourceRef){copy_string(id), copy_string(version), copy_string(rel)};
+        if (okay) refs[p->package_count] = (NNResourceRef){nn_text_copy(id), nn_text_copy(version), nn_text_copy(rel)};
         if (okay) okay = refs[p->package_count].id && refs[p->package_count].version && refs[p->package_count].path;
         if (okay) candidate = nn_catalog_load(p->core_root, p->directory, refs, p->package_count + 1, error, cap);
         okay = okay && candidate != NULL;
     }
     for (size_t i = 0; okay && i < nn_model_node_count(p->model); ++i) {
         const NNNode *node = nn_model_node_at(p->model, i);
-        if (!nn_catalog_find(candidate, node->package_id, node->package_version)) { problem(error, cap, "candidate catalog invalidates graph package"); okay = false; }
+        if (!nn_catalog_find(candidate, node->package_id, node->package_version)) { nn_errorf(error, cap, "candidate catalog invalidates graph package"); okay = false; }
     }
     if (okay) {
         NNResourceRef *old_refs = p->packages; size_t old_count = p->package_count;
@@ -1010,9 +1004,9 @@ bool nn_project_create_stereotype(NNProject *p, const char *id, const char *vers
         else { p->packages = old_refs; p->package_count--; p->catalog = old_catalog; p->dirty = old_dirty; }
     }
     if (refs) { for (size_t i = 0; i <= p->package_count; ++i) { free((char *)refs[i].id); free((char *)refs[i].version); free((char *)refs[i].path); } free(refs); }
-    nn_catalog_free(candidate); if (!okay) { remove_tree(dir); if (category_created) { char *base = join_path(p->directory, "packages"); if (base) { rmdir(base); free(base); } } }
+    nn_catalog_free(candidate); if (!okay) { remove_tree(dir); if (category_created) { char *base = nn_path_join(p->directory, "packages"); if (base) { rmdir(base); free(base); } } }
     free(rel); free(dir);
-    if (!okay && error && cap && !error[0]) problem(error, cap, "stereotype creation failed");
+    if (!okay && error && cap && !error[0]) nn_errorf(error, cap, "stereotype creation failed");
     return okay;
 }
 
@@ -1021,20 +1015,20 @@ bool nn_project_create_dataset(NNProject *p, const char *id, const char *version
                                char *error, size_t cap)
 {
     if (error && cap) error[0] = '\0';
-    if (!p || !valid_id(id) || !valid_semver(version) || !definition_json) { problem(error, cap, "invalid dataset identity or payload"); return false; }
-    if (p->dataset_count >= 128) { problem(error, cap, "dataset catalog limit reached"); return false; }
-    for (size_t i = 0; i < p->dataset_count; ++i) if (!strcmp(p->datasets[i].id, id) && !strcmp(p->datasets[i].version, version)) { problem(error, cap, "duplicate dataset identity"); return false; }
-    char name[256]; if (snprintf(name, sizeof(name), "%s-%s", id, version) >= (int)sizeof(name)) { problem(error, cap, "resource path too long"); return false; }
-    if (strlen(definition_json) > 16u * 1024u * 1024u) { problem(error, cap, "dataset JSON exceeds resource file limit"); return false; }
+    if (!p || !valid_id(id) || !valid_semver(version) || !definition_json) { nn_errorf(error, cap, "invalid dataset identity or payload"); return false; }
+    if (p->dataset_count >= 128) { nn_errorf(error, cap, "dataset catalog limit reached"); return false; }
+    for (size_t i = 0; i < p->dataset_count; ++i) if (!strcmp(p->datasets[i].id, id) && !strcmp(p->datasets[i].version, version)) { nn_errorf(error, cap, "duplicate dataset identity"); return false; }
+    char name[256]; if (snprintf(name, sizeof(name), "%s-%s", id, version) >= (int)sizeof(name)) { nn_errorf(error, cap, "resource path too long"); return false; }
+    if (strlen(definition_json) > 16u * 1024u * 1024u) { nn_errorf(error, cap, "dataset JSON exceeds resource file limit"); return false; }
     char *rel = NULL, *dir = NULL, *definition = pretty_json(definition_json), *manifest = dataset_manifest(id, version); bool category_created = false;
     if (definition && strlen(definition) > 16u * 1024u * 1024u) {
-        free(manifest); free(definition); problem(error, cap, "dataset JSON exceeds resource file limit"); return false;
+        free(manifest); free(definition); nn_errorf(error, cap, "dataset JSON exceeds resource file limit"); return false;
     }
-    if (!manifest || !definition || !make_resource_directory(p->directory, "datasets", name, &rel, &dir, &category_created)) { free(manifest); free(definition); free(rel); free(dir); problem(error, cap, "cannot create dataset resource directory"); return false; }
-    char *mp = join_path(dir, "manifest.json"), *dp = join_path(dir, "dataset.json");
+    if (!manifest || !definition || !make_resource_directory(p->directory, "datasets", name, &rel, &dir, &category_created)) { free(manifest); free(definition); free(rel); free(dir); nn_errorf(error, cap, "cannot create dataset resource directory"); return false; }
+    char *mp = nn_path_join(dir, "manifest.json"), *dp = nn_path_join(dir, "dataset.json");
     bool okay = mp && dp && write_new_text(mp, manifest) && write_new_text(dp, definition);
     free(manifest); free(definition); free(mp); free(dp);
-    NNDataset candidate = { .id = copy_string(id), .version = copy_string(version), .path = copy_string(rel) };
+    NNDataset candidate = { .id = nn_text_copy(id), .version = nn_text_copy(version), .path = nn_text_copy(rel) };
     if (okay) okay = candidate.id && candidate.version && candidate.path && load_dataset(p, &candidate, error, cap);
     NNDataset *grown = okay ? malloc((p->dataset_count + 1) * sizeof(*grown)) : NULL;
     if (okay && !grown) okay = false;
@@ -1043,7 +1037,7 @@ bool nn_project_create_dataset(NNProject *p, const char *id, const char *version
         if (old_count) memcpy(grown, old, old_count * sizeof(*grown));
         char *old_id = p->active_dataset_id, *old_version = p->active_dataset_version; bool old_dirty = p->dirty;
         p->datasets = grown; p->datasets[p->dataset_count++] = candidate; memset(&candidate, 0, sizeof(candidate));
-        if (select) { p->active_dataset_id = copy_string(id); p->active_dataset_version = copy_string(version); if (!p->active_dataset_id || !p->active_dataset_version) okay = false; }
+        if (select) { p->active_dataset_id = nn_text_copy(id); p->active_dataset_version = nn_text_copy(version); if (!p->active_dataset_id || !p->active_dataset_version) okay = false; }
         p->dirty = true;
         if (okay) okay = nn_project_save(p, error, cap);
         if (okay) { free(old); if (select) { free(old_id); free(old_version); } }
@@ -1055,9 +1049,9 @@ bool nn_project_create_dataset(NNProject *p, const char *id, const char *version
         }
     }
     dataset_dispose(&candidate);
-    if (!okay) { remove_tree(dir); if (category_created) { char *base = join_path(p->directory, "datasets"); if (base) { rmdir(base); free(base); } } }
+    if (!okay) { remove_tree(dir); if (category_created) { char *base = nn_path_join(p->directory, "datasets"); if (base) { rmdir(base); free(base); } } }
     free(rel); free(dir);
-    if (!okay && error && cap && !error[0]) problem(error, cap, "dataset creation failed");
+    if (!okay && error && cap && !error[0]) nn_errorf(error, cap, "dataset creation failed");
     return okay;
 }
 
@@ -1065,22 +1059,22 @@ bool nn_project_create_vae(const char *parent, const char *id, const char *name,
                            const char *core_root, NNProject **result,
                            char *error, size_t cap)
 {
-    if (!result) { problem(error, cap, "invalid project result"); return false; }
+    if (!result) { nn_errorf(error, cap, "invalid project result"); return false; }
     *result = NULL;
-    if (!parent || !valid_id(id) || !name || !*name || !core_root) { problem(error, cap, "invalid project identity"); return false; }
-    struct stat st; if (lstat(parent, &st) || !S_ISDIR(st.st_mode)) { problem(error, cap, "project parent unavailable or symlinked"); return false; }
-    char *root = repo_root_from_core(core_root), *template = root ? join_path(root, "examples/mnist-vae") : NULL;
-    char *destination = join_path(parent, id);
+    if (!parent || !valid_id(id) || !name || !*name || !core_root) { nn_errorf(error, cap, "invalid project identity"); return false; }
+    struct stat st; if (lstat(parent, &st) || !S_ISDIR(st.st_mode)) { nn_errorf(error, cap, "project parent unavailable or symlinked"); return false; }
+    char *root = repo_root_from_core(core_root), *template = root ? nn_path_join(root, "examples/mnist-vae") : NULL;
+    char *destination = nn_path_join(parent, id);
     bool destination_owned = template && destination && mkdir(destination, 0755) == 0;
     bool okay = destination_owned && copy_tree_contents(template, destination);
     free(root); free(template);
-    if (!okay) { if (destination_owned) remove_tree(destination); free(destination); problem(error, cap, "cannot copy MNIST VAE template"); return false; }
+    if (!okay) { if (destination_owned) remove_tree(destination); free(destination); nn_errorf(error, cap, "cannot copy MNIST VAE template"); return false; }
     NNProject *project = nn_project_open(destination, core_root, error, cap);
     free(destination);
-    if (!project) { char *failed = join_path(parent, id); if (failed) { remove_tree(failed); free(failed); } return false; }
-    char *new_name = copy_string(name), *new_id = copy_string(id);
-    if (!new_name || !new_id) { free(new_name); free(new_id); nn_project_close(project); char *failed = join_path(parent, id); if (failed) { remove_tree(failed); free(failed); } problem(error, cap, "out of memory"); return false; }
+    if (!project) { char *failed = nn_path_join(parent, id); if (failed) { remove_tree(failed); free(failed); } return false; }
+    char *new_name = nn_text_copy(name), *new_id = nn_text_copy(id);
+    if (!new_name || !new_id) { free(new_name); free(new_id); nn_project_close(project); char *failed = nn_path_join(parent, id); if (failed) { remove_tree(failed); free(failed); } nn_errorf(error, cap, "out of memory"); return false; }
     free(project->name); free(project->id); project->name = new_name; project->id = new_id; project->dirty = true;
-    if (!nn_project_save(project, error, cap)) { nn_project_close(project); char *failed = join_path(parent, id); if (failed) { remove_tree(failed); free(failed); } return false; }
+    if (!nn_project_save(project, error, cap)) { nn_project_close(project); char *failed = nn_path_join(parent, id); if (failed) { remove_tree(failed); free(failed); } return false; }
     *result = project; return true;
 }

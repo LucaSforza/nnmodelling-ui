@@ -38,6 +38,9 @@ def main():
 
                 assert command("project.snapshot") is None
                 command("project.create", {"parent": str(root), "id": "authored", "name": "Authored"})
+                diagnostics = command("analysis.diagnostics")
+                assert set(diagnostics) == {"available", "complete", "problems", "tensors"}
+                assert diagnostics["available"] is True
                 definition = {
                     "name": "Local shape rule", "description": "Pass-through only", "kind": "layer",
                     "view": {"color": "#4779c4", "width": 220, "height": 100},
@@ -58,6 +61,31 @@ def main():
                 command("node.add", {"id": "local", "package": "local.shape", "version": "0.1.0", "y": 200})
                 command("edge.connect", {"id": "edge", "source": "input", "sourceHandle": "out", "target": "local", "targetHandle": "in"})
                 command("node.parameter", {"id": "local", "key": "features", "value": "16"})
+                command("node.parameter", {"id": "input", "key": "binding", "value": "missing-input"})
+                before_diagnostics = command("project.snapshot")
+                diagnostics = command("analysis.diagnostics")
+                after_diagnostics = command("project.snapshot")
+                assert set(diagnostics) == {"available", "complete", "problems", "tensors"}
+                assert diagnostics["available"] is True
+                assert diagnostics["complete"] is False
+                assert before_diagnostics["dirty"] == after_diagnostics["dirty"]
+                assert diagnostics == command("analysis.diagnostics")
+                problems = {problem["node"]: problem for problem in diagnostics["problems"]}
+                assert problems["input"]["code"] == "model.incomplete"
+                assert problems["input"]["causeNode"] is None
+                assert problems["local"]["code"] == "model.blocked"
+                assert problems["local"]["causeNode"] == "input"
+                for problem in problems.values():
+                    assert {"code", "category", "severity", "node", "scope", "package",
+                            "file", "line", "message", "causeNode"} == set(problem)
+                    assert set(problem["package"]) == {"id", "version"}
+                    assert isinstance(problem["line"], int)
+                assert command("ui.inspect")["currentScope"] == ""
+                command("node.parameter", {"id": "input", "key": "binding", "value": "image"})
+                restored = command("analysis.diagnostics")
+                assert restored["problems"] == []
+                assert {tensor["node"] for tensor in restored["tensors"]} == {"input", "local"}
+                assert len(restored["tensors"]) == 2
                 command("node.parameter", {"id": "local", "key": "features", "value": "0"}, expected=1)
                 command("ui.scope", {"id": False}, expected=1)
                 command("unknown.operation", expected=1)
@@ -94,6 +122,37 @@ def main():
                 snapshot = command("project.snapshot")
                 assert len(snapshot["nodes"]) == 21
                 assert sum(n["package"]["id"] == "core.subflow-proxy" for n in snapshot["nodes"]) == 2
+                vae_diagnostics_before = command("project.snapshot")
+                vae_diagnostics = command("analysis.diagnostics")
+                vae_diagnostics_after = command("project.snapshot")
+                assert vae_diagnostics["available"] is True
+                assert vae_diagnostics["complete"] is True
+                assert vae_diagnostics["problems"] == []
+                assert len(vae_diagnostics["tensors"]) == 21
+                assert vae_diagnostics_before["dirty"] == vae_diagnostics_after["dirty"]
+                mean = next(n for n in snapshot["nodes"] if n["id"] == "mean")
+                old_features = mean["parameters"]["in_features"]
+                command("node.parameter", {"id": "mean", "key": "in_features", "value": "999"})
+                nested_errors = command("analysis.diagnostics")
+                nested_problems = {problem["node"]: problem for problem in nested_errors["problems"]}
+                assert nested_problems["mean"]["code"] == "model.semantic"
+                assert nested_problems["mean"]["causeNode"] is None
+                assert any(p["causeNode"] == "mean" and p["node"] in {"encoder", "gaussian", "encoder-output"}
+                           for p in nested_errors["problems"])
+                command("node.parameter", {
+                    "id": "mean", "key": "in_features", "value": str(old_features),
+                })
+                restored_vae = command("analysis.diagnostics")
+                assert restored_vae["problems"] == [] and len(restored_vae["tensors"]) == 21
+                command("project.save")
+                nested = next(n for n in snapshot["nodes"] if n["scope"] == "encoder")
+                command("ui.reveal", {"id": nested["id"]})
+                before_revealed_diagnostics = command("ui.inspect")["currentScope"]
+                command("analysis.diagnostics")
+                assert command("ui.inspect")["currentScope"] == before_revealed_diagnostics
+                assert command("ui.inspect")["currentScope"] == "encoder"
+                command("ui.reveal", {"id": "no-such-node"}, expected=1)
+                assert command("ui.inspect")["currentScope"] == "encoder"
                 command("ui.scope", {"id": "encoder"})
                 command("project.create", {"parent": str(root), "id": "vae-second", "name": "Second VAE", "template": "mnist-vae"})
                 assert command("ui.inspect")["currentScope"] == ""

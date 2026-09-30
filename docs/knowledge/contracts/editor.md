@@ -60,6 +60,9 @@ Respect package colors and show package identity/details in inspector. Subflows
 must look like containers and remain distinguishable from ordinary layers.
 Use Qt font metrics, clipping, high-DPI support and events directly, without a
 new event dispatch or drawing abstraction. All errors stay visible.
+The diagnostics presentation is now governed by diagnostics.md: problems only,
+distinct categories, root-cause grouping, scope filtering and node navigation.
+Canvas command rejection opens an English error dialog, not just a status bar.
 
 Wheel zoom is bounded using the actual next/current scale ratio and anchored to
 the wheel event's viewport position with native QGraphicsView mapping/transforms,

@@ -111,3 +111,5 @@ src/automation.c owns Unix socket lifecycle and dispatch; src/nnmodelctl.c owns
 CLI parsing, request generation and response output. src/automation.h exposes
 opaque service lifecycle, nonblocking poll and malloc-result UI callback. Qt
 schedules poll on its thread and owns introspection/layout/capture only.
+analysis.diagnostics queries the application's report; ui.reveal shares problem
+navigation with Qt. Both are specified in contracts/diagnostics.md.

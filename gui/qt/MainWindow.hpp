@@ -5,6 +5,7 @@
 #include <memory>
 
 class QComboBox;
+class QCheckBox;
 class QCloseEvent;
 class QLineEdit;
 class QTreeWidget;
@@ -36,6 +37,7 @@ private:
     void refreshInspector();
     void refreshResources();
     void refreshDiagnostics();
+    bool revealNode(const QString &id);
     void updateWindowTitle();
     bool confirmReplaceProject();
     bool saveProject();
@@ -60,6 +62,7 @@ private:
     QTreeWidget *inspector_ = nullptr;
     QTreeWidget *resources_ = nullptr;
     QTreeWidget *diagnostics_ = nullptr;
+    QCheckBox *currentScopeProblems_ = nullptr;
     QComboBox *scopeSelector_ = nullptr;
     QTimer *automationTimer_ = nullptr;
     NNAutomation *automation_ = nullptr;

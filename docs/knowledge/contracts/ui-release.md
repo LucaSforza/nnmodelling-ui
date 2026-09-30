@@ -60,9 +60,13 @@ command deferrals; training/backend remain separate.
 4. Load core package metadata and project-owned dataset/dependency metadata;
    reject invalid paths, identities and dependency closure.
 5. Run package Lua inference for MLP path with selected MNIST dataset; show
-   shape/dtype diagnostics without backend.
+    problems in diagnostics and successful shape/dtype in inspector, without backend.
 6. Test model/project/graph invariants, Lua result classes, Qt interactions
-   and real headless UI lifecycle. Review a screenshot from rendered client.
+    and real headless UI lifecycle. Review a screenshot from rendered client.
+
+Accepted 2026-09-30: diagnostics.md replaces per-node success rows with Model
+problems. Shape/dtype remain in the inspector; Lua compilation, model errors,
+Incomplete and internal unavailability have distinct presentation and CLI parity.
 
 These conditions define current release stop point. Additional backend,
 training remain separate future milestones.

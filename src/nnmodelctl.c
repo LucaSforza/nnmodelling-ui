@@ -20,7 +20,8 @@ static void help(void)
          "Socket defaults to NNMODELLING_SOCKET. Start UI with --socket PATH.\n"
          "Use - to read the argument object from stdin. Exit 0 success, 1 rejected, 2 transport/usage.\n"
          "project.open {path}; project.create {parent,id,name,template:blank|mnist-mlp|mnist-vae}\n"
-         "project.save {}; project.close {discard:false}; project.snapshot {}\n"
+          "project.save {}; project.close {discard:false}; project.snapshot {}\n"
+          "analysis.diagnostics {} returns model/Lua problems and successful tensors\n"
          "stereotype.create {id,version,definition:{name,kind,view:{color,width,height},parameters:{}},\n"
          "                   inference:LuaSource,dependencies:{packageId:versionConstraint}}\n"
          "dataset.create {id,version,definition:{name,batch:{inputs:{slot:{dtype,shape}},targets:{}}},select:false}\n"
@@ -28,7 +29,7 @@ static void help(void)
          "node.add {id,package,version,scope:\"\",x:0,y:0}; node.remove {id}; node.move {id,x,y}\n"
          "node.rename {id,name}; node.parameter {id,key,value:text}\n"
          "edge.connect {id,source,sourceHandle,target,targetHandle}; edge.disconnect {id}\n"
-         "ui.inspect {}; ui.scope {id}; ui.arrange {}; ui.screenshot {path}\n"
+          "ui.inspect {}; ui.scope {id}; ui.reveal {id}; ui.arrange {}; ui.screenshot {path}\n"
          "See docs/knowledge/contracts/automation.md for complete payloads and transaction semantics.");
 }
 
@@ -70,8 +71,12 @@ int main(int argc, char **argv)
         yyjson_doc_free(args); yyjson_mut_doc_free(request); free(owned_payload); return 2;
     }
     yyjson_mut_val *root = yyjson_mut_obj(request);
-    yyjson_mut_obj_add_strcpy(request, root, "operation", operation);
-    yyjson_mut_obj_add_val(request, root, "args", yyjson_val_mut_copy(request, yyjson_doc_get_root(args)));
+    yyjson_mut_val *arguments = yyjson_val_mut_copy(request, yyjson_doc_get_root(args));
+    if (!root || !arguments || !yyjson_mut_obj_add_strcpy(request, root, "operation", operation) ||
+        !yyjson_mut_obj_add_val(request, root, "args", arguments)) {
+        fputs("out of memory building request\n", stderr);
+        yyjson_doc_free(args); yyjson_mut_doc_free(request); free(owned_payload); return 2;
+    }
     yyjson_mut_doc_set_root(request, root);
     size_t length = 0;
     char *text = yyjson_mut_write(request, YYJSON_WRITE_NEWLINE_AT_END, &length);

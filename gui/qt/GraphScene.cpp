@@ -9,6 +9,7 @@
 #include "project.h"
 
 #include <QGraphicsPathItem>
+#include <QGraphicsView>
 #include <QKeyEvent>
 #include <QPainterPath>
 #include <QPen>
@@ -133,6 +134,7 @@ void GraphScene::refresh() {
             : new NodeItem(this, data.id, data.label, data.packageId, data.position, color,
                            topParameters, bottomParameters);
         nodes_.insert(data.id, item);
+        item->setProblemCategory(problemCategories_.value(data.id));
         addItem(item);
         for (bool output : {true, false}) {
             const size_t count = nn_app_port_count(application_, data.id.toUtf8().constData(), output);
@@ -235,6 +237,29 @@ QString GraphScene::selectedNodeId() const {
 
 NodeItem *GraphScene::nodeItem(const QString &id) const { return nodes_.value(id, nullptr); }
 EdgeItem *GraphScene::edgeItem(const QString &id) const { return edges_.value(id, nullptr); }
+
+void GraphScene::setProblemMarkers(const QHash<QString, QString> &categories) {
+    problemCategories_ = categories;
+    for (auto it = nodes_.cbegin(); it != nodes_.cend(); ++it)
+        it.value()->setProblemCategory(categories.value(it.key()));
+}
+
+void GraphScene::revealNode(const QString &id) {
+    const QByteArray idBytes = id.toUtf8();
+    const NNNode *node = nn_model_find_node(nn_app_model(application_), idBytes.constData());
+    if (!node) return;
+    const QString scope = copyText(node->scope_id);
+    if (scope != scopeId_) setScope(scope);
+    QMetaObject::invokeMethod(this, [this, id] {
+        refresh();
+        if (NodeItem *item = nodes_.value(id, nullptr)) {
+            clearSelection();
+            item->setSelected(true);
+            if (views().size()) views().first()->centerOn(item);
+            emit selectionChanged();
+        }
+    }, Qt::QueuedConnection);
+}
 
 void GraphScene::keyPressEvent(QKeyEvent *event) {
     if (event->key() == Qt::Key_Escape) {
@@ -343,7 +368,7 @@ void GraphScene::finishConnection(PortItem *port) {
     char error[512] = {};
     if (!nn_app_connect(application_, edgeId.constData(), sourceId.constData(), sourceHandle.constData(),
                         targetId.constData(), targetHandle.constData(), error, sizeof(error))) {
-        reportError(error);
+        emit errorOccurred(tr("Cannot connect nodes: %1").arg(copyText(error)));
         return;
     }
     emit modelChanged();

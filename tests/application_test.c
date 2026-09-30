@@ -45,6 +45,9 @@ int main(void)
     assert(nn_app_create(app, root, "demo", "Demo", false, error, sizeof(error)));
     const NNProject *project = nn_app_project(app);
     assert(project && !nn_project_dirty(project));
+    const NNInferenceReport *analysis = nn_app_analysis(app, error, sizeof(error));
+    assert(analysis && !nn_inference_count(analysis));
+    assert(nn_app_analysis(app, error, sizeof(error)) == analysis);
     assert(!nn_app_add_node(app, "bad-pos", "core.relu", "0.1.0", "",
                             INFINITY, 0, error, sizeof(error)));
     assert(!nn_project_dirty(project));
@@ -69,6 +72,13 @@ int main(void)
     assert(nn_app_remove_node(app, "horizontal", error, sizeof(error)));
 
     add(app, "source", "core.input", "", error);
+    const NNInferenceReport *after_add = nn_app_analysis(app, error, sizeof(error));
+    assert(after_add && nn_inference_count(after_add) == 1);
+    assert(nn_app_move_node(app, "source", 14, 25, error, sizeof(error)));
+    assert(nn_app_analysis(app, error, sizeof(error)) == after_add);
+    assert(!nn_app_add_node(app, "bad", "missing.package", "0.1.0", "", 0, 0,
+                            error, sizeof(error)));
+    assert(nn_app_analysis(app, error, sizeof(error)) == after_add);
     add(app, "a", "core.relu", "", error);
     add(app, "b", "core.relu", "", error);
     add(app, "c", "core.relu", "", error);

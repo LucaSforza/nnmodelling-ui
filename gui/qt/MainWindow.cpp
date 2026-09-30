@@ -34,6 +34,10 @@
 #include <QMessageBox>
 #include <QPushButton>
 #include <QPlainTextEdit>
+#include <QTextCursor>
+#include <QTextCharFormat>
+#include <QTextBlock>
+#include <QTextEdit>
 #include <QPointF>
 #include <QSize>
 #include <QSet>
@@ -43,6 +47,8 @@
 #include <QSignalBlocker>
 #include <QTimer>
 #include <QTreeWidget>
+#include <QTreeView>
+#include <QStyledItemDelegate>
 #include <QToolBar>
 #include <QVBoxLayout>
 #include <QVariant>
@@ -97,16 +103,6 @@ QColor readablePackageColor(const NNPackage *package) {
     return color;
 }
 
-QString diagnosticStatus(NNInferenceStatus status) {
-    switch (status) {
-    case NN_INFERENCE_SUCCESS: return QStringLiteral("Success");
-    case NN_INFERENCE_SEMANTIC_ERROR: return QStringLiteral("Semantic error");
-    case NN_INFERENCE_UNRESOLVED: return QStringLiteral("Unresolved");
-    case NN_INFERENCE_RUNTIME_FAULT: return QStringLiteral("Runtime fault");
-    }
-    return QStringLiteral("Unknown");
-}
-
 void addTableRow(QTableWidget *table, const QStringList &defaults) {
     const int row = table->rowCount();
     table->insertRow(row);
@@ -120,6 +116,29 @@ QString cellText(const QTableWidget *table, int row, int column) {
     const auto *item = table->item(row, column);
     return item ? item->text().trimmed() : QString();
 }
+
+class WrappedTreeDelegate final : public QStyledItemDelegate {
+public:
+    using QStyledItemDelegate::QStyledItemDelegate;
+
+    QSize sizeHint(const QStyleOptionViewItem &option, const QModelIndex &index) const override {
+        QStyleOptionViewItem itemOption(option);
+        initStyleOption(&itemOption, index);
+        const auto *tree = qobject_cast<const QTreeView *>(parent());
+        int depth = 0;
+        for (QModelIndex parentIndex = index.parent(); parentIndex.isValid();
+             parentIndex = parentIndex.parent()) ++depth;
+        int width = option.rect.width();
+        if (width <= 0 && tree) width = tree->viewport()->width();
+        // Root decorations also consume one indentation level. Be conservative
+        // so a wrapped Lua reason is not elided by the native style at its end.
+        if (tree) width -= (depth + 1) * tree->indentation();
+        width = qMax(48, width - 24);
+        const QRect textBounds = QFontMetrics(itemOption.font).boundingRect(
+            QRect(0, 0, width, 10000), Qt::TextWordWrap, itemOption.text);
+        return QSize(width, qMax(28, textBounds.height() + 10));
+    }
+};
 
 QJsonValue parseDefault(QString text, const QString &type, bool *ok) {
     *ok = true;
@@ -279,6 +298,12 @@ char *MainWindow::automationUiCallback(void *user, const char *operation,
         if (!self->grab().save(path)) return fail("Could not save screenshot");
         result.insert(QStringLiteral("path"), path);
         result.insert(QStringLiteral("saved"), true);
+    } else if (op == QStringLiteral("ui.reveal")) {
+        const QJsonValue requestedId = argsDoc.object().value(QStringLiteral("id"));
+        if (!requestedId.isString()) return fail("Node ID must be a string");
+        const QString id = requestedId.toString();
+        if (!self->revealNode(id)) return fail("Unknown node ID");
+        result.insert(QStringLiteral("id"), id);
     } else {
         return fail("Unsupported UI operation");
     }
@@ -467,15 +492,23 @@ void MainWindow::buildUi() {
     auto *diagnosticPane = new QWidget(right);
     auto *diagnosticLayout = new QVBoxLayout(diagnosticPane);
     diagnosticLayout->setContentsMargins(6, 4, 8, 8);
-    auto *diagnosticTitle = new QLabel(tr("Diagnostics"), diagnosticPane);
+    auto *diagnosticTitle = new QLabel(tr("Model problems"), diagnosticPane);
     diagnosticTitle->setStyleSheet(QStringLiteral("font-weight: 600; color: #37465a;"));
     diagnosticLayout->addWidget(diagnosticTitle);
+    currentScopeProblems_ = new QCheckBox(tr("Current scope only"), diagnosticPane);
+    currentScopeProblems_->setObjectName(QStringLiteral("currentScopeProblems"));
+    diagnosticLayout->addWidget(currentScopeProblems_);
     diagnostics_ = new QTreeWidget(diagnosticPane);
     diagnostics_->setObjectName(QStringLiteral("diagnostics"));
-    diagnostics_->setColumnCount(2);
-    diagnostics_->setHeaderLabels({tr("Result"), tr("Detail")});
-    diagnostics_->header()->setStretchLastSection(true);
+    diagnostics_->setColumnCount(1);
+    diagnostics_->setHeaderLabels({tr("Problem")});
     diagnostics_->setHeaderHidden(true);
+    diagnostics_->header()->setSectionResizeMode(0, QHeaderView::Stretch);
+    diagnostics_->setItemDelegate(new WrappedTreeDelegate(diagnostics_));
+    diagnostics_->setWordWrap(true);
+    diagnostics_->setTextElideMode(Qt::ElideNone);
+    diagnostics_->setUniformRowHeights(false);
+    diagnostics_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     diagnosticLayout->addWidget(diagnostics_, 1);
 
     right->addWidget(inspectorPane);
@@ -512,8 +545,18 @@ void MainWindow::buildUi() {
         if (!refreshing_) refreshInspector();
     });
     connect(scene_, &GraphScene::errorOccurred, this, [this](const QString &message) {
-        statusBar()->showMessage(message, 8000);
+        auto *box = new QMessageBox(QMessageBox::Warning, tr("Operation rejected"), message,
+                                    QMessageBox::Ok, this);
+        box->setAttribute(Qt::WA_DeleteOnClose);
+        box->setModal(false);
+        box->show();
     });
+    connect(diagnostics_, &QTreeWidget::itemClicked, this, [this](QTreeWidgetItem *item) {
+        if (!item) return;
+        const QString id = item->data(0, IdRole).toString();
+        if (!id.isEmpty()) revealNode(id);
+    });
+    connect(currentScopeProblems_, &QCheckBox::toggled, this, [this] { refreshDiagnostics(); });
     connect(paletteSearch_, &QLineEdit::textChanged, this, [this] { refreshPalette(); });
     connect(paletteTree, &QTreeWidget::currentItemChanged, this,
             [this](QTreeWidgetItem *current) {
@@ -723,12 +766,24 @@ void MainWindow::createStereotype() {
     lua->setPlainText(passThroughRule);
     lua->setMinimumHeight(90);
     layout->addWidget(lua);
+    auto *luaError = new QLabel(&dialog);
+    luaError->setObjectName(QStringLiteral("stereotypeLuaError"));
+    luaError->setWordWrap(true);
+    luaError->setStyleSheet(QStringLiteral("color: #a12b2b;"));
+    layout->addWidget(luaError);
+    auto *formError = new QLabel(&dialog);
+    formError->setObjectName(QStringLiteral("stereotypeError"));
+    formError->setWordWrap(true);
+    formError->setStyleSheet(QStringLiteral("color: #a12b2b;"));
+    layout->addWidget(formError);
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Save | QDialogButtonBox::Cancel, &dialog);
     buttons->button(QDialogButtonBox::Save)->setText(tr("Create and save project"));
     connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
     layout->addWidget(buttons);
-    if (dialog.exec() != QDialog::Accepted) return;
+    while (dialog.exec() == QDialog::Accepted) {
+    luaError->clear();
+    formError->clear();
 
     QJsonObject def;
     def.insert("name", name->text().trimmed()); def.insert("description", description->text().trimmed());
@@ -746,20 +801,20 @@ void MainWindow::createStereotype() {
         const QString key = cellText(parameters, row, 0);
         const QString type = cellText(parameters, row, 1);
         if (key.isEmpty() || params.contains(key)) {
-            QMessageBox::warning(this, tr("Invalid parameter"), tr("Parameter keys must be nonempty and unique.")); return;
+            formError->setText(tr("Parameter keys must be nonempty and unique.")); break;
         }
         if (!parameterTypes.contains(type)) {
-            QMessageBox::warning(this, tr("Invalid parameter type"), tr("Choose boolean, integer, number, string, dtype or JSON array.")); return;
+            formError->setText(tr("Choose boolean, integer, number, string, dtype or JSON array.")); break;
         }
         QJsonObject parameter; parameter.insert("type", type);
         bool validDefault = false;
         const QJsonValue defaultValue = parseDefault(cellText(parameters, row, 2), type, &validDefault);
-        if (!validDefault) { QMessageBox::warning(this, tr("Invalid default"), tr("Default value does not match the selected type.")); return; }
+        if (!validDefault) { formError->setText(tr("Default value does not match the selected type.")); break; }
         parameter.insert("default", defaultValue);
         const QString minimum = cellText(parameters, row, 3);
         if (!minimum.isEmpty()) {
             bool ok = false; const double value = minimum.toDouble(&ok);
-            if (!ok || !std::isfinite(value)) { QMessageBox::warning(this, tr("Invalid minimum"), tr("Minimum must be a finite number.")); return; }
+            if (!ok || !std::isfinite(value)) { formError->setText(tr("Minimum must be a finite number.")); break; }
             parameter.insert("minimum", value);
         }
         const QString choices = cellText(parameters, row, 4);
@@ -768,15 +823,17 @@ void MainWindow::createStereotype() {
         if (!position.isEmpty()) parameter.insert("position", position);
         params.insert(key, parameter);
     }
+    if (!formError->text().isEmpty()) continue;
     def.insert("parameters", params);
     QJsonObject deps;
     for (int row = 0; row < dependencies->rowCount(); ++row) {
         const QString package = cellText(dependencies, row, 0), constraint = cellText(dependencies, row, 1);
         if (package.isEmpty() || constraint.isEmpty() || deps.contains(package)) {
-            QMessageBox::warning(this, tr("Invalid dependency"), tr("Dependency IDs and constraints must be nonempty and unique.")); return;
+            formError->setText(tr("Dependency IDs and constraints must be nonempty and unique.")); break;
         }
         deps.insert(package, constraint);
     }
+    if (!formError->text().isEmpty()) continue;
     const QByteArray idBytes = id->text().trimmed().toUtf8();
     const QByteArray versionBytes = version->text().trimmed().toUtf8();
     const QByteArray definition = QJsonDocument(def).toJson(QJsonDocument::Compact);
@@ -786,10 +843,23 @@ void MainWindow::createStereotype() {
     char error[ErrorCapacity] = {};
     if (!nn_app_create_stereotype(application_.get(), idBytes.constData(), versionBytes.constData(),
             definition.constData(), luaBytes.constData(), dependencyJson.constData(), error, sizeof(error))) {
-        QMessageBox::critical(this, tr("Stereotype creation failed"), QString::fromUtf8(error)); return;
+        const size_t line = nn_inference_error_line(error);
+        luaError->setText(line ? tr("Lua error on line %1: %2").arg(line).arg(QString::fromUtf8(error))
+                               : QString::fromUtf8(error));
+        if (line) {
+            QTextEdit::ExtraSelection selection;
+            QTextCursor cursor(lua->document()->findBlockByNumber(int(line - 1)));
+            if (cursor.isNull()) cursor = QTextCursor(lua->document()->lastBlock());
+            selection.cursor = cursor;
+            selection.format.setBackground(QColor("#ffe0df"));
+            lua->setExtraSelections({selection});
+        }
+        continue;
     }
     refreshAll();
     statusBar()->showMessage(tr("Stereotype created; current project saved"), 6000);
+    break;
+    }
 }
 
 void MainWindow::createDataset() {
@@ -822,11 +892,17 @@ void MainWindow::createDataset() {
     };
     auto *inputs = makeSlots(tr("Input slots"), QStringLiteral("datasetInputs"));
     auto *targets = makeSlots(tr("Target slots"), QStringLiteral("datasetTargets"));
+    auto *formError = new QLabel(&dialog);
+    formError->setObjectName(QStringLiteral("datasetError"));
+    formError->setWordWrap(true);
+    formError->setStyleSheet(QStringLiteral("color: #a12b2b;"));
+    layout->addWidget(formError);
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Save | QDialogButtonBox::Cancel, &dialog);
     buttons->button(QDialogButtonBox::Save)->setText(tr("Create and save project"));
     connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject); layout->addWidget(buttons);
-    if (dialog.exec() != QDialog::Accepted) return;
+    while (dialog.exec() == QDialog::Accepted) {
+    formError->clear();
     auto buildSlots = [this](QTableWidget *table, QJsonObject *out) -> bool {
         static const QSet<QString> dtypes = {"float16", "bfloat16", "float32", "float64", "int8", "int16", "int32", "int64", "uint8", "bool"};
         for (int row = 0; row < table->rowCount(); ++row) {
@@ -848,7 +924,7 @@ void MainWindow::createDataset() {
     };
     QJsonObject inputSlots, targetSlots;
     if (!buildSlots(inputs, &inputSlots) || inputSlots.isEmpty() || !buildSlots(targets, &targetSlots)) {
-        QMessageBox::warning(this, tr("Invalid tensor slots"), tr("Input slots are required; use unique names, supported dtypes and positive dimensions (or B).")); return;
+        formError->setText(tr("Input slots are required; use unique names, supported dtypes and positive dimensions (or B).")); continue;
     }
     QJsonObject batch; batch.insert("inputs", inputSlots); batch.insert("targets", targetSlots);
     QJsonObject definition; definition.insert("name", name->text().trimmed());
@@ -858,10 +934,12 @@ void MainWindow::createDataset() {
     char error[ErrorCapacity] = {};
     if (!nn_app_create_dataset(application_.get(), idBytes.constData(), versionBytes.constData(),
                               json.constData(), select->isChecked(), error, sizeof(error))) {
-        QMessageBox::critical(this, tr("Dataset creation failed"), QString::fromUtf8(error)); return;
+        formError->setText(QString::fromUtf8(error)); continue;
     }
     refreshAll();
     statusBar()->showMessage(tr("Dataset created; current project saved"), 6000);
+    break;
+    }
 }
 
 void MainWindow::refreshAll() {
@@ -975,6 +1053,21 @@ void MainWindow::refreshInspector() {
     packageRow->setToolTip(1, package && package->description
         ? QString::fromUtf8(package->description) : QString());
     if (package) {
+        char analysisError[ErrorCapacity] = {};
+        const NNInferenceReport *analysis = nn_app_analysis(application_.get(), analysisError,
+                                                            sizeof(analysisError));
+        for (size_t i = 0; analysis && i < nn_inference_count(analysis); ++i) {
+            const NNInferenceResult *result = nn_inference_at(analysis, i);
+            if (!result || result->status != NN_INFERENCE_SUCCESS || !result->dtype ||
+                std::strcmp(result->node_id ? result->node_id : "", node->id) != 0) continue;
+            QStringList dimensions;
+            for (size_t j = 0; j < result->dimension_count; ++j)
+                dimensions.push_back(QString::fromUtf8(result->dimensions[j]));
+            new QTreeWidgetItem(inspector_, {tr("Tensor"),
+                QStringLiteral("%1[%2]").arg(QString::fromUtf8(result->dtype),
+                                               dimensions.join(QStringLiteral(", ")))});
+            break;
+        }
         auto *parameters = new QTreeWidgetItem(inspector_, {tr("Parameters"), QString()});
         parameters->setExpanded(true);
         for (size_t i = 0; i < package->parameter_count; ++i) {
@@ -1088,28 +1181,161 @@ void MainWindow::refreshResources() {
 
 void MainWindow::refreshDiagnostics() {
     diagnostics_->clear();
-    const NNProject *project = nn_app_project(application_.get());
-    if (!project) return;
-    NNInferenceReport *report = nn_infer_project(project);
-    for (size_t i = 0; report && i < nn_inference_count(report); ++i) {
-        const NNInferenceResult *result = nn_inference_at(report, i);
-        if (!result) continue;
-        const QString node = result->node_id ? QString::fromUtf8(result->node_id) : tr("Project");
-        const QString status = diagnosticStatus(result->status);
-        QString detail = result->message ? QString::fromUtf8(result->message) : QString();
-        if (result->dtype) {
-            QStringList dimensions;
-            for (size_t j = 0; j < result->dimension_count; ++j)
-                dimensions.push_back(QString::fromUtf8(result->dimensions[j]));
-            detail += QStringLiteral("  %1[%2]").arg(QString::fromUtf8(result->dtype),
-                                                         dimensions.join(QStringLiteral(", ")));
-        }
-        auto *item = new QTreeWidgetItem(diagnostics_,
-            {QStringLiteral("%1  ·  %2").arg(node, status), detail});
-        item->setForeground(0, result->status == NN_INFERENCE_SUCCESS
-            ? QBrush(QColor("#327450")) : QBrush(QColor("#9a5a26")));
+    QHash<QString, QString> markers;
+    if (!nn_app_project(application_.get())) {
+        scene_->setProblemMarkers(markers);
+        return;
     }
-    nn_inference_free(report);
+    char error[ErrorCapacity] = {};
+    const NNInferenceReport *report = nn_app_analysis(application_.get(), error, sizeof(error));
+    if (!report) {
+        auto *unavailable = new QTreeWidgetItem(diagnostics_,
+            {QStringLiteral("■  Analysis unavailable\n%1").arg(tr("Could not analyze this model."))});
+        unavailable->setForeground(0, QBrush(QColor("#554d79")));
+        auto *technical = new QTreeWidgetItem(unavailable, {tr("Technical details")});
+        new QTreeWidgetItem(technical, {tr("Details: %1").arg(QString::fromUtf8(error))});
+        scene_->setProblemMarkers(markers);
+        return;
+    }
+    struct Problem {
+        QString id, cause, category, label, scope, scopeId, message, source, code;
+        size_t line = 0;
+        NNInferenceStatus status = NN_INFERENCE_SUCCESS;
+        bool context = false;
+    };
+    QVector<Problem> problems;
+    const NNModel *model = nn_app_model(application_.get());
+    QHash<QString, QString> labels;
+    for (size_t i = 0; model && i < nn_model_node_count(model); ++i) {
+        const NNNode *node = nn_model_node_at(model, i);
+        if (node) labels.insert(QString::fromUtf8(node->id),
+            textOr(QString::fromUtf8(node->label), node->id));
+    }
+    auto scopePath = [model, &labels](QString scope) {
+        QStringList parts;
+        QSet<QString> visited;
+        while (!scope.isEmpty() && !visited.contains(scope)) {
+            visited.insert(scope);
+            parts.prepend(labels.value(scope, scope));
+            const QByteArray scopeBytes = scope.toUtf8();
+            const NNNode *owner = nn_model_find_node(model, scopeBytes.constData());
+            scope = owner ? QString::fromUtf8(owner->scope_id ? owner->scope_id : "") : QString();
+        }
+        return parts.isEmpty() ? tr("Root") : parts.join(QStringLiteral(" / "));
+    };
+    for (size_t i = 0; i < nn_inference_count(report); ++i) {
+        const NNInferenceResult *result = nn_inference_at(report, i);
+        if (!result || result->status == NN_INFERENCE_SUCCESS || !result->node_id) continue;
+        const QString id = QString::fromUtf8(result->node_id);
+        const NNNode *node = nn_model_find_node(model, result->node_id);
+        const QString scope = node ? QString::fromUtf8(node->scope_id ? node->scope_id : "") : QString();
+        const char *categoryText = nn_inference_category(result->status);
+        const QString category = QString::fromUtf8(categoryText ? categoryText : "internal");
+        markers.insert(id, category);
+        Problem p;
+        p.id = id;
+        p.cause = QString::fromUtf8(result->cause_node_id ? result->cause_node_id : "");
+        p.category = category;
+        p.label = labels.value(id, id);
+        p.scope = scopePath(scope);
+        p.scopeId = scope;
+        p.message = QString::fromUtf8(result->message ? result->message : "");
+        p.source = QString::fromUtf8(result->source_file ? result->source_file : "");
+        p.code = QString::fromUtf8(result->code ? result->code : "");
+        p.line = result->source_line;
+        p.status = result->status;
+        problems.push_back(p);
+    }
+    if (currentScopeProblems_->isChecked()) {
+        const QString currentScope = scene_->scope();
+        QSet<QString> relevantIds;
+        for (const Problem &p : problems) {
+            if (p.scopeId != currentScope) continue;
+            relevantIds.insert(p.id);
+            if (!p.cause.isEmpty()) relevantIds.insert(p.cause);
+        }
+        QVector<Problem> relevant;
+        relevant.reserve(problems.size());
+        for (Problem p : problems) {
+            if (!relevantIds.contains(p.id)) continue;
+            p.context = p.scopeId != currentScope;
+            relevant.push_back(std::move(p));
+        }
+        problems = std::move(relevant);
+    }
+    auto categoryPresentation = [](const QString &category) {
+        if (category == QStringLiteral("lua-compilation"))
+            return qMakePair(QStringLiteral("L  Lua compilation error"), QColor("#9c3d79"));
+        if (category == QStringLiteral("incomplete"))
+            return qMakePair(QStringLiteral("?  Incomplete"), QColor("#a66a12"));
+        if (category == QStringLiteral("internal"))
+            return qMakePair(QStringLiteral("×  Analysis unavailable"), QColor("#554d79"));
+        return qMakePair(QStringLiteral("!  Model error"), QColor("#b23b35"));
+    };
+    QHash<QString, int> byId;
+    for (int i = 0; i < problems.size(); ++i) byId.insert(problems[i].id, i);
+    QHash<QString, QTreeWidgetItem *> roots;
+    for (const Problem &p : problems) {
+        if (!p.cause.isEmpty() && byId.contains(p.cause)) continue;
+        const auto presentation = categoryPresentation(p.category);
+        const QString summary = p.category == QStringLiteral("internal")
+            ? tr("Could not analyze this model.") : p.message;
+        const QString contextSuffix = p.context ? tr(" · cause context") : QString();
+        const QString displayText = QStringLiteral("%1 · %2%3\n%4: %5\n%6")
+            .arg(presentation.first, p.label, contextSuffix, tr("Scope"), p.scope, summary);
+        auto *root = new QTreeWidgetItem(diagnostics_,
+            {displayText});
+        root->setData(0, IdRole, p.id);
+        root->setForeground(0, QBrush(presentation.second));
+        root->setToolTip(0, displayText);
+        if (!p.source.isEmpty() || p.line || p.category == QStringLiteral("internal")) {
+            auto *technical = new QTreeWidgetItem(root, {tr("Technical details")});
+            if (!p.code.isEmpty()) new QTreeWidgetItem(technical, {tr("%1: %2").arg(tr("Code"), p.code)});
+            if (!p.source.isEmpty()) new QTreeWidgetItem(technical, {tr("%1: %2").arg(tr("Source"),
+                p.line ? QStringLiteral("%1:%2").arg(p.source).arg(p.line) : p.source)});
+            if (p.category == QStringLiteral("internal") && !p.message.isEmpty())
+                new QTreeWidgetItem(technical, {tr("%1: %2").arg(tr("Details"), p.message)});
+        }
+        roots.insert(p.id, root);
+    }
+    for (const Problem &p : problems) {
+        if (p.cause.isEmpty() || !roots.contains(p.cause)) continue;
+        const auto presentation = categoryPresentation(p.category);
+        const QString summary = p.category == QStringLiteral("internal")
+            ? tr("Analysis unavailable for this node.") : p.message;
+        const QString displayText = QStringLiteral("%1 · %2 · %3\n%4: %5\n%6")
+            .arg(presentation.first, p.label, tr("Blocked descendant"),
+                 tr("Scope"), p.scope, summary);
+        auto *child = new QTreeWidgetItem(roots.value(p.cause), {displayText});
+        child->setData(0, IdRole, p.id);
+        child->setForeground(0, QBrush(presentation.second));
+        child->setToolTip(0, displayText);
+        if (p.category == QStringLiteral("internal")) {
+            auto *technical = new QTreeWidgetItem(child, {tr("Technical details")});
+            if (!p.code.isEmpty()) new QTreeWidgetItem(technical, {tr("%1: %2").arg(tr("Code"), p.code)});
+            if (!p.message.isEmpty()) new QTreeWidgetItem(technical,
+                {tr("%1: %2").arg(tr("Details"), p.message)});
+        }
+    }
+    if (problems.isEmpty()) {
+        auto *none = new QTreeWidgetItem(diagnostics_, {currentScopeProblems_->isChecked()
+            ? tr("No problems in this scope") : tr("No model problems")});
+        none->setForeground(0, QBrush(QColor("#58677a")));
+    }
+    scene_->setProblemMarkers(markers);
+}
+
+bool MainWindow::revealNode(const QString &id) {
+    const QByteArray nodeId = id.toUtf8();
+    const NNModel *model = nn_app_model(application_.get());
+    if (!model || !nn_model_find_node(model, nodeId.constData())) return false;
+    currentScopeProblems_->setChecked(false);
+    scene_->revealNode(id);
+    const NNNode *node = nn_model_find_node(nn_app_model(application_.get()), nodeId.constData());
+    const QString scope = QString::fromUtf8(node->scope_id ? node->scope_id : "");
+    const int index = scopeSelector_->findData(scope);
+    if (index >= 0) scopeSelector_->setCurrentIndex(index);
+    return true;
 }
 
 void MainWindow::updateWindowTitle() {

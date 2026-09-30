@@ -34,6 +34,7 @@ classDiagram
     GraphScene --> NNApplication : snapshots / mutations
     NNApplication *-- NNProject
     NNProject *-- NNModel
+    NNApplication *-- NNInferenceReport : lazy semantic analysis
 ```
 
 C application owns active project and validates commands. Qt owns widget state,
@@ -41,3 +42,4 @@ selection, scope navigation and gestures. Snapshots are borrowed only until the
 next C mutation; Qt copies stable IDs when retaining references. Parameter
 widgets follow schema, but C remains final validator. ID-based refresh restores
 selection where entities survive. Failed operations preserve committed state.
+Problem navigation, cause grouping and C report ownership follow diagnostics.md.

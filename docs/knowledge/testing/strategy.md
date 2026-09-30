@@ -25,3 +25,6 @@ shapes, empty/duplicate boundaries, orphan scopes and depth/invocation budgets.
 authors/connects nodes, navigates VAE scopes and captures a committed screenshot.
 The same end-to-end test is part of `just test-ui`. Socket tests verify private
 permissions, existing-path preservation, malformed requests and idle clients.
+Diagnostics gates additionally cover cached reports, Lua compile locations,
+causal propagation, optional error buffers, partial allocation cleanup, text
+ownership, retained authoring forms, severity markers, filters and CLI parity.

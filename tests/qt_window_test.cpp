@@ -11,6 +11,8 @@
 #include <QAction>
 #include <QApplication>
 #include <QLineEdit>
+#include <QCheckBox>
+#include <QLabel>
 #include <QComboBox>
 #include <QPushButton>
 #include <QMessageBox>
@@ -38,6 +40,9 @@ class WindowTest : public QObject {
     Q_OBJECT
 private slots:
     void lifecycleAndInspector();
+    void modelProblemDiagnosticsAndNavigation();
+    void currentScopeRetainsOutsideCauseContext();
+    void retainedLuaValidationFormAndNonblockingRejection();
     void visualResourceAuthoringForms();
     void automationRejectsInvalidScopeAndCapturesCurrentScope();
     void socketOptionRequiresPath();
@@ -110,7 +115,9 @@ void WindowTest::lifecycleAndInspector() {
                 resourcePackage = resources->topLevelItem(1)->child(row);
     QVERIFY(resourcePackage);
     QVERIFY(contrastAgainstWhite(resourcePackage->foreground(0).color()) >= 4.5);
-    QCOMPARE(diagnostics->topLevelItemCount(), 8);
+    for (int i = 0; i < diagnostics->topLevelItemCount(); ++i)
+        QVERIFY(!diagnostics->topLevelItem(i)->text(0).contains(QStringLiteral("Success")));
+    QVERIFY(diagnostics->topLevelItemCount() < 8);
     QVERIFY(scene->nodeItem("dense1"));
 
     // Failed project replacement must keep the active graph and scene.
@@ -134,7 +141,11 @@ void WindowTest::lifecycleAndInspector() {
     QVERIFY(nn_project_dirty(nn_app_project(app)));
 
     // Exact integer text survives beyond the range of Qt's 32-bit spin box.
-    auto *parameters = inspector->topLevelItem(2);
+    QTreeWidgetItem *parameters = nullptr;
+    for (int i = 0; i < inspector->topLevelItemCount(); ++i)
+        if (inspector->topLevelItem(i)->text(0) == QStringLiteral("Parameters"))
+            parameters = inspector->topLevelItem(i);
+    QVERIFY(parameters);
     QLineEdit *outFeatures = nullptr;
     for (int i = 0; i < parameters->childCount(); ++i) {
         auto *row = parameters->child(i);
@@ -180,6 +191,243 @@ void WindowTest::lifecycleAndInspector() {
     QVERIFY(node && std::strcmp(node->label, "Hidden layer") == 0);
     nn_project_close(saved);
     QApplication::setPalette(systemPalette);
+}
+
+void WindowTest::modelProblemDiagnosticsAndNavigation() {
+    NNApplication *app = nn_app_new(NN_SOURCE_DIR "/stereotype-packages/core");
+    QVERIFY(app);
+    char error[512] = {};
+    const QByteArray example = QByteArray(NN_SOURCE_DIR) + "/examples/mnist-mlp";
+    QVERIFY2(nn_app_open(app, example.constData(), error, sizeof(error)), error);
+    QVERIFY2(nn_app_set_parameter_text(app, "dense1", "in_features", "800",
+                                       error, sizeof(error)), error);
+    const NNInferenceReport *report = nn_app_analysis(app, error, sizeof(error));
+    QVERIFY2(report, error);
+    const NNInferenceResult *rootResult = nullptr;
+    const NNInferenceResult *blockedResult = nullptr;
+    for (size_t i = 0; i < nn_inference_count(report); ++i) {
+        const NNInferenceResult *result = nn_inference_at(report, i);
+        if (!result || !result->node_id) continue;
+        if (std::strcmp(result->node_id, "dense1") == 0) rootResult = result;
+        if (std::strcmp(result->node_id, "output") == 0) blockedResult = result;
+    }
+    QVERIFY(rootResult && rootResult->status == NN_INFERENCE_SEMANTIC_ERROR);
+    QVERIFY(blockedResult && blockedResult->status == NN_INFERENCE_UNRESOLVED);
+    QVERIFY(blockedResult->cause_node_id && std::strcmp(blockedResult->cause_node_id, "dense1") == 0);
+    QVERIFY2(nn_app_add_node(app, "flow", "core.subflow-proxy", "0.1.0", "", 20, 20,
+                             error, sizeof(error)), error);
+    QVERIFY2(nn_app_add_node(app, "flow-child", "core.relu", "0.1.0", "flow", 20, 20,
+                             error, sizeof(error)), error);
+
+    MainWindow window(app);
+    auto *scene = window.findChild<GraphScene *>();
+    auto *diagnostics = window.findChild<QTreeWidget *>("diagnostics");
+    auto *filter = window.findChild<QCheckBox *>("currentScopeProblems");
+    QVERIFY(scene && diagnostics && filter);
+    QVERIFY(diagnostics->topLevelItemCount() >= 2);
+    QTreeWidgetItem *root = nullptr;
+    for (int i = 0; i < diagnostics->topLevelItemCount(); ++i)
+        if (diagnostics->topLevelItem(i)->data(0, Qt::UserRole).toString() == QStringLiteral("dense1"))
+            root = diagnostics->topLevelItem(i);
+    QVERIFY(root);
+    QCOMPARE(root->data(0, Qt::UserRole).toString(), QStringLiteral("dense1"));
+    QVERIFY(root->childCount() > 0);
+    QVERIFY(!root->isExpanded());
+    QCOMPARE(scene->nodeItem("dense1")->problemCategory(), QStringLiteral("model"));
+    QCOMPARE(scene->nodeItem("output")->problemCategory(), QStringLiteral("incomplete"));
+    QCOMPARE(diagnostics->columnCount(), 1);
+    QVERIFY(diagnostics->wordWrap());
+    const NNNode *denseNode = nn_model_find_node(nn_app_model(app), "dense1");
+    QVERIFY(denseNode && denseNode->label);
+    const QString denseLabel = QString::fromUtf8(denseNode->label);
+    window.show();
+    QCoreApplication::processEvents();
+    const QString normalCapture = qEnvironmentVariable("NN_PROBLEMS_CAPTURE");
+    if (!normalCapture.isEmpty()) QVERIFY(window.grab().save(normalCapture));
+    window.resize(900, 560);
+    QCoreApplication::processEvents();
+    const QString smallCapture = qEnvironmentVariable("NN_PROBLEMS_CAPTURE_SMALL");
+    if (!smallCapture.isEmpty()) QVERIFY(window.grab().save(smallCapture));
+    const QString fullRow = root->text(0);
+    const QStringList rowLines = fullRow.split('\n');
+    QVERIFY(fullRow.contains(QStringLiteral("Model error")));
+    QVERIFY(fullRow.contains(denseLabel));
+    QVERIFY(rowLines.size() >= 3);
+    QVERIFY(rowLines[1].startsWith(QStringLiteral("Scope:")));
+    QVERIFY(!rowLines[2].trimmed().isEmpty());
+    QCOMPARE(root->toolTip(0), fullRow);
+    const QRect rootRect = diagnostics->visualItemRect(root);
+    QVERIFY(rootRect.isValid());
+    QVERIFY(rootRect.height() >= diagnostics->fontMetrics().lineSpacing() * 3);
+
+    window.findChild<QComboBox *>("scopeSelector")->setCurrentIndex(
+        window.findChild<QComboBox *>("scopeSelector")->findData(QStringLiteral("flow")));
+    filter->setChecked(true);
+    QCoreApplication::processEvents();
+    QVERIFY(diagnostics->topLevelItemCount() > 0);
+    for (int i = 0; i < diagnostics->topLevelItemCount(); ++i) {
+        const QString id = diagnostics->topLevelItem(i)->data(0, Qt::UserRole).toString();
+        QVERIFY(!id.isEmpty());
+        QVERIFY(id != QStringLiteral("dense1"));
+    }
+
+    filter->setChecked(false);
+    // Problem rows share the automation reveal path and preserve copied stable IDs.
+    root = nullptr;
+    for (int i = 0; i < diagnostics->topLevelItemCount(); ++i)
+        if (diagnostics->topLevelItem(i)->data(0, Qt::UserRole).toString() == QStringLiteral("dense1"))
+            root = diagnostics->topLevelItem(i);
+    QVERIFY(root);
+    root->setExpanded(true);
+    diagnostics->itemClicked(root, 0);
+    QTRY_COMPARE(scene->scope(), QString());
+    QTRY_COMPARE(scene->selectedNodeId(), QStringLiteral("dense1"));
+}
+
+void WindowTest::retainedLuaValidationFormAndNonblockingRejection() {
+    QTemporaryDir temporary;
+    QVERIFY(temporary.isValid());
+    NNApplication *app = nn_app_new(NN_SOURCE_DIR "/stereotype-packages/core");
+    QVERIFY(app);
+    char error[512] = {};
+    const QByteArray parent = temporary.path().toUtf8();
+    QVERIFY2(nn_app_create(app, parent.constData(), "lua-retained", "Lua retained", false,
+                           error, sizeof(error)), error);
+    MainWindow window(app);
+    QAction *action = nullptr;
+    for (QAction *candidate : window.findChildren<QAction *>())
+        if (candidate->text() == QString::fromUtf8("Create stereotype…")) action = candidate;
+    QVERIFY(action);
+    QTimer::singleShot(0, &window, [&window] {
+        auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+        QVERIFY(dialog);
+        dialog->findChild<QLineEdit *>("stereotypeId")->setText("bad.lua");
+        dialog->findChild<QLineEdit *>("stereotypeVersion")->setText("1.0.0");
+        dialog->findChild<QLineEdit *>("stereotypeName")->setText("Malformed Lua");
+        dialog->findChild<QPlainTextEdit *>("stereotypeLua")->setPlainText("return function(");
+        QTimer::singleShot(0, dialog, [dialog] {
+            auto *buttons = dialog->findChild<QDialogButtonBox *>();
+            buttons->button(QDialogButtonBox::Save)->click();
+            QTimer::singleShot(0, dialog, [dialog] {
+                QVERIFY(dialog->isVisible());
+                QCOMPARE(dialog->findChild<QLineEdit *>("stereotypeId")->text(), QStringLiteral("bad.lua"));
+                auto *luaError = dialog->findChild<QLabel *>("stereotypeLuaError");
+                QVERIFY(!luaError->text().isEmpty());
+                QVERIFY(!dialog->findChild<QPlainTextEdit *>("stereotypeLua")->extraSelections().isEmpty());
+                dialog->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Cancel)->click();
+            });
+        });
+    });
+    action->trigger();
+    QVERIFY(!nn_catalog_find(nn_project_catalog(nn_app_project(app)), "bad.lua", "1.0.0"));
+
+    QAction *datasetAction = nullptr;
+    for (QAction *candidate : window.findChildren<QAction *>())
+        if (candidate->text() == QString::fromUtf8("Create dataset…")) datasetAction = candidate;
+    QVERIFY(datasetAction);
+    QTimer::singleShot(0, &window, [&window] {
+        auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+        QVERIFY(dialog);
+        dialog->findChild<QLineEdit *>("datasetId")->setText("retained.dataset");
+        dialog->findChild<QLineEdit *>("datasetVersion")->setText("1.0.0");
+        QTimer::singleShot(0, dialog, [dialog] {
+            dialog->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Save)->click();
+            QTimer::singleShot(0, dialog, [dialog] {
+                QVERIFY(dialog->isVisible());
+                QCOMPARE(dialog->findChild<QLineEdit *>("datasetId")->text(),
+                         QStringLiteral("retained.dataset"));
+                QVERIFY(!dialog->findChild<QLabel *>("datasetError")->text().isEmpty());
+                dialog->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Cancel)->click();
+            });
+        });
+    });
+    datasetAction->trigger();
+    QVERIFY(!nn_project_dataset_count(nn_app_project(app)));
+
+    auto *scene = window.findChild<GraphScene *>();
+    QVERIFY(scene);
+    scene->errorOccurred(QStringLiteral("Cannot connect nodes: Target input is occupied."));
+    QCoreApplication::processEvents();
+    QMessageBox *rejection = nullptr;
+    for (QMessageBox *candidate : window.findChildren<QMessageBox *>())
+        if (candidate->isVisible() && candidate->text().startsWith(QStringLiteral("Cannot connect nodes:")))
+            rejection = candidate;
+    QVERIFY(rejection);
+    QVERIFY(!rejection->isModal());
+    rejection->close();
+    window.close();
+}
+
+void WindowTest::currentScopeRetainsOutsideCauseContext() {
+    NNApplication *app = nn_app_new(NN_SOURCE_DIR "/stereotype-packages/core");
+    QVERIFY(app);
+    char error[512] = {};
+    const QByteArray project = QByteArray(NN_SOURCE_DIR) + "/examples/mnist-vae";
+    QVERIFY2(nn_app_open(app, project.constData(), error, sizeof(error)), error);
+    QVERIFY2(nn_app_set_parameter_text(app, "mean", "out_features", "31",
+                                       error, sizeof(error)), error);
+    const NNInferenceReport *report = nn_app_analysis(app, error, sizeof(error));
+    QVERIFY2(report, error);
+
+    QString targetId, targetScope, causeId, causeScope;
+    for (size_t i = 0; i < nn_inference_count(report); ++i) {
+        const NNInferenceResult *result = nn_inference_at(report, i);
+        if (!result || !result->node_id || !result->cause_node_id || !*result->cause_node_id) continue;
+        const NNNode *target = nn_model_find_node(nn_app_model(app), result->node_id);
+        const NNNode *cause = nn_model_find_node(nn_app_model(app), result->cause_node_id);
+        if (!target || !cause) continue;
+        const QString targetScopeId = QString::fromUtf8(target->scope_id ? target->scope_id : "");
+        const QString causeScopeId = QString::fromUtf8(cause->scope_id ? cause->scope_id : "");
+        if (targetScopeId == causeScopeId) continue;
+        const NNInferenceResult *root = nullptr;
+        for (size_t j = 0; j < nn_inference_count(report); ++j) {
+            const NNInferenceResult *candidate = nn_inference_at(report, j);
+            if (candidate && candidate->node_id &&
+                std::strcmp(candidate->node_id, result->cause_node_id) == 0) root = candidate;
+        }
+        if (!root || root->cause_node_id ||
+            std::strcmp(nn_inference_category(root->status), "model") != 0) continue;
+        targetId = QString::fromUtf8(result->node_id);
+        targetScope = targetScopeId;
+        causeId = QString::fromUtf8(result->cause_node_id);
+        causeScope = causeScopeId;
+        break;
+    }
+    QVERIFY(!targetId.isEmpty());
+    QVERIFY(targetScope != causeScope);
+
+    MainWindow window(app);
+    auto *scene = window.findChild<GraphScene *>();
+    auto *diagnostics = window.findChild<QTreeWidget *>("diagnostics");
+    auto *filter = window.findChild<QCheckBox *>("currentScopeProblems");
+    auto *scopeSelector = window.findChild<QComboBox *>("scopeSelector");
+    QVERIFY(scene && diagnostics && filter && scopeSelector);
+    const int targetIndex = scopeSelector->findData(targetScope);
+    QVERIFY(targetIndex >= 0);
+    scopeSelector->setCurrentIndex(targetIndex);
+    filter->setChecked(true);
+    QCoreApplication::processEvents();
+
+    QTreeWidgetItem *causeItem = nullptr;
+    for (int i = 0; i < diagnostics->topLevelItemCount(); ++i)
+        if (diagnostics->topLevelItem(i)->data(0, Qt::UserRole).toString() == causeId)
+            causeItem = diagnostics->topLevelItem(i);
+    QVERIFY(causeItem);
+    QVERIFY(causeItem->text(0).contains(QStringLiteral("cause context"), Qt::CaseInsensitive));
+    QVERIFY(causeItem->text(0).contains(QStringLiteral("Model error")));
+    bool hasCurrentBlockedNode = false;
+    for (int i = 0; i < causeItem->childCount(); ++i)
+        if (causeItem->child(i)->data(0, Qt::UserRole).toString() == targetId)
+            hasCurrentBlockedNode = true;
+    QVERIFY(hasCurrentBlockedNode);
+
+    const int causeIndex = scopeSelector->findData(causeScope);
+    QVERIFY(causeIndex >= 0);
+    scopeSelector->setCurrentIndex(causeIndex);
+    QCoreApplication::processEvents();
+    NodeItem *causeNode = scene->nodeItem(causeId);
+    QVERIFY(causeNode);
+    QCOMPARE(causeNode->problemCategory(), QStringLiteral("model"));
 }
 
 void WindowTest::visualResourceAuthoringForms() {
@@ -411,6 +659,20 @@ void WindowTest::automationRejectsInvalidScopeAndCapturesCurrentScope() {
     QCOMPARE(captured.first, 0);
     QVERIFY(QFileInfo::exists(screenshot));
     QCOMPARE(inspectScope(), QStringLiteral("flow"));
+
+    const auto unknownReveal = runCli({"--socket", socketPath, "ui.reveal", "{\"id\":\"missing\"}"});
+    QVERIFY(unknownReveal.first != 0);
+    QCOMPARE(inspectScope(), QStringLiteral("flow"));
+    const auto revealRootNode = runCli({"--socket", socketPath, "ui.reveal", "{\"id\":\"flow\"}"});
+    QCOMPARE(revealRootNode.first, 0);
+    QCOMPARE(inspectScope(), QString());
+    auto *scene = window.findChild<GraphScene *>();
+    QVERIFY(scene);
+    QTRY_COMPARE(scene->selectedNodeId(), QStringLiteral("flow"));
+    const auto revealChild = runCli({"--socket", socketPath, "ui.reveal", "{\"id\":\"child\"}"});
+    QCOMPARE(revealChild.first, 0);
+    QCOMPARE(inspectScope(), QStringLiteral("flow"));
+    QTRY_COMPARE(scene->selectedNodeId(), QStringLiteral("child"));
 
     const auto enterEncoder = runCli({"--socket", socketPath, "ui.scope", "{\"id\":\"encoder\"}"});
     QCOMPARE(enterEncoder.first, 0);

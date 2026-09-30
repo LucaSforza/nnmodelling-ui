@@ -28,6 +28,8 @@ public:
     QString selectedNodeId() const;
     NodeItem *nodeItem(const QString &id) const;
     EdgeItem *edgeItem(const QString &id) const;
+    void setProblemMarkers(const QHash<QString, QString> &categories);
+    void revealNode(const QString &id);
 
 signals:
     void modelChanged();
@@ -56,6 +58,7 @@ private:
     QString scopeId_;
     QHash<QString, NodeItem *> nodes_;
     QHash<QString, EdgeItem *> edges_;
+    QHash<QString, QString> problemCategories_;
     PortItem *draftSource_ = nullptr;
     QGraphicsPathItem *draftPath_ = nullptr;
     bool refreshing_ = false;

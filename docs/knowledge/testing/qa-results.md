@@ -89,3 +89,62 @@ Post-removal verification:
 These are automated regression checks for source cleanup; no new manual desktop
 or visual review was performed. The visible review above is prior Qt migration
 evidence, not a newly repeated check.
+
+## Diagnostics and common-helper visual review — 2026-09-30
+
+The right panel now shows problems rather than successful shape rows. Native
+Wayland captures exercised isolated VAE copies with a mismatched Gaussian head,
+malformed project-owned Lua, a runtime exception, and a missing dataset binding.
+Root causes are grouped first, with blocked descendants collapsed. The syntax,
+semantic, Incomplete and internal classes have different text/glyphs/colors.
+Runtime exception text is hidden under Technical details. Selecting/revealing
+mean in the encoder shows float32 [B,32] in the inspector, not in the problem list.
+
+Initial review found unreadable two-column problem rows and repeated independent
+warnings for uninvoked blocked children. The final presentation uses full-width
+wrapping rows, and those children inherit the owner root cause. The delegate
+also reserves the root tree indentation when sizing text so the actual Lua
+compiler reason is not elided. Review covered normal native desktop rendering
+and the 900x560 offscreen minimum, with scrolling/toolbar overflow at small size.
+
+Local evidence (temporary artifacts, not project assets):
+
+* `/tmp/opencode/nn-diagnostics-semantic-wayland.png`
+* `/tmp/opencode/nn-diagnostics-lua-runtime-wayland.png`
+* `/tmp/opencode/nn-diagnostics-incomplete-wayland.png`
+* `/tmp/opencode/nn-diagnostics-inspector-wayland.png`
+* `/tmp/opencode/nn-problems-normal.png`
+* `/tmp/opencode/nn-problems-small.png`
+
+Visible launches and reveal/selection/diagnostics/screenshot/close commands exited
+successfully with no platform errors. Normal captures are 2000x1250 desktop
+pixels, small capture is 900x560 offscreen. This is not exhaustive manual testing
+of every desktop dialog. Automated retained-form and rejection-dialog regressions
+cover those error interactions. Core reference package assets remain unchanged.
+
+Final automated verification after the Lua output-extraction and subflow-owner
+cleanup changes:
+
+* `just test`: exit 0, 10/10 C tests, including utilities and allocation failures.
+* `just test-ui`: exit 0, builds the Qt client and passes 3/3 GUI tests including
+  real CLI/UI diagnostics, causal output and reveal navigation.
+* `just build`: exit 0, C11 core/CLI and optional Qt frontend build offline.
+* Clang 22.1.8 ASan/UBSan build in `/tmp/opencode/nn-diagnostics-asan`, with
+  `ASAN_OPTIONS=detect_leaks=1 ctest --test-dir /tmp/opencode/nn-diagnostics-asan
+  --output-on-failure -L core`: exit 0, 10/10; no sanitizer/leak diagnostics.
+  GCC sanitizer linking failed in workers because its libasan/libubsan are
+  missing; the principal's Clang runtime resolves this tooling limitation.
+* `git diff --check`: exit 0.
+
+The deterministic one-failure-at-a-time allocator sweeps covered 5,056 calls
+for successful VAE analysis, 1,102 for project replacement, seven for node
+creation, ten for diagnostics serialization and 15 for snapshots. Failed
+mutations preserve prior project, dirty state and cached analysis. Reports
+either fail explicitly or contain well-formed outcomes; Lua may recover from a
+single allocator failure. These sweeps and runtime-budget tests do not establish
+exhaustive coverage of every persistent system-wide OOM scenario. Adversarial
+metatable result lookup is tested; protected result extraction and callback
+owner cleanup were additionally reviewed for Lua longjmp safety.
+
+SDS source/build dependencies are absent. No backend, training or model compiler
+was introduced. All user-visible new text is English.

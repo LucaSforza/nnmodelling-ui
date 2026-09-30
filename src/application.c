@@ -1,4 +1,5 @@
 #include "application.h"
+#include "utils.h"
 
 #include "yyjson.h"
 #include "inference.h"
@@ -14,26 +15,14 @@
 struct NNApplication {
     char *core_root;
     NNProject *project;
+    NNInferenceReport *analysis;
 };
 
-static void set_error(char *error, size_t capacity, const char *message)
+static void invalidate_analysis(NNApplication *app)
 {
-    if (error && capacity) snprintf(error, capacity, "%s", message ? message : "");
-}
-
-static bool fail(char *error, size_t capacity, const char *message)
-{
-    set_error(error, capacity, message);
-    return false;
-}
-
-static char *copy_text(const char *text)
-{
-    if (!text) return NULL;
-    size_t size = strlen(text) + 1;
-    char *copy = malloc(size);
-    if (copy) memcpy(copy, text, size);
-    return copy;
+    if (!app) return;
+    nn_inference_free(app->analysis);
+    app->analysis = NULL;
 }
 
 static bool kind_is(const NNPackage *package, const char *kind)
@@ -83,35 +72,35 @@ static bool valid_json_value(const NNValue *value, unsigned depth)
 static bool valid_value(const NNParameterDef *definition, const NNValue *value,
                         char *error, size_t capacity)
 {
-    if (!definition || !value) return fail(error, capacity, "invalid parameter");
+    if (!definition || !value) return nn_fail(error, capacity, "invalid parameter");
     if (!strcmp(definition->type, "boolean")) {
-        if (value->type != NN_VALUE_BOOL) return fail(error, capacity, "parameter requires a boolean");
+        if (value->type != NN_VALUE_BOOL) return nn_fail(error, capacity, "parameter requires a boolean");
     } else if (!strcmp(definition->type, "integer")) {
-        if (value->type != NN_VALUE_INT) return fail(error, capacity, "parameter requires an integer");
+        if (value->type != NN_VALUE_INT) return nn_fail(error, capacity, "parameter requires an integer");
         if (definition->has_minimum && (double)value->as.integer < definition->minimum)
-            return fail(error, capacity, "integer is below minimum");
+            return nn_fail(error, capacity, "integer is below minimum");
     } else if (!strcmp(definition->type, "number")) {
         if (value->type != NN_VALUE_REAL || !isfinite(value->as.real))
-            return fail(error, capacity, "parameter requires a finite number");
+            return nn_fail(error, capacity, "parameter requires a finite number");
         if (definition->has_minimum && value->as.real < definition->minimum)
-            return fail(error, capacity, "number is below minimum");
+            return nn_fail(error, capacity, "number is below minimum");
     } else if (!strcmp(definition->type, "string") ||
                !strcmp(definition->type, "dtype")) {
         if (value->type != NN_VALUE_STRING || !value->as.string)
-            return fail(error, capacity, "parameter requires a string");
+            return nn_fail(error, capacity, "parameter requires a string");
         if (definition->choice_count) {
             bool found = false;
             for (size_t i = 0; i < definition->choice_count; ++i)
                 if (!strcmp(value->as.string, definition->choices[i])) found = true;
-            if (!found) return fail(error, capacity, "value is not an allowed choice");
+            if (!found) return nn_fail(error, capacity, "value is not an allowed choice");
         }
     } else if (!strcmp(definition->type, "json")) {
         if (value->type != NN_VALUE_ARRAY || !valid_json_value(value, 0))
-            return fail(error, capacity, "parameter requires a JSON array");
+            return nn_fail(error, capacity, "parameter requires a JSON array");
     } else if (!strcmp(definition->type, "stereotype")) {
-        return fail(error, capacity, "object-valued stereotype parameters are not supported by native model");
-    } else return fail(error, capacity, "unsupported parameter type");
-    set_error(error, capacity, "");
+        return nn_fail(error, capacity, "object-valued stereotype parameters are not supported by native model");
+    } else return nn_fail(error, capacity, "unsupported parameter type");
+    nn_error_set(error, capacity, "");
     return true;
 }
 
@@ -132,7 +121,7 @@ static bool parse_json_value(const yyjson_val *source, NNValue *value, unsigned 
         if (!isfinite(value->as.real)) return false;
     } else if (yyjson_is_str(source)) {
         value->type = NN_VALUE_STRING;
-        value->as.string = copy_text(yyjson_get_str(source));
+        value->as.string = nn_text_copy(yyjson_get_str(source));
         return value->as.string != NULL;
     } else if (yyjson_is_arr(source)) {
         size_t count = yyjson_arr_size(source);
@@ -158,10 +147,10 @@ static bool parse_parameter_text(const NNParameterDef *definition, const char *t
                                  NNValue *value, char *error, size_t capacity)
 {
     memset(value, 0, sizeof(*value));
-    if (!definition || !text) return fail(error, capacity, "invalid parameter text");
+    if (!definition || !text) return nn_fail(error, capacity, "invalid parameter text");
     if (!strcmp(definition->type, "boolean")) {
         if (strcmp(text, "true") && strcmp(text, "false"))
-            return fail(error, capacity, "boolean must be true or false");
+            return nn_fail(error, capacity, "boolean must be true or false");
         value->type = NN_VALUE_BOOL;
         value->as.boolean = !strcmp(text, "true");
     } else if (!strcmp(definition->type, "integer")) {
@@ -169,14 +158,14 @@ static bool parse_parameter_text(const NNParameterDef *definition, const char *t
         errno = 0;
         value->type = NN_VALUE_INT;
         value->as.integer = strtoll(text, &end, 10);
-        if (!*text || !end || *end || errno == ERANGE) return fail(error, capacity, "invalid integer");
+        if (!*text || !end || *end || errno == ERANGE) return nn_fail(error, capacity, "invalid integer");
     } else if (!strcmp(definition->type, "number")) {
         char *end = NULL;
         errno = 0;
         value->type = NN_VALUE_REAL;
         value->as.real = strtod(text, &end);
         if (!*text || !end || *end || errno == ERANGE || !isfinite(value->as.real))
-            return fail(error, capacity, "invalid finite number");
+            return nn_fail(error, capacity, "invalid finite number");
     } else if (!strcmp(definition->type, "string") ||
                !strcmp(definition->type, "dtype")) {
         value->type = NN_VALUE_STRING;
@@ -184,15 +173,15 @@ static bool parse_parameter_text(const NNParameterDef *definition, const char *t
     } else if (!strcmp(definition->type, "json")) {
         yyjson_doc *document = yyjson_read_opts((char *)(uintptr_t)text, strlen(text), 0,
                                                  NULL, NULL);
-        if (!document) return fail(error, capacity, "invalid JSON array");
+        if (!document) return nn_fail(error, capacity, "invalid JSON array");
         const yyjson_val *root = yyjson_doc_get_root(document);
         bool okay = yyjson_is_arr(root) && parse_json_value(root, value, 0);
         yyjson_doc_free(document);
         if (!okay) {
             nn_value_dispose(value);
-            return fail(error, capacity, "parameter requires a JSON array of primitive values");
+            return nn_fail(error, capacity, "parameter requires a JSON array of primitive values");
         }
-    } else return fail(error, capacity, "unsupported parameter type");
+    } else return nn_fail(error, capacity, "unsupported parameter type");
     if (!valid_value(definition, value, error, capacity)) {
         if (value->type == NN_VALUE_ARRAY) nn_value_dispose(value);
         return false;
@@ -266,7 +255,7 @@ static bool add_default(NNApplication *app, NNModel *model, const char *node_id,
 {
     NNValue value = {0};
     if (!default_value(app, package, definition, &value))
-        return fail(error, capacity, "cannot construct parameter default");
+        return nn_fail(error, capacity, "cannot construct parameter default");
     if (!valid_value(definition, &value, error, capacity)) {
         if (definition->has_default && value.type == NN_VALUE_ARRAY) nn_value_dispose(&value);
         return false;
@@ -282,7 +271,7 @@ NNApplication *nn_app_new(const char *core_root)
     if (!core_root || !*core_root) return NULL;
     NNApplication *app = calloc(1, sizeof(*app));
     if (!app) return NULL;
-    app->core_root = copy_text(core_root);
+    app->core_root = nn_text_copy(core_root);
     if (!app->core_root) { free(app); return NULL; }
     return app;
 }
@@ -290,6 +279,7 @@ NNApplication *nn_app_new(const char *core_root)
 void nn_app_free(NNApplication *app)
 {
     if (!app) return;
+    invalidate_analysis(app);
     nn_project_close(app->project);
     free(app->core_root);
     free(app);
@@ -297,27 +287,29 @@ void nn_app_free(NNApplication *app)
 
 bool nn_app_open(NNApplication *app, const char *directory, char *error, size_t cap)
 {
-    if (!app || !directory || !*directory) return fail(error, cap, "invalid project path");
+    if (!app || !directory || !*directory) return nn_fail(error, cap, "invalid project path");
     NNProject *staged = nn_project_open(directory, app->core_root, error, cap);
     if (!staged) return false;
     NNProject *old = app->project;
     app->project = staged;
+    invalidate_analysis(app);
     nn_project_close(old);
-    set_error(error, cap, "");
+    nn_error_set(error, cap, "");
     return true;
 }
 
 bool nn_app_create(NNApplication *app, const char *parent, const char *id,
                    const char *name, bool mnist, char *error, size_t cap)
 {
-    if (!app) return fail(error, cap, "application is null");
+    if (!app) return nn_fail(error, cap, "application is null");
     NNProject *staged = nn_project_create(parent, id, name, mnist,
                                           app->core_root, error, cap);
     if (!staged) return false;
     NNProject *old = app->project;
     app->project = staged;
+    invalidate_analysis(app);
     nn_project_close(old);
-    set_error(error, cap, "");
+    nn_error_set(error, cap, "");
     return true;
 }
 
@@ -325,10 +317,10 @@ bool nn_app_create_stereotype(NNApplication *app, const char *id, const char *ve
                               const char *definition_json, const char *inference_lua,
                               const char *dependencies_json, char *error, size_t cap)
 {
-    set_error(error, cap, "");
-    if (!app || !app->project) return fail(error, cap, "no active project");
+    nn_error_set(error, cap, "");
+    if (!app || !app->project) return nn_fail(error, cap, "no active project");
     if (!id || !version || !definition_json || !inference_lua || strlen(inference_lua) > 1024 * 1024)
-        return fail(error, cap, "invalid stereotype payload");
+        return nn_fail(error, cap, "invalid stereotype payload");
     if (!nn_inference_validate_source(inference_lua, error, cap)) return false;
     yyjson_doc *definition = yyjson_read(definition_json, strlen(definition_json), 0);
     yyjson_doc *dependencies = dependencies_json ? yyjson_read(dependencies_json, strlen(dependencies_json), 0) : NULL;
@@ -336,7 +328,7 @@ bool nn_app_create_stereotype(NNApplication *app, const char *id, const char *ve
         (dependencies_json && (!dependencies || !yyjson_is_obj(yyjson_doc_get_root(dependencies))))) {
         if (definition) yyjson_doc_free(definition);
         if (dependencies) yyjson_doc_free(dependencies);
-        return fail(error, cap, "definition or dependencies must be JSON objects");
+        return nn_fail(error, cap, "definition or dependencies must be JSON objects");
     }
     yyjson_val *root = yyjson_doc_get_root(definition);
     const char *kind = yyjson_get_str(yyjson_obj_get(root, "kind"));
@@ -394,10 +386,10 @@ bool nn_app_create_stereotype(NNApplication *app, const char *id, const char *ve
         }
     }
     yyjson_doc_free(definition); if (dependencies) yyjson_doc_free(dependencies);
-    if (!valid) return fail(error, cap, "invalid stereotype schema, parameter, type or position");
+    if (!valid) return nn_fail(error, cap, "invalid stereotype schema, parameter, type or position");
     bool okay = nn_project_create_stereotype(app->project, id, version, definition_json,
                                              inference_lua, dependencies_json, error, cap);
-    if (okay) set_error(error, cap, "");
+    if (okay) { invalidate_analysis(app); nn_error_set(error, cap, ""); }
     return okay;
 }
 
@@ -405,11 +397,11 @@ bool nn_app_create_dataset(NNApplication *app, const char *id, const char *versi
                            const char *definition_json, bool select,
                            char *error, size_t cap)
 {
-    set_error(error, cap, "");
-    if (!app || !app->project) return fail(error, cap, "no active project");
-    if (!id || !version || !definition_json) return fail(error, cap, "invalid dataset payload");
+    nn_error_set(error, cap, "");
+    if (!app || !app->project) return nn_fail(error, cap, "no active project");
+    if (!id || !version || !definition_json) return nn_fail(error, cap, "invalid dataset payload");
     yyjson_doc *doc = yyjson_read(definition_json, strlen(definition_json), 0);
-    if (!doc || !yyjson_is_obj(yyjson_doc_get_root(doc))) { if (doc) yyjson_doc_free(doc); return fail(error, cap, "dataset definition must be an object"); }
+    if (!doc || !yyjson_is_obj(yyjson_doc_get_root(doc))) { if (doc) yyjson_doc_free(doc); return nn_fail(error, cap, "dataset definition must be an object"); }
     yyjson_val *root = yyjson_doc_get_root(doc), *batch = yyjson_obj_get(root, "batch");
     const char *dtype_names[] = {"float16","bfloat16","float32","float64","int8","int16","int32","int64","uint8","bool"};
     bool valid = yyjson_is_obj(batch);
@@ -436,45 +428,48 @@ bool nn_app_create_dataset(NNApplication *app, const char *id, const char *versi
         }
     }
     yyjson_doc_free(doc);
-    if (!valid) return fail(error, cap, "invalid dataset slots, dtype or shape");
+    if (!valid) return nn_fail(error, cap, "invalid dataset slots, dtype or shape");
     bool okay = nn_project_create_dataset(app->project, id, version, definition_json, select, error, cap);
-    if (okay) set_error(error, cap, "");
+    if (okay) { invalidate_analysis(app); nn_error_set(error, cap, ""); }
     return okay;
 }
 
 bool nn_app_select_dataset(NNApplication *app, const char *id, const char *version,
                            char *error, size_t cap)
 {
-    set_error(error, cap, "");
-    if (!app || !app->project) return fail(error, cap, "no active project");
-    return nn_project_select_dataset(app->project, id, version, error, cap);
+    nn_error_set(error, cap, "");
+    if (!app || !app->project) return nn_fail(error, cap, "no active project");
+    bool okay = nn_project_select_dataset(app->project, id, version, error, cap);
+    if (okay) invalidate_analysis(app);
+    return okay;
 }
 
 bool nn_app_create_vae(NNApplication *app, const char *parent, const char *id,
                        const char *name, char *error, size_t cap)
 {
-    if (!app) return fail(error, cap, "application is null");
+    if (!app) return nn_fail(error, cap, "application is null");
     NNProject *staged = NULL;
     if (!nn_project_create_vae(parent, id, name, app->core_root, &staged, error, cap)) return false;
-    NNProject *old = app->project; app->project = staged; nn_project_close(old);
-    set_error(error, cap, ""); return true;
+    NNProject *old = app->project; app->project = staged; invalidate_analysis(app); nn_project_close(old);
+    nn_error_set(error, cap, ""); return true;
 }
 
 bool nn_app_save(NNApplication *app, char *error, size_t cap)
 {
-    if (!app || !app->project) return fail(error, cap, "no active project");
+    if (!app || !app->project) return nn_fail(error, cap, "no active project");
     return nn_project_save(app->project, error, cap);
 }
 
 bool nn_app_close(NNApplication *app, bool discard, char *error, size_t cap)
 {
-    if (!app) return fail(error, cap, "application is null");
-    if (!app->project) { set_error(error, cap, ""); return true; }
+    if (!app) return nn_fail(error, cap, "application is null");
+    if (!app->project) { nn_error_set(error, cap, ""); return true; }
     if (nn_project_dirty(app->project) && !discard &&
         !nn_project_save(app->project, error, cap)) return false;
     nn_project_close(app->project);
     app->project = NULL;
-    set_error(error, cap, "");
+    invalidate_analysis(app);
+    nn_error_set(error, cap, "");
     return true;
 }
 
@@ -488,26 +483,43 @@ const NNModel *nn_app_model(const NNApplication *app)
     return app && app->project ? nn_project_model(app->project) : NULL;
 }
 
+const NNInferenceReport *nn_app_analysis(NNApplication *app, char *error, size_t cap)
+{
+    if (!app || !app->project) {
+        nn_fail(error, cap, "no active project");
+        return NULL;
+    }
+    if (!app->analysis) {
+        app->analysis = nn_infer_project(app->project);
+        if (!app->analysis) {
+            nn_fail(error, cap, "unable to construct project analysis report");
+            return NULL;
+        }
+    }
+    nn_error_set(error, cap, "");
+    return app->analysis;
+}
+
 bool nn_app_add_node(NNApplication *app, const char *id, const char *package_id,
                      const char *version, const char *scope, double x, double y,
                      char *error, size_t cap)
 {
-    if (!app || !app->project) return fail(error, cap, "no active project");
+    if (!app || !app->project) return nn_fail(error, cap, "no active project");
     if (!id || !*id || !package_id || !version || !scope || !isfinite(x) || !isfinite(y))
-        return fail(error, cap, "invalid node fields or non-finite position");
+        return nn_fail(error, cap, "invalid node fields or non-finite position");
     const NNPackage *package = nn_catalog_find(nn_project_catalog(app->project),
                                                 package_id, version);
-    if (!package) return fail(error, cap, "package is not active in this project");
+    if (!package) return nn_fail(error, cap, "package is not active in this project");
     NNModel *model = nn_project_model(app->project);
     if (*scope) {
         const NNNode *owner = nn_model_find_node(model, scope);
         if (!owner || !kind_is(find_package(app, owner), "subflow"))
-            return fail(error, cap, "scope must name an existing subflow");
+            return nn_fail(error, cap, "scope must name an existing subflow");
     }
     char local_error[256] = "";
     if (!nn_model_add_node(model, id, package->name, package->id, package->version,
                            scope, x, y, local_error, sizeof(local_error)))
-        return fail(error, cap, local_error);
+        return nn_fail(error, cap, local_error);
     for (size_t i = 0; i < package->parameter_count; ++i) {
         const NNParameterDef *definition = &package->parameters[i];
         /* Preserve the existing editor behavior for object-valued defaults. */
@@ -520,62 +532,49 @@ bool nn_app_add_node(NNApplication *app, const char *id, const char *package_id,
         }
     }
     nn_project_mark_dirty(app->project);
-    set_error(error, cap, "");
+    invalidate_analysis(app);
+    nn_error_set(error, cap, "");
     return true;
 }
 
 bool nn_app_remove_node(NNApplication *app, const char *id, char *error, size_t cap)
 {
-    if (!app || !app->project || !id) return fail(error, cap, "no active project or invalid node ID");
+    if (!app || !app->project || !id) return nn_fail(error, cap, "no active project or invalid node ID");
     NNModel *model = nn_project_model(app->project);
     const NNNode *node = nn_model_find_node(model, id);
-    if (!node) return fail(error, cap, "node not found");
+    if (!node) return nn_fail(error, cap, "node not found");
     if (kind_is(find_package(app, node), "subflow")) {
         for (size_t i = 0; i < nn_model_node_count(model); ++i) {
             const NNNode *child = nn_model_node_at(model, i);
             if (!strcmp(child->scope_id, id))
-                return fail(error, cap, "subflow still contains nodes");
+                return nn_fail(error, cap, "subflow still contains nodes");
         }
     }
     if (!nn_model_remove_node(model, id, error, cap)) return false;
     nn_project_mark_dirty(app->project);
-    set_error(error, cap, "");
+    invalidate_analysis(app);
+    nn_error_set(error, cap, "");
     return true;
 }
 
 bool nn_app_move_node(NNApplication *app, const char *id, double x, double y,
                       char *error, size_t cap)
 {
-    if (!app || !app->project) return fail(error, cap, "no active project");
-    if (!isfinite(x) || !isfinite(y)) return fail(error, cap, "position must be finite");
+    if (!app || !app->project) return nn_fail(error, cap, "no active project");
+    if (!isfinite(x) || !isfinite(y)) return nn_fail(error, cap, "position must be finite");
     if (!nn_model_move_node(nn_project_model(app->project), id, x, y, error, cap)) return false;
     nn_project_mark_dirty(app->project);
-    set_error(error, cap, "");
+    nn_error_set(error, cap, "");
     return true;
 }
 
 bool nn_app_rename_node(NNApplication *app, const char *id, const char *label,
                         char *error, size_t cap)
 {
-    if (!app || !app->project) return fail(error, cap, "no active project");
+    if (!app || !app->project) return nn_fail(error, cap, "no active project");
     if (!nn_model_rename_node(nn_project_model(app->project), id, label, error, cap)) return false;
     nn_project_mark_dirty(app->project);
-    set_error(error, cap, "");
-    return true;
-}
-
-static bool join_suffix(const char *handle, size_t *suffix)
-{
-    if (!handle || strncmp(handle, "in-", 3) || !handle[3] || handle[3] == '0') return false;
-    size_t number = 0;
-    for (const char *p = handle + 3; *p; ++p) {
-        if (*p < '0' || *p > '9') return false;
-        unsigned digit = (unsigned)(*p - '0');
-        if (number > (SIZE_MAX - digit) / 10) return false;
-        number = number * 10 + digit;
-    }
-    if (!number) return false;
-    *suffix = number;
+    nn_error_set(error, cap, "");
     return true;
 }
 
@@ -589,7 +588,7 @@ static bool valid_input_handle(const NNPackage *package, const char *handle)
     if (kind_is(package, "input")) return false;
     if (kind_is(package, "join")) {
         size_t suffix = 0;
-        return join_suffix(handle, &suffix) && handle[3] != '0';
+        return nn_join_handle_order(handle, &suffix);
     }
     return handle && !strcmp(handle, "in");
 }
@@ -598,74 +597,77 @@ bool nn_app_connect(NNApplication *app, const char *id, const char *source,
                     const char *source_handle, const char *target,
                     const char *target_handle, char *error, size_t cap)
 {
-    if (!app || !app->project) return fail(error, cap, "no active project");
+    if (!app || !app->project) return nn_fail(error, cap, "no active project");
     NNModel *model = nn_project_model(app->project);
     const NNNode *source_node = nn_model_find_node(model, source);
     const NNNode *target_node = nn_model_find_node(model, target);
-    if (!source_node || !target_node) return fail(error, cap, "edge endpoint not found");
+    if (!source_node || !target_node) return nn_fail(error, cap, "edge endpoint not found");
     const NNPackage *source_package = find_package(app, source_node);
     const NNPackage *target_package = find_package(app, target_node);
-    if (!source_package || !target_package) return fail(error, cap, "edge package is unresolved");
+    if (!source_package || !target_package) return nn_fail(error, cap, "edge package is unresolved");
     if (!valid_output_handle(source_package, source_handle))
-        return fail(error, cap, "invalid output handle");
+        return nn_fail(error, cap, "invalid output handle");
     if (!valid_input_handle(target_package, target_handle))
-        return fail(error, cap, "invalid input handle");
+        return nn_fail(error, cap, "invalid input handle");
     if (kind_is(target_package, "join")) {
         size_t requested;
-        (void)join_suffix(target_handle, &requested);
+        (void)nn_join_handle_order(target_handle, &requested);
         for (size_t i = 0; i < nn_model_edge_count(model); ++i) {
             const NNEdge *edge = nn_model_edge_at(model, i);
             size_t occupied;
             if (!strcmp(edge->target_id, target) &&
-                join_suffix(edge->target_handle_id, &occupied) && occupied == requested)
-                return fail(error, cap, "join input position is already occupied");
+                nn_join_handle_order(edge->target_handle_id, &occupied) && occupied == requested)
+                return nn_fail(error, cap, "join input position is already occupied");
         }
     }
     if (!nn_model_connect(model, id, source, source_handle, target, target_handle, error, cap))
         return false;
     nn_project_mark_dirty(app->project);
-    set_error(error, cap, "");
+    invalidate_analysis(app);
+    nn_error_set(error, cap, "");
     return true;
 }
 
 bool nn_app_disconnect(NNApplication *app, const char *id, char *error, size_t cap)
 {
-    if (!app || !app->project) return fail(error, cap, "no active project");
+    if (!app || !app->project) return nn_fail(error, cap, "no active project");
     if (!nn_model_disconnect(nn_project_model(app->project), id, error, cap)) return false;
     nn_project_mark_dirty(app->project);
-    set_error(error, cap, "");
+    invalidate_analysis(app);
+    nn_error_set(error, cap, "");
     return true;
 }
 
 bool nn_app_set_parameter(NNApplication *app, const char *node_id, const char *key,
                           const NNValue *value, char *error, size_t cap)
 {
-    if (!app || !app->project) return fail(error, cap, "no active project");
+    if (!app || !app->project) return nn_fail(error, cap, "no active project");
     const NNNode *node = nn_model_find_node(nn_project_model(app->project), node_id);
-    if (!node) return fail(error, cap, "node not found");
+    if (!node) return nn_fail(error, cap, "node not found");
     const NNPackage *package = find_package(app, node);
     const NNParameterDef *definition = NULL;
     if (!parameter_definition(package, key, &definition))
-        return fail(error, cap, "unknown parameter");
+        return nn_fail(error, cap, "unknown parameter");
     if (!valid_value(definition, value, error, cap)) return false;
     if (!nn_model_set_parameter(nn_project_model(app->project), node_id, key,
                                 value, error, cap)) return false;
     nn_project_mark_dirty(app->project);
-    set_error(error, cap, "");
+    invalidate_analysis(app);
+    nn_error_set(error, cap, "");
     return true;
 }
 
 bool nn_app_set_parameter_text(NNApplication *app, const char *node, const char *key,
                                const char *text, char *error, size_t cap)
 {
-    if (!app || !app->project) return fail(error, cap, "no active project");
+    if (!app || !app->project) return nn_fail(error, cap, "no active project");
     const NNNode *entry = nn_model_find_node(nn_project_model(app->project), node);
     const NNParameterDef *definition = NULL;
-    if (!entry) return fail(error, cap, "node not found");
+    if (!entry) return nn_fail(error, cap, "node not found");
     if (!parameter_definition(find_package(app, entry), key, &definition))
-        return fail(error, cap, "unknown parameter");
+        return nn_fail(error, cap, "unknown parameter");
     if (!strcmp(definition->type, "stereotype"))
-        return fail(error, cap, "object-valued stereotype parameters are not supported by native model");
+        return nn_fail(error, cap, "object-valued stereotype parameters are not supported by native model");
     NNValue value = {0};
     if (!parse_parameter_text(definition, text, &value, error, cap)) return false;
     bool okay = nn_app_set_parameter(app, node, key, &value, error, cap);
@@ -673,63 +675,29 @@ bool nn_app_set_parameter_text(NNApplication *app, const char *node, const char 
     return okay;
 }
 
-typedef struct { char *data; size_t length, capacity; } TextBuffer;
-
-static bool text_append(TextBuffer *buffer, const char *text, size_t length)
+static yyjson_mut_val *parameter_json_value(yyjson_mut_doc *doc, const NNValue *value)
 {
-    if (length > SIZE_MAX - buffer->length - 1) return false;
-    size_t needed = buffer->length + length + 1;
-    if (needed > buffer->capacity) {
-        size_t next = buffer->capacity ? buffer->capacity : 64;
-        while (next < needed) {
-            if (next > SIZE_MAX / 2) { next = needed; break; }
-            next *= 2;
-        }
-        char *grown = realloc(buffer->data, next);
-        if (!grown) return false;
-        buffer->data = grown;
-        buffer->capacity = next;
-    }
-    memcpy(buffer->data + buffer->length, text, length);
-    buffer->length += length;
-    buffer->data[buffer->length] = '\0';
-    return true;
-}
-
-static bool json_string(TextBuffer *buffer, const char *text)
-{
-    if (!text_append(buffer, "\"", 1)) return false;
-    for (const unsigned char *p = (const unsigned char *)text; *p; ++p) {
-        char escaped[7];
-        const char *out = (const char *)p;
-        size_t length = 1;
-        if (*p == '"' || *p == '\\') { escaped[0] = '\\'; escaped[1] = (char)*p; out = escaped; length = 2; }
-        else if (*p < 0x20) { snprintf(escaped, sizeof(escaped), "\\u%04x", *p); out = escaped; length = 6; }
-        if (!text_append(buffer, out, length)) return false;
-    }
-    return text_append(buffer, "\"", 1);
-}
-
-static bool serialize_value(TextBuffer *buffer, const NNValue *value)
-{
-    char number[64];
     switch (value->type) {
-    case NN_VALUE_BOOL: return text_append(buffer, value->as.boolean ? "true" : "false", value->as.boolean ? 4 : 5);
-    case NN_VALUE_INT:
-        snprintf(number, sizeof(number), "%lld", value->as.integer);
-        return text_append(buffer, number, strlen(number));
+    case NN_VALUE_BOOL: return yyjson_mut_bool(doc, value->as.boolean);
+    case NN_VALUE_INT: return yyjson_mut_sint(doc, value->as.integer);
     case NN_VALUE_REAL:
-        snprintf(number, sizeof(number), "%.17g", value->as.real);
-        return text_append(buffer, number, strlen(number));
-    case NN_VALUE_STRING: return value->as.string && json_string(buffer, value->as.string);
-    case NN_VALUE_ARRAY:
-        if (!text_append(buffer, "[", 1)) return false;
+        if (!isfinite(value->as.real)) return NULL;
+        if (value->as.real >= (double)LLONG_MIN && value->as.real < -(double)LLONG_MIN &&
+            trunc(value->as.real) == value->as.real)
+            return yyjson_mut_sint(doc, (long long)value->as.real);
+        return yyjson_mut_real(doc, value->as.real);
+    case NN_VALUE_STRING: return value->as.string ? yyjson_mut_strcpy(doc, value->as.string) : NULL;
+    case NN_VALUE_ARRAY: {
+        if (value->as.array.count && !value->as.array.items) return NULL;
+        yyjson_mut_val *array = yyjson_mut_arr(doc);
+        if (!array) return NULL;
         for (size_t i = 0; i < value->as.array.count; ++i) {
-            if (i && !text_append(buffer, ",", 1)) return false;
-            if (!serialize_value(buffer, &value->as.array.items[i])) return false;
+            yyjson_mut_val *item = parameter_json_value(doc, &value->as.array.items[i]);
+            if (!item || !yyjson_mut_arr_append(array, item)) return NULL;
         }
-        return text_append(buffer, "]", 1);
-    default: return false;
+        return array;
+    }
+    default: return NULL;
     }
 }
 
@@ -741,10 +709,15 @@ char *nn_app_parameter_text(const NNApplication *app, const char *node_id, const
     for (size_t i = 0; i < node->parameter_count; ++i) {
         if (strcmp(node->parameters[i].key, key)) continue;
         if (node->parameters[i].value.type == NN_VALUE_STRING)
-            return copy_text(node->parameters[i].value.as.string);
-        TextBuffer buffer = {0};
-        if (!serialize_value(&buffer, &node->parameters[i].value)) { free(buffer.data); return NULL; }
-        return buffer.data;
+            return nn_text_copy(node->parameters[i].value.as.string);
+        yyjson_mut_doc *document = yyjson_mut_doc_new(NULL);
+        if (!document) return NULL;
+        yyjson_mut_val *value = parameter_json_value(document, &node->parameters[i].value);
+        if (!value) { yyjson_mut_doc_free(document); return NULL; }
+        yyjson_mut_doc_set_root(document, value);
+        char *text = yyjson_mut_write(document, 0, NULL);
+        yyjson_mut_doc_free(document);
+        return text;
     }
     return NULL;
 }
@@ -768,6 +741,14 @@ static bool join_number_used(const JoinHandle *handles, size_t count, size_t num
     return false;
 }
 
+static void join_handles_free(JoinHandle *handles, size_t count)
+{
+    if (!handles) return;
+    for (size_t i = 0; i < count; ++i)
+        if (handles[i].owned) free((void *)handles[i].id);
+    free(handles);
+}
+
 static JoinHandle *join_inputs(const NNModel *model, const char *node_id, size_t *count)
 {
     size_t edge_count = nn_model_edge_count(model);
@@ -779,7 +760,7 @@ static JoinHandle *join_inputs(const NNModel *model, const char *node_id, size_t
         const NNEdge *edge = nn_model_edge_at(model, i);
         size_t suffix = 0;
         if (strcmp(edge->target_id, node_id)) continue;
-        bool numeric = join_suffix(edge->target_handle_id, &suffix);
+        bool numeric = nn_join_handle_order(edge->target_handle_id, &suffix);
         bool duplicate = false;
         for (size_t j = 0; j < used; ++j)
             if (!strcmp(handles[j].id, edge->target_handle_id)) duplicate = true;
@@ -790,14 +771,14 @@ static JoinHandle *join_inputs(const NNModel *model, const char *node_id, size_t
     size_t desired = existing < 2 ? 2 : existing + 1;
     while (used < desired) {
         while (join_number_used(handles, existing, candidate)) {
-            if (candidate == SIZE_MAX) { free(handles); return NULL; }
+            if (candidate == SIZE_MAX) { join_handles_free(handles, used); return NULL; }
             ++candidate;
         }
         char *generated = malloc(3 + 3 * sizeof(size_t) + 1);
-        if (!generated) { free(handles); return NULL; }
+        if (!generated) { join_handles_free(handles, used); return NULL; }
         snprintf(generated, 3 + 3 * sizeof(size_t) + 1, "in-%zu", candidate);
         handles[used++] = (JoinHandle){ generated, candidate, true, true };
-        if (candidate == SIZE_MAX) { free(handles); return NULL; }
+        if (candidate == SIZE_MAX) { join_handles_free(handles, used); return NULL; }
         ++candidate;
     }
     qsort(handles, used, sizeof(*handles), compare_join_handle);
@@ -816,9 +797,7 @@ size_t nn_app_port_count(const NNApplication *app, const char *node_id, bool out
     if (kind_is(package, "join")) {
         size_t count = 0;
         JoinHandle *inputs = join_inputs(model, node_id, &count);
-        if (inputs) for (size_t i = 0; i < count; ++i)
-            if (inputs[i].owned) free((void *)inputs[i].id);
-        free(inputs);
+        join_handles_free(inputs, count);
         return count;
     }
     return 1;
@@ -842,11 +821,9 @@ bool nn_app_port_id(const NNApplication *app, const char *node_id, bool output,
     }
     size_t count = 0;
     JoinHandle *inputs = join_inputs(model, node_id, &count);
-    if (!inputs || index >= count) { free(inputs); return false; }
+    if (!inputs || index >= count) { join_handles_free(inputs, count); return false; }
     int written = snprintf(buffer, capacity, "%s", inputs[index].id);
-    for (size_t i = 0; i < count; ++i)
-        if (inputs[i].owned) free((void *)inputs[i].id);
-    free(inputs);
+    join_handles_free(inputs, count);
     return written >= 0 && (size_t)written < capacity;
 }
 

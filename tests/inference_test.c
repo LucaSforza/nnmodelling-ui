@@ -1,3 +1,4 @@
+#define _XOPEN_SOURCE 700
 #include "inference.h"
 #include "model.h"
 #include "project.h"
@@ -6,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 static const NNInferenceResult *find_result(const NNInferenceReport *report,
                                              const char *id)
@@ -46,6 +48,12 @@ static void assert_shape(const NNInferenceResult *result, const char *dtype,
 
 int main(void)
 {
+    assert(!strcmp(nn_inference_category(NN_INFERENCE_COMPILATION_ERROR), "lua-compilation"));
+    assert(!strcmp(nn_inference_severity(NN_INFERENCE_COMPILATION_ERROR), "error"));
+    assert(!strcmp(nn_inference_category(NN_INFERENCE_UNRESOLVED), "incomplete"));
+    assert(!strcmp(nn_inference_severity(NN_INFERENCE_UNRESOLVED), "warning"));
+    assert(nn_inference_error_line("[string \"rule\"]:27: unexpected symbol") == 27);
+    assert(nn_inference_error_line("no source location") == 0);
     char validation_error[256] = {0};
     assert(nn_inference_validate_source("return function() end", validation_error,
                                         sizeof(validation_error)));
@@ -163,6 +171,10 @@ int main(void)
     assert(find_result(report, "gaussian")->status == NN_INFERENCE_SEMANTIC_ERROR);
     assert(find_result(report, "encoder")->status == NN_INFERENCE_SEMANTIC_ERROR);
     assert(find_result(report, "sample")->status == NN_INFERENCE_UNRESOLVED);
+    assert(!strcmp(find_result(report, "sample")->code, "model.blocked"));
+    assert(find_result(report, "sample")->cause_node_id);
+    assert(!strcmp(find_result(report, "decoder-input")->code, "model.blocked"));
+    assert(!strcmp(find_result(report, "decoder-input")->cause_node_id, "gaussian"));
     nn_inference_free(report);
     nn_project_close(project);
 
@@ -342,5 +354,57 @@ int main(void)
     assert(strstr(depth->message, "limit"));
     nn_inference_free(report);
     nn_project_close(project);
+
+    char temporary[] = "/tmp/opencode/nn-inference-diagnostics-XXXXXX";
+    char *root = mkdtemp(temporary);
+    assert(root);
+    NNProject *diagnostic_project = nn_project_create(root, "diagnostics", "Diagnostics",
+        false, "stereotype-packages/core", error, sizeof(error));
+    assert(diagnostic_project);
+    assert(nn_project_create_dataset(diagnostic_project, "local.data", "0.1.0",
+        "{\"name\":\"Data\",\"batch\":{\"inputs\":{\"image\":{\"dtype\":\"float32\",\"shape\":[\"B\",8]}},\"targets\":{}}}",
+        true, error, sizeof(error)));
+    assert(nn_project_create_stereotype(diagnostic_project, "local.broken", "0.1.0",
+        "{\"name\":\"Broken\",\"kind\":\"layer\",\"view\":{\"color\":\"#444444\",\"width\":200,\"height\":100},\"parameters\":{}}",
+        "return function(", "{}", error, sizeof(error)));
+    assert(nn_project_create_stereotype(diagnostic_project, "local.adversarial", "0.1.0",
+        "{\"name\":\"Adversarial\",\"kind\":\"layer\",\"view\":{\"color\":\"#444444\",\"width\":200,\"height\":100},\"parameters\":{}}",
+        "return function() return setmetatable({}, {__index=function(_, key) "
+        "if key == 'status' then return 'success' end; "
+        "if key == 'output' then return {dtype='float32', shape={1}} end end}) end",
+        "{}", error, sizeof(error)));
+    assert(nn_model_add_node(nn_project_model(diagnostic_project), "diagnostic-input", "Input",
+        "core.input", "0.1.0", "", 0, 0, error, sizeof(error)));
+    NNValue binding_value = { .type = NN_VALUE_STRING, .as.string = "image" };
+    assert(nn_model_set_parameter(nn_project_model(diagnostic_project), "diagnostic-input",
+        "binding", &binding_value, error, sizeof(error)));
+    assert(nn_model_add_node(nn_project_model(diagnostic_project), "broken-rule", "Broken",
+        "local.broken", "0.1.0", "", 0, 0, error, sizeof(error)));
+    assert(nn_model_connect(nn_project_model(diagnostic_project), "diagnostic-edge",
+        "diagnostic-input", "out", "broken-rule", "in", error, sizeof(error)));
+    assert(nn_model_add_node(nn_project_model(diagnostic_project), "blocked-rule", "Blocked",
+        "core.relu", "0.1.0", "", 0, 0, error, sizeof(error)));
+    assert(nn_model_connect(nn_project_model(diagnostic_project), "blocked-edge",
+        "broken-rule", "out", "blocked-rule", "in", error, sizeof(error)));
+    assert(nn_model_add_node(nn_project_model(diagnostic_project), "adversarial-rule", "Adversarial",
+        "local.adversarial", "0.1.0", "", 0, 0, error, sizeof(error)));
+    assert(nn_model_connect(nn_project_model(diagnostic_project), "adversarial-edge",
+        "diagnostic-input", "out", "adversarial-rule", "in", error, sizeof(error)));
+    report = nn_infer_project(diagnostic_project);
+    assert(report);
+    const NNInferenceResult *compile = find_result(report, "broken-rule");
+    assert(compile && compile->status == NN_INFERENCE_COMPILATION_ERROR);
+    assert(!strcmp(compile->code, "lua.compile"));
+    assert(compile->source_file && strstr(compile->source_file, "inference.lua"));
+    assert(compile->source_line == 1);
+    const NNInferenceResult *blocked = find_result(report, "blocked-rule");
+    assert(blocked && blocked->status == NN_INFERENCE_UNRESOLVED);
+    assert(!strcmp(blocked->code, "model.blocked"));
+    assert(!strcmp(blocked->cause_node_id, "broken-rule"));
+    const NNInferenceResult *adversarial = find_result(report, "adversarial-rule");
+    assert(adversarial && adversarial->status == NN_INFERENCE_RUNTIME_FAULT);
+    assert(!strcmp(adversarial->code, "analysis.internal"));
+    nn_inference_free(report);
+    nn_project_close(diagnostic_project);
     return 0;
 }

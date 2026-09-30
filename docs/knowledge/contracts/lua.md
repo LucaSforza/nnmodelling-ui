@@ -24,17 +24,22 @@ proved interpreter linkage.
 
 `src/inference.h` exposes owned `NNInferenceReport *nn_infer_project(const
 NNProject *)`, `nn_inference_free`, count and borrowed per-node result accessors.
-Each result has node ID, status (`success`, `semantic error`, `unresolved`,
-`runtime fault`), message and optional owned tensor dtype/dimensions. Analysis
+Each result has node ID, status (`success`, `Lua compilation error`, `semantic
+error`, `unresolved`, `runtime fault`), message and optional owned tensor
+dtype/dimensions. Analysis
 orders graph topologically; it never edits graph or project. Package paths come
-from staged catalog, not ambient lookup. Caller reruns after mutations.
+from staged catalog, not ambient lookup. The application invalidates and lazily
+reruns after semantic mutations.
+Application now owns report caching/invalidation per diagnostics.md. Results
+add Lua compilation error, stable code, source file/line and root cause node ID.
+The report remains owned C data; successful tensors are separate from problems.
 
-Formal: `infer(rule, inputs, params) -> Result<Tensor, SemanticError,
+Formal: `infer(rule, inputs, params) -> Result<Tensor, CompilationError, SemanticError,
 RuntimeFault, Unresolved>` and `modelAfterInfer=modelBeforeInfer`.
 Natural: Lua computes type results but never changes graph.
 
 Formal: `∀node: package(node)=(id,version)∈activeCatalog`, and
-`runtimeFault ≠ semanticError ≠ unresolved`.
+`compilationError ≠ runtimeFault ≠ semanticError ≠ unresolved`.
 Natural: exact package identity and diagnostic class are preserved.
 
 Accepted 2026-09-30: services.infer_subflow evaluates the caller's immediate
