@@ -12,11 +12,13 @@ graph nodes. `Subflow` owns a nested immediate graph. `Input`, `Layer`, `Join`,
 `Subflow`, and other kinds are package definition data, not a closed C enum of
 package IDs. `StereotypeApplication` is a node's exact package reference and
 parameter instance set. Source/target handles have stable local IDs.
-Current package definitions state `kind` but do not enumerate handles. Native
-topology supplies `out` on non-output nodes, `in` on single-input nodes and
+Package definitions optionally enumerate typed outputs; normalized defaults
+and overrides follow [typed outputs](typed-outputs.md). Native input
+topology supplies `in` on single-input nodes and
 ordered `in-1`, `in-2`, ... on join nodes. Join order follows numeric suffix;
 malformed join handle IDs are rejected. This convention uses package kind,
-never concrete package IDs, and matches preserved model edges.
+never concrete package IDs. Output/loss-output terminals have no outgoing ports.
+Nodes additionally own optional data.boundaryHandle for nested terminal mapping.
 
 Persistent model state is distinct from editor selection/camera/drag state and
 from per-frame draw commands. A typed model is authoritative; JSON parser
@@ -32,7 +34,8 @@ switching projects.
 Accepted 2026-09-30 additions and exact C ABI: see
 [resource authoring](resource-authoring.md). Parameters additionally carry
 optional top/bottom presentation position; nested scopes now have bounded
-single-tensor inference, without cross-scope edges or compiler changes.
+typed per-handle inference per typed-outputs.md, without cross-scope edges or
+compiler changes. Subflow creation atomically spawns its declared terminals.
 
 | Operation | Parameters and result | Mutation/failure |
 | --- | --- | --- |
@@ -91,9 +94,9 @@ Natural: failed project switch preserves old graph and package scope.
 Formal: `collapsed(s) ⇒ semanticChildren(s)=children(s)`.
 Natural: hiding subflow children never removes them from analysis.
 
-Whole-graph completion requires a valid boundary Input and accepted terminal
-topology; incomplete editor graphs may still show local inference and unresolved
-diagnostics. Training-specific terminal rules are deferred to backend contract.
+Whole-graph completion requires valid boundary Input and exactly one root
+Output and Loss Output per typed-outputs.md. Incomplete graphs remain editable.
+Typed terminal restrictions are client semantics, not backend training rules.
 
 ## Qt migration application ABI (accepted)
 
@@ -121,7 +124,9 @@ Scope display follows editor contract. New non-root scopes require a subflow
 owner; existing imported scope strings are preserved. Nonempty subflow deletion
 is rejected rather than silently orphaning children. Finite coordinates are
 required. Fix borrowed-ID deletion safety in model without changing graph
-semantics. No file format change; core packages remain byte-for-byte intact.
+semantics. Schema v2 now persists optional data.boundaryHandle; no legacy
+migration is required. Existing core assets remain intact; core.loss-output is
+added. Typed boundary setter and output type query follow typed-outputs.md.
 
 Object-valued `stereotype` parameters (currently Horizontal Repeat's `join`)
 remain a pre-existing native limitation: NNValue has no object variant. Preserve

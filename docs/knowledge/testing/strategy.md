@@ -28,3 +28,9 @@ permissions, existing-path preservation, malformed requests and idle clients.
 Diagnostics gates additionally cover cached reports, Lua compile locations,
 causal propagation, optional error buffers, partial allocation cleanup, text
 ownership, retained authoring forms, severity markers, filters and CLI parity.
+
+Typed outputs (2026-10-01): test normalized defaults/overrides and duplicate
+type/ID rejection, source-handle-sensitive tensors, terminal-only compatibility,
+single-input collectors, root completion, transactional subflow terminal spawn,
+mapping persistence/diagnostics, two-output recursion, circle/edge/draft colors,
+output form and CLI parity. Rewrite templates/fixtures; no legacy migration.

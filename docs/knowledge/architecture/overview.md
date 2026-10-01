@@ -49,7 +49,10 @@ entry point is `gui/qt/main.cpp`; no SDL fallback or C drawing API remains.
 Preserved stereotype packages, historical UML and unrelated vendored assets
 are unchanged. Backend and training remain deferred. C11 local automation serves
 the same application owner; Qt schedules nonblocking IPC dispatch on its thread.
-Resource authoring and recursive subflow analysis follow resource-authoring.md.
+Resource authoring follows resource-authoring.md. Accepted 2026-10-01 typed
+output/loss topology, terminal spawning and handle-sensitive recursive analysis
+follow contracts/typed-outputs.md and uml/typed-outputs.md. Catalog normalizes
+definitions; C persists terminal mappings; Qt only presents the typed boundary.
 `src/automation.c` supplies the optional Linux local command service and C
 dispatcher; `src/nnmodelctl.c` is the C11 companion CLI. The GUI starts IPC only
 when requested with --socket. Native visual forms generate boundary JSON but

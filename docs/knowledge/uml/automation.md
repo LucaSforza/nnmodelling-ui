@@ -5,6 +5,9 @@
 Accepted 2026-09-30: implement local Unix command interface according to
 [automation contract](../contracts/automation.md). Same C application authority
 serves UI, tests and nnmodelctl. Backend training remains deferred.
+Accepted 2026-10-01: typed-outputs.md extends definition payloads, snapshots,
+handle-keyed diagnostic tensors and node.boundary mapping edits. C remains the
+only command validator; UI/CLI subflow creation spawns identical terminals.
 
 ## Diagram
 

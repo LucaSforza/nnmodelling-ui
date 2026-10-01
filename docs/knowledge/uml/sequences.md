@@ -40,6 +40,9 @@ sequenceDiagram
     Palette->>App: addNode(ref, values, position)
     App->>Catalog: resolve definition + defaults
     App->>Model: validate and insert node
+    opt kind=subflow
+      App->>Model: insert mapped terminal per declared output atomically
+    end
     Model-->>App: NodeId or error
     App->>Types: invalidate dependent region
     App-->>Palette: result + diagnostics
@@ -56,6 +59,7 @@ sequenceDiagram
     participant Types as Lua type analysis
     User->>Editor: drag source output to target input
     Editor->>App: connect(source, sourceHandle, target, targetHandle)
+    App->>Catalog: resolve output type and terminal-only restriction
     App->>Model: check same scope, handle directions, occupancy, cycle
     alt valid
       Model->>Model: insert edge ordered by target handle

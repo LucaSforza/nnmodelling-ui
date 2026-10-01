@@ -31,7 +31,9 @@ project resources panel and status/diagnostics. User can create package-backed
 nodes, select/delete/move them, pan/zoom/fit/arrange view, connect/disconnect
 handles, edit names and typed parameters, save, close and reopen project.
 Edges render under nodes; input handle occupancy and cycle/scope validation
-apply before commit. Multiple Input nodes are allowed with distinct named
+apply before commit. Accepted 2026-10-01: typed-outputs.md governs root's exactly
+one Output/one Loss Output, spawned subflow boundaries and circle/edge visuals.
+Multiple Input nodes are allowed with distinct named
 bindings. Palette comes from active catalog, never package-ID switches.
 Inspector controls follow stereotype parameter schema, defaults and choices.
 Selected dataset exposes its named input/target tensor slots to client type

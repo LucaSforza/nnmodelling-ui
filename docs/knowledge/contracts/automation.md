@@ -30,14 +30,16 @@ CLI help lists operations and resource payloads. Payload keys:
   replacement resets scope to root. Read-only snapshot/inspect do not change
   selection or dirty state.
 * project.snapshot {} returns identity, dirty, active dataset, package identities,
-  dataset slots, nodes (IDs, scopes, package refs, positions, parameters), edges.
+   dataset slots, nodes (IDs, scopes, package refs, positions, parameters,
+   boundaryHandle), edges. Packages include normalized typed outputs.
 * stereotype.create {id,version,definition:object,inference:string,
   dependencies:object={}} invokes resource transaction.
 * dataset.create {id,version,definition:object,select:boolean=false};
   dataset.select {id,version}.
 * node.add {id,package,version,scope:string="",x:number=0,y:number=0};
   node.remove {id}; node.move {id,x,y}; node.rename {id,name};
-  node.parameter {id,key,value:string} uses same text parser as inspector.
+   node.parameter {id,key,value:string} uses same text parser as inspector.
+* node.boundary {id,handle} edits nested terminal mapping per typed-outputs.md.
 * edge.connect {id,source,sourceHandle,target,targetHandle}; edge.disconnect {id}.
 * ui.inspect {} returns stable semantic widget IDs/roles/labels and current scope.
 * ui.scope {id:string} navigates root (empty) or existing scope.

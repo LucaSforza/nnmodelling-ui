@@ -51,6 +51,7 @@ classDiagram
     class StereotypePackage {
       +PackageIdentity identity
       +NodeDefinition definition
+      +OutputDefinition[] resolvedOutputs
       +PackageRequirement[] dependencies
       +RelativePath inferenceLua
       +RelativePath pythonResource
@@ -62,6 +63,10 @@ classDiagram
     class DatasetCatalog {
       +ProjectDataset[] projectOwned
       +lookup(DatasetReference) Result~ProjectDataset~
+    }
+    class OutputDefinition {
+      +string id
+      +string type output or loss
     }
     class ProjectDataset {
       +DatasetIdentity identity
@@ -90,6 +95,7 @@ classDiagram
     PackageCatalog "1" *-- "0..*" StereotypePackage
     DatasetCatalog "1" *-- "0..*" ProjectDataset
     StereotypePackage "1" *-- "0..*" PackageRequirement
+    StereotypePackage "1" *-- "0..2" OutputDefinition : normalized
     PackageRequirement --> StereotypePackage : exact resolution in active scope
     ProjectDataset "1" *-- "1" DatasetDefinition
     DatasetDefinition "1" *-- "0..*" TensorSlot
@@ -104,6 +110,9 @@ Accepted 2026-09-30: resource creation transactions follow
 catalogs, validates against current unsaved graph, atomically saves candidate
 manifest, then publishes; failure preserves active state and old model.json.
 All generated JSON is indented two spaces with a final newline.
+Accepted 2026-10-01: definitions contain optional outputs; typed-outputs.md
+governs normalized defaults, schema checks, data.boundaryHandle persistence,
+new blank root terminals and rewritten template topology. No legacy migration.
 
 `Project.open(path) -> Result` reads `model.json`, parses typed graph and
 manifest, validates all declared package/dataset paths and their exact

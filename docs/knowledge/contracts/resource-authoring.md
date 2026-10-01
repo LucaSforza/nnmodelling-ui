@@ -2,6 +2,8 @@
 
 Accepted 2026-09-30 from user request. Supersedes migration-only limits for
 resource creation, positioned parameters and single-tensor subflow analysis.
+Accepted 2026-10-01: typed-outputs.md supersedes single-output limits, boundary
+topology and example terminal semantics.
 Backend, numerical execution and training remain deferred.
 
 ## Persistence and presentation
@@ -35,7 +37,8 @@ description, kind, color, parameter rows (key, type, default, minimum, choices,
 position), dependency rows (ID/version constraint), optional Lua editor; dataset
 name/description and input/target slot rows (name, dtype, shape). No raw JSON
 editing is required. Default Lua is a visibly labelled pass-through shape rule,
-not an implementation. Authored kinds: input/layer/join/output/subflow. Parameter
+not an implementation. Authored kinds: input/layer/join/loss/output/loss-output/
+subflow. Optional typed output ID/type rows follow typed-outputs.md. Parameter
 types: boolean/integer/number/string/dtype/json arrays. Defaults, minima, choices
 must be typed and usable by the existing application validator. Dataset requires
 at least one input, unique nonempty slot names, rank 1..64 and dimensions positive
@@ -56,21 +59,23 @@ resources, dirty flag and previous model.json, removing only transaction-created
 files. Success saves all current edits and clears dirty. UI labels Create as
 saving the project. Resource editing/deletion are not introduced.
 
-## Single-tensor subflow inference
+## Subflow inference
 
 Successful subflow analysis requires exactly one immediate package-kind input
-and one output boundary. Children retain scope=owner.id and local positions;
+and mapped terminal boundaries for all declared outputs per typed-outputs.md.
+Children retain scope=owner.id and local positions;
 cross-scope edges stay forbidden. Root Input resolves dataset binding; nested
 Input receives the tensor passed to its owner instead. Lua service
 `services.infer_subflow(tensor)` recursively evaluates calling subflow's scope
-and returns its Output tensor. Available only for kind=subflow, selected by kind
+and returns its mapped tensor(s). Available only for kind=subflow, selected by kind
 not package ID; Lua chooses Proxy/Repeat delegation. Hidden children analyze.
 Report includes all children once per node (last invocation for Repeat).
 Empty/incomplete/missing upstream boundaries: unresolved. Duplicate boundaries
 or malformed containment: semantic error. Lua faults propagate as runtime faults.
 Limits: depth 32, 256 subflow invocations per report; breaches are runtime faults.
 Orphan imported scopes stay viewable but unresolved. Horizontal Repeat's object
-join is still unsupported; multi-output subflows and compiler remain deferred.
+join is still unsupported; compiler remains deferred. Typed multi-output
+subflows are accepted, not deferred.
 
 ## Bundled MNIST VAE design
 
@@ -82,10 +87,13 @@ Linear heads. Project-owned vae.diagonal-gaussian join packs equal floating
 [B,L], documenting z=mu+exp(0.5*log_variance)*epsilon, epsilon~N(0,I).
 vae.kl-divergence branches from encoder to per-sample [B], documenting
 KL(q(z|x)||N(0,I)). Decoder maps 32 -> 128 -> 784 -> project-owned Sigmoid.
-Reconstruction and KL are separate outputs, not a claimed training objective.
-Project owns four custom stereotypes and reconstruction dataset metadata
+Accepted 2026-10-01: KL is kind=loss; a project-owned total-loss join models
+reconstruction MSE plus mean per-sample KL, with a declared loss output.
+Root has one reconstruction Output and one Loss Output. No numerical training
+claim is made. Project owns five custom stereotypes and reconstruction metadata
 (image [B,1,28,28], target [B,784]). Lua validates ordered joins, ranks, dtypes
 and dimensions; no VAE package-ID switches in C.
 
 Accepted: above behavior and CLI integration per automation contract. Deferred:
-resource editing/deletion, object values, multi-output subflows and training.
+resource editing/deletion, object values and training. Typed output/subflow
+authoring follows typed-outputs.md.

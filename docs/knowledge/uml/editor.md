@@ -11,6 +11,8 @@ classDiagram
       +addNode(id,package,scope,position) bool
       +connect(id,source,handle,target,handle) bool
       +setParameter(node,key,value) bool
+      +setBoundaryHandle(node,handle) bool
+      +outputType(node,handle) string
       +createStereotype(definition,Lua,dependencies) bool
       +createDataset(definition,select) bool
       +selectDataset(identity) bool
@@ -43,3 +45,5 @@ next C mutation; Qt copies stable IDs when retaining references. Parameter
 widgets follow schema, but C remains final validator. ID-based refresh restores
 selection where entities survive. Failed operations preserve committed state.
 Problem navigation, cause grouping and C report ownership follow diagnostics.md.
+Typed output forms, spawned subflow terminals, mapped boundaries and circles
+follow contracts/typed-outputs.md and uml/typed-outputs.md (2026-10-01).

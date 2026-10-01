@@ -40,6 +40,7 @@ classDiagram
       +NodeKind kind
       +ScopeId scope
       +Position position
+      +string boundaryHandle optional
       +Parameters values
       +Graph nestedGraph
     }
@@ -54,6 +55,7 @@ classDiagram
     class Handle {
       +HandleId id
       +HandleDirection direction
+      +OutputType type for output handles
       +uint order
     }
     class Stereotype {
@@ -98,9 +100,9 @@ classDiagram
 
 ## Operations
 
-Accepted 2026-09-30: a subflow's single Input inherits owner tensor and its
-single Output supplies owner output through Lua services.infer_subflow.
-Nested inference follows resource-authoring.md and includes hidden children.
+Accepted 2026-10-01: a subflow's single Input inherits owner tensor; mapped
+typed terminals supply keyed owner outputs through services.infer_subflow.
+Nested inference follows typed-outputs.md and includes hidden children.
 
 `Graph.connect(s,sh,t,th) -> Result<EdgeId>` requires both nodes in graph,
 source/output and target/input handles on those nodes, equal immediate scope,
@@ -131,7 +133,10 @@ Formal: `joinInputs(n)=sort(incoming(n),targetHandle.order)`.
 Natural: join order is explicit, not traversal-dependent.
 For package definitions without declared handles, `kind=join` derives ordered
 `in-<positive integer>` inputs; other input-bearing kinds derive `in`, and
-output-bearing kinds derive `out`.
+output-bearing kinds derive out/output except loss derives loss/loss.
+Explicit declarations replace defaults, at most one handle per type; output
+and loss-output terminal kinds expose no output handles. See typed-outputs.md
+and typed-outputs UML for terminal restrictions and complete boundary mappings.
 
 Formal: `node.nestedGraph≠null ⇔ node.kind=Subflow` for current concept;
 `hidden(node) ⇏ remove(node.nestedGraph)`. Natural: subflows own child graphs

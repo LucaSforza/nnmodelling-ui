@@ -37,9 +37,9 @@ child count and an entry affordance; double-click enters its scope, scope
 navigation returns to parent/root. Collapsing or leaving a scope never mutates
 its children. Item parentage is graphical only; never infer graph membership
 from a QGraphicsItem parent. Child positions remain scope-local C values.
-Existing boundary Input/output/proxy nodes and external edges remain ordinary
-package-backed nodes and same-scope edges. This migration does not introduce
-cross-scope edges or new compiler/subflow semantics.
+Boundary nodes remain package-backed and edges remain same-scope. Accepted
+2026-10-01: typed-outputs.md governs mapped internal terminals, spawning, circles
+and black/red handles/fanout. No cross-scope edges or compiler are introduced.
 
 New child creation requires an existing package-kind subflow scope. Deleting a
 nonempty subflow fails visibly until children are removed, preventing orphaning.
@@ -55,8 +55,9 @@ CLI integration. Subflow navigation remains scope-local; recursive type analysis
 now delegates through the existing Proxy Lua rule.
 
 Use white canvas, light gray dock panels, compact text, restrained blue accents,
-colored stereotype cards, visible dark ports and directed Bezier connections.
-Respect package colors and show package identity/details in inspector. Subflows
+colored computational cards and directed Bezier connections. Boundary circles
+and typed output/edge colors override package colors per typed-outputs.md.
+Show package identity/details in inspector. Subflows
 must look like containers and remain distinguishable from ordinary layers.
 Use Qt font metrics, clipping, high-DPI support and events directly, without a
 new event dispatch or drawing abstraction. All errors stay visible.

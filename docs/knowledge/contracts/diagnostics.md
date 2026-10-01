@@ -87,7 +87,10 @@ and successful tensors. A whole-analysis failure returns ok:false and error.
 The result is {available:true,complete:bool,problems:[],tensors:[]}; complete
 means every reported node resolved successfully, not backend/training readiness.
 Package is {id,version}; scope is the stable scope ID; file/causeNode are nullable
-and line is zero if unavailable. Tensors are {node,dtype,shape:[dimension text]}.
+and line is zero if unavailable. Accepted 2026-10-01: tensors are
+{node,handle,type,dtype,shape:[dimension text]}, one entry per typed output;
+handle/type are null for consumed terminal tensors. Boundary completion and
+mapped subflow diagnostics follow typed-outputs.md; graph edits stay available.
 Internal details are labelled as such; the UI renders the same C outcomes.
 ui.reveal {id} uses the same navigation as clicking a problem; unknown IDs fail
 without changing scope/selection. Rejected commands return the same C reason as

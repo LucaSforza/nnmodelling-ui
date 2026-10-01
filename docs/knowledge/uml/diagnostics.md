@@ -14,7 +14,8 @@ classDiagram
     NNInferenceResult : source_file
     NNInferenceResult : source_line
     NNInferenceResult : message
-    NNInferenceResult : optional tensor
+    NNInferenceResult : typed output tensors keyed by handle
+    NNInferenceResult : primary or consumed terminal tensor view
     MainWindow --> NNApplication : analysis query / copied IDs
     CommandAdapter --> NNApplication : same analysis query
     MainWindow --> GraphScene : reveal node / problem markers
@@ -51,3 +52,5 @@ Blocked subflow owners propagate their root IDs to uninvoked children. Problem
 rows wrap category/name, scope and reason within the existing panel width.
 No SDS dependency is retained. utils owns bounded errors and path joining;
 yyjson owns JSON escaping/serialization. No third-party types are added to APIs.
+Typed output and boundary completion errors follow typed-outputs.md; handle/type
+are retained in CLI tensors and all successful outputs remain inspectable.
