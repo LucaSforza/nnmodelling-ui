@@ -11,7 +11,7 @@ class PortItem final : public QGraphicsObject {
     Q_OBJECT
 public:
     PortItem(GraphScene *owner, QString nodeId, QString handleId, bool output,
-             QString label, QGraphicsItem *parent = nullptr);
+             QString label, QString outputType = {}, QGraphicsItem *parent = nullptr);
     QRectF boundingRect() const override;
     QPainterPath shape() const override;
     void paint(QPainter *painter, const QStyleOptionGraphicsItem *option,
@@ -20,6 +20,9 @@ public:
     QString handleId() const { return handleId_; }
     QString label() const { return label_; }
     bool isOutput() const { return output_; }
+    QString outputType() const { return outputType_; }
+    bool glyphSuppressed() const { return glyphSuppressed_; }
+    void setGlyphSuppressed(bool suppressed) { glyphSuppressed_ = suppressed; update(); }
 
 protected:
     void mousePressEvent(QGraphicsSceneMouseEvent *event) override;
@@ -33,8 +36,10 @@ private:
     QString nodeId_;
     QString handleId_;
     QString label_;
+    QString outputType_;
     bool output_;
     bool hovered_ = false;
+    bool glyphSuppressed_ = false;
 };
 
 #endif

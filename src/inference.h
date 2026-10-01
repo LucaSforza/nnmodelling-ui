@@ -20,6 +20,14 @@ typedef enum {
 } NNInferenceStatus;
 
 typedef struct {
+    const char *handle_id;
+    const char *type;
+    const char *dtype;
+    const char *const *dimensions;
+    size_t dimension_count;
+} NNInferenceTensor;
+
+typedef struct {
     const char *node_id;
     NNInferenceStatus status;
     const char *message;
@@ -30,6 +38,8 @@ typedef struct {
     const char *dtype;
     const char *const *dimensions;
     size_t dimension_count;
+    const NNInferenceTensor *outputs;
+    size_t output_count;
 } NNInferenceResult;
 
 /* The report owns its results and strings; project state is never changed. */
@@ -39,6 +49,8 @@ bool nn_inference_validate_source(const char *source, char *error,
 void nn_inference_free(NNInferenceReport *report);
 size_t nn_inference_count(const NNInferenceReport *report);
 const NNInferenceResult *nn_inference_at(const NNInferenceReport *report, size_t index);
+NNInferenceStatus nn_inference_root_status(const NNInferenceReport *report);
+const char *nn_inference_root_message(const NNInferenceReport *report);
 const char *nn_inference_category(NNInferenceStatus status);
 const char *nn_inference_severity(NNInferenceStatus status);
 size_t nn_inference_error_line(const char *message);

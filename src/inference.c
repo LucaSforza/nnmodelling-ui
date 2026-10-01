@@ -28,14 +28,24 @@ typedef struct {
     void *temporary[LUA_TEMP_ALLOCATION_LIMIT];
 } LuaBudget;
 typedef struct { char *dtype; char **dimensions; size_t count; } Tensor;
+typedef struct { char *handle_id; char *type; Tensor tensor; } OutputTensor;
+typedef struct { OutputTensor *items; size_t count; } NodeOutputs;
 typedef struct { const NNEdge *edge; size_t order; } Incoming;
 typedef struct {
     NNInferenceResult view;
     char *id, *message, *dtype, *cause_node_id, *source_file;
     char **dimensions;
+    NNInferenceTensor *outputs;
+    OutputTensor *owned_outputs;
 } Result;
 
-struct NNInferenceReport { Result *items; size_t count; bool failed; };
+struct NNInferenceReport {
+    Result *items;
+    size_t count;
+    NNInferenceStatus root_status;
+    char *root_message;
+    bool failed;
+};
 
 typedef struct Evaluation Evaluation;
 typedef struct {
@@ -45,7 +55,7 @@ typedef struct {
     const Tensor *inherited;
     char *cause_node_id;
     Tensor inherited_scratch;
-    Tensor output_scratch;
+    Tensor output_scratch[2];
     char *message_scratch;
 } LuaContext;
 typedef struct {
@@ -75,10 +85,14 @@ static int extract_rule_result(lua_State *state);
 static char extract_result_registry_key;
 
 typedef struct {
-    Tensor *output;
+    Tensor *outputs;
+    size_t output_count;
+    const NNPackage *package;
+    bool terminal;
     char **message;
     NNInferenceStatus status;
 } ExtractResult;
+static void tensor_dispose(Tensor *tensor);
 
 static void *limited_alloc(void *data, void *ptr, size_t old_size, size_t new_size)
 {
@@ -342,7 +356,7 @@ static int tensor_create(lua_State *state)
     if (!lua_istable(state, 1) || lua_type(state, 2) != LUA_TSTRING)
         return push_error(state, "expected shape and dtype");
     size_t count = lua_rawlen(state, 1);
-    if (!count || count > 64) return push_error(state, "invalid tensor rank");
+    if (count > 64) return push_error(state, "invalid tensor rank");
     char **dims = lua_temp_calloc(state, count, sizeof(*dims));
     if (!dims) return push_error(state, "out of memory");
     for (size_t i = 0; i < count; ++i) {
@@ -689,7 +703,7 @@ static void extraction_message(lua_State *state, ExtractResult *result, const ch
 static int extract_rule_result(lua_State *state)
 {
     ExtractResult *result = lua_touserdata(state, 2);
-    if (!result || !result->output || !result->message)
+    if (!result || !result->outputs || !result->message)
         return luaL_error(state, "invalid inference result extraction context");
     raw_getfield(state, 1, "status");
     const char *kind = lua_type(state, -1) == LUA_TSTRING ? lua_tostring(state, -1) : NULL;
@@ -697,17 +711,90 @@ static int extract_rule_result(lua_State *state)
     result->status = NN_INFERENCE_RUNTIME_FAULT;
     if (kind && !strcmp(kind, "success")) {
         raw_getfield(state, 1, "output");
-        if (lua_isnil(state, -1)) {
-            result->status = NN_INFERENCE_UNRESOLVED;
-            extraction_message(state, result,
-                "rule output is missing because its upstream tensor is unresolved");
-        } else if (tensor_from_lua(state, -1, result->output, true)) {
-            tensor_detach_lua_temporaries(state, result->output);
-            result->status = NN_INFERENCE_SUCCESS;
-        } else {
-            extraction_message(state, result, "rule returned an invalid tensor");
-        }
+        bool has_output = !lua_isnil(state, -1);
         lua_pop(state, 1);
+        raw_getfield(state, 1, "outputs");
+        bool has_outputs = !lua_isnil(state, -1);
+        if (result->terminal) {
+            lua_pop(state, 1);
+            if (!has_output || has_outputs) {
+                result->status = NN_INFERENCE_SEMANTIC_ERROR;
+                extraction_message(state, result, "terminal rule must return only its consumed output tensor");
+            } else {
+                raw_getfield(state, 1, "output");
+                if (tensor_from_lua(state, -1, &result->outputs[0], true)) {
+                    tensor_detach_lua_temporaries(state, &result->outputs[0]);
+                    result->status = NN_INFERENCE_SUCCESS;
+                } else {
+                    result->status = NN_INFERENCE_SEMANTIC_ERROR;
+                    extraction_message(state, result, "rule returned an invalid tensor");
+                }
+                lua_pop(state, 1);
+            }
+        } else if (has_output && has_outputs) {
+            lua_pop(state, 1);
+            result->status = NN_INFERENCE_SEMANTIC_ERROR;
+            extraction_message(state, result, "rule must return either output or outputs, not both");
+        } else if (has_output) {
+            lua_pop(state, 1);
+            raw_getfield(state, 1, "output");
+            if (result->output_count != 1) {
+                lua_pop(state, 1);
+                result->status = NN_INFERENCE_SEMANTIC_ERROR;
+                extraction_message(state, result, "multi-output rule cannot use output shorthand");
+            } else if (tensor_from_lua(state, -1, &result->outputs[0], true)) {
+                tensor_detach_lua_temporaries(state, &result->outputs[0]);
+                result->status = NN_INFERENCE_SUCCESS;
+                lua_pop(state, 1);
+            } else {
+                result->status = NN_INFERENCE_SEMANTIC_ERROR;
+                extraction_message(state, result, "rule returned an invalid tensor");
+                lua_pop(state, 1);
+            }
+        } else if (has_outputs && lua_istable(state, -1)) {
+            int map = lua_absindex(state, -1);
+            size_t seen = 0;
+            bool valid = true;
+            for (size_t i = 0; i < result->package->output_count; ++i) {
+                raw_getfield(state, map, result->package->outputs[i].id);
+                if (lua_isnil(state, -1)) valid = false;
+                else if (!tensor_from_lua(state, -1, &result->outputs[i], true)) valid = false;
+                else tensor_detach_lua_temporaries(state, &result->outputs[i]);
+                lua_pop(state, 1);
+            }
+            lua_pushnil(state);
+            while (lua_next(state, map)) {
+                size_t key_length = 0;
+                const char *key = lua_type(state, -2) == LUA_TSTRING
+                    ? lua_tolstring(state, -2, &key_length) : NULL;
+                bool known = false;
+                for (size_t i = 0; key && i < result->package->output_count; ++i) {
+                    size_t id_length = strlen(result->package->outputs[i].id);
+                    if (key_length == id_length && !memcmp(key,
+                        result->package->outputs[i].id, id_length)) known = true;
+                }
+                if (!known) valid = false;
+                ++seen;
+                lua_pop(state, 1);
+            }
+            if (seen != result->package->output_count) valid = false;
+            lua_pop(state, 1);
+            if (valid) result->status = NN_INFERENCE_SUCCESS;
+            else {
+                for (size_t i = 0; i < result->package->output_count; ++i) {
+                    tensor_detach_lua_temporaries(state, &result->outputs[i]);
+                    tensor_dispose(&result->outputs[i]);
+                }
+                result->status = NN_INFERENCE_SEMANTIC_ERROR;
+                extraction_message(state, result, "rule output map does not match declared handles");
+            }
+        } else {
+            lua_pop(state, 1);
+            result->status = NN_INFERENCE_SEMANTIC_ERROR;
+            extraction_message(state, result, "rule result is missing a valid output or outputs map");
+        }
+        if (result->status != NN_INFERENCE_SUCCESS && !*result->message)
+            extraction_message(state, result, "rule output is invalid");
     } else if (kind && (!strcmp(kind, "error") || !strcmp(kind, "unresolved"))) {
         raw_getfield(state, 1, "message");
         if (lua_type(state, -1) == LUA_TSTRING) {
@@ -732,6 +819,71 @@ static void tensor_dispose(Tensor *tensor)
     memset(tensor, 0, sizeof(*tensor));
 }
 
+static bool tensor_copy(Tensor *destination, const Tensor *source);
+
+static void node_outputs_dispose(NodeOutputs *outputs)
+{
+    if (!outputs) return;
+    for (size_t i = 0; i < outputs->count; ++i) {
+        free(outputs->items[i].handle_id);
+        free(outputs->items[i].type);
+        tensor_dispose(&outputs->items[i].tensor);
+    }
+    free(outputs->items);
+    memset(outputs, 0, sizeof(*outputs));
+}
+
+static Tensor *node_output_find(NodeOutputs *outputs, const char *handle_id)
+{
+    if (!outputs || !handle_id) return NULL;
+    for (size_t i = 0; i < outputs->count; ++i)
+        if (outputs->items[i].handle_id &&
+            !strcmp(outputs->items[i].handle_id, handle_id))
+            return &outputs->items[i].tensor;
+    return NULL;
+}
+
+static bool node_output_add(NodeOutputs *outputs, const NNPackage *package,
+                            const Tensor *tensors)
+{
+    if (!package || !package->output_count || package->output_count > 2 ||
+        !package->outputs || !tensors)
+        return false;
+    OutputTensor *items = calloc(package->output_count, sizeof(*items));
+    if (!items) return false;
+    for (size_t i = 0; i < package->output_count; ++i) {
+        items[i].handle_id = nn_text_copy(package->outputs[i].id);
+        items[i].type = nn_text_copy(package->outputs[i].type);
+        if (!items[i].handle_id || !items[i].type ||
+            !tensor_copy(&items[i].tensor, &tensors[i])) {
+            NodeOutputs partial = { .items = items, .count = package->output_count };
+            node_outputs_dispose(&partial);
+            return false;
+        }
+    }
+    outputs->items = items;
+    outputs->count = package->output_count;
+    return true;
+}
+
+static bool node_output_add_mapping(NodeOutputs *outputs, const NNNode *node,
+                                    const NNPackage *package, const Tensor *tensor)
+{
+    if (!node || !node->boundary_handle_id || !package || !tensor) return true;
+    OutputTensor *item = calloc(1, sizeof(*item));
+    if (!item) return false;
+    item->handle_id = nn_text_copy(node->boundary_handle_id);
+    item->type = nn_text_copy(package->kind && !strcmp(package->kind, "loss-output")
+                                  ? "loss" : "output");
+    if (!item->handle_id || !item->type || !tensor_copy(&item->tensor, tensor)) {
+        free(item->handle_id); free(item->type); tensor_dispose(&item->tensor);
+        free(item); return false;
+    }
+    outputs->items = item;
+    outputs->count = 1;
+    return true;
+}
+
 static bool tensor_copy(Tensor *destination, const Tensor *source)
 {
     destination->dtype = nn_text_copy(source->dtype);
@@ -749,8 +901,8 @@ static bool tensor_copy(Tensor *destination, const Tensor *source)
 static NNInferenceStatus execute_rule(Evaluation *evaluation, const NNNode *node,
                                       const NNPackage *package, size_t depth,
                                       const Tensor *inherited,
-                                      Tensor *inputs, size_t input_count,
-                                       Tensor *output, char **message,
+                                       Tensor *inputs, size_t input_count,
+                                        Tensor *output, char **message,
                                        char **source_file, size_t *source_line,
                                        char **cause_node_id)
 {
@@ -803,12 +955,19 @@ static NNInferenceStatus execute_rule(Evaluation *evaluation, const NNNode *node
     for (size_t i = 0; i < context.inherited_scratch.count; ++i)
         lua_temp_detach(state, context.inherited_scratch.dimensions[i]);
     tensor_dispose(&context.inherited_scratch);
-    tensor_dispose(&context.output_scratch);
+    tensor_dispose(&context.output_scratch[0]);
+    tensor_dispose(&context.output_scratch[1]);
     free(context.message_scratch);
     NNInferenceStatus result = compilation_error ? NN_INFERENCE_COMPILATION_ERROR
                                                   : NN_INFERENCE_RUNTIME_FAULT;
     if (status == LUA_OK && lua_istable(state, -1)) {
-        ExtractResult extracted = { .output = output, .message = message,
+        ExtractResult extracted = { .outputs = output,
+                                    .output_count = package->output_count,
+                                    .package = package,
+                                    .terminal = package->kind &&
+                                        (!strcmp(package->kind, "output") ||
+                                         !strcmp(package->kind, "loss-output")),
+                                    .message = message,
                                     .status = NN_INFERENCE_RUNTIME_FAULT };
         lua_pushlightuserdata(state, &extract_result_registry_key);
         lua_rawget(state, LUA_REGISTRYINDEX);
@@ -825,12 +984,16 @@ static NNInferenceStatus execute_rule(Evaluation *evaluation, const NNNode *node
             free(*message);
             *message = nn_text_copy("Lua allocation failure while extracting inference result");
             if (!*message) evaluation->allocation_failed = true;
-            tensor_detach_lua_temporaries(state, output);
-            tensor_dispose(output);
+            for (size_t i = 0; i < (extracted.terminal ? 1 : package->output_count); ++i) {
+                tensor_detach_lua_temporaries(state, &output[i]);
+                tensor_dispose(&output[i]);
+            }
         }
-        if (result != NN_INFERENCE_SUCCESS && output->dtype) {
-            tensor_detach_lua_temporaries(state, output);
-            tensor_dispose(output);
+        if (result != NN_INFERENCE_SUCCESS) {
+            for (size_t i = 0; i < (extracted.terminal ? 1 : package->output_count); ++i) {
+                tensor_detach_lua_temporaries(state, &output[i]);
+                tensor_dispose(&output[i]);
+            }
         }
     } else if (status != LUA_OK && !compilation_error) {
         const char *error = lua_type(state, -1) == LUA_TSTRING
@@ -857,6 +1020,12 @@ static bool result_set(Result *result, const NNNode *node, NNInferenceStatus sta
 {
     free(result->id); free(result->message); free(result->dtype);
     free(result->cause_node_id); free(result->source_file);
+    for (size_t i = 0; i < result->view.output_count; ++i) {
+        free(result->owned_outputs ? result->owned_outputs[i].handle_id : NULL);
+        free(result->owned_outputs ? result->owned_outputs[i].type : NULL);
+        if (result->owned_outputs) tensor_dispose(&result->owned_outputs[i].tensor);
+    }
+    free(result->outputs); free(result->owned_outputs);
     free_dimensions(result->dimensions, result->view.dimension_count);
     memset(result, 0, sizeof(*result));
     result->id = nn_text_copy(node->id); result->message = message;
@@ -890,6 +1059,32 @@ static bool result_set(Result *result, const NNNode *node, NNInferenceStatus sta
         for (size_t i = 0; i < tensor->count; ++i)
             if (!result->dimensions[i]) return false;
     }
+    return true;
+}
+
+static bool result_set_output_metadata(Result *result, const NNPackage *package,
+                                       const Tensor *tensors)
+{
+    if (!result || !package || !package->outputs || !package->output_count ||
+        package->output_count > 2 || !result->dtype) return false;
+    result->outputs = calloc(package->output_count, sizeof(*result->outputs));
+    result->owned_outputs = calloc(package->output_count, sizeof(*result->owned_outputs));
+    if (!result->outputs || !result->owned_outputs) return false;
+    result->view.output_count = package->output_count;
+    for (size_t i = 0; i < package->output_count; ++i) {
+        OutputTensor *owned = &result->owned_outputs[i];
+        owned->handle_id = nn_text_copy(package->outputs[i].id);
+        owned->type = nn_text_copy(package->outputs[i].type);
+        if (!owned->handle_id || !owned->type) return false;
+        if (!tensors || !tensor_copy(&owned->tensor, &tensors[i])) return false;
+        result->outputs[i] = (NNInferenceTensor){
+            .handle_id = owned->handle_id, .type = owned->type,
+            .dtype = owned->tensor.dtype,
+            .dimensions = (const char *const *)owned->tensor.dimensions,
+            .dimension_count = owned->tensor.count
+        };
+    }
+    result->view.outputs = result->outputs;
     return true;
 }
 
@@ -941,7 +1136,8 @@ static int inference_subflow(lua_State *state)
         return 1;
     }
     tensor_dispose(&context->inherited_scratch);
-    tensor_dispose(&context->output_scratch);
+    tensor_dispose(&context->output_scratch[0]);
+    tensor_dispose(&context->output_scratch[1]);
     free(context->message_scratch);
     context->message_scratch = NULL;
     free(context->cause_node_id);
@@ -951,7 +1147,7 @@ static int inference_subflow(lua_State *state)
     }
     NNInferenceStatus status = evaluate_scope(context->evaluation, context->node->id,
                                                &context->inherited_scratch, context->depth + 1,
-                                               &context->output_scratch,
+                                                context->output_scratch,
                                                &context->message_scratch,
                                                &context->cause_node_id);
     tensor_dispose(&context->inherited_scratch);
@@ -963,10 +1159,23 @@ static int inference_subflow(lua_State *state)
     lua_newtable(state);
     if (status == NN_INFERENCE_SUCCESS) {
         lua_pushliteral(state, "success"); lua_setfield(state, -2, "status");
-        tensor_push(state, context->output_scratch.dtype,
-                    (const char *const *)context->output_scratch.dimensions,
-                    context->output_scratch.count);
-        lua_setfield(state, -2, "output");
+        const NNPackage *package = nn_catalog_find(context->evaluation->catalog,
+            context->node->package_id, context->node->package_version);
+        if (package && package->output_count == 1) {
+            tensor_push(state, context->output_scratch[0].dtype,
+                        (const char *const *)context->output_scratch[0].dimensions,
+                        context->output_scratch[0].count);
+            lua_setfield(state, -2, "output");
+        } else if (package && package->output_count == 2) {
+            lua_newtable(state);
+            for (size_t i = 0; i < package->output_count; ++i) {
+                tensor_push(state, context->output_scratch[i].dtype,
+                            (const char *const *)context->output_scratch[i].dimensions,
+                            context->output_scratch[i].count);
+                lua_setfield(state, -2, package->outputs[i].id);
+            }
+            lua_setfield(state, -2, "outputs");
+        }
     } else {
         lua_pushstring(state, status == NN_INFERENCE_SEMANTIC_ERROR ? "error" : "unresolved");
         lua_setfield(state, -2, "status");
@@ -976,7 +1185,8 @@ static int inference_subflow(lua_State *state)
     }
     free(context->message_scratch);
     context->message_scratch = NULL;
-    tensor_dispose(&context->output_scratch);
+    tensor_dispose(&context->output_scratch[0]);
+    tensor_dispose(&context->output_scratch[1]);
     return 1;
 }
 
@@ -987,7 +1197,7 @@ static NNInferenceStatus evaluate_scope(Evaluation *evaluation, const char *scop
 {
     const NNModel *model = evaluation->model;
     size_t count = nn_model_node_count(model);
-    Tensor *outputs = calloc(count ? count : 1, sizeof(*outputs));
+    NodeOutputs *outputs = calloc(count ? count : 1, sizeof(*outputs));
     size_t *indegree = calloc(count ? count : 1, sizeof(*indegree));
     bool *done = calloc(count ? count : 1, sizeof(*done));
     if (!outputs || !indegree || !done) {
@@ -996,7 +1206,8 @@ static NNInferenceStatus evaluate_scope(Evaluation *evaluation, const char *scop
         *scope_message = nn_text_copy("unable to allocate scope inference state");
         return NN_INFERENCE_RUNTIME_FAULT;
     }
-    size_t scope_nodes = 0, inputs_n = 0, outputs_n = 0, input_index = count, output_index = count;
+    size_t scope_nodes = 0, inputs_n = 0, outputs_n = 0, losses_n = 0;
+    size_t input_index = count, output_index = count;
     for (size_t i = 0; i < count; ++i) {
         const NNNode *node = nn_model_node_at(model, i);
         if (strcmp(node->scope_id ? node->scope_id : "", scope ? scope : "")) continue;
@@ -1004,17 +1215,70 @@ static NNInferenceStatus evaluate_scope(Evaluation *evaluation, const char *scop
         const char *kind = package_kind(evaluation, node);
         if (kind && !strcmp(kind, "input")) { ++inputs_n; input_index = i; }
         if (kind && !strcmp(kind, "output")) { ++outputs_n; output_index = i; }
+        if (kind && !strcmp(kind, "loss-output")) ++losses_n;
     }
     bool nested_scope = scope && *scope;
-        if (!scope_nodes || (nested_scope && (!inputs_n || !outputs_n))) {
-        *scope_message = nn_text_copy("subflow scope is empty or missing an Input/Output boundary");
+    const NNNode *owner = nested_scope ? nn_model_find_node(model, scope) : NULL;
+    const NNPackage *owner_package = owner ? nn_catalog_find(evaluation->catalog,
+        owner->package_id, owner->package_version) : NULL;
+    size_t mapped_index[2] = { count, count };
+    bool invalid_mapping = false;
+    if (nested_scope) {
+        if (!owner_package || !owner_package->outputs || !owner_package->output_count ||
+            owner_package->output_count > 2) invalid_mapping = true;
+        for (size_t i = 0; i < count && !invalid_mapping; ++i) {
+            const NNNode *terminal = nn_model_node_at(model, i);
+            const char *kind = package_kind(evaluation, terminal);
+            if (strcmp(terminal->scope_id ? terminal->scope_id : "", scope)) continue;
+            if (terminal->boundary_handle_id &&
+                (!kind || (strcmp(kind, "output") && strcmp(kind, "loss-output")))) {
+                invalid_mapping = true;
+                break;
+            }
+            if (!kind || (strcmp(kind, "output") && strcmp(kind, "loss-output"))) continue;
+            if (!terminal->boundary_handle_id) continue;
+            size_t handle = owner_package->output_count;
+            for (size_t h = 0; h < owner_package->output_count; ++h)
+                if (!strcmp(terminal->boundary_handle_id, owner_package->outputs[h].id)) {
+                    handle = h; break;
+                }
+            if (handle == owner_package->output_count) { invalid_mapping = true; break; }
+            const char *expected_kind = !strcmp(owner_package->outputs[handle].type, "loss")
+                ? "loss-output" : "output";
+            if (strcmp(kind, expected_kind) || mapped_index[handle] != count) {
+                invalid_mapping = true; break;
+            }
+            mapped_index[handle] = i;
+        }
+        output_index = owner_package && owner_package->output_count ? mapped_index[0] : count;
+    }
+    if (nested_scope && invalid_mapping) {
+        *scope_message = nn_text_copy("subflow terminal mapping is duplicate, unknown or wrong type");
+        scope_set_status(evaluation, scope, NN_INFERENCE_SEMANTIC_ERROR, *scope_message);
+        free(outputs); free(indegree); free(done); return NN_INFERENCE_SEMANTIC_ERROR;
+    }
+    if (!scope_nodes || (nested_scope && (!inputs_n || !(outputs_n + losses_n)))) {
+        *scope_message = nn_text_copy("subflow scope is empty or missing a boundary");
         scope_set_status(evaluation, scope, NN_INFERENCE_UNRESOLVED, *scope_message);
         free(outputs); free(indegree); free(done); return NN_INFERENCE_UNRESOLVED;
     }
-    if (nested_scope && (inputs_n != 1 || outputs_n != 1)) {
-        *scope_message = nn_text_copy("subflow scope must contain exactly one immediate Input and Output");
+    if (nested_scope && inputs_n != 1) {
+        *scope_message = nn_text_copy("subflow scope must contain exactly one immediate Input");
         scope_set_status(evaluation, scope, NN_INFERENCE_SEMANTIC_ERROR, *scope_message);
         free(outputs); free(indegree); free(done); return NN_INFERENCE_SEMANTIC_ERROR;
+    }
+    if (nested_scope && (outputs_n + losses_n > owner_package->output_count)) {
+        *scope_message = nn_text_copy("subflow has extra terminal boundaries");
+        scope_set_status(evaluation, scope, NN_INFERENCE_SEMANTIC_ERROR, *scope_message);
+        free(outputs); free(indegree); free(done); return NN_INFERENCE_SEMANTIC_ERROR;
+    }
+    bool missing_mapping = false;
+    if (nested_scope) for (size_t h = 0; h < owner_package->output_count; ++h)
+        if (mapped_index[h] == count) missing_mapping = true;
+    if (nested_scope && missing_mapping) {
+        *scope_message = nn_text_copy("subflow output boundary is missing or unmapped");
+        scope_set_status(evaluation, scope, NN_INFERENCE_UNRESOLVED, *scope_message);
+        free(outputs); free(indegree); free(done); return NN_INFERENCE_UNRESOLVED;
     }
     for (size_t e = 0; e < nn_model_edge_count(model); ++e) {
         const NNEdge *edge = nn_model_edge_at(model, e);
@@ -1068,19 +1332,21 @@ static NNInferenceStatus evaluate_scope(Evaluation *evaluation, const char *scop
             if (package && !strcmp(package->kind, "join") && !nn_join_handle_order(edge->target_handle_id, &order)) { malformed = true; break; }
             incoming[used++] = (Incoming){ .edge = edge, .order = order };
         }
-        if (package && !strcmp(package->kind, "join") && !malformed) {
+        if (package && !strcmp(package->kind, "join") && !malformed && used > 1) {
             qsort(incoming, used, sizeof(*incoming), incoming_compare);
             for (size_t i = 1; i < used; ++i) if (incoming[i-1].order == incoming[i].order) malformed = true;
         }
         size_t edge_count = used; used = 0;
         if (inputs && incoming && !malformed) for (size_t i = 0; i < edge_count; ++i) {
             size_t source = find_node_index(model, incoming[i].edge->source_id);
-            if (source == (size_t)-1 || !outputs[source].dtype) { missing = true; break; }
-            inputs[used++] = outputs[source];
+            Tensor *selected = source == (size_t)-1 ? NULL :
+                node_output_find(&outputs[source], incoming[i].edge->source_handle_id);
+            if (!selected || !selected->dtype) { missing = true; break; }
+            inputs[used++] = *selected;
         }
         char *message = NULL, *source_file = NULL, *cause_node_id = NULL;
         size_t source_line = 0;
-        Tensor output = {0}; NNInferenceStatus status;
+        Tensor output[2] = {{0}}; NNInferenceStatus status;
         if (malformed) { status = NN_INFERENCE_SEMANTIC_ERROR; message = nn_text_copy("join target handle must be in-<positive integer>"); }
         else if (missing) { status = NN_INFERENCE_UNRESOLVED; message = nn_text_copy("an upstream tensor is unresolved"); }
         else if (!package) { status = NN_INFERENCE_RUNTIME_FAULT; message = nn_text_copy("package is absent from active catalog"); }
@@ -1090,7 +1356,7 @@ static NNInferenceStatus evaluate_scope(Evaluation *evaluation, const char *scop
         }
         else status = execute_rule(evaluation, node, package, depth,
                                    node == nn_model_node_at(model, input_index) ? inherited : NULL,
-                                   inputs, used, &output, &message, &source_file,
+                                    inputs, used, output, &message, &source_file,
                                    &source_line, &cause_node_id);
         if (status == NN_INFERENCE_UNRESOLVED && !cause_node_id && missing) {
             for (size_t e = 0; incoming && e < edge_count && !cause_node_id; ++e) {
@@ -1110,19 +1376,19 @@ static NNInferenceStatus evaluate_scope(Evaluation *evaluation, const char *scop
                       if (!cause_node_id) evaluation->allocation_failed = true; }
             }
         }
-        Result *result = report_result(evaluation, node);
-        if (result && !result_set(result, node, status, message,
-                                  status == NN_INFERENCE_SUCCESS ? &output : NULL,
-                                  cause_node_id,
-                                  source_file, source_line,
-                                  cause_node_id ? "model.blocked" : NULL))
-            evaluation->report->failed = true;
         if (index == output_index && scope_cause && cause_node_id) {
             *scope_cause = nn_text_copy(cause_node_id);
             if (!*scope_cause) evaluation->allocation_failed = true;
         }
-        free(source_file);
+        Result *result = report_result(evaluation, node);
+        bool result_added = !result || result_set(result, node, status,
+            message, status == NN_INFERENCE_SUCCESS ? &output[0] : NULL,
+            cause_node_id, source_file, source_line,
+            cause_node_id ? "model.blocked" : NULL);
         free(cause_node_id);
+        cause_node_id = NULL;
+        if (!result_added) evaluation->report->failed = true;
+        free(source_file);
         if (status == NN_INFERENCE_RUNTIME_FAULT) {
             scope_failure = status;
             free(failure_message);
@@ -1131,16 +1397,32 @@ static NNInferenceStatus evaluate_scope(Evaluation *evaluation, const char *scop
             scope_failure = status;
             failure_message = nn_text_copy(message ? message : "nested semantic error");
         }
-        if (status == NN_INFERENCE_SUCCESS) outputs[index] = output;
-        else tensor_dispose(&output);
+        if (status == NN_INFERENCE_SUCCESS) {
+            bool terminal = package && package->kind &&
+                (!strcmp(package->kind, "output") || !strcmp(package->kind, "loss-output"));
+            if ((terminal && nested_scope &&
+                 !node_output_add_mapping(&outputs[index], node, package, &output[0])) ||
+                (!terminal && !node_output_add(&outputs[index], package, output))) {
+                /* Host OOM discards the whole report. message already belongs to
+                   result; do not replace/free it or allocate a secondary error. */
+                evaluation->allocation_failed = true;
+                status = NN_INFERENCE_RUNTIME_FAULT;
+                for (size_t o = 0; o < 2; ++o) tensor_dispose(&output[o]);
+            } else {
+                if (!terminal && package && package->output_count) {
+                    Result *typed = report_result(evaluation, node);
+                    if (typed && !result_set_output_metadata(typed, package, output))
+                        evaluation->report->failed = true;
+                    for (size_t o = 0; o < 2; ++o) tensor_dispose(&output[o]);
+                } else {
+                    /* Terminal rules inspect the consumed tensor but publish no handle. */
+                    for (size_t o = 0; o < 2; ++o) tensor_dispose(&output[o]);
+                }
+            }
+        } else for (size_t o = 0; o < 2; ++o) tensor_dispose(&output[o]);
         if (index == output_index) {
             output_status = status;
-            if (status == NN_INFERENCE_SUCCESS && !tensor_copy(scope_output, &outputs[index])) {
-                evaluation->allocation_failed = true;
-                output_status = NN_INFERENCE_RUNTIME_FAULT;
-                *scope_message = nn_text_copy("unable to copy subflow output tensor");
-            }
-            else *scope_message = nn_text_copy(message ? message : "subflow Output is unresolved");
+            *scope_message = nn_text_copy(message ? message : "subflow output boundary is unresolved");
         }
         free(inputs); free(incoming);
         for (size_t e = 0; e < nn_model_edge_count(model); ++e) {
@@ -1150,9 +1432,37 @@ static NNInferenceStatus evaluate_scope(Evaluation *evaluation, const char *scop
             if (target != (size_t)-1 && indegree[target]) --indegree[target];
         }
     }
-    if (output_index < count && !done[output_index]) {
+    if (nested_scope) {
+        output_status = NN_INFERENCE_SUCCESS;
+        for (size_t h = 0; h < owner_package->output_count; ++h) {
+            size_t terminal_index = mapped_index[h];
+            if (terminal_index >= count || !done[terminal_index]) {
+                output_status = NN_INFERENCE_UNRESOLVED;
+                free(*scope_message);
+                *scope_message = nn_text_copy("subflow output boundary is disconnected or cyclic");
+                continue;
+            }
+            Result *terminal_result = report_result(evaluation, nn_model_node_at(model, terminal_index));
+            if (!terminal_result || terminal_result->view.status != NN_INFERENCE_SUCCESS) {
+                output_status = terminal_result ? terminal_result->view.status : NN_INFERENCE_UNRESOLVED;
+                free(*scope_message);
+                *scope_message = nn_text_copy(terminal_result && terminal_result->message
+                    ? terminal_result->message : "subflow output boundary is unresolved");
+                continue;
+            }
+            Tensor *mapped = node_output_find(&outputs[terminal_index],
+                nn_model_node_at(model, terminal_index)->boundary_handle_id);
+            if (!mapped || !tensor_copy(&scope_output[h], mapped)) {
+                evaluation->allocation_failed = true;
+                output_status = NN_INFERENCE_RUNTIME_FAULT;
+                free(*scope_message);
+                *scope_message = nn_text_copy("unable to copy subflow output tensor");
+            }
+        }
+    }
+    if (!nested_scope && output_index < count && !done[output_index]) {
         output_status = NN_INFERENCE_UNRESOLVED;
-        *scope_message = nn_text_copy("subflow Output is disconnected or cyclic");
+        *scope_message = nn_text_copy("root Output is disconnected or cyclic");
     }
     if (output_status != NN_INFERENCE_SUCCESS && scope_failure != NN_INFERENCE_UNRESOLVED) {
         output_status = scope_failure;
@@ -1170,7 +1480,7 @@ static NNInferenceStatus evaluate_scope(Evaluation *evaluation, const char *scop
         if (!*scope_cause) evaluation->allocation_failed = true;
     }
     free(failure_message);
-    for (size_t i = 0; i < count; ++i) tensor_dispose(&outputs[i]);
+    for (size_t i = 0; i < count; ++i) node_outputs_dispose(&outputs[i]);
     free(outputs); free(indegree); free(done);
     return output_status;
 }
@@ -1191,6 +1501,33 @@ NNInferenceReport *nn_infer_project(const NNProject *project)
     Tensor ignored = {0}; char *message = NULL;
     (void)evaluate_scope(&evaluation, "", NULL, 0, &ignored, &message, NULL);
     free(message); tensor_dispose(&ignored);
+    size_t root_inputs = 0, root_outputs = 0, root_losses = 0;
+    bool invalid_root_mapping = false;
+    for (size_t i = 0; i < count; ++i) {
+        const NNNode *node = nn_model_node_at(model, i);
+        if (node->scope_id && *node->scope_id) continue;
+        if (node->boundary_handle_id) invalid_root_mapping = true;
+        const char *kind = package_kind(&evaluation, node);
+        if (kind && !strcmp(kind, "input")) ++root_inputs;
+        else if (kind && !strcmp(kind, "output")) ++root_outputs;
+        else if (kind && !strcmp(kind, "loss-output")) ++root_losses;
+    }
+    if (invalid_root_mapping || root_outputs > 1 || root_losses > 1) {
+        report->root_status = NN_INFERENCE_SEMANTIC_ERROR;
+        report->root_message = nn_text_copy(invalid_root_mapping
+            ? "root terminals cannot have boundary mappings"
+            : "root must contain exactly one Output and one Loss Output terminal");
+    } else if (!root_inputs || root_outputs != 1 || root_losses != 1) {
+        report->root_status = NN_INFERENCE_UNRESOLVED;
+        report->root_message = nn_text_copy(!root_inputs
+            ? "root is missing an Input boundary"
+            : root_outputs != 1 ? "root is missing an Output boundary"
+                                : "root is missing a Loss Output boundary");
+    } else {
+        report->root_status = NN_INFERENCE_SUCCESS;
+    }
+    if (report->root_status != NN_INFERENCE_SUCCESS && !report->root_message)
+        evaluation.allocation_failed = true;
     for (size_t i = 0; i < count; ++i) {
         const NNNode *node = nn_model_node_at(model, i);
         if (report->items[i].id) continue;
@@ -1263,14 +1600,23 @@ void nn_inference_free(NNInferenceReport *report)
         Result *item = &report->items[i];
         free(item->id); free(item->message); free(item->dtype);
         free(item->cause_node_id); free(item->source_file);
+        for (size_t o = 0; item->owned_outputs && o < item->view.output_count; ++o) {
+            free(item->owned_outputs[o].handle_id); free(item->owned_outputs[o].type);
+            tensor_dispose(&item->owned_outputs[o].tensor);
+        }
+        free(item->outputs); free(item->owned_outputs);
         free_dimensions(item->dimensions, item->view.dimension_count);
     }
-    free(report->items); free(report);
+    free(report->root_message); free(report->items); free(report);
 }
 
 size_t nn_inference_count(const NNInferenceReport *report) { return report ? report->count : 0; }
 const NNInferenceResult *nn_inference_at(const NNInferenceReport *report, size_t index)
 { return report && index < report->count ? &report->items[index].view : NULL; }
+NNInferenceStatus nn_inference_root_status(const NNInferenceReport *report)
+{ return report ? report->root_status : NN_INFERENCE_RUNTIME_FAULT; }
+const char *nn_inference_root_message(const NNInferenceReport *report)
+{ return report ? report->root_message : NULL; }
 
 const char *nn_inference_category(NNInferenceStatus status)
 {

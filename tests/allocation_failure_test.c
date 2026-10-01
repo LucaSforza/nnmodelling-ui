@@ -1,14 +1,19 @@
+#define _XOPEN_SOURCE 700
 #include "application.h"
 #include "automation.h"
 #include "inference.h"
 #include "yyjson.h"
 
 #include <assert.h>
+#include <dirent.h>
+#include <ftw.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 void *__real_malloc(size_t size);
 void *__real_calloc(size_t count, size_t size);
@@ -79,7 +84,7 @@ static void assert_complete_report(const NNInferenceReport *report,
         assert(result && result->node_id);
         if (result->status == NN_INFERENCE_SUCCESS) {
             assert(result->dtype && result->dtype[0]);
-            assert(result->dimension_count > 0 && result->dimensions);
+            assert(result->dimensions);
             for (size_t d = 0; d < result->dimension_count; ++d)
                 assert(result->dimensions[d] && result->dimensions[d][0]);
         }
@@ -105,8 +110,10 @@ static void sweep_analysis(NNApplication *app)
     size_t nodes = nn_model_node_count(nn_app_model(app));
     assert_complete_report(baseline, nodes);
     assert(count > 0);
-    for (size_t i = 0; i < nodes; ++i)
-        assert(nn_inference_at(baseline, i)->status == NN_INFERENCE_SUCCESS);
+    for (size_t i = 0; i < nodes; ++i) {
+        const NNInferenceResult *result = nn_inference_at(baseline, i);
+        assert(result->status == NN_INFERENCE_SUCCESS);
+    }
     printf("successful VAE inference baseline allocations: %zu\n", count);
 
     size_t null_reports = 0, complete_reports = 0;
@@ -128,6 +135,150 @@ static void sweep_analysis(NNApplication *app)
     }
     printf("analysis allocation fail-index sweep: %zu wrapped calls, %zu NULL, %zu reports\n",
            count, null_reports, complete_reports);
+}
+
+static const NNNode *find_mapped_terminal(const NNModel *model, const char *owner,
+                                         const char *handle)
+{
+    for (size_t i = 0; i < nn_model_node_count(model); ++i) {
+        const NNNode *node = nn_model_node_at(model, i);
+        if (node->scope_id && !strcmp(node->scope_id, owner) &&
+            node->boundary_handle_id && !strcmp(node->boundary_handle_id, handle))
+            return node;
+    }
+    return NULL;
+}
+
+static void assert_typed_tensors(const NNInferenceReport *report)
+{
+    for (size_t i = 0; i < nn_inference_count(report); ++i) {
+        const NNInferenceResult *result = nn_inference_at(report, i);
+        assert(result && result->node_id);
+        if (result->status != NN_INFERENCE_SUCCESS) {
+            assert(result->output_count == 0);
+            continue;
+        }
+        if (!result->output_count) continue; /* Consumed terminal tensor. */
+        assert(result->outputs);
+        for (size_t j = 0; j < result->output_count; ++j) {
+            const NNInferenceTensor *output = &result->outputs[j];
+            assert(output->handle_id && output->handle_id[0]);
+            assert(output->type && output->type[0]);
+            assert(output->dtype && output->dtype[0]);
+            assert(output->dimensions);
+            for (size_t d = 0; d < output->dimension_count; ++d)
+                assert(output->dimensions[d] && output->dimensions[d][0]);
+        }
+    }
+}
+
+static int remove_temp_path(const char *path, const struct stat *info,
+                            int type, struct FTW *state)
+{
+    (void)info;
+    (void)state;
+    return type == FTW_DP ? rmdir(path) : unlink(path);
+}
+
+static void sweep_multi_output_analysis(void)
+{
+    char temporary[] = "/tmp/opencode/nn-multi-inference-XXXXXX";
+    char *parent = mkdtemp(temporary);
+    assert(parent);
+    NNApplication *app = nn_app_new("stereotype-packages/core");
+    assert(app);
+    char error[512] = "";
+    assert(nn_app_create(app, parent, "typed-output-sweep", "Typed Output Sweep",
+                         false, error, sizeof(error)));
+    assert(nn_app_create_dataset(app, "local.sweep-data", "0.1.0",
+        "{\"name\":\"Sweep data\",\"batch\":{\"inputs\":{"
+        "\"image\":{\"dtype\":\"float32\",\"shape\":[\"B\",8]}},"
+        "\"targets\":{}}}", true, error, sizeof(error)));
+    assert(nn_app_create_stereotype(app, "local.sweep-two", "0.1.0",
+        "{\"name\":\"Two output sweep\",\"kind\":\"layer\","
+        "\"outputs\":[{\"id\":\"objective\",\"type\":\"loss\"},"
+        "{\"id\":\"prediction\",\"type\":\"output\"}],"
+        "\"view\":{\"color\":\"#444444\",\"width\":200,\"height\":100},"
+        "\"parameters\":{}}",
+        "return function() return {status='success', outputs={"
+        "objective=tensor.create({'B',2},'float32'),"
+        "prediction=tensor.create({'B',3},'float32')}} end",
+        "{}", error, sizeof(error)));
+    assert(nn_app_create_stereotype(app, "local.sweep-subflow", "0.1.0",
+        "{\"name\":\"Two output subflow\",\"kind\":\"subflow\","
+        "\"outputs\":[{\"id\":\"objective\",\"type\":\"loss\"},"
+        "{\"id\":\"prediction\",\"type\":\"output\"}],"
+        "\"view\":{\"color\":\"#444444\",\"width\":200,\"height\":100},"
+        "\"parameters\":{}}",
+        "return function(context, parameters, services) "
+        "return services.infer_subflow(context.inputs[1]) end",
+        "{}", error, sizeof(error)));
+    assert(nn_app_add_node(app, "input", "core.input", "0.1.0", "", 0, 0,
+                           error, sizeof(error)));
+    assert(nn_app_set_parameter_text(app, "input", "binding", "image",
+                                     error, sizeof(error)));
+    assert(nn_app_add_node(app, "owner", "local.sweep-subflow", "0.1.0", "", 0, 0,
+                           error, sizeof(error)));
+    assert(nn_app_connect(app, "root-input-owner", "input", "out", "owner", "in",
+                          error, sizeof(error)));
+    assert(nn_app_add_node(app, "inner-input", "core.input", "0.1.0", "owner", 0, 0,
+                           error, sizeof(error)));
+    assert(nn_app_set_parameter_text(app, "inner-input", "binding", "",
+                                     error, sizeof(error)));
+    assert(nn_app_add_node(app, "inner-two", "local.sweep-two", "0.1.0", "owner", 0, 0,
+                           error, sizeof(error)));
+    assert(nn_app_connect(app, "inner-input-two", "inner-input", "out", "inner-two", "in",
+                          error, sizeof(error)));
+    const NNNode *objective = find_mapped_terminal(nn_app_model(app), "owner", "objective");
+    const NNNode *prediction = find_mapped_terminal(nn_app_model(app), "owner", "prediction");
+    assert(objective && prediction);
+    char objective_id[128], prediction_id[128];
+    snprintf(objective_id, sizeof(objective_id), "%s", objective->id);
+    snprintf(prediction_id, sizeof(prediction_id), "%s", prediction->id);
+    assert(nn_app_connect(app, "objective-terminal", "inner-two", "objective",
+                          objective_id, "in", error, sizeof(error)));
+    assert(nn_app_connect(app, "prediction-terminal", "inner-two", "prediction",
+                          prediction_id, "in", error, sizeof(error)));
+
+    const NNInferenceReport *baseline = nn_app_analysis(app, error, sizeof(error));
+    assert(baseline);
+    assert_typed_tensors(baseline);
+    const NNInferenceResult *owner_result = NULL;
+    for (size_t i = 0; i < nn_inference_count(baseline); ++i) {
+        const NNInferenceResult *result = nn_inference_at(baseline, i);
+        if (!strcmp(result->node_id, "owner")) owner_result = result;
+    }
+    assert(owner_result && owner_result->status == NN_INFERENCE_SUCCESS &&
+           owner_result->output_count == 2);
+
+    assert(nn_app_set_parameter_text(app, "input", "binding", "image",
+                                     error, sizeof(error)));
+    count_begin();
+    baseline = nn_app_analysis(app, error, sizeof(error));
+    size_t allocations = count_end();
+    assert(baseline && allocations > 0);
+    assert_typed_tensors(baseline);
+    size_t null_reports = 0, full_reports = 0;
+    for (size_t i = 1; i <= allocations; ++i) {
+        assert(nn_app_set_parameter_text(app, "input", "binding", "image",
+                                         error, sizeof(error)));
+        error[0] = '\0';
+        fail_begin(i);
+        const NNInferenceReport *report = nn_app_analysis(app, error, sizeof(error));
+        (void)count_end();
+        assert(failure_observed);
+        if (!report) {
+            ++null_reports;
+            assert(error[0]);
+        } else {
+            ++full_reports;
+            assert_typed_tensors(report);
+        }
+    }
+    printf("multi-output recursive inference allocation sweep: %zu calls, %zu NULL, %zu reports\n",
+           allocations, null_reports, full_reports);
+    nn_app_free(app);
+    assert(nftw(parent, remove_temp_path, 32, FTW_DEPTH | FTW_PHYS) == 0);
 }
 
 static const NNNode *first_node(const NNModel *model)
@@ -318,5 +469,6 @@ int main(void)
     assert(nn_project_dirty(nn_app_project(app)) == dirty);
 
     nn_app_free(app);
+    sweep_multi_output_analysis();
     return 0;
 }

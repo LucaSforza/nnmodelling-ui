@@ -42,8 +42,71 @@ NodeItem::NodeItem(GraphScene *owner, QString id, QString label, QString package
 
 QRectF NodeItem::boundingRect() const { return QRectF(0.5, 0.5, width_ - 1, height_ - 1); }
 
+void NodeItem::setBoundaryKind(const QString &kind) {
+    prepareGeometryChange();
+    boundaryKind_ = kind;
+    if (!kind.isEmpty()) {
+        QFont labelFont;
+        labelFont.setBold(true);
+        labelFont.setPointSizeF(11.0);
+        width_ = qMax<qreal>(190.0, 100.0 + QFontMetricsF(labelFont).horizontalAdvance(label_));
+        height_ = 76.0;
+    }
+    update();
+}
+
 void NodeItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWidget *) {
     painter->setRenderHint(QPainter::Antialiasing);
+    if (!boundaryKind_.isEmpty()) {
+        const QColor fill = boundaryKind_ == QStringLiteral("input") ? QColor("#111111")
+            : boundaryKind_ == QStringLiteral("output") ? QColor("#8b5a2b") : QColor("#c62828");
+        const QRectF circle(25.0, 16.0, 44.0, 44.0);
+        if (isSelected()) {
+            painter->setPen(QPen(QColor("#3978c5"), 4.0));
+            painter->setBrush(Qt::NoBrush);
+            painter->drawEllipse(circle.adjusted(-5, -5, 5, 5));
+        }
+        if (!problemCategory_.isEmpty()) {
+            QColor marker = QColor("#b23b35");
+            QString symbol = QStringLiteral("!");
+            if (problemCategory_ == QStringLiteral("lua-compilation")) {
+                marker = QColor("#9c3d79");
+                symbol = QStringLiteral("L");
+            } else if (problemCategory_ == QStringLiteral("incomplete")) {
+                marker = QColor("#a66a12");
+                symbol = QStringLiteral("?");
+            } else if (problemCategory_ == QStringLiteral("internal")) {
+                marker = QColor("#554d79");
+                symbol = QStringLiteral("×");
+            }
+            const QRectF badge(5.0, 3.0, 17.0, 17.0);
+            painter->setPen(Qt::NoPen);
+            painter->setBrush(marker);
+            painter->drawRoundedRect(badge, 4.0, 4.0);
+            painter->setPen(Qt::white);
+            QFont badgeFont = painter->font();
+            badgeFont.setBold(true);
+            badgeFont.setPointSizeF(8.0);
+            painter->setFont(badgeFont);
+            painter->drawText(badge, Qt::AlignCenter, symbol);
+        }
+        painter->setPen(Qt::NoPen);
+        painter->setBrush(fill);
+        painter->drawEllipse(circle);
+        painter->setPen(QColor("#263446"));
+        QFont labelFont = painter->font();
+        labelFont.setBold(true);
+        labelFont.setPointSizeF(11.0);
+        painter->setFont(labelFont);
+        const QFontMetricsF labelMetrics(labelFont);
+        const bool inputBoundary = boundaryKind_ == QStringLiteral("input");
+        const QRectF labelRect(82.0, inputBoundary ? 2.0 : 15.0,
+                               width_ - 94.0,
+                               inputBoundary ? labelMetrics.height() + 2.0 : height_ - 20.0);
+        painter->drawText(labelRect,
+                          Qt::AlignLeft | Qt::AlignVCenter, label_);
+        return;
+    }
     const QRectF card(1.5, 9.5, width_ - 3.0, height_ - 19.0);
     const QColor face = color_.darker(125);
     const QColor band = color_.darker(145);
@@ -176,6 +239,27 @@ void NodeItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWidge
 
 void NodeItem::addPort(PortItem *port) {
     ports_.append(port);
+    if (!boundaryKind_.isEmpty()) {
+        QList<PortItem *> outputPorts;
+        for (PortItem *candidate : ports_)
+            if (candidate->isOutput()) outputPorts.append(candidate);
+        int outputIndex = 0;
+        for (PortItem *candidate : ports_) {
+            if (candidate->isOutput()) {
+                if (outputPorts.size() > 1)
+                    candidate->setPos(63.0, outputIndex == 0 ? 26.0 : 50.0);
+                else
+                    candidate->setPos(69.0, 38.0);
+                ++outputIndex;
+            } else {
+                candidate->setPos(25.0, 38.0);
+            }
+            // Keep the single terminal glyph clean while retaining PortItem's
+            // generous interactive shape for drag-to-connect.
+            candidate->setGlyphSuppressed(true);
+        }
+        return;
+    }
     for (bool output : {true, false}) {
         int order = 0;
         const int count = std::count_if(ports_.cbegin(), ports_.cend(), [output](PortItem *p) {

@@ -281,6 +281,48 @@ static bool parse_references(yyjson_val *array, NNResourceRef **references,
     return true;
 }
 
+static bool edge_topology_valid(const NNModel *model, const NNCatalog *catalog,
+                                const NNEdge *edge, char *error, size_t capacity)
+{
+    const NNNode *source = nn_model_find_node(model, edge->source_id);
+    const NNNode *target = nn_model_find_node(model, edge->target_id);
+    const NNPackage *source_package = source
+        ? nn_catalog_find(catalog, source->package_id, source->package_version) : NULL;
+    const NNPackage *target_package = target
+        ? nn_catalog_find(catalog, target->package_id, target->package_version) : NULL;
+    const char *type = NULL;
+    if (source_package)
+        for (size_t i = 0; i < source_package->output_count; ++i)
+            if (!strcmp(source_package->outputs[i].id, edge->source_handle_id))
+                type = source_package->outputs[i].type;
+    if (!source || !target || !source_package || !target_package || !type) {
+        nn_error_set(error, capacity, "edge references an invalid output handle or package");
+        return false;
+    }
+    bool input_valid;
+    if (target_package->kind && !strcmp(target_package->kind, "input"))
+        input_valid = false;
+    else if (target_package->kind && !strcmp(target_package->kind, "join")) {
+        size_t order;
+        input_valid = nn_join_handle_order(edge->target_handle_id, &order);
+    } else input_valid = !strcmp(edge->target_handle_id, "in");
+    if (!input_valid) {
+        nn_error_set(error, capacity, "edge references an invalid input handle");
+        return false;
+    }
+    if (target_package->kind && !strcmp(target_package->kind, "output") &&
+        strcmp(type, "output")) {
+        nn_error_set(error, capacity, "output type is incompatible with output terminal");
+        return false;
+    }
+    if (target_package->kind && !strcmp(target_package->kind, "loss-output") &&
+        strcmp(type, "loss")) {
+        nn_error_set(error, capacity, "output type is incompatible with loss terminal");
+        return false;
+    }
+    return true;
+}
+
 static bool parse_graph(NNProject *project, yyjson_val *root,
                         char *error, size_t capacity)
 {
@@ -310,6 +352,17 @@ static bool parse_graph(NNProject *project, yyjson_val *root,
             if (error && capacity && !error[0]) nn_errorf(error, capacity, "invalid node or undeclared package");
             return false;
         }
+        yyjson_val *boundary = yyjson_obj_get(data, "boundaryHandle");
+        if (boundary) {
+            const char *handle = yyjson_get_str(boundary);
+            if (!handle || strlen(handle) != yyjson_get_len(boundary) || !*handle ||
+                !nn_model_set_boundary_handle(project->model, id, handle,
+                                              error, capacity)) {
+                if (error && capacity && !error[0])
+                    nn_errorf(error, capacity, "invalid boundary handle mapping");
+                return false;
+            }
+        }
         yyjson_val *parameters = yyjson_obj_get(data, "params");
         if (!yyjson_is_obj(parameters)) { nn_errorf(error, capacity, "node params missing"); return false; }
         size_t parameter_index, parameter_max;
@@ -335,6 +388,11 @@ static bool parse_graph(NNProject *project, yyjson_val *root,
         if (!id || !source || !target || !source_handle || !target_handle ||
             !nn_model_connect(project->model, id, source, source_handle,
                               target, target_handle, error, capacity)) return false;
+        NNEdge candidate = { .id = (char *)id, .source_id = (char *)source,
+            .source_handle_id = (char *)source_handle, .target_id = (char *)target,
+            .target_handle_id = (char *)target_handle };
+        if (!edge_topology_valid(project->model, project->catalog, &candidate,
+                                 error, capacity)) return false;
     }
     return true;
 }
@@ -533,6 +591,8 @@ static bool write_project_document(NNProject *project, char **json, size_t *leng
             add_string(doc, package, "id", node->package_id) &&
             add_string(doc, package, "version", node->package_version) &&
             yyjson_mut_obj_add_val(doc, data, "params", params);
+        if (okay && node->boundary_handle_id)
+            okay = add_string(doc, data, "boundaryHandle", node->boundary_handle_id);
         for (size_t p = 0; okay && p < node->parameter_count; ++p)
             okay = add_value(doc, params, node->parameters[p].key, &node->parameters[p].value);
         if (okay) okay = yyjson_mut_arr_append(nodes, item);
@@ -812,6 +872,11 @@ NNProject *nn_project_create(const char *parent, const char *id, const char *nam
             .name = (char *)name, .description = "", .layout_direction = "horizontal",
             .model = nn_model_new() };
         okay = seed.model != NULL;
+        char seed_error[128];
+        if (okay) okay = nn_model_add_node(seed.model, "output", "Output",
+            "core.output", "0.1.0", "", 320, 120, seed_error, sizeof(seed_error));
+        if (okay) okay = nn_model_add_node(seed.model, "loss-output", "Loss Output",
+            "core.loss-output", "0.1.0", "", 320, 240, seed_error, sizeof(seed_error));
         char *json = NULL; size_t length = 0;
         if (okay) okay = write_project_document(&seed, &json, &length);
         char *path = nn_path_join(directory, "model.json");
@@ -994,6 +1059,9 @@ bool nn_project_create_stereotype(NNProject *p, const char *id, const char *vers
         const NNNode *node = nn_model_node_at(p->model, i);
         if (!nn_catalog_find(candidate, node->package_id, node->package_version)) { nn_errorf(error, cap, "candidate catalog invalidates graph package"); okay = false; }
     }
+    for (size_t i = 0; okay && i < nn_model_edge_count(p->model); ++i)
+        okay = edge_topology_valid(p->model, candidate, nn_model_edge_at(p->model, i),
+                                   error, cap);
     if (okay) {
         NNResourceRef *old_refs = p->packages; size_t old_count = p->package_count;
         NNCatalog *old_catalog = p->catalog; bool old_dirty = p->dirty;

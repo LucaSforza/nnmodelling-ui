@@ -34,6 +34,14 @@ static char *read_text(const char *filename)
     text[count] = '\0'; assert(fclose(file) == 0); return text;
 }
 
+static void write_text(const char *filename, const char *text)
+{
+    FILE *file = fopen(filename, "wb"); assert(file);
+    size_t length = strlen(text);
+    assert(fwrite(text, 1, length, file) == length);
+    assert(fclose(file) == 0);
+}
+
 static void remove_tree(const char *root)
 {
     struct stat info; if (lstat(root, &info)) return;
@@ -74,6 +82,8 @@ int main(void)
     assert(nn_app_add_node(app, "local", "local.affine", "0.1.0", "", 1, 2, error, sizeof(error)));
     const NNPackage *package = nn_catalog_find(nn_project_catalog(nn_app_project(app)), "local.affine", "0.1.0");
     assert(package && package->parameter_count == 4);
+    assert(package->output_count == 1 && !strcmp(package->outputs[0].id, "out") &&
+           !strcmp(package->outputs[0].type, "output"));
     assert(!strcmp(package->parameters[0].position, "top"));
     assert(!strcmp(package->parameters[1].position, "bottom"));
     char *value = nn_app_parameter_text(app, "local", "factor"); assert(value && !strcmp(value, "1")); nn_app_free_text(value);
@@ -81,6 +91,11 @@ int main(void)
     assert(!nn_app_create_stereotype(app, "bad.choices", "0.1.0",
         "{\"name\":\"Bad\",\"kind\":\"layer\",\"view\":{\"color\":\"#444444\",\"width\":200,\"height\":100},"
         "\"parameters\":{\"mode\":{\"type\":\"string\",\"choices\":[3],\"default\":\"a\"}}}", rule, "{}", error, sizeof(error)));
+    assert(!nn_app_create_stereotype(app, "bad.outputs", "0.1.0",
+        "{\"name\":\"Bad\",\"kind\":\"layer\",\"outputs\":["
+        "{\"id\":\"a\",\"type\":\"loss\"},{\"id\":\"b\",\"type\":\"loss\"}],"
+        "\"view\":{\"color\":\"#444444\",\"width\":200,\"height\":100},\"parameters\":{}}",
+        rule, "{}", error, sizeof(error)));
 
     assert(!nn_app_create_dataset(app, "bad.dataset", "0.1.0",
         "{\"name\":\"Bad\",\"batch\":{\"inputs\":{\"x\":{\"dtype\":\"float32\",\"shape\":[0]}},\"targets\":{}}}", true, error, sizeof(error)));
@@ -93,6 +108,38 @@ int main(void)
     assert(nn_app_set_parameter_text(app, "input", "binding", "missing", error, sizeof(error)));
     assert(nn_app_select_dataset(app, "local.images", "0.1.0", error, sizeof(error))); /* unresolved allowed */
     assert(!nn_app_select_dataset(app, "missing", "0.1.0", error, sizeof(error)));
+
+    const char *loss_definition =
+        "{\"name\":\"Local loss\",\"kind\":\"layer\",\"outputs\":["
+        "{\"id\":\"objective\",\"type\":\"loss\"}],"
+        "\"view\":{\"color\":\"#4779c4\",\"width\":200,\"height\":100},\"parameters\":{}}";
+    assert(nn_app_create_stereotype(app, "local.loss-source", "0.1.0", loss_definition,
+                                    rule, "{}", error, sizeof(error)));
+    assert(nn_app_add_node(app, "local-loss", "local.loss-source", "0.1.0", "",
+                           0, 0, error, sizeof(error)));
+    assert(nn_app_connect(app, "local-loss-edge", "local-loss", "objective",
+                          "loss-output", "in", error, sizeof(error)));
+    assert(nn_project_dirty(nn_app_project(app)));
+    char *candidate_before = read_text(model_path);
+    assert(candidate_before);
+    char source_definition_path[4096];
+    path(source_definition_path, sizeof(source_definition_path), directory,
+         "packages/local.loss-source-0.1.0/definition.json");
+    write_text(source_definition_path,
+        "{\"name\":\"Local loss\",\"kind\":\"layer\",\"outputs\":["
+        "{\"id\":\"objective\",\"type\":\"output\"}],"
+        "\"view\":{\"color\":\"#4779c4\",\"width\":200,\"height\":100},\"parameters\":{}}");
+    assert(!nn_app_create_stereotype(app, "local.unrelated", "0.1.0", definition,
+                                     rule, "{}", error, sizeof(error)));
+    assert(strstr(error, "terminal") || strstr(error, "handle"));
+    assert(nn_project_dirty(nn_app_project(app)));
+    assert(!strcmp(nn_app_output_type(app, "local-loss", "objective"), "loss"));
+    char *candidate_after = read_text(model_path);
+    assert(candidate_after && !strcmp(candidate_before, candidate_after));
+    free(candidate_before); free(candidate_after);
+    path(check, sizeof(check), directory, "packages/local.unrelated-0.1.0");
+    assert(access(check, F_OK) != 0);
+    write_text(source_definition_path, loss_definition);
 
     /* A failed final model replacement must roll back files and dirty state. */
     char backup[4096]; path(backup, sizeof(backup), directory, "model.backup");
@@ -118,14 +165,14 @@ int main(void)
     char *text = read_text(check); assert(strstr(text, "\n  \"parameters\"")); assert(text[strlen(text)-1] == '\n'); free(text);
 
     assert(nn_app_create_vae(app, root, "vae-copy", "VAE copy", error, sizeof(error)));
-    assert(nn_model_node_count(nn_app_model(app)) == 21);
+    assert(nn_model_node_count(nn_app_model(app)) == 23);
     assert(nn_app_node_is_subflow(app, "encoder") && nn_app_node_is_subflow(app, "decoder"));
     assert(nn_catalog_find(nn_project_catalog(nn_app_project(app)), "vae.reparameterize", "0.1.0"));
     NNInferenceReport *report = nn_infer_project(nn_app_project(app)); assert(report);
     size_t successes = 0;
     for (size_t i = 0; i < nn_inference_count(report); ++i)
         if (nn_inference_at(report, i)->status == NN_INFERENCE_SUCCESS) ++successes;
-    assert(successes == 21); nn_inference_free(report);
+    assert(successes == 23); nn_inference_free(report);
     nn_app_free(app); remove_tree(root);
     puts("resource authoring and persistence: ok"); return 0;
 }

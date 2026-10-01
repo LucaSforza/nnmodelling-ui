@@ -3,6 +3,7 @@
 #include "GraphView.hpp"
 #include "NodeItem.hpp"
 #include "PortItem.hpp"
+#include "EdgeItem.hpp"
 #include "application.h"
 #include "catalog.h"
 #include "inference.h"
@@ -44,6 +45,7 @@ private slots:
     void currentScopeRetainsOutsideCauseContext();
     void retainedLuaValidationFormAndNonblockingRejection();
     void visualResourceAuthoringForms();
+    void typedOutputAuthoringBoundariesAndInspector();
     void automationRejectsInvalidScopeAndCapturesCurrentScope();
     void socketOptionRequiresPath();
 };
@@ -123,7 +125,7 @@ void WindowTest::lifecycleAndInspector() {
     // Failed project replacement must keep the active graph and scene.
     answerDialog(QMessageBox::Ok);
     QVERIFY(!window.openProject(temporary.path() + "/missing"));
-    QCOMPARE(nn_model_node_count(nn_app_model(app)), size_t(8));
+    QCOMPARE(nn_model_node_count(nn_app_model(app)), size_t(10));
     QVERIFY(scene->nodeItem("dense1"));
 
     scene->nodeItem("dense1")->setSelected(true);
@@ -501,7 +503,7 @@ void WindowTest::visualResourceAuthoringForms() {
     auto *addNode = window.findChild<QPushButton *>("addNodeButton");
     QVERIFY(addNode);
     addNode->click();
-    QCOMPARE(nn_model_node_count(nn_app_model(app)), size_t(1));
+    QCOMPARE(nn_model_node_count(nn_app_model(app)), size_t(3));
     auto *scene = window.findChild<GraphScene *>();
     QVERIFY(scene);
     NodeItem *card = nullptr;
@@ -588,6 +590,199 @@ void WindowTest::visualResourceAuthoringForms() {
     QCOMPARE(nn_project_dataset_count(nn_app_project(reopened)), size_t(1));
     QCOMPARE(QString::fromUtf8(nn_project_active_dataset(nn_app_project(reopened))->id), QStringLiteral("ui.dataset"));
     nn_app_free(reopened);
+    window.close();
+}
+
+void WindowTest::typedOutputAuthoringBoundariesAndInspector() {
+    QTemporaryDir temporary;
+    QVERIFY(temporary.isValid());
+    NNApplication *app = nn_app_new(NN_SOURCE_DIR "/stereotype-packages/core");
+    QVERIFY(app);
+    char error[512] = {};
+    const QByteArray parent = temporary.path().toUtf8();
+    QVERIFY2(nn_app_create(app, parent.constData(), "typed-qt", "Typed Qt", false,
+                           error, sizeof(error)), error);
+    const QByteArray dataset = R"({"name":"Features","description":"","batch":{"inputs":{"features":{"dtype":"float32","shape":["B",4]}},"targets":{}}})";
+    QVERIFY2(nn_app_create_dataset(app, "typed.features", "1.0.0", dataset.constData(), true,
+                                   error, sizeof(error)), error);
+    MainWindow window(app);
+    window.show();
+    QTest::qWait(30);
+    auto *diagnostics = window.findChild<QTreeWidget *>("diagnostics");
+    QVERIFY(diagnostics);
+    QTreeWidgetItem *rootProblem = nullptr;
+    for (int i = 0; i < diagnostics->topLevelItemCount(); ++i)
+        if (diagnostics->topLevelItem(i)->text(0).contains(QStringLiteral("· Root\n")))
+            rootProblem = diagnostics->topLevelItem(i);
+    QVERIFY(rootProblem);
+    QVERIFY(rootProblem->data(0, Qt::UserRole).toString().isEmpty()); // not a synthetic node
+    QAction *create = nullptr;
+    for (QAction *action : window.findChildren<QAction *>())
+        if (action->text() == QString::fromUtf8("Create stereotype…")) create = action;
+    QVERIFY(create);
+    QTimer::singleShot(0, &window, [&window] {
+        auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+        QVERIFY(dialog);
+        dialog->findChild<QLineEdit *>("stereotypeId")->setText("ui.typed");
+        dialog->findChild<QLineEdit *>("stereotypeVersion")->setText("1.0.0");
+        dialog->findChild<QLineEdit *>("stereotypeName")->setText("Typed producer");
+        auto *overrideBox = dialog->findChild<QCheckBox *>("stereotypeOutputOverride");
+        overrideBox->setChecked(true);
+        for (QPushButton *button : dialog->findChildren<QPushButton *>())
+            if (button->text() == QStringLiteral("Add output row")) {
+                button->click(); button->click(); break;
+            }
+        auto *outputs = dialog->findChild<QTableWidget *>("stereotypeOutputs");
+        outputs->item(0, 0)->setText("prediction");
+        outputs->item(0, 1)->setText("output");
+        outputs->item(1, 0)->setText("objective");
+        outputs->item(1, 1)->setText("output"); // retain these values after rejected form
+        dialog->findChild<QPlainTextEdit *>("stereotypeLua")->setPlainText(
+            "return function(context, parameters, services)\n"
+            "  local input = context.inputs[1]\n"
+            "  if not input then return { status = 'unresolved', message = 'missing' } end\n"
+            "  return { status = 'success', outputs = { prediction = input, objective = input } }\n"
+            "end");
+        auto *save = dialog->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Save);
+        QTimer::singleShot(0, dialog, [dialog, outputs, save] {
+            save->click();
+            QTimer::singleShot(0, dialog, [dialog, outputs] {
+                QVERIFY(dialog->isVisible());
+                QCOMPARE(dialog->findChild<QLineEdit *>("stereotypeId")->text(), QStringLiteral("ui.typed"));
+                QCOMPARE(outputs->item(1, 0)->text(), QStringLiteral("objective"));
+                QVERIFY(!dialog->findChild<QLabel *>("stereotypeError")->text().isEmpty());
+                outputs->item(1, 1)->setText("loss");
+                QTimer::singleShot(0, dialog, [dialog] {
+                    dialog->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Save)->click();
+                });
+            });
+        });
+    });
+    create->trigger();
+    const NNPackage *typedPackage = nn_catalog_find(nn_project_catalog(nn_app_project(app)),
+                                                    "ui.typed", "1.0.0");
+    QVERIFY(typedPackage);
+    QCOMPARE(typedPackage->output_count, size_t(2));
+    QCOMPARE(QString::fromUtf8(typedPackage->outputs[0].type), QStringLiteral("output"));
+    QCOMPARE(QString::fromUtf8(typedPackage->outputs[1].type), QStringLiteral("loss"));
+
+    QVERIFY2(nn_app_add_node(app, "feature-input", "core.input", "0.1.0", "", 20, 150,
+                             error, sizeof(error)), error);
+    QVERIFY2(nn_app_set_parameter_text(app, "feature-input", "binding", "features",
+                                       error, sizeof(error)), error);
+    QVERIFY2(nn_app_add_node(app, "typed-source", "ui.typed", "1.0.0", "", 260, 150,
+                             error, sizeof(error)), error);
+    QVERIFY2(nn_app_add_node(app, "consumer-one", "core.relu", "0.1.0", "", 520, 70,
+                             error, sizeof(error)), error);
+    QVERIFY2(nn_app_add_node(app, "consumer-two", "core.relu", "0.1.0", "", 520, 180,
+                             error, sizeof(error)), error);
+    QVERIFY2(nn_app_add_node(app, "consumer-loss", "core.relu", "0.1.0", "", 520, 290,
+                             error, sizeof(error)), error);
+    QVERIFY2(nn_app_connect(app, "typed-input-edge", "feature-input", "out", "typed-source", "in",
+                            error, sizeof(error)), error);
+    QVERIFY2(nn_app_connect(app, "fanout-one", "typed-source", "prediction", "consumer-one", "in",
+                            error, sizeof(error)), error);
+    QVERIFY2(nn_app_connect(app, "fanout-two", "typed-source", "prediction", "consumer-two", "in",
+                            error, sizeof(error)), error);
+    QVERIFY2(nn_app_connect(app, "loss-edge", "typed-source", "objective", "consumer-loss", "in",
+                            error, sizeof(error)), error);
+
+    auto *scene = window.findChild<GraphScene *>();
+    QVERIFY(scene);
+    scene->refresh();
+    PortItem *prediction = nullptr, *objective = nullptr;
+    for (PortItem *port : scene->nodeItem("typed-source")->ports()) {
+        if (!port->isOutput()) continue;
+        if (port->handleId() == QStringLiteral("prediction")) prediction = port;
+        if (port->handleId() == QStringLiteral("objective")) objective = port;
+    }
+    QVERIFY(prediction && objective);
+    QCOMPARE(prediction->outputType(), QStringLiteral("output"));
+    QCOMPARE(objective->outputType(), QStringLiteral("loss"));
+    QCOMPARE(scene->edgeItem("fanout-one")->pen().color(), QColor("#111111"));
+    QCOMPARE(scene->edgeItem("fanout-two")->pen().color(), QColor("#111111"));
+    QCOMPARE(scene->edgeItem("loss-edge")->pen().color(), QColor("#c62828"));
+
+    auto *view = window.findChild<GraphView *>();
+    QVERIFY(view);
+    const QPoint start = view->mapFromScene(objective->scenePos());
+    QTest::mousePress(view->viewport(), Qt::LeftButton, Qt::NoModifier, start);
+    QTest::mouseMove(view->viewport(), start + QPoint(45, 35), 30);
+    QCoreApplication::processEvents();
+    QCOMPARE(scene->connectionDraftColor(), QColor("#c62828"));
+    QTest::keyClick(view, Qt::Key_Escape);
+    QTest::mouseRelease(view->viewport(), Qt::LeftButton, Qt::NoModifier, start + QPoint(45, 35));
+
+    const NNModel *rootModel = nn_app_model(app);
+    const NNNode *rootOutput = nullptr;
+    for (size_t i = 0; i < nn_model_node_count(rootModel); ++i) {
+        const NNNode *candidate = nn_model_node_at(rootModel, i);
+        if (candidate && (!candidate->scope_id || !*candidate->scope_id) &&
+            std::strcmp(candidate->package_id, "core.output") == 0) rootOutput = candidate;
+    }
+    QVERIFY(rootOutput);
+    NodeItem *terminalItem = scene->nodeItem(QString::fromUtf8(rootOutput->id));
+    QVERIFY(terminalItem);
+    PortItem *terminalInput = nullptr;
+    for (PortItem *port : terminalItem->ports())
+        if (!port->isOutput()) terminalInput = port;
+    QVERIFY(terminalInput);
+    char rejectedError[512] = {};
+    QVERIFY(!nn_app_connect(app, "invalid-loss-terminal-edge", "typed-source", "objective",
+                            rootOutput->id, "in", rejectedError, sizeof(rejectedError)));
+    QVERIFY(*rejectedError);
+    scene->errorOccurred(QStringLiteral("Cannot connect nodes: %1").arg(QString::fromUtf8(rejectedError)));
+    QCoreApplication::processEvents();
+    QMessageBox *rejection = nullptr;
+    for (QMessageBox *candidate : window.findChildren<QMessageBox *>())
+        if (candidate->isVisible() && candidate->text().startsWith(QStringLiteral("Cannot connect nodes:")))
+            rejection = candidate;
+    QVERIFY(rejection && !rejection->isModal());
+    rejection->close();
+
+    const NNInferenceReport *report = nn_app_analysis(app, error, sizeof(error));
+    QVERIFY2(report, error);
+    const NNInferenceResult *typedResult = nullptr;
+    for (size_t i = 0; i < nn_inference_count(report); ++i) {
+        const NNInferenceResult *result = nn_inference_at(report, i);
+        if (result && result->node_id && std::strcmp(result->node_id, "typed-source") == 0)
+            typedResult = result;
+    }
+    QVERIFY2(typedResult && typedResult->status == NN_INFERENCE_SUCCESS && typedResult->output_count == 2,
+             typedResult ? typedResult->message : "No inference result for typed source");
+    QCOMPARE(QString::fromUtf8(typedResult->outputs[0].handle_id), QStringLiteral("prediction"));
+
+    scene->nodeItem("typed-source")->setSelected(true);
+    QCoreApplication::processEvents();
+    auto *inspector = window.findChild<QTreeWidget *>("inspector");
+    QVERIFY(inspector);
+    QTreeWidgetItem *outputsRow = nullptr;
+    for (int i = 0; i < inspector->topLevelItemCount(); ++i)
+        if (inspector->topLevelItem(i)->text(0) == QStringLiteral("Successful outputs"))
+            outputsRow = inspector->topLevelItem(i);
+    QVERIFY(outputsRow);
+    QCOMPARE(outputsRow->childCount(), 2);
+
+    // C-spawned subflow terminal mappings are presented in the nested inspector.
+    QVERIFY2(nn_app_add_node(app, "mapped-flow", "core.subflow-proxy", "0.1.0", "", 800, 200,
+                             error, sizeof(error)), error);
+    scene->setScope(QStringLiteral("mapped-flow"));
+    scene->refresh();
+    const NNModel *model = nn_app_model(app);
+    const NNNode *terminal = nullptr;
+    for (size_t i = 0; i < nn_model_node_count(model); ++i) {
+        const NNNode *node = nn_model_node_at(model, i);
+        if (node && node->scope_id && std::strcmp(node->scope_id, "mapped-flow") == 0 &&
+            std::strcmp(node->package_id, "core.output") == 0) terminal = node;
+    }
+    QVERIFY(terminal && terminal->boundary_handle_id);
+    const QString terminalId = QString::fromUtf8(terminal->id);
+    scene->nodeItem(terminalId)->setSelected(true);
+    QCoreApplication::processEvents();
+    auto *mapping = window.findChild<QComboBox *>("boundaryMapping");
+    QVERIFY(mapping);
+    QCOMPARE(mapping->currentData().toString(), QStringLiteral("out"));
+    answerDialog(QMessageBox::Discard);
     window.close();
 }
 

@@ -148,3 +148,77 @@ owner cleanup were additionally reviewed for Lua longjmp safety.
 
 SDS source/build dependencies are absent. No backend, training or model compiler
 was introduced. All user-visible new text is English.
+
+## Typed outputs / terminal boundaries — 2026-10-01
+
+Environment: Linux/Fedora 44, GCC 16.2.1, Qt Widgets/Test 6.11.2, Clang 22.1.8
+for sanitizers. XDG_SESSION_TYPE=wayland, WAYLAND_DISPLAY=wayland-0. Existing
+historical core package files were preserved; core.loss-output was added.
+No backend, compiler, numerical objective execution or training was introduced.
+
+KB and UML were committed before GPT-6 Luna delegation (`a846cca`). Root-level
+completion metadata was clarified in `648c1d3`; an empty graph is Incomplete,
+without fabricated node IDs or erasing successful local tensors.
+
+Functional coverage includes output defaults/overrides, one handle per type,
+invalid/duplicate declarations, terminal-only type checks, intermediate loss
+inputs, independent source-handle tensors, two-output recursive subflows,
+mapping persistence/diagnostics, automatic terminal spawning and rollback,
+resource candidate edge checks, long output IDs, circle diagnostics, fixed
+type colors on hover, retained forms, inspector outputs and CLI parity.
+MLP now has 10 nodes/9 edges; VAE has 23 nodes/22 edges and five project-owned
+packages, with explicit MSE + mean KL loss join and one Loss Output.
+
+Review corrections include pre-existing collision preservation during spawn
+rollback, retaining original errors, exact JSON/Lua output keys, queued mapping
+inspector refresh, readable boundary labels and invisible boundary port targets.
+Initial sanitizer run identified qsort(NULL,0) and a leaked temporary cause
+string on report-construction failure. Both were fixed; principal additionally
+removed secondary OOM-path message allocation after report ownership transfer.
+Single-handle keyed maps are accepted, with shorthand optional; combining both
+forms, keyed terminal results and embedded-NUL keys is rejected.
+
+Final principal gates:
+
+* `just test`: exit 0, 10/10 core tests.
+* `just build`: exit 0; repeated by `just test-ui` after final changes.
+* `just test-ui`: exit 0, 3/3 Qt window/canvas and live CLI/UI tests.
+* `just test-swarm`: exit 0, 11/11 mailbox tests.
+* Fresh Clang 22.1.8 C-only build in `/tmp/opencode/nn-typed-final-sanitizers`,
+  compiled/linked with `-fsanitize=address,undefined -fno-omit-frame-pointer -g`;
+  `ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1 ctest --test-dir
+  /tmp/opencode/nn-typed-final-sanitizers --output-on-failure -L core`: exit 0,
+  10/10, no sanitizer/leak diagnostics. A reused build directory had been
+  reconfigured without sanitizer flags; its passing result was not counted as
+  sanitizer evidence. The fresh build above supplies the release gate.
+* `git diff --check`: exit 0.
+
+Allocation-failure tests include 1,502 failure points for a small recursive
+two-output graph in addition to VAE analysis, project open, node creation and
+CLI serializers. They assert successful output metadata is complete and failed
+outcomes publish no partial handles. These deterministic single-failure sweeps
+are not a claim of exhaustive persistent system-wide OOM coverage.
+
+Final visible Wayland review created isolated VAE and dual-output projects,
+checked shape analysis, navigated root/encoder/decoder, inspected both independent
+outputs, disconnected a Loss Output to show its separate diagnostic badge,
+saved/closed projects and captured actual widgets. No platform/compositor errors.
+Local temporary evidence, not tracked assets:
+
+* `/tmp/opencode/nn-typed-outputs-root-wayland.png`
+* `/tmp/opencode/nn-typed-outputs-encoder-wayland.png`
+* `/tmp/opencode/nn-typed-outputs-decoder-wayland.png`
+* `/tmp/opencode/nn-typed-outputs-dual-inspector-wayland.png`
+* `/tmp/opencode/nn-typed-outputs-terminal-incomplete-wayland.png`
+* `/tmp/opencode/nn-typed-outputs-problems-normal.png`
+* `/tmp/opencode/nn-typed-outputs-problems-small.png`
+
+Wayland captures are 2000x1250 pixels, small offscreen capture 900x560; native
+device scale was not explicitly measured. Input labels no longer intersect their
+outgoing edge. Boundary circles retain one filled body and classified fanout.
+Cards and narrow inspector fields still elide long text; selecting/revealing
+nodes can require pan/zoom to see the whole graph. Arrangement is not an
+edge-crossing optimizer. Form/connection/error interactions are automated Qt
+coverage, not exhaustive manual testing of every desktop dialog.
+
+Status: accepted implementation and final release gates passed.

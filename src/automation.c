@@ -166,8 +166,17 @@ static yyjson_mut_val *snapshot(yyjson_mut_doc *doc, NNApplication *app)
     for (size_t i = 0; i < nn_catalog_count(catalog); ++i) {
         const NNPackage *p = nn_catalog_at(catalog, i);
         yyjson_mut_val *item = identity(doc, p->id, p->version);
-        if (!item || !json_string(doc, item, "name", p->name) ||
-            !json_string(doc, item, "kind", p->kind) || !yyjson_mut_arr_append(packages, item)) return NULL;
+        yyjson_mut_val *outputs = yyjson_mut_arr(doc);
+        if (!item || !outputs || !json_string(doc, item, "name", p->name) ||
+            !yyjson_mut_obj_add_val(doc, item, "outputs", outputs)) return NULL;
+        for (size_t h = 0; h < p->output_count; ++h) {
+            yyjson_mut_val *handle = yyjson_mut_obj(doc);
+            if (!handle || !json_string(doc, handle, "id", p->outputs[h].id) ||
+                !json_string(doc, handle, "type", p->outputs[h].type) ||
+                !yyjson_mut_arr_append(outputs, handle)) return NULL;
+        }
+        if (!json_string(doc, item, "kind", p->kind) ||
+            !yyjson_mut_arr_append(packages, item)) return NULL;
     }
     for (size_t i = 0; i < nn_project_dataset_count(project); ++i) {
         const NNDataset *d = nn_project_dataset_at(project, i);
@@ -193,6 +202,9 @@ static yyjson_mut_val *snapshot(yyjson_mut_doc *doc, NNApplication *app)
             !yyjson_mut_obj_add_val(doc, item, "package", package) ||
             !yyjson_mut_obj_add_double(doc, item, "x", n->x) ||
             !yyjson_mut_obj_add_double(doc, item, "y", n->y)) return NULL;
+        if (n->boundary_handle_id) {
+            if (!json_string(doc, item, "boundaryHandle", n->boundary_handle_id)) return NULL;
+        } else if (!yyjson_mut_obj_add_null(doc, item, "boundaryHandle")) return NULL;
         for (size_t j = 0; j < n->parameter_count; ++j) {
             yyjson_mut_val *key = yyjson_mut_strcpy(doc, n->parameters[j].key);
             yyjson_mut_val *value = snapshot_value(doc, &n->parameters[j].value);
@@ -218,28 +230,63 @@ static bool nullable_string(yyjson_mut_doc *doc, yyjson_mut_val *object,
     return text ? json_string(doc, object, key, text) : yyjson_mut_obj_add_null(doc, object, key);
 }
 
+static bool append_tensor(yyjson_mut_doc *doc, yyjson_mut_val *tensors,
+                          const char *node_id, const char *handle, const char *type,
+                          const char *dtype, const char *const *dimensions, size_t count)
+{
+    yyjson_mut_val *item = yyjson_mut_obj(doc), *shape = yyjson_mut_arr(doc);
+    if (!item || !shape || !json_string(doc, item, "node", node_id) ||
+        !nullable_string(doc, item, "handle", handle) ||
+        !nullable_string(doc, item, "type", type) ||
+        !json_string(doc, item, "dtype", dtype)) return false;
+    for (size_t d = 0; d < count; ++d) {
+        yyjson_mut_val *dimension = yyjson_mut_strcpy(doc, dimensions[d]);
+        if (!dimension || !yyjson_mut_arr_append(shape, dimension)) return false;
+    }
+    return yyjson_mut_obj_add_val(doc, item, "shape", shape) &&
+           yyjson_mut_arr_append(tensors, item);
+}
+
 static yyjson_mut_val *diagnostics(yyjson_mut_doc *doc, NNApplication *app, Query *q)
 {
     const NNInferenceReport *report = nn_app_analysis(app, q->error, sizeof(q->error));
     if (!report) return NULL;
     yyjson_mut_val *result = yyjson_mut_obj(doc), *problems = yyjson_mut_arr(doc), *tensors = yyjson_mut_arr(doc);
     if (!result || !problems || !tensors) goto oom;
-    bool complete = true;
+    NNInferenceStatus root_status = nn_inference_root_status(report);
+    bool complete = root_status == NN_INFERENCE_SUCCESS;
+    if (!complete) {
+        yyjson_mut_val *item = yyjson_mut_obj(doc);
+        const char *code = root_status == NN_INFERENCE_SEMANTIC_ERROR
+            ? "model.semantic" : "model.incomplete";
+        if (!item || !yyjson_mut_obj_add_null(doc, item, "node") ||
+            !json_string(doc, item, "scope", "") ||
+            !yyjson_mut_obj_add_null(doc, item, "package") ||
+            !json_string(doc, item, "code", code) ||
+            !json_string(doc, item, "category", nn_inference_category(root_status)) ||
+            !json_string(doc, item, "severity", nn_inference_severity(root_status)) ||
+            !json_string(doc, item, "message", nn_inference_root_message(report)) ||
+            !yyjson_mut_obj_add_null(doc, item, "file") ||
+            !yyjson_mut_obj_add_uint(doc, item, "line", 0) ||
+            !yyjson_mut_obj_add_null(doc, item, "causeNode") ||
+            !yyjson_mut_arr_append(problems, item)) goto oom;
+    }
     const NNModel *model = nn_app_model(app);
     for (size_t i = 0; i < nn_inference_count(report); ++i) {
         const NNInferenceResult *r = nn_inference_at(report, i);
         const NNNode *node = nn_model_find_node(model, r->node_id);
-        yyjson_mut_val *item = yyjson_mut_obj(doc);
-        if (!item || !json_string(doc, item, "node", r->node_id)) goto oom;
         if (r->status == NN_INFERENCE_SUCCESS) {
-            yyjson_mut_val *shape = yyjson_mut_arr(doc);
-            if (!shape || !json_string(doc, item, "dtype", r->dtype)) goto oom;
-            for (size_t d = 0; d < r->dimension_count; ++d) {
-                yyjson_mut_val *dimension = yyjson_mut_strcpy(doc, r->dimensions[d]);
-                if (!dimension || !yyjson_mut_arr_append(shape, dimension)) goto oom;
+            if (!r->output_count) {
+                if (!append_tensor(doc, tensors, r->node_id, NULL, NULL,
+                                   r->dtype, r->dimensions, r->dimension_count)) goto oom;
+            } else for (size_t h = 0; h < r->output_count; ++h) {
+                const NNInferenceTensor *t = &r->outputs[h];
+                if (!append_tensor(doc, tensors, r->node_id, t->handle_id, t->type,
+                                   t->dtype, t->dimensions, t->dimension_count)) goto oom;
             }
-            if (!yyjson_mut_obj_add_val(doc, item, "shape", shape) || !yyjson_mut_arr_append(tensors, item)) goto oom;
         } else {
+            yyjson_mut_val *item = yyjson_mut_obj(doc);
+            if (!item || !json_string(doc, item, "node", r->node_id)) goto oom;
             complete = false;
             yyjson_mut_val *package = node ? identity(doc, node->package_id, node->package_version) : yyjson_mut_null(doc);
             if (!package || !json_string(doc, item, "code", r->code) ||
@@ -336,6 +383,11 @@ static bool execute(NNApplication *app, const char *op, Query *q)
     if (!strcmp(op, "node.parameter")) {
         const char *key = string_arg(q, "key", NULL), *value = string_arg(q, "value", NULL);
         return !q->error[0] && nn_app_set_parameter_text(app, id, key, value, q->error, sizeof(q->error));
+    }
+    if (!strcmp(op, "node.boundary")) {
+        const char *handle = string_arg(q, "handle", NULL);
+        return !q->error[0] && nn_app_set_boundary_handle(app, id, handle,
+                                                        q->error, sizeof(q->error));
     }
     if (!strcmp(op, "edge.disconnect")) return !q->error[0] && nn_app_disconnect(app, id, q->error, sizeof(q->error));
     if (!strcmp(op, "edge.connect")) {

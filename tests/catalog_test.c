@@ -46,7 +46,7 @@ int main(void) {
     char temp[] = "/tmp/nn-catalog-test-XXXXXX";
     char project[1024], packages[2048];
     assert(catalog && error[0] == '\0');
-    assert(nn_catalog_count(catalog) == 25);
+    assert(nn_catalog_count(catalog) == 26);
     package = nn_catalog_find(catalog, "core.horizontal-repeat", "0.1.0");
     assert(package && package->dependency_count == 1);
     assert(strcmp(package->dependencies[0].id, "core.concat") == 0);
@@ -56,6 +56,16 @@ int main(void) {
     assert(strcmp(package->parameters[0].type, "dtype") == 0);
     assert(package->parameters[0].choice_count == 10);
     assert(package->directory && package->directory[0] == '/');
+    package = nn_catalog_find(catalog, "core.relu", "0.1.0");
+    assert(package && package->output_count == 1);
+    assert(!strcmp(package->outputs[0].id, "out"));
+    assert(!strcmp(package->outputs[0].type, "output"));
+    package = nn_catalog_find(catalog, "core.mse-loss", "0.1.0");
+    assert(package && package->output_count == 1);
+    assert(!strcmp(package->outputs[0].id, "loss"));
+    assert(!strcmp(package->outputs[0].type, "loss"));
+    package = nn_catalog_find(catalog, "core.loss-output", "0.1.0");
+    assert(package && package->output_count == 0);
     nn_catalog_free(catalog);
 
     assert(mkdtemp(temp));
@@ -71,6 +81,37 @@ int main(void) {
         expect_invalid(project, bad_identity);
         NNResourceRef traversal = {"custom.fixture", "1.0.0", "../outside"};
         expect_invalid(project, traversal);
+    }
+    {
+        char definition[4096];
+        assert(snprintf(definition, sizeof(definition), "%s/custom/stereotype.json", packages) < (int)sizeof(definition));
+        write_text(definition,
+            "{\"name\":\"Fixture\",\"kind\":\"layer\","
+            "\"outputs\":[{\"id\":\"prediction\",\"type\":\"output\"},"
+            "{\"id\":\"objective\",\"type\":\"loss\"}],"
+            "\"view\":{\"color\":\"#123456\",\"width\":120,\"height\":80},\"parameters\":{}}");
+        NNResourceRef good = {"custom.fixture", "1.0.0", "packages/custom"};
+        catalog = nn_catalog_load("stereotype-packages/core", project, &good, 1, error, sizeof(error));
+        const NNPackage *override = nn_catalog_find(catalog, good.id, good.version);
+        assert(override && override->output_count == 2);
+        assert(!strcmp(override->outputs[1].id, "objective"));
+        nn_catalog_free(catalog);
+        write_text(definition,
+            "{\"name\":\"Fixture\",\"kind\":\"layer\","
+            "\"outputs\":[{\"id\":\"a\",\"type\":\"loss\"},"
+            "{\"id\":\"b\",\"type\":\"loss\"}],"
+            "\"view\":{\"color\":\"#123456\",\"width\":120,\"height\":80},\"parameters\":{}}");
+        expect_invalid(project, good);
+        write_text(definition,
+            "{\"name\":\"Fixture\",\"kind\":\"layer\","
+            "\"outputs\":[{\"id\":\"out\\u0000evil\",\"type\":\"output\"}],"
+            "\"view\":{\"color\":\"#123456\",\"width\":120,\"height\":80},\"parameters\":{}}");
+        expect_invalid(project, good);
+        write_text(definition,
+            "{\"name\":\"Fixture\",\"kind\":\"layer\","
+            "\"outputs\":[{\"id\":\"out\",\"type\":\"loss\\u0000evil\"}],"
+            "\"view\":{\"color\":\"#123456\",\"width\":120,\"height\":80},\"parameters\":{}}");
+        expect_invalid(project, good);
     }
     make_package(packages, "broken", "custom.broken", "\"missing.package\":\"^1.0.0\"");
     {

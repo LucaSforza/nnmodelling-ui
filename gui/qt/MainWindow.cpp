@@ -707,13 +707,49 @@ void MainWindow::createStereotype() {
     auto *name = new QLineEdit(&dialog); name->setObjectName("stereotypeName");
     auto *description = new QLineEdit(&dialog); description->setObjectName("stereotypeDescription");
     auto *kind = new QComboBox(&dialog); kind->setObjectName("stereotypeKind");
-    kind->addItems({"input", "layer", "join", "output", "subflow"});
+    kind->addItems({"input", "layer", "join", "loss", "output", "loss-output", "subflow"});
     kind->setCurrentText(QStringLiteral("layer"));
     auto *color = new QLineEdit(QStringLiteral("#6b8fc4"), &dialog); color->setObjectName("stereotypeColor");
     form->addRow(tr("ID"), id); form->addRow(tr("Version"), version);
     form->addRow(tr("Name"), name); form->addRow(tr("Description"), description);
     form->addRow(tr("Kind"), kind); form->addRow(tr("Color"), color);
     layout->addLayout(form);
+
+    auto *overrideOutputs = new QCheckBox(tr("Use explicit output handles instead of defaults"), &dialog);
+    overrideOutputs->setObjectName(QStringLiteral("stereotypeOutputOverride"));
+    layout->addWidget(overrideOutputs);
+    auto *outputDefaults = new QLabel(&dialog);
+    outputDefaults->setObjectName(QStringLiteral("stereotypeOutputDefaults"));
+    auto updateOutputDefaults = [outputDefaults](const QString &selectedKind) {
+        if (selectedKind == QStringLiteral("output") || selectedKind == QStringLiteral("loss-output"))
+            outputDefaults->setText(QObject::tr("Default outputs: none (terminal)."));
+        else if (selectedKind == QStringLiteral("loss"))
+            outputDefaults->setText(QObject::tr("Default outputs: loss (handle ID: loss)."));
+        else
+            outputDefaults->setText(QObject::tr("Default outputs: output (handle ID: out)."));
+    };
+    updateOutputDefaults(kind->currentText());
+    connect(kind, &QComboBox::currentTextChanged, &dialog, updateOutputDefaults);
+    layout->addWidget(outputDefaults);
+    layout->addWidget(new QLabel(tr("Explicit choices replace defaults; at most one output and one loss."), &dialog));
+    auto *outputs = new QTableWidget(0, 2, &dialog);
+    outputs->setObjectName(QStringLiteral("stereotypeOutputs"));
+    outputs->setHorizontalHeaderLabels({tr("Output ID"), tr("Type (output or loss)")});
+    outputs->horizontalHeader()->setStretchLastSection(true);
+    outputs->setEnabled(false);
+    layout->addWidget(outputs);
+    connect(overrideOutputs, &QCheckBox::toggled, outputs, &QTableWidget::setEnabled);
+    auto *outputActions = new QHBoxLayout;
+    auto *addOutput = new QPushButton(tr("Add output row"), &dialog);
+    auto *removeOutput = new QPushButton(tr("Remove output row"), &dialog);
+    outputActions->addWidget(addOutput); outputActions->addWidget(removeOutput);
+    outputActions->addStretch(); layout->addLayout(outputActions);
+    connect(addOutput, &QPushButton::clicked, &dialog, [outputs] {
+        addTableRow(outputs, {QString(), QStringLiteral("output")});
+    });
+    connect(removeOutput, &QPushButton::clicked, &dialog, [outputs] {
+        if (outputs->currentRow() >= 0) outputs->removeRow(outputs->currentRow());
+    });
 
     layout->addWidget(new QLabel(tr("Parameters — types: boolean, integer, number, string, dtype or JSON array; position: top, bottom or blank."), &dialog));
     auto *parameters = new QTableWidget(0, 7, &dialog);
@@ -788,6 +824,29 @@ void MainWindow::createStereotype() {
     QJsonObject def;
     def.insert("name", name->text().trimmed()); def.insert("description", description->text().trimmed());
     def.insert("kind", kind->currentText());
+    if (overrideOutputs->isChecked()) {
+        QJsonArray definitions;
+        QSet<QString> ids, types;
+        for (int row = 0; row < outputs->rowCount(); ++row) {
+            const QString outputId = cellText(outputs, row, 0);
+            const QString type = cellText(outputs, row, 1);
+            if (outputId.isEmpty() || (type != QStringLiteral("output") && type != QStringLiteral("loss")) ||
+                ids.contains(outputId) || types.contains(type)) {
+                formError->setText(tr("Output IDs must be nonempty and unique; choose at most one row of each type."));
+                break;
+            }
+            ids.insert(outputId); types.insert(type);
+            definitions.append(QJsonObject{{QStringLiteral("id"), outputId},
+                                           {QStringLiteral("type"), type}});
+        }
+        if (!formError->text().isEmpty()) continue;
+        if ((kind->currentText() == QStringLiteral("output") ||
+             kind->currentText() == QStringLiteral("loss-output")) && !definitions.isEmpty()) {
+            formError->setText(tr("Terminal kinds cannot declare output handles."));
+            continue;
+        }
+        def.insert("outputs", definitions);
+    }
     QJsonObject view;
     view.insert("color", color->text().trimmed());
     view.insert("width", 190);
@@ -1058,15 +1117,75 @@ void MainWindow::refreshInspector() {
                                                             sizeof(analysisError));
         for (size_t i = 0; analysis && i < nn_inference_count(analysis); ++i) {
             const NNInferenceResult *result = nn_inference_at(analysis, i);
-            if (!result || result->status != NN_INFERENCE_SUCCESS || !result->dtype ||
+            if (!result || result->status != NN_INFERENCE_SUCCESS ||
                 std::strcmp(result->node_id ? result->node_id : "", node->id) != 0) continue;
-            QStringList dimensions;
-            for (size_t j = 0; j < result->dimension_count; ++j)
-                dimensions.push_back(QString::fromUtf8(result->dimensions[j]));
-            new QTreeWidgetItem(inspector_, {tr("Tensor"),
-                QStringLiteral("%1[%2]").arg(QString::fromUtf8(result->dtype),
-                                               dimensions.join(QStringLiteral(", ")))});
+            auto addTensor = [this](QTreeWidgetItem *parent, const QString &label,
+                                    const char *dtype, const char *const *dimensions,
+                                    size_t dimensionCount) {
+                QStringList shape;
+                for (size_t j = 0; j < dimensionCount; ++j)
+                    shape.push_back(QString::fromUtf8(dimensions && dimensions[j] ? dimensions[j] : "?"));
+                const QString tensor = QStringLiteral("%1[%2]").arg(
+                    QString::fromUtf8(dtype ? dtype : ""), shape.join(QStringLiteral(", ")));
+                new QTreeWidgetItem(parent, {label, tensor});
+            };
+            if (result->output_count) {
+                auto *outputsRow = new QTreeWidgetItem(inspector_, {tr("Successful outputs"), QString()});
+                for (size_t j = 0; j < result->output_count; ++j) {
+                    const NNInferenceTensor &tensor = result->outputs[j];
+                    const QString label = QStringLiteral("%1 (%2)").arg(
+                        QString::fromUtf8(tensor.handle_id ? tensor.handle_id : ""),
+                        QString::fromUtf8(tensor.type ? tensor.type : ""));
+                    addTensor(outputsRow, label, tensor.dtype, tensor.dimensions,
+                              tensor.dimension_count);
+                }
+            } else if (result->dtype) {
+                auto *consumed = new QTreeWidgetItem(inspector_, {tr("Consumed tensor"), QString()});
+                addTensor(consumed, tr("Tensor"), result->dtype, result->dimensions,
+                          result->dimension_count);
+            }
             break;
+        }
+        const QString kind = package->kind ? QString::fromUtf8(package->kind) : QString();
+        if ((kind == QStringLiteral("output") || kind == QStringLiteral("loss-output")) &&
+            node->scope_id && *node->scope_id) {
+            const NNNode *owner = nn_model_find_node(model, node->scope_id);
+            const NNPackage *ownerPackage = owner
+                ? nn_catalog_find(nn_project_catalog(project), owner->package_id, owner->package_version)
+                : nullptr;
+            auto *mappingRow = new QTreeWidgetItem(inspector_, {tr("Boundary mapping"), QString()});
+            auto *mapping = new QComboBox(inspector_);
+            mapping->setObjectName(QStringLiteral("boundaryMapping"));
+            const QString currentMapping = node->boundary_handle_id
+                ? QString::fromUtf8(node->boundary_handle_id) : QString();
+            if (currentMapping.isEmpty()) mapping->addItem(tr("(unmapped)"), QString());
+            const QString expectedType = kind == QStringLiteral("output")
+                ? QStringLiteral("output") : QStringLiteral("loss");
+            for (size_t i = 0; ownerPackage && i < ownerPackage->output_count; ++i) {
+                const NNOutputDef &output = ownerPackage->outputs[i];
+                if (!output.id || !output.type || expectedType != QString::fromUtf8(output.type)) continue;
+                mapping->addItem(QStringLiteral("%1 (%2)").arg(QString::fromUtf8(output.id),
+                                                                 QString::fromUtf8(output.type)),
+                                 QString::fromUtf8(output.id));
+            }
+            int mappingIndex = mapping->findData(currentMapping);
+            if (mappingIndex < 0 && !currentMapping.isEmpty()) {
+                mapping->addItem(tr("Invalid mapping: %1").arg(currentMapping), currentMapping);
+                mappingIndex = mapping->count() - 1;
+            }
+            mapping->setCurrentIndex(mappingIndex);
+            inspector_->setItemWidget(mappingRow, 1, mapping);
+            connect(mapping, &QComboBox::currentIndexChanged, this,
+                    [this, mapping, nodeId](int index) {
+                const QByteArray id = nodeId.toUtf8();
+                const QByteArray handle = mapping->itemData(index).toString().toUtf8();
+                char error[ErrorCapacity] = {};
+                if (!nn_app_set_boundary_handle(application_.get(), id.constData(), handle.constData(),
+                                                error, sizeof(error))) {
+                    QMessageBox::warning(this, tr("Boundary mapping rejected"), QString::fromUtf8(error));
+                }
+                QMetaObject::invokeMethod(this, [this] { refreshAll(); }, Qt::QueuedConnection);
+            });
         }
         auto *parameters = new QTreeWidgetItem(inspector_, {tr("Parameters"), QString()});
         parameters->setExpanded(true);
@@ -1202,6 +1321,7 @@ void MainWindow::refreshDiagnostics() {
         size_t line = 0;
         NNInferenceStatus status = NN_INFERENCE_SUCCESS;
         bool context = false;
+        bool rootProblem = false;
     };
     QVector<Problem> problems;
     const NNModel *model = nn_app_model(application_.get());
@@ -1246,6 +1366,22 @@ void MainWindow::refreshDiagnostics() {
         p.status = result->status;
         problems.push_back(p);
     }
+    const NNInferenceStatus rootStatus = nn_inference_root_status(report);
+    if (rootStatus != NN_INFERENCE_SUCCESS) {
+        Problem root;
+        const char *rootCategory = nn_inference_category(rootStatus);
+        root.category = QString::fromUtf8(rootCategory ? rootCategory : "incomplete");
+        root.label = tr("Root");
+        root.scope = tr("Root");
+        const char *rootMessage = nn_inference_root_message(report);
+        root.message = rootMessage ? QString::fromUtf8(rootMessage)
+                                   : tr("Root boundaries are incomplete.");
+        root.status = rootStatus;
+        root.rootProblem = true;
+        root.code = rootStatus == NN_INFERENCE_SEMANTIC_ERROR
+            ? QStringLiteral("model.semantic") : QStringLiteral("model.incomplete");
+        problems.prepend(root);
+    }
     if (currentScopeProblems_->isChecked()) {
         const QString currentScope = scene_->scope();
         QSet<QString> relevantIds;
@@ -1257,6 +1393,10 @@ void MainWindow::refreshDiagnostics() {
         QVector<Problem> relevant;
         relevant.reserve(problems.size());
         for (Problem p : problems) {
+            if (p.rootProblem) {
+                if (currentScope.isEmpty()) relevant.push_back(std::move(p));
+                continue;
+            }
             if (!relevantIds.contains(p.id)) continue;
             p.context = p.scopeId != currentScope;
             relevant.push_back(std::move(p));
@@ -1285,7 +1425,7 @@ void MainWindow::refreshDiagnostics() {
             .arg(presentation.first, p.label, contextSuffix, tr("Scope"), p.scope, summary);
         auto *root = new QTreeWidgetItem(diagnostics_,
             {displayText});
-        root->setData(0, IdRole, p.id);
+        if (!p.rootProblem) root->setData(0, IdRole, p.id);
         root->setForeground(0, QBrush(presentation.second));
         root->setToolTip(0, displayText);
         if (!p.source.isEmpty() || p.line || p.category == QStringLiteral("internal")) {

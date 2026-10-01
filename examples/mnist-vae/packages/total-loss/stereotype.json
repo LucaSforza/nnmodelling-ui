@@ -1,0 +1,8 @@
+{
+  "name": "VAE total loss",
+  "description": "Explicit designer join: reconstruction MSE + mean(per-sample KL). Scalar output; shape analysis only.",
+  "kind": "join",
+  "outputs": [{ "id": "loss", "type": "loss" }],
+  "view": { "color": "#a4493d", "width": 270, "height": 120 },
+  "parameters": {}
+}

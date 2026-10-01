@@ -47,6 +47,11 @@ typedef struct {
     const char *version_constraint;
 } NNPackageDependency;
 
+typedef struct {
+    const char *id;
+    const char *type;
+} NNOutputDef;
+
 typedef struct NNPackage {
     const char *directory;
     const char *id;
@@ -62,6 +67,8 @@ typedef struct NNPackage {
     const NNPackageDependency *dependencies;
     size_t dependency_count;
     const char *inference_file;
+    const NNOutputDef *outputs;
+    size_t output_count;
 } NNPackage;
 
 NNCatalog *nn_catalog_load(const char *core_root, const char *project_root,

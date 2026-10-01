@@ -9,7 +9,8 @@
       { "id": "vae.diagonal-gaussian", "version": "0.1.0", "path": "packages/diagonal-gaussian" },
       { "id": "vae.reparameterize", "version": "0.1.0", "path": "packages/reparameterize" },
       { "id": "vae.kl-divergence", "version": "0.1.0", "path": "packages/kl-divergence" },
-      { "id": "vae.sigmoid", "version": "0.1.0", "path": "packages/sigmoid" }
+      { "id": "vae.sigmoid", "version": "0.1.0", "path": "packages/sigmoid" },
+      { "id": "vae.total-loss", "version": "0.1.0", "path": "packages/total-loss" }
     ],
     "customDatasets": [
       { "id": "mnist-reconstruction", "version": "0.1.0", "path": "datasets/mnist" }
@@ -47,8 +48,16 @@
       "data": { "name": "KL to standard normal", "scope": "", "package": { "id": "vae.kl-divergence", "version": "0.1.0" }, "params": { "latent_features": 32 } }
     },
     {
-      "id": "kl-output", "type": "custom", "position": { "x": 400, "y": 750 },
-      "data": { "name": "KL per sample [B]", "scope": "", "package": { "id": "core.output", "version": "0.1.0" }, "params": {} }
+      "id": "reconstruction-loss", "type": "custom", "position": { "x": 400, "y": 930 },
+      "data": { "name": "Reconstruction MSE", "scope": "", "package": { "id": "core.mse-loss", "version": "0.1.0" }, "params": {} }
+    },
+    {
+      "id": "total-loss", "type": "custom", "position": { "x": 720, "y": 1120 },
+      "data": { "name": "MSE + mean KL", "scope": "", "package": { "id": "vae.total-loss", "version": "0.1.0" }, "params": {} }
+    },
+    {
+      "id": "loss-output", "type": "custom", "position": { "x": 720, "y": 1330 },
+      "data": { "name": "VAE objective", "scope": "", "package": { "id": "core.loss-output", "version": "0.1.0" }, "params": {} }
     },
     {
       "id": "encoder-input", "type": "custom", "position": { "x": 180, "y": 20 },
@@ -76,7 +85,7 @@
     },
     {
       "id": "encoder-output", "type": "custom", "position": { "x": 180, "y": 1020 },
-      "data": { "name": "Gaussian parameters [B,2,32]", "scope": "encoder", "package": { "id": "core.output", "version": "0.1.0" }, "params": {} }
+      "data": { "name": "Gaussian parameters [B,2,32]", "scope": "encoder", "boundaryHandle": "out", "package": { "id": "core.output", "version": "0.1.0" }, "params": {} }
     },
     {
       "id": "decoder-input", "type": "custom", "position": { "x": 60, "y": 20 },
@@ -100,7 +109,7 @@
     },
     {
       "id": "decoder-output", "type": "custom", "position": { "x": 60, "y": 990 },
-      "data": { "name": "reconstructed pixels", "scope": "decoder", "package": { "id": "core.output", "version": "0.1.0" }, "params": {} }
+      "data": { "name": "reconstructed pixels", "scope": "decoder", "boundaryHandle": "out", "package": { "id": "core.output", "version": "0.1.0" }, "params": {} }
     }
   ],
   "edges": [
@@ -110,7 +119,10 @@
     { "id": "sample-decoder", "source": "sample", "sourceHandle": "out", "target": "decoder", "targetHandle": "in" },
     { "id": "decoder-reconstruction", "source": "decoder", "sourceHandle": "out", "target": "reconstruction", "targetHandle": "in" },
     { "id": "encoder-kl", "source": "encoder", "sourceHandle": "out", "target": "kl", "targetHandle": "in" },
-    { "id": "kl-output-edge", "source": "kl", "sourceHandle": "out", "target": "kl-output", "targetHandle": "in" },
+    { "id": "decoder-mse", "source": "decoder", "sourceHandle": "out", "target": "reconstruction-loss", "targetHandle": "in" },
+    { "id": "mse-total", "source": "reconstruction-loss", "sourceHandle": "loss", "target": "total-loss", "targetHandle": "in-1" },
+    { "id": "kl-total", "source": "kl", "sourceHandle": "loss", "target": "total-loss", "targetHandle": "in-2" },
+    { "id": "total-output", "source": "total-loss", "sourceHandle": "loss", "target": "loss-output", "targetHandle": "in" },
     { "id": "enc-in-hidden", "source": "encoder-input", "sourceHandle": "out", "target": "encoder-hidden", "targetHandle": "in" },
     { "id": "enc-hidden-relu", "source": "encoder-hidden", "sourceHandle": "out", "target": "encoder-relu", "targetHandle": "in" },
     { "id": "enc-relu-mean", "source": "encoder-relu", "sourceHandle": "out", "target": "mean", "targetHandle": "in" },

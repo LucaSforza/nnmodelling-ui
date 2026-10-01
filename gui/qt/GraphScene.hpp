@@ -3,6 +3,7 @@
 
 #include <QGraphicsScene>
 #include <QHash>
+#include <QColor>
 #include <QPointF>
 #include <QString>
 #include <QStringList>
@@ -30,6 +31,7 @@ public:
     EdgeItem *edgeItem(const QString &id) const;
     void setProblemMarkers(const QHash<QString, QString> &categories);
     void revealNode(const QString &id);
+    QColor connectionDraftColor() const;
 
 signals:
     void modelChanged();

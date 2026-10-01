@@ -42,6 +42,7 @@ typedef struct {
     const char *package_id;
     const char *package_version;
     const char *scope_id;
+    const char *boundary_handle_id;
     double x, y;
     const NNParameter *parameters;
     size_t parameter_count;
@@ -81,6 +82,9 @@ bool nn_model_disconnect(NNModel *model, const char *id,
 bool nn_model_set_parameter(NNModel *model, const char *node_id,
                             const char *key, const NNValue *value,
                             char *error, size_t error_capacity);
+bool nn_model_set_boundary_handle(NNModel *model, const char *node_id,
+                                  const char *handle_id,
+                                  char *error, size_t error_capacity);
 
 size_t nn_model_node_count(const NNModel *model);
 size_t nn_model_edge_count(const NNModel *model);

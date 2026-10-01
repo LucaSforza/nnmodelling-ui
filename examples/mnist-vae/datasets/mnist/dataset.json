@@ -6,7 +6,7 @@
       "image": { "dtype": "float32", "shape": ["B", 1, 28, 28] }
     },
     "targets": {
-      "reconstruction": { "dtype": "float32", "shape": ["B", 784] }
+      "target": { "dtype": "float32", "shape": ["B", 784] }
     }
   }
 }

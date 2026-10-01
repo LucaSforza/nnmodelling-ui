@@ -7,7 +7,9 @@
 
 EdgeItem::EdgeItem(QString id, PortItem *source, PortItem *target)
     : id_(std::move(id)), source_(source), target_(target) {
-    setPen(QPen(QColor(92, 111, 133), 1.7, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+    const QColor color = source_ && source_->outputType() == QStringLiteral("loss")
+        ? QColor("#c62828") : QColor("#111111");
+    setPen(QPen(color, 1.9, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
     setFlag(ItemIsSelectable);
     setZValue(-1.0);
     updatePath();

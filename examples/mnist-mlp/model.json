@@ -1,1 +1,66 @@
-{"nodes":[{"id":"input","type":"custom","position":{"x":80.0,"y":210.0},"data":{"name":"image","scope":"","package":{"id":"core.input","version":"0.1.0"},"params":{"binding":"image"}}},{"id":"flatten","type":"custom","position":{"x":350.0,"y":210.0},"data":{"name":"Flatten","scope":"","package":{"id":"core.flatten","version":"0.1.0"},"params":{"start_dim":1,"end_dim":-1}}},{"id":"dense1","type":"custom","position":{"x":620.0,"y":210.0},"data":{"name":"Linear 784 to 128","scope":"","package":{"id":"core.linear","version":"0.1.0"},"params":{"in_features":784,"out_features":128,"bias":true,"dtype":"float32"}}},{"id":"relu1","type":"custom","position":{"x":890.0,"y":210.0},"data":{"name":"ReLU","scope":"","package":{"id":"core.relu","version":"0.1.0"},"params":{}}},{"id":"dense2","type":"custom","position":{"x":1160.0,"y":210.0},"data":{"name":"Linear 128 to 64","scope":"","package":{"id":"core.linear","version":"0.1.0"},"params":{"in_features":128,"out_features":64,"bias":true,"dtype":"float32"}}},{"id":"relu2","type":"custom","position":{"x":1430.0,"y":210.0},"data":{"name":"ReLU","scope":"","package":{"id":"core.relu","version":"0.1.0"},"params":{}}},{"id":"dense3","type":"custom","position":{"x":1700.0,"y":210.0},"data":{"name":"Linear 64 to 10","scope":"","package":{"id":"core.linear","version":"0.1.0"},"params":{"in_features":64,"out_features":10,"bias":true,"dtype":"float32"}}},{"id":"output","type":"custom","position":{"x":1970.0,"y":210.0},"data":{"name":"digit logits","scope":"","package":{"id":"core.output","version":"0.1.0"},"params":{}}}],"edges":[{"id":"edge_input_flatten","source":"input","sourceHandle":"out","target":"flatten","targetHandle":"in"},{"id":"edge_flatten_dense1","source":"flatten","sourceHandle":"out","target":"dense1","targetHandle":"in"},{"id":"edge_dense1_relu1","source":"dense1","sourceHandle":"out","target":"relu1","targetHandle":"in"},{"id":"edge_relu1_dense2","source":"relu1","sourceHandle":"out","target":"dense2","targetHandle":"in"},{"id":"edge_dense2_relu2","source":"dense2","sourceHandle":"out","target":"relu2","targetHandle":"in"},{"id":"edge_relu2_dense3","source":"relu2","sourceHandle":"out","target":"dense3","targetHandle":"in"},{"id":"edge_dense3_output","source":"dense3","sourceHandle":"out","target":"output","targetHandle":"in"}],"layoutDirection":"horizontal","manifest":{"schemaVersion":2,"id":"mnist-mlp","version":"0.1.0","name":"MNIST MLP","description":"Editable 28x28 MNIST classifier design; 10 untrained output logits","customPackages":[],"customDatasets":[{"id":"mnist","version":"0.1.0","path":"datasets/mnist"}],"activeDataset":{"id":"mnist","version":"0.1.0"}}}
+{
+  "manifest": {
+    "schemaVersion": 2,
+    "id": "mnist-mlp",
+    "version": "0.1.0",
+    "name": "MNIST MLP",
+    "description": "Editable MNIST classifier design with digit logits and scalar cross-entropy loss",
+    "customPackages": [],
+    "customDatasets": [{ "id": "mnist", "version": "0.1.0", "path": "datasets/mnist" }],
+    "activeDataset": { "id": "mnist", "version": "0.1.0" }
+  },
+  "layoutDirection": "horizontal",
+  "nodes": [
+    {
+      "id": "input", "type": "custom", "position": { "x": 80, "y": 210 },
+      "data": { "name": "image", "scope": "", "package": { "id": "core.input", "version": "0.1.0" }, "params": { "binding": "image" } }
+    },
+    {
+      "id": "flatten", "type": "custom", "position": { "x": 350, "y": 210 },
+      "data": { "name": "Flatten", "scope": "", "package": { "id": "core.flatten", "version": "0.1.0" }, "params": { "start_dim": 1, "end_dim": -1 } }
+    },
+    {
+      "id": "dense1", "type": "custom", "position": { "x": 620, "y": 210 },
+      "data": { "name": "Linear 784 to 128", "scope": "", "package": { "id": "core.linear", "version": "0.1.0" }, "params": { "in_features": 784, "out_features": 128, "bias": true, "dtype": "float32" } }
+    },
+    {
+      "id": "relu1", "type": "custom", "position": { "x": 890, "y": 210 },
+      "data": { "name": "ReLU", "scope": "", "package": { "id": "core.relu", "version": "0.1.0" }, "params": {} }
+    },
+    {
+      "id": "dense2", "type": "custom", "position": { "x": 1160, "y": 210 },
+      "data": { "name": "Linear 128 to 64", "scope": "", "package": { "id": "core.linear", "version": "0.1.0" }, "params": { "in_features": 128, "out_features": 64, "bias": true, "dtype": "float32" } }
+    },
+    {
+      "id": "relu2", "type": "custom", "position": { "x": 1430, "y": 210 },
+      "data": { "name": "ReLU", "scope": "", "package": { "id": "core.relu", "version": "0.1.0" }, "params": {} }
+    },
+    {
+      "id": "dense3", "type": "custom", "position": { "x": 1700, "y": 210 },
+      "data": { "name": "Linear 64 to 10", "scope": "", "package": { "id": "core.linear", "version": "0.1.0" }, "params": { "in_features": 64, "out_features": 10, "bias": true, "dtype": "float32" } }
+    },
+    {
+      "id": "output", "type": "custom", "position": { "x": 1970, "y": 210 },
+      "data": { "name": "digit logits", "scope": "", "package": { "id": "core.output", "version": "0.1.0" }, "params": {} }
+    },
+    {
+      "id": "cross-entropy", "type": "custom", "position": { "x": 1970, "y": 440 },
+      "data": { "name": "Cross Entropy", "scope": "", "package": { "id": "core.cross-entropy", "version": "0.1.0" }, "params": {} }
+    },
+    {
+      "id": "loss-output", "type": "custom", "position": { "x": 2240, "y": 440 },
+      "data": { "name": "Classifier objective", "scope": "", "package": { "id": "core.loss-output", "version": "0.1.0" }, "params": {} }
+    }
+  ],
+  "edges": [
+    { "id": "edge_input_flatten", "source": "input", "sourceHandle": "out", "target": "flatten", "targetHandle": "in" },
+    { "id": "edge_flatten_dense1", "source": "flatten", "sourceHandle": "out", "target": "dense1", "targetHandle": "in" },
+    { "id": "edge_dense1_relu1", "source": "dense1", "sourceHandle": "out", "target": "relu1", "targetHandle": "in" },
+    { "id": "edge_relu1_dense2", "source": "relu1", "sourceHandle": "out", "target": "dense2", "targetHandle": "in" },
+    { "id": "edge_dense2_relu2", "source": "dense2", "sourceHandle": "out", "target": "relu2", "targetHandle": "in" },
+    { "id": "edge_relu2_dense3", "source": "relu2", "sourceHandle": "out", "target": "dense3", "targetHandle": "in" },
+    { "id": "edge_dense3_output", "source": "dense3", "sourceHandle": "out", "target": "output", "targetHandle": "in" },
+    { "id": "edge_dense3_loss", "source": "dense3", "sourceHandle": "out", "target": "cross-entropy", "targetHandle": "in" },
+    { "id": "edge_loss_output", "source": "cross-entropy", "sourceHandle": "loss", "target": "loss-output", "targetHandle": "in" }
+  ]
+}

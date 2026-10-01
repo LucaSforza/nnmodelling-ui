@@ -74,6 +74,16 @@ int main(void)
     char *snapshot = nn_automation_dispatch(app, "{\"operation\":\"project.snapshot\",\"args\":{}}", NULL, NULL);
     assert(snapshot && strstr(snapshot, "\"parameters\":{\"binding\":\"image\"}") && strstr(snapshot, "\"edges\":[{")); free(snapshot);
 
+    dispatch(app, "{\"operation\":\"node.add\",\"args\":{\"id\":\"mse\",\"package\":\"core.mse-loss\",\"version\":\"0.1.0\"}}", true);
+    dispatch(app, "{\"operation\":\"node.add\",\"args\":{\"id\":\"intermediate\",\"package\":\"core.relu\",\"version\":\"0.1.0\"}}", true);
+    dispatch(app, "{\"operation\":\"edge.connect\",\"args\":{\"id\":\"input-mse\",\"source\":\"input\",\"sourceHandle\":\"out\",\"target\":\"mse\",\"targetHandle\":\"in\"}}", true);
+    dispatch(app, "{\"operation\":\"edge.connect\",\"args\":{\"id\":\"loss-intermediate\",\"source\":\"mse\",\"sourceHandle\":\"loss\",\"target\":\"intermediate\",\"targetHandle\":\"in\"}}", true);
+    dispatch(app, "{\"operation\":\"node.boundary\",\"args\":{\"id\":\"mse\",\"handle\":\"out\"}}", false);
+    snapshot = nn_automation_dispatch(app, "{\"operation\":\"project.snapshot\",\"args\":{}}", NULL, NULL);
+    assert(snapshot && strstr(snapshot, "\"outputs\":[{\"id\":\"loss\",\"type\":\"loss\"}]") &&
+           strstr(snapshot, "\"boundaryHandle\":null"));
+    free(snapshot);
+
     char socket_path[4096]; snprintf(socket_path, sizeof(socket_path), "%s/service.sock", root);
     char error[512] = "";
     NNAutomation *service = nn_automation_start(app, socket_path, NULL, NULL, error, sizeof(error));
@@ -96,6 +106,17 @@ int main(void)
     FILE *file = fopen(socket_path, "wb"); assert(file && fclose(file) == 0);
     assert(!nn_automation_start(app, socket_path, NULL, NULL, error, sizeof(error)));
     assert(lstat(socket_path, &info) == 0 && S_ISREG(info.st_mode)); assert(unlink(socket_path) == 0);
+    dispatch(app, "{\"operation\":\"project.close\",\"args\":{\"discard\":true}}", true);
+    dispatch(app, "{\"operation\":\"project.open\",\"args\":{\"path\":\"examples/mnist-vae\"}}", true);
+    report = nn_automation_dispatch(app,
+        "{\"operation\":\"analysis.diagnostics\",\"args\":{}}", NULL, NULL);
+    assert(report && strstr(report, "\"complete\":true") &&
+           strstr(report, "\"handle\":\"loss\",\"type\":\"loss\"") &&
+           strstr(report, "\"handle\":null,\"type\":null"));
+    free(report);
+    snapshot = nn_automation_dispatch(app, "{\"operation\":\"project.snapshot\",\"args\":{}}", NULL, NULL);
+    assert(snapshot && strstr(snapshot, "\"boundaryHandle\":\"out\""));
+    free(snapshot);
     dispatch(app, "{\"operation\":\"project.close\",\"args\":{\"discard\":true}}", true);
     char model[4096], project[4096];
     snprintf(model, sizeof(model), "%s/test/model.json", root); assert(unlink(model) == 0);

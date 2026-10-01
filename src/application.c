@@ -333,7 +333,9 @@ bool nn_app_create_stereotype(NNApplication *app, const char *id, const char *ve
     yyjson_val *root = yyjson_doc_get_root(definition);
     const char *kind = yyjson_get_str(yyjson_obj_get(root, "kind"));
     bool valid_kind = kind && (!strcmp(kind, "input") || !strcmp(kind, "layer") ||
-        !strcmp(kind, "join") || !strcmp(kind, "output") || !strcmp(kind, "subflow"));
+        !strcmp(kind, "join") || !strcmp(kind, "loss") ||
+        !strcmp(kind, "output") || !strcmp(kind, "loss-output") ||
+        !strcmp(kind, "subflow"));
     yyjson_val *parameters = yyjson_obj_get(root, "parameters");
     bool valid = valid_kind && yyjson_is_obj(parameters);
     if (valid) {
@@ -531,6 +533,67 @@ bool nn_app_add_node(NNApplication *app, const char *id, const char *package_id,
             return false;
         }
     }
+    if (kind_is(package, "subflow")) {
+        char spawned_ids[2][256] = {{0}};
+        size_t spawned = 0;
+        for (size_t i = 0; i < package->output_count; ++i) {
+            const NNOutputDef *output = &package->outputs[i];
+            const char *terminal_id = !strcmp(output->type, "loss")
+                ? "core.loss-output" : "core.output";
+            const NNCatalog *catalog = nn_project_catalog(app->project);
+            const NNPackage *terminal = nn_catalog_find(catalog, terminal_id, "0.1.0");
+            bool unique = false;
+            bool current_created = false;
+            double terminal_x = x + 220.0;
+            double terminal_y = y + (double)spawned * 100.0;
+            bool position_valid = isfinite(terminal_x) && isfinite(terminal_y);
+            char failure[256] = "";
+            if (!position_valid)
+                nn_error_set(failure, sizeof(failure), "subflow terminal position must be finite");
+            for (unsigned attempt = 0; attempt < 10000 && !unique; ++attempt) {
+                int n = attempt
+                    ? snprintf(spawned_ids[spawned], sizeof(spawned_ids[spawned]),
+                               "%s-boundary-%s-%u", id, output->id, attempt)
+                    : snprintf(spawned_ids[spawned], sizeof(spawned_ids[spawned]),
+                               "%s-boundary-%s", id, output->id);
+                if (n < 0 || (size_t)n >= sizeof(spawned_ids[spawned])) {
+                    nn_error_set(failure, sizeof(failure), "generated subflow terminal ID is too long");
+                    break;
+                }
+                unique = nn_model_find_node(model, spawned_ids[spawned]) == NULL;
+                for (size_t e = 0; unique && e < nn_model_edge_count(model); ++e)
+                    if (!strcmp(nn_model_edge_at(model, e)->id, spawned_ids[spawned])) unique = false;
+            }
+            if (!terminal && !failure[0])
+                nn_error_set(failure, sizeof(failure), "required boundary package is unavailable");
+            if (!unique && !failure[0])
+                nn_error_set(failure, sizeof(failure), "unable to generate a unique subflow terminal ID");
+            if (!position_valid && !failure[0])
+                nn_error_set(failure, sizeof(failure), "subflow terminal position must be finite");
+            bool ready = terminal && unique && position_valid;
+            if (ready) {
+                bool added = nn_model_add_node(model, spawned_ids[spawned], output->id,
+                                               terminal->id, terminal->version, id,
+                                               terminal_x, terminal_y,
+                                               failure, sizeof(failure));
+                current_created = added;
+                bool mapped = added && nn_model_set_boundary_handle(
+                    model, spawned_ids[spawned], output->id, failure, sizeof(failure));
+                ready = added && mapped;
+            }
+            if (!ready) {
+                char ignored[64];
+                if (current_created)
+                    (void)nn_model_remove_node(model, spawned_ids[spawned], ignored, sizeof(ignored));
+                while (spawned) (void)nn_model_remove_node(model, spawned_ids[--spawned], ignored, sizeof(ignored));
+                (void)nn_model_remove_node(model, id, ignored, sizeof(ignored));
+                if (!failure[0])
+                    nn_error_set(failure, sizeof(failure), "unable to spawn subflow output terminal");
+                return nn_fail(error, cap, failure);
+            }
+            ++spawned;
+        }
+    }
     nn_project_mark_dirty(app->project);
     invalidate_analysis(app);
     nn_error_set(error, cap, "");
@@ -580,7 +643,10 @@ bool nn_app_rename_node(NNApplication *app, const char *id, const char *label,
 
 static bool valid_output_handle(const NNPackage *package, const char *handle)
 {
-    return !kind_is(package, "output") && handle && !strcmp(handle, "out");
+    if (!package || !handle) return false;
+    for (size_t i = 0; i < package->output_count; ++i)
+        if (!strcmp(package->outputs[i].id, handle)) return true;
+    return false;
 }
 
 static bool valid_input_handle(const NNPackage *package, const char *handle)
@@ -609,6 +675,10 @@ bool nn_app_connect(NNApplication *app, const char *id, const char *source,
         return nn_fail(error, cap, "invalid output handle");
     if (!valid_input_handle(target_package, target_handle))
         return nn_fail(error, cap, "invalid input handle");
+    const char *type = nn_app_output_type(app, source, source_handle);
+    if ((kind_is(target_package, "output") && (!type || strcmp(type, "output"))) ||
+        (kind_is(target_package, "loss-output") && (!type || strcmp(type, "loss"))))
+        return nn_fail(error, cap, "output type is incompatible with terminal");
     if (kind_is(target_package, "join")) {
         size_t requested;
         (void)nn_join_handle_order(target_handle, &requested);
@@ -792,7 +862,7 @@ size_t nn_app_port_count(const NNApplication *app, const char *node_id, bool out
     const NNNode *node = model ? nn_model_find_node(model, node_id) : NULL;
     const NNPackage *package = find_package(app, node);
     if (!package) return 0;
-    if (output) return kind_is(package, "output") ? 0 : 1;
+    if (output) return package->output_count;
     if (kind_is(package, "input")) return 0;
     if (kind_is(package, "join")) {
         size_t count = 0;
@@ -811,8 +881,9 @@ bool nn_app_port_id(const NNApplication *app, const char *node_id, bool output,
     const NNPackage *package = find_package(app, node);
     if (!package || !buffer || !capacity) return false;
     if (output) {
-        if (kind_is(package, "output") || index != 0) return false;
-        return snprintf(buffer, capacity, "out") < (int)capacity;
+        if (index >= package->output_count) return false;
+        int written = snprintf(buffer, capacity, "%s", package->outputs[index].id);
+        return written >= 0 && (size_t)written < capacity;
     }
     if (kind_is(package, "input")) return false;
     if (!kind_is(package, "join")) {
@@ -832,4 +903,48 @@ bool nn_app_node_is_subflow(const NNApplication *app, const char *node_id)
     const NNModel *model = nn_app_model(app);
     const NNNode *node = model ? nn_model_find_node(model, node_id) : NULL;
     return kind_is(find_package(app, node), "subflow");
+}
+
+const char *nn_app_output_type(const NNApplication *app, const char *node_id,
+                               const char *handle_id)
+{
+    const NNModel *model = nn_app_model(app);
+    const NNNode *node = model ? nn_model_find_node(model, node_id) : NULL;
+    const NNPackage *package = find_package(app, node);
+    if (!package || !handle_id) return NULL;
+    for (size_t i = 0; i < package->output_count; ++i)
+        if (!strcmp(package->outputs[i].id, handle_id)) return package->outputs[i].type;
+    return NULL;
+}
+
+bool nn_app_set_boundary_handle(NNApplication *app, const char *node_id,
+                                const char *handle_id, char *error, size_t cap)
+{
+    if (!app || !app->project || !node_id || !handle_id || !*handle_id)
+        return nn_fail(error, cap, "invalid boundary mapping");
+    NNModel *model = nn_project_model(app->project);
+    const NNNode *node = nn_model_find_node(model, node_id);
+    const NNPackage *terminal = find_package(app, node);
+    if (!node || (!kind_is(terminal, "output") && !kind_is(terminal, "loss-output")))
+        return nn_fail(error, cap, "boundary mapping requires an output terminal");
+    const NNNode *owner = *node->scope_id ? nn_model_find_node(model, node->scope_id) : NULL;
+    const NNPackage *owner_package = find_package(app, owner);
+    if (!owner || !kind_is(owner_package, "subflow"))
+        return nn_fail(error, cap, "root terminals cannot have boundary mappings");
+    const NNOutputDef *mapping = NULL;
+    for (size_t i = 0; i < owner_package->output_count; ++i)
+        if (!strcmp(owner_package->outputs[i].id, handle_id)) mapping = &owner_package->outputs[i];
+    if (!mapping) return nn_fail(error, cap, "unknown subflow output handle");
+    const char *expected_kind = !strcmp(mapping->type, "loss") ? "loss-output" : "output";
+    if (!kind_is(terminal, expected_kind))
+        return nn_fail(error, cap, "boundary handle type does not match terminal");
+    if (node->boundary_handle_id && !strcmp(node->boundary_handle_id, handle_id)) {
+        nn_error_set(error, cap, "");
+        return true;
+    }
+    if (!nn_model_set_boundary_handle(model, node_id, handle_id, error, cap)) return false;
+    nn_project_mark_dirty(app->project);
+    invalidate_analysis(app);
+    nn_error_set(error, cap, "");
+    return true;
 }

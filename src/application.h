@@ -54,6 +54,10 @@ size_t nn_app_port_count(const NNApplication *app, const char *node, bool output
 bool nn_app_port_id(const NNApplication *app, const char *node, bool output,
                     size_t index, char *buffer, size_t capacity);
 bool nn_app_node_is_subflow(const NNApplication *app, const char *node);
+const char *nn_app_output_type(const NNApplication *app, const char *node_id,
+                               const char *handle_id);
+bool nn_app_set_boundary_handle(NNApplication *app, const char *node_id,
+                                const char *handle_id, char *error, size_t cap);
 
 #ifdef __cplusplus
 }

@@ -92,6 +92,8 @@ Root has exactly one Output and one Loss Output, no boundary mappings. All
 terminal inputs have at most one producer; accumulation requires explicit join.
 Intermediate nodes accept either edge type; their own outputs determine fanout
 classification. Analysis reads keyed outputs per source handle without mutation.
+Computational Lua success chooses a keyed map for all declared handles OR the
+single-handle shorthand; terminal success uses consumed-tensor shorthand only.
 Missing completion is Incomplete, invalid declarations/mappings are semantic
 errors, invalid edge handle/type commands are rejected without mutation.
 Root completion lives in report metadata so even a zero-node graph is

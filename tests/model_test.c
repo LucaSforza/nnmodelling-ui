@@ -51,6 +51,10 @@ int main(void) {
 
     assert(nn_model_move_node(m, "a", 12.5, -3, error, sizeof(error)));
     assert(nn_model_rename_node(m, "a", "renamed", error, sizeof(error)));
+    char mapping[] = "prediction";
+    assert(nn_model_set_boundary_handle(m, "a", mapping, error, sizeof(error)));
+    mapping[0] = 'X';
+    assert(!strcmp(nn_model_find_node(m, "a")->boundary_handle_id, "prediction"));
     assert(nn_model_find_node(m, "a")->x == 12.5);
     assert(!strcmp(nn_model_find_node(m, "a")->label, "renamed"));
     assert(nn_model_node_at(m, 4) == NULL && nn_model_edge_at(m, 2) == NULL);

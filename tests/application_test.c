@@ -44,13 +44,57 @@ int main(void)
     assert(!nn_app_save(app, error, sizeof(error)));
     assert(nn_app_create(app, root, "demo", "Demo", false, error, sizeof(error)));
     const NNProject *project = nn_app_project(app);
+    assert(nn_model_node_count(nn_app_model(app)) == 2);
     assert(project && !nn_project_dirty(project));
     const NNInferenceReport *analysis = nn_app_analysis(app, error, sizeof(error));
-    assert(analysis && !nn_inference_count(analysis));
+    assert(analysis && nn_inference_count(analysis) == 2);
     assert(nn_app_analysis(app, error, sizeof(error)) == analysis);
     assert(!nn_app_add_node(app, "bad-pos", "core.relu", "0.1.0", "",
                             INFINITY, 0, error, sizeof(error)));
     assert(!nn_project_dirty(project));
+
+    char long_id[251], colliding_id[256];
+    memset(long_id, 'x', sizeof(long_id) - 1);
+    long_id[sizeof(long_id) - 1] = '\0';
+    memcpy(colliding_id, long_id, sizeof(long_id) - 1);
+    memcpy(colliding_id + sizeof(long_id) - 1, "-boun", 5);
+    colliding_id[sizeof(colliding_id) - 1] = '\0';
+    assert(strlen(colliding_id) == sizeof(colliding_id) - 1);
+    assert(!nn_app_add_node(app, long_id, "core.repeat", "0.1.0", "", 0, 0,
+                            error, sizeof(error)));
+    assert(strstr(error, "too long"));
+    assert(nn_model_node_count(nn_app_model(app)) == 2);
+    assert(nn_model_edge_count(nn_app_model(app)) == 0);
+    assert(!nn_project_dirty(project));
+    assert(nn_app_analysis(app, error, sizeof(error)) == analysis);
+    assert(!nn_app_add_node(app, long_id, "core.repeat", "0.1.0", "", 0, 0,
+                            NULL, 0));
+    char tiny_error[2];
+    assert(!nn_app_add_node(app, long_id, "core.repeat", "0.1.0", "", 0, 0,
+                            tiny_error, sizeof(tiny_error)));
+    assert(nn_model_node_count(nn_app_model(app)) == 2);
+    assert(nn_model_edge_count(nn_app_model(app)) == 0);
+    assert(!nn_project_dirty(project));
+    assert(nn_app_analysis(app, error, sizeof(error)) == analysis);
+
+    add(app, colliding_id, "core.relu", "", error);
+    add(app, "prefix-user-source", "core.input", "", error);
+    assert(nn_app_connect(app, "prefix-user-edge", "prefix-user-source", "out",
+                          colliding_id, "in", error, sizeof(error)));
+    analysis = nn_app_analysis(app, error, sizeof(error));
+    assert(analysis);
+    size_t before_nodes = nn_model_node_count(nn_app_model(app));
+    size_t before_edges = nn_model_edge_count(nn_app_model(app));
+    bool before_dirty = nn_project_dirty(project);
+    assert(!nn_app_add_node(app, long_id, "core.repeat", "0.1.0", "", 0, 0,
+                            error, sizeof(error)));
+    assert(strstr(error, "too long"));
+    assert(nn_model_node_count(nn_app_model(app)) == before_nodes);
+    assert(nn_model_edge_count(nn_app_model(app)) == before_edges);
+    assert(nn_model_find_node(nn_app_model(app), colliding_id));
+    assert(nn_model_find_node(nn_app_model(app), "prefix-user-source"));
+    assert(nn_app_analysis(app, error, sizeof(error)) == analysis);
+    assert(nn_project_dirty(project) == before_dirty);
 
     /* Every package currently offered by the real core catalog remains creatable. */
     const NNCatalog *catalog = nn_project_catalog(project);
@@ -61,6 +105,14 @@ int main(void)
         snprintf(id, sizeof(id), "catalog-%zu", i);
         assert(nn_app_add_node(app, id, package->id, package->version, "", 0, 0,
                                error, sizeof(error)));
+        if (nn_app_node_is_subflow(app, id)) {
+            for (size_t n = 0; n < nn_model_node_count(nn_app_model(app));) {
+                const NNNode *child = nn_model_node_at(nn_app_model(app), n);
+                if (!strcmp(child->scope_id, id))
+                    assert(nn_app_remove_node(app, child->id, error, sizeof(error)));
+                else ++n;
+            }
+        }
         assert(nn_app_remove_node(app, id, error, sizeof(error)));
     }
     add(app, "horizontal", "core.horizontal-repeat", "", error);
@@ -69,11 +121,12 @@ int main(void)
     assert(!nn_app_set_parameter_text(app, "horizontal", "join", "{}",
                                       error, sizeof(error)));
     assert(strstr(error, "object-valued stereotype parameters"));
+    assert(nn_app_remove_node(app, "horizontal-boundary-out", error, sizeof(error)));
     assert(nn_app_remove_node(app, "horizontal", error, sizeof(error)));
 
     add(app, "source", "core.input", "", error);
     const NNInferenceReport *after_add = nn_app_analysis(app, error, sizeof(error));
-    assert(after_add && nn_inference_count(after_add) == 1);
+    assert(after_add && nn_inference_count(after_add) == 5);
     assert(nn_app_move_node(app, "source", 14, 25, error, sizeof(error)));
     assert(nn_app_analysis(app, error, sizeof(error)) == after_add);
     assert(!nn_app_add_node(app, "bad", "missing.package", "0.1.0", "", 0, 0,
@@ -91,6 +144,8 @@ int main(void)
     assert(nn_app_port_id(app, "join", false, 0, handle, sizeof(handle)) && !strcmp(handle, "in-1"));
     assert(nn_app_port_id(app, "join", false, 1, handle, sizeof(handle)) && !strcmp(handle, "in-2"));
     assert(nn_app_port_id(app, "source", true, 0, handle, sizeof(handle)) && !strcmp(handle, "out"));
+    assert(!strcmp(nn_app_output_type(app, "source", "out"), "output"));
+    assert(nn_app_output_type(app, "source", "missing") == NULL);
     assert(!nn_app_connect(app, "bad-direction", "source", "in", "a", "in", error, sizeof(error)));
     assert(!nn_app_connect(app, "bad-input", "source", "out", "a", "in-1", error, sizeof(error)));
     assert(nn_app_connect(app, "edge-1", "source", "out", "a", "in", error, sizeof(error)));
@@ -103,6 +158,20 @@ int main(void)
     assert(nn_app_port_id(app, "join", false, 2, handle, sizeof(handle)) && !strcmp(handle, "in-3"));
     assert(nn_app_connect(app, "cycle-1", "c", "out", "d", "in", error, sizeof(error)));
     assert(!nn_app_connect(app, "cycle-2", "d", "out", "c", "in", error, sizeof(error)));
+
+    add(app, "loss-source", "core.mse-loss", "", error);
+    add(app, "loss-intermediate-target", "core.relu", "", error);
+    assert(!strcmp(nn_app_output_type(app, "loss-source", "loss"), "loss"));
+    assert(nn_app_connect(app, "loss-intermediate", "loss-source", "loss",
+                          "loss-intermediate-target", "in", error, sizeof(error)));
+    assert(!nn_app_connect(app, "wrong-terminal", "source", "out",
+                           "loss-output", "in", error, sizeof(error)));
+    assert(nn_app_connect(app, "right-terminal", "loss-source", "loss",
+                          "loss-output", "in", error, sizeof(error)));
+    assert(nn_app_disconnect(app, "right-terminal", error, sizeof(error)));
+    assert(nn_app_disconnect(app, "loss-intermediate", error, sizeof(error)));
+    assert(nn_app_remove_node(app, "loss-intermediate-target", error, sizeof(error)));
+    assert(nn_app_remove_node(app, "loss-source", error, sizeof(error)));
 
     add(app, "linear", "core.linear", "", error);
     const NNNode *linear = nn_model_find_node(nn_app_model(app), "linear");
@@ -137,11 +206,22 @@ int main(void)
 
     add(app, "subflow", "core.repeat", "", error);
     assert(nn_app_node_is_subflow(app, "subflow"));
+    const NNNode *boundary = nn_model_find_node(nn_app_model(app), "subflow-boundary-out");
+    assert(boundary && !strcmp(boundary->scope_id, "subflow"));
+    assert(boundary->boundary_handle_id && !strcmp(boundary->boundary_handle_id, "out"));
+    assert(nn_app_set_boundary_handle(app, boundary->id, "out", error, sizeof(error)));
+    assert(!nn_app_set_boundary_handle(app, boundary->id, "unknown", error, sizeof(error)));
+    assert(!nn_app_set_boundary_handle(app, "loss-output", "out", error, sizeof(error)));
     assert(!nn_app_add_node(app, "orphan", "core.relu", "0.1.0", "missing", 0, 0,
                             error, sizeof(error)));
     add(app, "child", "core.relu", "subflow", error);
+    assert(!nn_app_set_boundary_handle(app, "child", "out", error, sizeof(error)));
+    add(app, "duplicate-boundary", "core.output", "subflow", error);
+    assert(nn_app_set_boundary_handle(app, "duplicate-boundary", "out", error, sizeof(error)));
     assert(!nn_app_remove_node(app, "subflow", error, sizeof(error)));
+    assert(nn_app_remove_node(app, "duplicate-boundary", error, sizeof(error)));
     assert(nn_app_remove_node(app, "child", error, sizeof(error)));
+    assert(nn_app_remove_node(app, "subflow-boundary-out", error, sizeof(error)));
     assert(nn_app_remove_node(app, "subflow", error, sizeof(error)));
     assert(!nn_app_node_is_subflow(app, "source"));
 
@@ -158,7 +238,7 @@ int main(void)
     assert(nn_app_open(app, saved_directory, error, sizeof(error)));
     assert(nn_model_find_node(nn_app_model(app), "linear"));
     assert(nn_model_find_node(nn_app_model(app), "join"));
-    assert(nn_model_edge_count(nn_app_model(app)) == 4);
+    assert(nn_model_edge_count(nn_app_model(app)) == 5);
     linear = nn_model_find_node(nn_app_model(app), "linear");
     assert(linear);
     for (size_t i = 0; i < linear->parameter_count; ++i)

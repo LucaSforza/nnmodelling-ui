@@ -98,6 +98,9 @@ declared keys and valid tensors; missing/extra outputs or using shorthand for
 two outputs is a semantic error. Never duplicate one tensor implicitly across
 handles. Terminal rules use output=tensor to validate/inspect the consumed
 tensor without creating an outgoing handle.
+The keyed map is also valid for a computational node with one declared output;
+shorthand is optional, not mandatory. A success result must use exactly one of
+output or outputs, never both. Terminal collectors use only output shorthand.
 
 services.infer_subflow(tensor) returns output shorthand for one output, or the
 same keyed outputs map for two outputs. Child terminal mappings select each
@@ -157,6 +160,8 @@ An explicit project-owned join models reconstruction MSE + mean per-sample KL
 and declares a loss output to the sole Loss Output. The join's Lua validates
 scalar/[B] floating inputs and returns scalar shape metadata only. Encoder and
 decoder keep default single out boundaries with persisted matching IDs.
+VAE dataset target slot is named target, matching core MSE's declared external
+input reference batch.targets.target; its shape remains [B,784].
 
 Test defaults/overrides, all schema rejections, handle-sensitive independent
 tensors, terminal-only restrictions, single-input collectors, transactional

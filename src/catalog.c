@@ -21,6 +21,7 @@ typedef struct {
   NNParameterDef *parameters;
   char ***choice_storage;
   NNPackageDependency *dependencies;
+  NNOutputDef *outputs;
 } Package;
 
 struct NNCatalog {
@@ -178,6 +179,11 @@ static void package_dispose(Package *p) {
   free((char *)p->pub.kind);
   free((char *)p->pub.color);
   free((char *)p->pub.inference_file);
+  for (i = 0; p->outputs && i < p->pub.output_count; ++i) {
+    free((char *)p->outputs[i].id);
+    free((char *)p->outputs[i].type);
+  }
+  free(p->outputs);
   for (i = 0; p->parameters && i < p->pub.parameter_count; ++i) {
     free((char *)p->parameters[i].key);
     free((char *)p->parameters[i].type);
@@ -213,13 +219,75 @@ void nn_catalog_free(NNCatalog *catalog) {
 }
 
 static bool parse_definition(Package *p, yyjson_val *root) {
-  yyjson_val *view, *params, *v;
+  yyjson_val *view, *params, *v, *outputs;
   const char *s;
   double n;
   if (!yyjson_is_obj(root) || !(s = strval(get(root, "name"))) || !*s ||
       !(p->pub.name = nn_text_copy(s)) || !(s = strval(get(root, "kind"))) ||
       !*s || !(p->pub.kind = nn_text_copy(s)))
     return false;
+  outputs = get(root, "outputs");
+  bool terminal = !strcmp(p->pub.kind, "output") ||
+                  !strcmp(p->pub.kind, "loss-output");
+  if (outputs && !yyjson_is_arr(outputs))
+    return false;
+  if (terminal && outputs && yyjson_arr_size(outputs) != 0)
+    return false;
+  if (!terminal) {
+    size_t count = outputs ? yyjson_arr_size(outputs) : 1;
+    if (!count || count > 2)
+      return false;
+    p->outputs = calloc(count, sizeof(*p->outputs));
+    if (!p->outputs)
+      return false;
+    p->pub.output_count = count;
+    p->pub.outputs = p->outputs;
+    for (size_t i = 0; i < count; ++i) {
+      const char *id, *type;
+      if (outputs) {
+        yyjson_val *item = yyjson_arr_get(outputs, i);
+        bool have_id = false, have_type = false;
+        size_t id_length = 0, type_length = 0;
+        if (!yyjson_is_obj(item) || yyjson_obj_size(item) != 2)
+          return false;
+        yyjson_obj_iter fields = yyjson_obj_iter_with(item);
+        yyjson_val *key;
+        id = type = NULL;
+        while ((key = yyjson_obj_iter_next(&fields))) {
+          const char *field = yyjson_get_str(key);
+          size_t field_length = yyjson_get_len(key);
+          yyjson_val *value = yyjson_obj_iter_get_val(key);
+          if (!field || strlen(field) != field_length)
+            return false;
+          if (!strcmp(field, "id") && !have_id) {
+            have_id = true;
+            id = strval(value);
+            if (id) id_length = yyjson_get_len(value);
+          } else if (!strcmp(field, "type") && !have_type) {
+            have_type = true;
+            type = strval(value);
+            if (type) type_length = yyjson_get_len(value);
+          } else return false;
+        }
+        if (!have_id || !have_type)
+          return false;
+        if (!id || !type || strlen(id) != id_length || strlen(type) != type_length)
+          return false;
+      } else {
+        id = !strcmp(p->pub.kind, "loss") ? "loss" : "out";
+        type = !strcmp(p->pub.kind, "loss") ? "loss" : "output";
+      }
+      if (!valid_id(id) || !type || (strcmp(type, "output") && strcmp(type, "loss")))
+        return false;
+      for (size_t j = 0; j < i; ++j)
+        if (!strcmp(p->outputs[j].id, id) || !strcmp(p->outputs[j].type, type))
+          return false;
+      p->outputs[i].id = nn_text_copy(id);
+      p->outputs[i].type = nn_text_copy(type);
+      if (!p->outputs[i].id || !p->outputs[i].type)
+        return false;
+    }
+  }
   s = strval(get(root, "description"));
   if (s && !(p->pub.description = nn_text_copy(s)))
     return false;

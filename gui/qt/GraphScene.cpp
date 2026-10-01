@@ -27,6 +27,7 @@ struct NodeSnapshot {
     QString label;
     QString packageId;
     QString scopeId;
+    QString kind;
     QPointF position;
     bool subflow = false;
 };
@@ -85,8 +86,11 @@ void GraphScene::refresh() {
             const NNNode *node = nn_model_node_at(model, i);
             if (!node) continue;
             nodeData.push_back({copyText(node->id), copyText(node->label), copyText(node->package_id),
-                                copyText(node->scope_id), QPointF(node->x, node->y), false});
+                                copyText(node->scope_id), {}, QPointF(node->x, node->y), false});
             nodeData.back().subflow = nn_app_node_is_subflow(application_, node->id);
+            const NNPackage *package = nn_catalog_find(nn_project_catalog(nn_app_project(application_)),
+                                                        node->package_id, node->package_version);
+            nodeData.back().kind = package ? copyText(package->kind) : QString();
         }
         edgeData.reserve(int(nn_model_edge_count(model)));
         for (size_t i = 0; i < nn_model_edge_count(model); ++i) {
@@ -132,18 +136,30 @@ void GraphScene::refresh() {
             ? static_cast<NodeItem *>(new SubflowItem(this, data.id, data.label, data.packageId,
                                                        data.position, color, topParameters, bottomParameters))
             : new NodeItem(this, data.id, data.label, data.packageId, data.position, color,
-                           topParameters, bottomParameters);
+                            topParameters, bottomParameters);
+        if (data.kind == QStringLiteral("input") || data.kind == QStringLiteral("output") ||
+            data.kind == QStringLiteral("loss-output")) item->setBoundaryKind(data.kind);
         nodes_.insert(data.id, item);
         item->setProblemCategory(problemCategories_.value(data.id));
         addItem(item);
         for (bool output : {true, false}) {
-            const size_t count = nn_app_port_count(application_, data.id.toUtf8().constData(), output);
+            const size_t count = output ? (package ? package->output_count : 0)
+                                        : nn_app_port_count(application_, data.id.toUtf8().constData(), false);
             for (size_t index = 0; index < count; ++index) {
-                char handle[128] = {};
-                if (!nn_app_port_id(application_, data.id.toUtf8().constData(), output, index,
-                                    handle, sizeof(handle))) continue;
-                const QString handleId = QString::fromUtf8(handle);
-                auto *port = new PortItem(this, data.id, handleId, output, handleId, item);
+                QString handleId;
+                QString type;
+                if (output) {
+                    const NNOutputDef &definition = package->outputs[index];
+                    if (!definition.id) continue;
+                    handleId = QString::fromUtf8(definition.id);
+                    type = copyText(definition.type);
+                } else {
+                    char handle[128] = {};
+                    if (!nn_app_port_id(application_, data.id.toUtf8().constData(), false, index,
+                                        handle, sizeof(handle))) continue;
+                    handleId = QString::fromUtf8(handle);
+                }
+                auto *port = new PortItem(this, data.id, handleId, output, handleId, type, item);
                 item->addPort(port);
             }
         }
@@ -237,6 +253,10 @@ QString GraphScene::selectedNodeId() const {
 
 NodeItem *GraphScene::nodeItem(const QString &id) const { return nodes_.value(id, nullptr); }
 EdgeItem *GraphScene::edgeItem(const QString &id) const { return edges_.value(id, nullptr); }
+
+QColor GraphScene::connectionDraftColor() const {
+    return draftPath_ ? draftPath_->pen().color() : QColor();
+}
 
 void GraphScene::setProblemMarkers(const QHash<QString, QString> &categories) {
     problemCategories_ = categories;
@@ -341,7 +361,9 @@ void GraphScene::beginConnection(PortItem *port) {
     cancelConnection();
     if (!port || !port->isOutput()) return;
     draftSource_ = port;
-    draftPath_ = addPath(QPainterPath(), QPen(QColor(63, 126, 190), 1.8, Qt::DashLine,
+    const QColor color = port->outputType() == QStringLiteral("loss")
+        ? QColor("#c62828") : QColor("#111111");
+    draftPath_ = addPath(QPainterPath(), QPen(color, 1.8, Qt::DashLine,
                                                Qt::RoundCap, Qt::RoundJoin));
     draftPath_->setZValue(0.0);
     updateConnection(port->scenePos());

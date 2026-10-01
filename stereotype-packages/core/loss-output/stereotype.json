@@ -1,0 +1,8 @@
+{
+  "name": "Loss Output",
+  "description": "Collects one explicit loss result; combine contributions with a designer-selected join first.",
+  "kind": "loss-output",
+  "outputs": [],
+  "view": { "color": "#d32f2f", "width": 140, "height": 80 },
+  "parameters": {}
+}

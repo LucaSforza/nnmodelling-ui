@@ -77,6 +77,7 @@ static void node_dispose(NNNode *node) {
     free((char *)node->id); free((char *)node->label);
     free((char *)node->package_id); free((char *)node->package_version);
     free((char *)node->scope_id);
+    free((char *)node->boundary_handle_id);
     for (size_t i = 0; i < node->parameter_count; ++i) {
         free(node->parameters[i].key);
         nn_value_dispose(&((NNParameter *)node->parameters)[i].value);
@@ -252,6 +253,19 @@ bool nn_model_set_parameter(NNModel *model, const char *node_id, const char *key
     grown[node->parameter_count++] = (NNParameter){ .key = key_copy, .value = copy };
     node->parameters = grown;
     nn_error_set(error, cap, ""); return true;
+}
+
+bool nn_model_set_boundary_handle(NNModel *model, const char *node_id,
+                                  const char *handle_id, char *error, size_t cap) {
+    size_t i = node_index(model, node_id);
+    if (i == (size_t)-1) return nn_fail(error, cap, "node not found");
+    if (!handle_id || !*handle_id) return nn_fail(error, cap, "invalid boundary handle");
+    char *copy = nn_text_copy(handle_id);
+    if (!copy) return nn_fail(error, cap, "out of memory");
+    free((char *)model->nodes[i].view.boundary_handle_id);
+    model->nodes[i].view.boundary_handle_id = copy;
+    nn_error_set(error, cap, "");
+    return true;
 }
 
 size_t nn_model_node_count(const NNModel *model) { return model ? model->node_count : 0; }

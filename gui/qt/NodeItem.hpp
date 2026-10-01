@@ -27,6 +27,8 @@ public:
     QList<QPair<QString, QString>> bottomParameters() const { return bottomParameters_; }
     virtual void setChildCount(int count);
     void setProblemCategory(const QString &category);
+    void setBoundaryKind(const QString &kind);
+    QString boundaryKind() const { return boundaryKind_; }
     QString problemCategory() const { return problemCategory_; }
 
 protected:
@@ -39,6 +41,7 @@ protected:
     QString packageId_;
     QColor color_;
     QString problemCategory_;
+    QString boundaryKind_;
     QList<PortItem *> ports_;
     QList<QPair<QString, QString>> topParameters_;
     QList<QPair<QString, QString>> bottomParameters_;

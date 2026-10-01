@@ -72,20 +72,50 @@ int main(void)
                                          sizeof(validation_error)));
     free(oversized_source);
 
+    char error[256] = {0};
     NNProject *project = open_example();
     assert(project);
     NNInferenceReport *report = nn_infer_project(project);
-    assert(report && nn_inference_count(report) == 8);
+    assert(report && nn_inference_count(report) == 10);
     const NNInferenceResult *output = find_result(report, "output");
     assert(output && output->status == NN_INFERENCE_SUCCESS);
     assert(!strcmp(output->dtype, "float32"));
     assert(output->dimension_count == 2);
     assert(!strcmp(output->dimensions[0], "B"));
     assert(!strcmp(output->dimensions[1], "10"));
+    const NNInferenceResult *objective = find_result(report, "cross-entropy");
+    assert(objective && objective->status == NN_INFERENCE_SUCCESS &&
+           objective->output_count == 1);
+    assert(!strcmp(objective->outputs[0].handle_id, "loss"));
+    assert(!strcmp(objective->outputs[0].type, "loss"));
+    assert(output->output_count == 0);
+    assert(nn_inference_root_status(report) == NN_INFERENCE_SUCCESS);
+    assert(!nn_inference_root_message(report));
     nn_inference_free(report);
 
+    assert(nn_model_remove_node(nn_project_model(project), "loss-output", error,
+                                sizeof(error)));
+    report = nn_infer_project(project);
+    assert(report && nn_inference_root_status(report) == NN_INFERENCE_UNRESOLVED);
+    assert(nn_inference_root_message(report));
+    assert(find_result(report, "output")->status == NN_INFERENCE_SUCCESS);
+    nn_inference_free(report);
+    while (nn_model_node_count(nn_project_model(project))) {
+        const NNNode *node = nn_model_node_at(nn_project_model(project), 0);
+        char id[128];
+        snprintf(id, sizeof(id), "%s", node->id);
+        assert(nn_model_remove_node(nn_project_model(project), id, error, sizeof(error)));
+    }
+    report = nn_infer_project(project);
+    assert(report && nn_inference_count(report) == 0);
+    assert(nn_inference_root_status(report) == NN_INFERENCE_UNRESOLVED);
+    assert(nn_inference_root_message(report));
+    nn_inference_free(report);
+    nn_project_close(project);
+
+    project = open_example();
+    assert(project);
     NNValue bad_features = { .type = NN_VALUE_INT, .as.integer = 800 };
-    char error[256] = {0};
     assert(nn_model_set_parameter(nn_project_model(project), "dense1", "in_features",
                                   &bad_features, error, sizeof(error)));
     report = nn_infer_project(project);
@@ -123,7 +153,7 @@ int main(void)
     project = open_vae();
     assert(project);
     report = nn_infer_project(project);
-    assert(report && nn_inference_count(report) == 21);
+    assert(report && nn_inference_count(report) == 23);
     const char *packed[] = { "B", "2", "32" };
     const char *latent[] = { "B", "32" };
     const char *pixels[] = { "B", "784" };
@@ -132,7 +162,7 @@ int main(void)
     assert_shape(find_result(report, "encoder-input"), "float32", pixels, 2);
     assert_shape(find_result(report, "decoder-input"), "float32", latent, 2);
     assert_shape(find_result(report, "reconstruction"), "float32", pixels, 2);
-    assert_shape(find_result(report, "kl-output"), "float32", kl_shape, 1);
+    assert_shape(find_result(report, "kl"), "float32", kl_shape, 1);
     assert_shape(find_result(report, "mean"), "float32", latent, 2);
     assert_shape(find_result(report, "log-variance"), "float32", latent, 2);
     nn_inference_free(report);
@@ -146,6 +176,8 @@ int main(void)
     assert(nn_model_add_node(nn_project_model(project), "inner-output", "nested output",
                              "core.output", "0.1.0", "inner-proxy", 0, 0,
                              error, sizeof(error)));
+    assert(nn_model_set_boundary_handle(nn_project_model(project), "inner-output", "out",
+                                        error, sizeof(error)));
     NNValue empty_binding = { .type = NN_VALUE_STRING, .as.string = "" };
     assert(nn_model_set_parameter(nn_project_model(project), "inner-input", "binding",
                                   &empty_binding, error, sizeof(error)));
@@ -154,7 +186,7 @@ int main(void)
     assert(nn_model_connect(nn_project_model(project), "inner-edge", "inner-input", "out",
                             "inner-output", "in", error, sizeof(error)));
     report = nn_infer_project(project);
-    assert(report && nn_inference_count(report) == 24);
+    assert(report && nn_inference_count(report) == 26);
     const char *hidden_shape[] = { "B", "128" };
     assert_shape(find_result(report, "inner-proxy"), "float32", hidden_shape, 2);
     assert_shape(find_result(report, "inner-input"), "float32", hidden_shape, 2);
@@ -183,7 +215,7 @@ int main(void)
     assert(nn_model_disconnect(nn_project_model(project), "flatten-encoder",
                                error, sizeof(error)));
     report = nn_infer_project(project);
-    assert(report && nn_inference_count(report) == 21);
+    assert(report && nn_inference_count(report) == 23);
     assert(find_result(report, "flatten")->status == NN_INFERENCE_SUCCESS);
     assert(find_result(report, "encoder")->status == NN_INFERENCE_UNRESOLVED);
     assert(find_result(report, "encoder-input")->status == NN_INFERENCE_UNRESOLVED);
@@ -240,6 +272,8 @@ int main(void)
     assert(nn_model_add_node(nn_project_model(project), "repeat-output", "repeat output",
                              "core.output", "0.1.0", "repeat-twice", 0, 0,
                              error, sizeof(error)));
+    assert(nn_model_set_boundary_handle(nn_project_model(project), "repeat-output", "out",
+                                        error, sizeof(error)));
     NNValue twice = { .type = NN_VALUE_INT, .as.integer = 2 };
     assert(nn_model_set_parameter(nn_project_model(project), "repeat-twice", "times",
                                   &twice, error, sizeof(error)));
@@ -250,7 +284,7 @@ int main(void)
     assert(nn_model_connect(nn_project_model(project), "repeat-child-edge", "repeat-input", "out",
                             "repeat-output", "in", error, sizeof(error)));
     report = nn_infer_project(project);
-    assert(report && nn_inference_count(report) == 24);
+    assert(report && nn_inference_count(report) == 26);
     assert_shape(find_result(report, "repeat-twice"), "float32", pixels, 2);
     assert_shape(find_result(report, "repeat-input"), "float32", pixels, 2);
     assert_shape(find_result(report, "repeat-output"), "float32", pixels, 2);
@@ -273,7 +307,7 @@ int main(void)
                             "repeat-incomplete", "in", error, sizeof(error)));
     report = nn_infer_project(project);
     assert(report);
-    assert(find_result(report, "repeat-incomplete")->status == NN_INFERENCE_UNRESOLVED);
+    assert(find_result(report, "repeat-incomplete")->status == NN_INFERENCE_SEMANTIC_ERROR);
     assert(find_result(report, "repeat-only-input")->status == NN_INFERENCE_UNRESOLVED);
     nn_inference_free(report);
     nn_project_close(project);
@@ -289,6 +323,8 @@ int main(void)
     assert(nn_model_add_node(nn_project_model(project), "budget-output", "budget output",
                              "core.output", "0.1.0", "budget-repeat", 0, 0,
                              error, sizeof(error)));
+    assert(nn_model_set_boundary_handle(nn_project_model(project), "budget-output", "out",
+                                        error, sizeof(error)));
     NNValue repeat_count = { .type = NN_VALUE_INT, .as.integer = 300 };
     assert(nn_model_set_parameter(nn_project_model(project), "budget-repeat", "times",
                                   &repeat_count, error, sizeof(error)));
@@ -323,6 +359,8 @@ int main(void)
         assert(nn_model_add_node(nn_project_model(project), output_id, "depth output",
                                  "core.output", "0.1.0", owner, 0, 0,
                                  error, sizeof(error)));
+        assert(nn_model_set_boundary_handle(nn_project_model(project), output_id, "out",
+                                            error, sizeof(error)));
         assert(nn_model_set_parameter(nn_project_model(project), input_id, "binding",
                                       &empty_binding, error, sizeof(error)));
     }
@@ -404,6 +442,205 @@ int main(void)
     const NNInferenceResult *adversarial = find_result(report, "adversarial-rule");
     assert(adversarial && adversarial->status == NN_INFERENCE_RUNTIME_FAULT);
     assert(!strcmp(adversarial->code, "analysis.internal"));
+    nn_inference_free(report);
+
+    assert(nn_project_create_stereotype(diagnostic_project, "local.two-outputs", "0.1.0",
+        "{\"name\":\"Two outputs\",\"kind\":\"layer\","
+        "\"outputs\":[{\"id\":\"prediction\",\"type\":\"output\"},"
+        "{\"id\":\"objective\",\"type\":\"loss\"}],"
+        "\"view\":{\"color\":\"#444444\",\"width\":200,\"height\":100},"
+        "\"parameters\":{}}",
+        "return function() return {status='success', outputs={"
+        "prediction=tensor.create({'B',3},'float32'),"
+        "objective=tensor.create({'B',2},'float32')}} end",
+        "{}", error, sizeof(error)));
+    assert(nn_model_add_node(nn_project_model(diagnostic_project), "two-output", "Two outputs",
+        "local.two-outputs", "0.1.0", "", 0, 0, error, sizeof(error)));
+    assert(nn_model_connect(nn_project_model(diagnostic_project), "two-output-edge",
+        "diagnostic-input", "out", "two-output", "in", error, sizeof(error)));
+    report = nn_infer_project(diagnostic_project);
+    assert(report);
+    const NNInferenceResult *two = find_result(report, "two-output");
+    assert(two && two->status == NN_INFERENCE_SUCCESS && two->output_count == 2);
+    assert(!strcmp(two->outputs[0].handle_id, "prediction"));
+    assert(!strcmp(two->outputs[0].type, "output"));
+    assert(two->outputs[0].dimension_count == 2 &&
+           !strcmp(two->outputs[0].dimensions[1], "3"));
+    assert(!strcmp(two->outputs[1].handle_id, "objective"));
+    assert(!strcmp(two->outputs[1].type, "loss"));
+    assert(two->outputs[1].dimension_count == 2 &&
+           !strcmp(two->outputs[1].dimensions[1], "2"));
+    nn_inference_free(report);
+    assert(nn_project_create_stereotype(diagnostic_project, "local.pass", "0.1.0",
+        "{\"name\":\"Pass\",\"kind\":\"layer\","
+        "\"outputs\":[{\"id\":\"passed-loss\",\"type\":\"loss\"}],"
+        "\"view\":{\"color\":\"#444444\",\"width\":200,\"height\":100},"
+        "\"parameters\":{}}",
+        "return function(context) return {status='success', outputs={"
+        "['passed-loss']=context.inputs[1]}} end",
+        "{}", error, sizeof(error)));
+    assert(nn_model_add_node(nn_project_model(diagnostic_project), "prediction-pass", "Prediction pass",
+        "local.pass", "0.1.0", "", 0, 0, error, sizeof(error)));
+    assert(nn_model_add_node(nn_project_model(diagnostic_project), "objective-pass", "Objective pass",
+        "local.pass", "0.1.0", "", 0, 0, error, sizeof(error)));
+    assert(nn_model_connect(nn_project_model(diagnostic_project), "prediction-pass-edge",
+        "two-output", "prediction", "prediction-pass", "in", error, sizeof(error)));
+    assert(nn_model_connect(nn_project_model(diagnostic_project), "objective-pass-edge",
+        "two-output", "objective", "objective-pass", "in", error, sizeof(error)));
+    report = nn_infer_project(diagnostic_project);
+    assert(report);
+    assert(find_result(report, "prediction-pass")->dimension_count == 2);
+    assert(!strcmp(find_result(report, "prediction-pass")->dimensions[1], "3"));
+    assert(find_result(report, "prediction-pass")->output_count == 1);
+    assert(!strcmp(find_result(report, "prediction-pass")->outputs[0].handle_id, "passed-loss"));
+    assert(!strcmp(find_result(report, "prediction-pass")->outputs[0].type, "loss"));
+    assert(find_result(report, "objective-pass")->dimension_count == 2);
+    assert(!strcmp(find_result(report, "objective-pass")->dimensions[1], "2"));
+    nn_inference_free(report);
+    assert(nn_project_create_stereotype(diagnostic_project, "local.missing-output", "0.1.0",
+        "{\"name\":\"Missing output\",\"kind\":\"layer\","
+        "\"outputs\":[{\"id\":\"prediction\",\"type\":\"output\"},"
+        "{\"id\":\"objective\",\"type\":\"loss\"}],"
+        "\"view\":{\"color\":\"#444444\",\"width\":200,\"height\":100},"
+        "\"parameters\":{}}",
+        "return function() return {status='success', outputs={"
+        "prediction=tensor.create({'B',3},'float32')}} end",
+        "{}", error, sizeof(error)));
+    assert(nn_model_add_node(nn_project_model(diagnostic_project), "missing-output",
+        "Missing output", "local.missing-output", "0.1.0", "", 0, 0,
+        error, sizeof(error)));
+    assert(nn_model_connect(nn_project_model(diagnostic_project), "missing-output-edge",
+        "diagnostic-input", "out", "missing-output", "in", error, sizeof(error)));
+    report = nn_infer_project(diagnostic_project);
+    assert(report);
+    assert(find_result(report, "missing-output")->status == NN_INFERENCE_SEMANTIC_ERROR);
+    assert(find_result(report, "missing-output")->output_count == 0);
+    nn_inference_free(report);
+    assert(nn_project_create_stereotype(diagnostic_project, "local.extra-output", "0.1.0",
+        "{\"name\":\"Extra output\",\"kind\":\"layer\","
+        "\"outputs\":[{\"id\":\"prediction\",\"type\":\"output\"},"
+        "{\"id\":\"objective\",\"type\":\"loss\"}],"
+        "\"view\":{\"color\":\"#444444\",\"width\":200,\"height\":100},"
+        "\"parameters\":{}}",
+        "return function() return {status='success', outputs={"
+        "prediction=tensor.create({'B',3},'float32'),"
+        "objective=tensor.create({'B',2},'float32'),"
+        "['prediction\\0evil']=tensor.create({'B',1},'float32')}} end",
+        "{}", error, sizeof(error)));
+    assert(nn_model_add_node(nn_project_model(diagnostic_project), "extra-output",
+        "Extra output", "local.extra-output", "0.1.0", "", 0, 0,
+        error, sizeof(error)));
+    assert(nn_model_connect(nn_project_model(diagnostic_project), "extra-output-edge",
+        "diagnostic-input", "out", "extra-output", "in", error, sizeof(error)));
+    report = nn_infer_project(diagnostic_project);
+    assert(report);
+    assert(find_result(report, "extra-output")->status == NN_INFERENCE_SEMANTIC_ERROR);
+    assert(find_result(report, "extra-output")->output_count == 0);
+    nn_inference_free(report);
+    assert(nn_project_create_stereotype(diagnostic_project, "local.both-output", "0.1.0",
+        "{\"name\":\"Both outputs\",\"kind\":\"layer\","
+        "\"outputs\":[{\"id\":\"arbitrary\",\"type\":\"output\"}],"
+        "\"view\":{\"color\":\"#444444\",\"width\":200,\"height\":100},"
+        "\"parameters\":{}}",
+        "return function() local t=tensor.create({'B',1},'float32'); "
+        "return {status='success', output=t, outputs={arbitrary=t}} end",
+        "{}", error, sizeof(error)));
+    assert(nn_model_add_node(nn_project_model(diagnostic_project), "both-output",
+        "Both outputs", "local.both-output", "0.1.0", "", 0, 0,
+        error, sizeof(error)));
+    assert(nn_model_connect(nn_project_model(diagnostic_project), "both-output-edge",
+        "diagnostic-input", "out", "both-output", "in", error, sizeof(error)));
+    report = nn_infer_project(diagnostic_project);
+    assert(report);
+    assert(find_result(report, "both-output")->status == NN_INFERENCE_SEMANTIC_ERROR);
+    assert(find_result(report, "both-output")->output_count == 0);
+    nn_inference_free(report);
+    assert(nn_project_create_stereotype(diagnostic_project, "local.both-two", "0.1.0",
+        "{\"name\":\"Both two outputs\",\"kind\":\"layer\","
+        "\"outputs\":[{\"id\":\"prediction\",\"type\":\"output\"},"
+        "{\"id\":\"objective\",\"type\":\"loss\"}],"
+        "\"view\":{\"color\":\"#444444\",\"width\":200,\"height\":100},"
+        "\"parameters\":{}}",
+        "return function() local p=tensor.create({'B',3},'float32'); "
+        "local o=tensor.create({'B',2},'float32'); return {status='success', "
+        "output=p, outputs={prediction=p, objective=o}} end",
+        "{}", error, sizeof(error)));
+    assert(nn_model_add_node(nn_project_model(diagnostic_project), "both-two",
+        "Both two outputs", "local.both-two", "0.1.0", "", 0, 0,
+        error, sizeof(error)));
+    assert(nn_model_connect(nn_project_model(diagnostic_project), "both-two-edge",
+        "diagnostic-input", "out", "both-two", "in", error, sizeof(error)));
+    report = nn_infer_project(diagnostic_project);
+    assert(report);
+    assert(find_result(report, "both-two")->status == NN_INFERENCE_SEMANTIC_ERROR);
+    assert(find_result(report, "both-two")->output_count == 0);
+    nn_inference_free(report);
+    assert(nn_project_create_stereotype(diagnostic_project, "local.terminal-map", "0.1.0",
+        "{\"name\":\"Terminal map\",\"kind\":\"output\",\"outputs\":[],"
+        "\"view\":{\"color\":\"#444444\",\"width\":200,\"height\":100},"
+        "\"parameters\":{}}",
+        "return function() return {status='success', outputs={"
+        "arbitrary=tensor.create({'B',1},'float32')}} end",
+        "{}", error, sizeof(error)));
+    assert(nn_model_add_node(nn_project_model(diagnostic_project), "terminal-map",
+        "Terminal map", "local.terminal-map", "0.1.0", "", 0, 0,
+        error, sizeof(error)));
+    assert(nn_model_connect(nn_project_model(diagnostic_project), "terminal-map-edge",
+        "diagnostic-input", "out", "terminal-map", "in", error, sizeof(error)));
+    report = nn_infer_project(diagnostic_project);
+    assert(report);
+    assert(find_result(report, "terminal-map")->status == NN_INFERENCE_SEMANTIC_ERROR);
+    assert(find_result(report, "terminal-map")->output_count == 0);
+    nn_inference_free(report);
+    assert(nn_project_create_stereotype(diagnostic_project, "local.multi-subflow", "0.1.0",
+        "{\"name\":\"Multi subflow\",\"kind\":\"subflow\","
+        "\"outputs\":[{\"id\":\"objective\",\"type\":\"loss\"},"
+        "{\"id\":\"prediction\",\"type\":\"output\"}],"
+        "\"view\":{\"color\":\"#444444\",\"width\":200,\"height\":100},"
+        "\"parameters\":{}}",
+        "return function(context, parameters, services) return services.infer_subflow(context.inputs[1]) end",
+        "{}", error, sizeof(error)));
+    assert(nn_model_add_node(nn_project_model(diagnostic_project), "nested-two", "Nested two",
+        "local.multi-subflow", "0.1.0", "", 0, 0, error, sizeof(error)));
+    assert(nn_model_connect(nn_project_model(diagnostic_project), "nested-two-parent-edge",
+        "diagnostic-input", "out", "nested-two", "in", error, sizeof(error)));
+    assert(nn_model_add_node(nn_project_model(diagnostic_project), "nested-two-input", "Nested input",
+        "core.input", "0.1.0", "nested-two", 0, 0, error, sizeof(error)));
+    NNValue nested_binding = { .type = NN_VALUE_STRING, .as.string = "" };
+    assert(nn_model_set_parameter(nn_project_model(diagnostic_project), "nested-two-input", "binding",
+        &nested_binding, error, sizeof(error)));
+    assert(nn_model_add_node(nn_project_model(diagnostic_project), "nested-two-rule", "Nested outputs",
+        "local.two-outputs", "0.1.0", "nested-two", 0, 0, error, sizeof(error)));
+    assert(nn_model_add_node(nn_project_model(diagnostic_project), "nested-two-output", "Prediction boundary",
+        "core.output", "0.1.0", "nested-two", 0, 0, error, sizeof(error)));
+    assert(nn_model_set_boundary_handle(nn_project_model(diagnostic_project), "nested-two-output",
+        "prediction", error, sizeof(error)));
+    assert(nn_model_add_node(nn_project_model(diagnostic_project), "nested-two-loss", "Loss boundary",
+        "core.loss-output", "0.1.0", "nested-two", 0, 0, error, sizeof(error)));
+    assert(nn_model_set_boundary_handle(nn_project_model(diagnostic_project), "nested-two-loss",
+        "objective", error, sizeof(error)));
+    assert(nn_model_connect(nn_project_model(diagnostic_project), "nested-two-input-edge",
+        "nested-two-input", "out", "nested-two-rule", "in", error, sizeof(error)));
+    assert(nn_model_connect(nn_project_model(diagnostic_project), "nested-two-output-edge",
+        "nested-two-rule", "prediction", "nested-two-output", "in", error, sizeof(error)));
+    assert(nn_model_connect(nn_project_model(diagnostic_project), "nested-two-loss-edge",
+        "nested-two-rule", "objective", "nested-two-loss", "in", error, sizeof(error)));
+    report = nn_infer_project(diagnostic_project);
+    assert(report);
+    two = find_result(report, "nested-two");
+    assert(two && two->status == NN_INFERENCE_SUCCESS && two->output_count == 2);
+    assert(!strcmp(two->outputs[0].handle_id, "objective"));
+    assert(!strcmp(two->outputs[1].handle_id, "prediction"));
+    assert(!strcmp(two->outputs[0].type, "loss"));
+    assert(!strcmp(two->outputs[1].type, "output"));
+    assert(!strcmp(two->outputs[0].dimensions[1], "2"));
+    assert(!strcmp(two->outputs[1].dimensions[1], "3"));
+    nn_inference_free(report);
+    assert(nn_model_set_boundary_handle(nn_project_model(diagnostic_project),
+        "nested-two-rule", "prediction", error, sizeof(error)));
+    report = nn_infer_project(diagnostic_project);
+    assert(report);
+    assert(find_result(report, "nested-two")->status == NN_INFERENCE_SEMANTIC_ERROR);
     nn_inference_free(report);
     nn_project_close(diagnostic_project);
     return 0;

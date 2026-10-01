@@ -7,9 +7,12 @@
 #include <QPainter>
 
 PortItem::PortItem(GraphScene *owner, QString nodeId, QString handleId, bool output,
-                   QString label, QGraphicsItem *parent)
+                   QString label, QString outputType, QGraphicsItem *parent)
     : QGraphicsObject(parent), owner_(owner), nodeId_(std::move(nodeId)),
-      handleId_(std::move(handleId)), label_(std::move(label)), output_(output) {
+      handleId_(std::move(handleId)), label_(std::move(label)),
+      outputType_(std::move(outputType)), output_(output) {
+    setToolTip(output_ && !outputType_.isEmpty()
+        ? QStringLiteral("%1 (%2)").arg(handleId_, outputType_) : handleId_);
     setAcceptedMouseButtons(Qt::LeftButton);
     setAcceptHoverEvents(true);
     setZValue(3.0);
@@ -18,10 +21,18 @@ PortItem::PortItem(GraphScene *owner, QString nodeId, QString handleId, bool out
 QRectF PortItem::boundingRect() const { return QRectF(-7, -7, 14, 14); }
 
 void PortItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWidget *) {
+    if (glyphSuppressed_) return;
     painter->setRenderHint(QPainter::Antialiasing);
-    painter->setPen(QPen(hovered_ ? QColor(42, 108, 179) : QColor(51, 65, 81), 1.2));
-    painter->setBrush(hovered_ ? QColor(213, 232, 250) : QColor(255, 255, 255));
-    painter->drawEllipse(QPointF(0, 0), hovered_ ? 4.7 : 4.0, hovered_ ? 4.7 : 4.0);
+    const QColor typeColor = outputType_ == QStringLiteral("loss") ? QColor("#c62828")
+        : outputType_ == QStringLiteral("output") ? QColor("#161616") : QColor("#ffffff");
+    if (hovered_) {
+        painter->setPen(QPen(QColor(42, 108, 179), 1.5));
+        painter->setBrush(Qt::NoBrush);
+        painter->drawEllipse(QPointF(0, 0), 6.2, 6.2);
+    }
+    painter->setPen(QPen(QColor(51, 65, 81), 1.2));
+    painter->setBrush(typeColor);
+    painter->drawEllipse(QPointF(0, 0), 4.0, 4.0);
 }
 
 QPainterPath PortItem::shape() const {

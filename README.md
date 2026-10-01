@@ -29,7 +29,7 @@ choose Open, New project or New MNIST MLP. Save uses existing atomic C
 persistence. Dirty project closure offers save, discard or cancel.
 
 **New MNIST VAE** copies a design with encoder and decoder Subflow Proxy scopes,
-project-owned Gaussian/reparameterization/KL/Sigmoid stereotypes and dataset
+project-owned Gaussian/reparameterization/KL/Sigmoid/total-loss stereotypes and dataset
 metadata. It is not trained and does not execute sampling or load MNIST.
 Saved JSON uses two-space indentation. Top/bottom stereotype parameters render
 as card rows and value badges. **New stereotype** and **New dataset** open visual
@@ -65,6 +65,33 @@ Nonempty subflows must be emptied before deletion. The editor preserves existing
 same-scope connections and package proxy nodes; it does not invent cross-scope
 numerical execution or compilation semantics. C/Lua recursively analyzes Proxy
 scopes with inherited boundary inputs, including children hidden from the canvas.
+
+### Typed outputs
+
+Stereotypes may override their default outgoing handle with `outputs`:
+
+```json
+"outputs": [
+  { "id": "prediction", "type": "output" },
+  { "id": "objective", "type": "loss" }
+]
+```
+
+At most one handle per type is allowed. Defaults are `out`/`output`, or
+`loss`/`loss` for a `kind: "loss"` calculator; explicit declarations replace
+the default. Intermediate nodes accept either type as ordinary tensor inputs.
+Only terminals restrict connections: Output accepts normal output, Loss Output
+accepts loss. Each collector takes one edge; insert an explicit join to combine
+loss contributions. Outgoing ports/edges are black or red by their source type.
+
+Input, Output and Loss Output appear as filled black, brown and red circles.
+Every complete root has one Output and one Loss Output. Subflow creation spawns
+one mapped terminal for each declared output; designers add the internal Input,
+nodes and connections. Nested terminal `data.boundaryHandle` names the external
+handle. Single-output Lua uses `output=tensor`; two-output Lua uses a keyed
+`outputs={prediction=tensor1,objective=tensor2}` result. Inspect all outputs in
+the inspector or `analysis.diagnostics`. See the
+[typed outputs contract](docs/knowledge/contracts/typed-outputs.md).
 
 ## LLM/local command interface (Linux)
 
