@@ -40,6 +40,11 @@ classDiagram
       +Tensor primaryOrConsumedView
     }
     Stereotype "1" *-- "0..2" OutputDefinition
+    class InferenceReport {
+      +Status rootStatus
+      +string rootMessage optional
+    }
+    InferenceReport *-- InferenceResult
     Node --> Stereotype : exact package
     Connection --> OutputDefinition : source handle
     Node "1" *-- "0..*" Node : immediate subflow children
@@ -89,3 +94,5 @@ Intermediate nodes accept either edge type; their own outputs determine fanout
 classification. Analysis reads keyed outputs per source handle without mutation.
 Missing completion is Incomplete, invalid declarations/mappings are semantic
 errors, invalid edge handle/type commands are rejected without mutation.
+Root completion lives in report metadata so even a zero-node graph is
+Incomplete; UI/CLI show a non-navigable Root problem with null node ID.

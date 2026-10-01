@@ -91,6 +91,9 @@ and line is zero if unavailable. Accepted 2026-10-01: tensors are
 {node,handle,type,dtype,shape:[dimension text]}, one entry per typed output;
 handle/type are null for consumed terminal tensors. Boundary completion and
 mapped subflow diagnostics follow typed-outputs.md; graph edits stay available.
+Root boundary-completion problems additionally have node/package null and are
+not navigable. Root metadata APIs and complete conjunction follow typed-outputs.md;
+even an empty graph reports Incomplete without synthetic node IDs.
 Internal details are labelled as such; the UI renders the same C outcomes.
 ui.reveal {id} uses the same navigation as clicking a problem; unknown IDs fail
 without changing scope/selection. Rejected commands return the same C reason as

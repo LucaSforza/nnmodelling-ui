@@ -7,6 +7,7 @@ classDiagram
     NNApplication *-- NNProject
     NNApplication *-- NNInferenceReport : lazy cache
     NNInferenceReport *-- NNInferenceResult
+    NNInferenceReport : root boundary status and optional message
     NNInferenceResult : node_id
     NNInferenceResult : status
     NNInferenceResult : code
@@ -54,3 +55,5 @@ No SDS dependency is retained. utils owns bounded errors and path joining;
 yyjson owns JSON escaping/serialization. No third-party types are added to APIs.
 Typed output and boundary completion errors follow typed-outputs.md; handle/type
 are retained in CLI tensors and all successful outputs remain inspectable.
+Root completion is report metadata, presented as a non-navigable Root problem
+with null node identity; it never erases successful local node tensors.

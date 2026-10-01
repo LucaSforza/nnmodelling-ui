@@ -115,6 +115,22 @@ remain; failures publish no partial successful outputs. CLI successful tensors
 include handle/type (null for terminals), one entry per handle. Inspector lists
 all typed outputs and terminal consumed tensor, not merely the first.
 
+Report-level root completion (empty-graph review clarification): missing root
+Input or either terminal is not represented by inventing a node ID or discarding
+otherwise successful local tensors. nn_inference_root_status(report) returns
+SUCCESS for valid root boundary presence, UNRESOLVED for missing Input/Output/
+Loss Output, SEMANTIC_ERROR for duplicate terminals or invalid root boundary
+mappings; nn_inference_root_message(report) returns borrowed explanatory text
+or NULL on success. It checks boundary presence/topology, while disconnected
+boundaries and tensor/rule failures retain per-node outcomes. Multiple root
+Inputs remain allowed. The report owns this metadata even with zero nodes.
+UI/CLI add a non-navigable Root problem on non-success status; node, package,
+causeNode and file are null, scope empty, line zero, code/category/severity follow
+the status. CLI complete requires root status success AND all per-node outcomes
+success. Do not overwrite successful local tensors for graph-level completion.
+An empty report is Incomplete, never a complete/no-problems model. Allocation
+failure constructing metadata still fails the whole report explicitly.
+
 ## Qt and authoring
 
 Input is a single filled black circle, Output a filled brown circle, Loss Output
