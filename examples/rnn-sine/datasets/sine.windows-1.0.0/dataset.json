@@ -1,0 +1,25 @@
+{
+  "name": "Finestre di sinusoide",
+  "description": "Solo metadata, nessun dato popolato: 32 campioni consecutivi per prevedere il successivo.",
+  "batch": {
+    "inputs": {
+      "sequence": {
+        "dtype": "float32",
+        "shape": [
+          "B",
+          32,
+          1
+        ]
+      }
+    },
+    "targets": {
+      "target": {
+        "dtype": "float32",
+        "shape": [
+          "B",
+          1
+        ]
+      }
+    }
+  }
+}

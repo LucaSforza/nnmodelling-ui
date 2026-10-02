@@ -1,0 +1,55 @@
+{
+  "name": "RNN tanh — ultimo stato",
+  "description": "Una RNN con pesi condivisi nel tempo; stato iniziale zero per finestra. Restituisce solo l'ultimo stato, senza testa Linear. Lua valida esclusivamente tipi e forme.",
+  "kind": "layer",
+  "view": {
+    "color": "#7856a6",
+    "width": 260,
+    "height": 120
+  },
+  "parameters": {
+    "sequence_length": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 32,
+      "position": "top"
+    },
+    "input_size": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 1,
+      "position": "top"
+    },
+    "hidden_size": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 32,
+      "position": "bottom"
+    },
+    "nonlinearity": {
+      "type": "string",
+      "choices": [
+        "tanh"
+      ],
+      "default": "tanh"
+    },
+    "initial_state": {
+      "type": "string",
+      "choices": [
+        "zero"
+      ],
+      "default": "zero"
+    },
+    "dtype": {
+      "type": "dtype",
+      "choices": [
+        "float32"
+      ],
+      "default": "float32"
+    },
+    "bias": {
+      "type": "boolean",
+      "default": true
+    }
+  }
+}

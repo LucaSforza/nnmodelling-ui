@@ -1,0 +1,252 @@
+{
+  "nodes": [
+    {
+      "id": "output",
+      "type": "custom",
+      "position": {
+        "x": 180.0,
+        "y": 540.0
+      },
+      "data": {
+        "name": "Previsione [B,1]",
+        "scope": "",
+        "package": {
+          "id": "core.output",
+          "version": "0.1.0"
+        },
+        "params": {}
+      }
+    },
+    {
+      "id": "loss-output",
+      "type": "custom",
+      "position": {
+        "x": 535.0,
+        "y": 750.0
+      },
+      "data": {
+        "name": "Loss Output",
+        "scope": "",
+        "package": {
+          "id": "core.loss-output",
+          "version": "0.1.0"
+        },
+        "params": {}
+      }
+    },
+    {
+      "id": "sequence",
+      "type": "custom",
+      "position": {
+        "x": 355.0,
+        "y": 20.0
+      },
+      "data": {
+        "name": "sequence [B,32,1]",
+        "scope": "",
+        "package": {
+          "id": "core.input",
+          "version": "0.1.0"
+        },
+        "params": {
+          "binding": "sequence"
+        }
+      }
+    },
+    {
+      "id": "rnn",
+      "type": "custom",
+      "position": {
+        "x": 310.0,
+        "y": 120.0
+      },
+      "data": {
+        "name": "Subflow RNN",
+        "scope": "",
+        "package": {
+          "id": "core.subflow-proxy",
+          "version": "0.1.0"
+        },
+        "params": {}
+      }
+    },
+    {
+      "id": "rnn-boundary-out",
+      "type": "custom",
+      "position": {
+        "x": 400.0,
+        "y": 470.0
+      },
+      "data": {
+        "name": "Ultimo stato [B,32]",
+        "scope": "rnn",
+        "package": {
+          "id": "core.output",
+          "version": "0.1.0"
+        },
+        "params": {},
+        "boundaryHandle": "out"
+      }
+    },
+    {
+      "id": "rnn-input",
+      "type": "custom",
+      "position": {
+        "x": 400.0,
+        "y": 20.0
+      },
+      "data": {
+        "name": "Input ereditato [B,32,1]",
+        "scope": "rnn",
+        "package": {
+          "id": "core.input",
+          "version": "0.1.0"
+        },
+        "params": {
+          "binding": "sequence"
+        }
+      }
+    },
+    {
+      "id": "recurrent",
+      "type": "custom",
+      "position": {
+        "x": 270.0,
+        "y": 160.0
+      },
+      "data": {
+        "name": "RNN tanh",
+        "scope": "rnn",
+        "package": {
+          "id": "sine.rnn-last-state",
+          "version": "1.0.0"
+        },
+        "params": {
+          "sequence_length": 32,
+          "input_size": 1,
+          "hidden_size": 32,
+          "nonlinearity": "tanh",
+          "initial_state": "zero",
+          "dtype": "float32",
+          "bias": true
+        }
+      }
+    },
+    {
+      "id": "head",
+      "type": "custom",
+      "position": {
+        "x": 310.0,
+        "y": 310.0
+      },
+      "data": {
+        "name": "Linear 32→1",
+        "scope": "",
+        "package": {
+          "id": "core.linear",
+          "version": "0.1.0"
+        },
+        "params": {
+          "in_features": 32,
+          "out_features": 1,
+          "bias": true,
+          "dtype": "float32"
+        }
+      }
+    },
+    {
+      "id": "mse",
+      "type": "custom",
+      "position": {
+        "x": 490.0,
+        "y": 540.0
+      },
+      "data": {
+        "name": "MSE Loss",
+        "scope": "",
+        "package": {
+          "id": "core.mse-loss",
+          "version": "0.1.0"
+        },
+        "params": {}
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "sequence-rnn",
+      "source": "sequence",
+      "sourceHandle": "out",
+      "target": "rnn",
+      "targetHandle": "in"
+    },
+    {
+      "id": "rnn-head",
+      "source": "rnn",
+      "sourceHandle": "out",
+      "target": "head",
+      "targetHandle": "in"
+    },
+    {
+      "id": "head-output",
+      "source": "head",
+      "sourceHandle": "out",
+      "target": "output",
+      "targetHandle": "in"
+    },
+    {
+      "id": "head-mse",
+      "source": "head",
+      "sourceHandle": "out",
+      "target": "mse",
+      "targetHandle": "in"
+    },
+    {
+      "id": "mse-loss-output",
+      "source": "mse",
+      "sourceHandle": "loss",
+      "target": "loss-output",
+      "targetHandle": "in"
+    },
+    {
+      "id": "inherited-recurrent",
+      "source": "rnn-input",
+      "sourceHandle": "out",
+      "target": "recurrent",
+      "targetHandle": "in"
+    },
+    {
+      "id": "recurrent-boundary",
+      "source": "recurrent",
+      "sourceHandle": "out",
+      "target": "rnn-boundary-out",
+      "targetHandle": "in"
+    }
+  ],
+  "layoutDirection": "horizontal",
+  "manifest": {
+    "schemaVersion": 2,
+    "id": "rnn-sine",
+    "version": "0.1.0",
+    "name": "RNN — previsione di una sinusoide",
+    "description": "",
+    "customPackages": [
+      {
+        "id": "sine.rnn-last-state",
+        "version": "1.0.0",
+        "path": "packages/sine.rnn-last-state-1.0.0"
+      }
+    ],
+    "customDatasets": [
+      {
+        "id": "sine.windows",
+        "version": "1.0.0",
+        "path": "datasets/sine.windows-1.0.0"
+      }
+    ],
+    "activeDataset": {
+      "id": "sine.windows",
+      "version": "1.0.0"
+    }
+  }
+}
