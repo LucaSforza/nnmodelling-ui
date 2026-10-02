@@ -26,25 +26,35 @@ all file searches. Work autonomously until the requested outcome is complete.
 
 When the user requests a swarm or parallel work, also read
 docs/knowledge/contracts/agent-swarm.md and docs/knowledge/uml/agent-swarm.md.
-Establish accepted contracts before delegating. Use at most three concurrent
-workers with disjoint file ownership. Delegate only bounded implementation tasks.
+Establish accepted contracts before delegating. There is no fixed project-level
+concurrency maximum: size the worker count to independent work, resources and
+runtime/provider limits. Worker roles may have multiple instances. Keep file
+ownership disjoint. Delegate only bounded implementation tasks.
 Each prompt must list exact KB/UML files the worker must personally read, accepted
 contract, allowed files, constraints, acceptance criteria, and relevant tests.
 
-Launch independent workers using the native subagent tool with background: true.
-Record their sessionIDs. Immediately call swarm.register with the complete list
-of children for this swarm; repeat registration to include newly launched children.
+Discover the swarm tools through Code Mode and successfully call swarm.init({})
+BEFORE launching any subagent. If initialization fails or is unavailable, resolve
+or report the blocker before launching. Do not use register({children: []}) instead.
+Then launch independent workers using the native subagent tool with background: true.
+Record their sessionIDs. Direct children automatically enroll on first mailbox use
+or when addressed by session ID; no post-launch registration barrier is needed.
 Pass parent/peer sessionIDs to workers when needed, or tell them to use
 swarm.members. Continue independent principal work while they run. Completion
 notifications arrive natively: do not poll, sleep or finish the task while required
 worker results remain outstanding. Resume a child with its sessionID for follow-up
 implementation work.
 
-Find the swarm tools through Code Mode catalog search. swarm.send addresses a
-sessionID; a child may use to: "parent". Use actionable messages for questions,
+swarm.send addresses a sessionID; a child may use to: "parent".
+Use actionable messages for questions,
 blockers and coordination. Receiving a message is steering of the current task,
 not a replacement objective. Never send acknowledgement-only replies or echo
-broadcasts. If registration has not happened yet, register before messaging.
+broadcasts. Peer discovery through swarm.members is progressive. Optional
+swarm.register explicitly replaces membership and excludes omitted enrolled
+children; do not submit stale complete lists during launch. Repeating swarm.init
+preserves members and exclusions. Include the initialization/enrollment protocol
+in assignments; children must return a blocked report if initialization is missing,
+not poll or initialize the swarm themselves.
 
 Review each implementation against accepted contracts. Resolve worker ambiguity
 yourself, updating KB/UML before semantic changes. Run relevant justfile checks

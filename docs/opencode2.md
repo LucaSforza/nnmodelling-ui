@@ -27,8 +27,10 @@ In OpenCode:
 
 `opencode.jsonc` selects `orchestrator` with OpenAI Sol 6.1. `/swarm` explicitly
 selects Sol 6.1 high even in an existing session. Worker definitions select
-OpenAI GPT-6 Luna high. The command requests up to three concurrent background
-workers; this maximum is an instruction, not a runtime semaphore.
+OpenAI GPT-6 Luna high. There is no fixed project-level maximum for concurrent
+background workers. The three worker definitions are roles; multiple sessions of
+the same role may run with disjoint files. The principal sizes concurrency to
+independent work, resources and actual runtime/provider limits.
 
 The default-agent setting applies to new sessions, not to an agent already stored
 on an existing session. `/swarm` selects the orchestrator in the current session.
@@ -37,15 +39,21 @@ new session in this checkout or reload that location's configuration.
 
 ## Messaging
 
-After native background launches return session IDs, the principal discovers the
-`swarm` namespace in Code Mode and registers the complete child list:
+BEFORE launching any native background child, the principal discovers the `swarm`
+namespace in Code Mode and successfully initializes communication:
 
 ```js
-await tools.swarm.register({ children: [childA, childB] });
+await tools.swarm.init({});
 ```
 
-A worker discovers peers and sends a mid-task question without waiting for its
-own final response:
+Only after successful initialization does the principal launch children and retain
+their returned session IDs. If the tool is unavailable or initialization fails,
+resolve/report that blocker before launching. Initialization is idempotent and
+preserves membership/exclusions; an old array registry is migrated on `init`.
+
+A direct child automatically enrolls on its first mailbox operation or when
+addressed by session ID, after parent/project/checkout validation. It can send a
+mid-task question immediately, without waiting for a later registration step:
 
 ```js
 await tools.swarm.members();
@@ -63,11 +71,20 @@ schedules the recipient's agent loop. The mailbox returns on admission rather
 than waiting for a response. Native background child completion is handled by
 OpenCode; the plugin does not duplicate its completion notifications.
 
-Only the principal and its registered direct children in the same project and
-checkout can communicate. Register new children before using them and retain
-existing IDs when updating the registry. Removed, moved, deleted or archived
-sessions cannot be used as recipients. Send actionable updates; avoid automated
-acknowledgements and broadcast echoes.
+Only the initialized principal and its eligible direct children in the same
+project and checkout can communicate. Peer discovery is progressive: `members`
+and broadcasts see enrolled children, not all native sessions. The principal can
+address a newly returned session ID immediately. Registry updates are serialized
+within the local plugin storage context, so concurrent enrollment cannot lose
+members; this is not a cross-service distributed lock.
+
+`swarm.register({children: [...]})` remains available for explicit principal-only
+membership replacement. Omitted enrolled children are excluded and cannot silently
+rejoin; explicitly registering them restores access. Do not call it routinely
+with a stale launch list. `register({children: []})` does not initialize the swarm.
+Moved, deleted or archived sessions cannot be used as recipients. A child encountering
+missing initialization returns a blocked report rather than polling. Send actionable
+updates; avoid automated acknowledgements and broadcast echoes.
 
 ## Files and verification
 
@@ -84,12 +101,16 @@ define exact file ownership. Shell remains permission-controlled and is not a
 filesystem sandbox. Core and Qt builds do not depend on this JavaScript tooling.
 
 `just test-swarm` verifies routing, family isolation, resume/delivery parameters,
-registration persistence, cancellation and partial broadcast failure. A live
-swarm smoke test must additionally observe native completion, principal wake-up
+initialization, migration, automatic/concurrent enrollment, explicit exclusions,
+more than three workers, persistence, cancellation and partial broadcast failure.
+A live swarm smoke test must additionally observe native completion, principal wake-up
 and idle sibling wake-up with the configured models. Automated transport tests
 alone do not prove provider authentication or successful live model execution.
 
 ### Verified 2026-09-30
+
+The observations below concern the original four-tool, explicit-registration
+protocol. They do not verify the amended `init`/automatic-enrollment protocol live.
 
 On OpenCode V2.0.1 the local plugin became active and its four tools were available
 in the running session. Runtime discovery found all four agents and `/swarm`.
@@ -106,3 +127,23 @@ A read-only live smoke test used OpenAI GPT-6 Luna high native background childr
 This verifies sibling idle wake and live mid-task delivery. A separately idle
 principal wake scenario was not exercised; its `resume: true` request is covered
 by the transport tests and installed runtime API contract.
+
+### Verified 2026-10-02
+
+The amended five-tool plugin was available in the running session. The principal
+successfully called `swarm.init` before launching two read-only native background
+`test-worker` sessions; no `register` call was made during this live test.
+
+- Both children enrolled automatically via `members` and sent mid-task findings
+  to the principal successfully.
+- The second child saw the first through progressive peer discovery and sent it
+  an actionable routing check. The first had already completed; it resumed,
+  observed both children in `members`, and sent the measured result to the principal.
+- Native initial completion notifications arrived for both children. No polling,
+  manual registration, completion forwarding or acknowledgement loops were used.
+- `just swarm-setup`, all 20 `just test-swarm` tests, JavaScript syntax checks and
+  `git diff --check` passed. Concurrent enrollment of eight workers is covered by
+  automated transport tests, not by an eight-model live test.
+
+This verifies the amended startup protocol, live parent/sibling routing and idle
+sibling wake. A separately idle principal wake scenario remains untested live.

@@ -14,8 +14,11 @@ to the principal rather than choose a new contract.
 OpenCode V2 local swarm setup is in `docs/opencode2.md`; its normative tooling
 contract and sequence are `docs/knowledge/contracts/agent-swarm.md` and
 `docs/knowledge/uml/agent-swarm.md`. `/swarm` explicitly requests delegation.
-Use native background child sessions and registered `swarm` mailbox tools for
-actionable coordination, with at most three concurrent workers and disjoint
+The principal must discover `swarm` tools and successfully complete `swarm.init`
+BEFORE launching any native background child session. Direct children automatically
+enroll on first mailbox use or when addressed; no post-launch registration barrier
+is needed. There is no fixed project-level worker concurrency maximum: choose the
+number by independent work, resources and runtime/provider limits, with disjoint
 file ownership. Native completion notifications require no polling.
 
 Use `fff` MCP tools for every file search. Preserve user changes. Do not expose
