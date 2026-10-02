@@ -1,6 +1,6 @@
 # OpenCode V2 swarm
 
-The repository uses `opencode2` (tested with V2.0.1), not the legacy `opencode`
+The repository uses `opencode2` (tested with V2.0.1 and V2.0.22), not the legacy `opencode`
 executable. Configuration is project-local; provider credentials remain in your
 existing OpenCode authentication store.
 
@@ -86,13 +86,56 @@ Moved, deleted or archived sessions cannot be used as recipients. A child encoun
 missing initialization returns a blocked report rather than polling. Send actionable
 updates; avoid automated acknowledgements and broadcast echoes.
 
+## Waiting without busywork
+
+When independent principal work is exhausted, suspend explicitly rather than
+polling or filling time with unnecessary work:
+
+```js
+await tools.swarm.wait({ children: outstandingSessionIDs, timeout_seconds: 120 });
+// If reason is timeout and a progress check would help:
+await tools.swarm.status({ children: outstandingSessionIDs });
+```
+
+`timeout_seconds` is optional (default 270), integer-only, minimum 1 and maximum
+270 seconds (4 minutes 30 seconds). The deadline includes preparation. `children`
+is optional: omission watches enrolled children, `[]` waits for messages only.
+Use outstanding IDs to avoid immediately returning for previously reviewed idle
+children. At most one wait may be active per principal.
+
+Wait returns `reason: "message" | "idle" | "timeout" | "unavailable"`, watched IDs
+and elapsed milliseconds. It observes native child wait requests, incoming mailbox
+native inbox-enqueued events and the latest persisted admission notification without
+periodic polling. The authenticated event subscription starts before the notification
+snapshot, closing the startup race even across plugin instances. An observed inbox ID
+is saved separately, so that notification is not replayed. It may refer to an
+already-delivered input and is not an unread-inbox claim.
+The V2.0.22 plugin adapter does not emit `server.connected`; waiting must not
+block on that marker. Its first actual event triggers one extra persisted-notification
+reconciliation, without periodic polling.
+Idle includes failed/interrupted loops; native completion reports remain authoritative.
+Wait does not consume inbox messages or stop agents on cancellation. Missing native
+wait/event API support is an explicit error, not a silent fallback to shell sleep.
+Native event stream failure returns unavailable, not a successful completion.
+
+`status` is a separate one-time diagnostic read after timeout, not part of the
+270-second waiting deadline. It reports running/idle/unknown/unavailable, last
+recorded outcome/timestamps and latest observable tool names/statuses. It omits
+arguments, results, reasoning and full transcripts. OpenCode V2.0.22's plugin
+context has no active-session listing method: activity is honestly `unknown` on
+that runtime, while recorded outcomes/timestamps and tool names remain observable.
+These are observations, not
+proof of progress or success: timeout alone does not mean an agent is stuck. Decide
+whether to clarify or wait again; do not poll status repeatedly.
+
 ## Files and verification
 
 - `opencode.jsonc`: default model, agent, KB skill directory and local plugin.
 - `.opencode/agents/`: principal and bounded implementation workers.
 - `.opencode/commands/swarm.md`: explicit swarm workflow.
-- `.opencode/swarm-mailbox/`: dependency-free JavaScript plugin for the V2.0.1 API.
-- `tests/swarm_mailbox_test.mjs`: transport and membership tests.
+- `.opencode/swarm-mailbox/`: dependency-free JavaScript plugin for the V2 API.
+- `tests/swarm_mailbox_test.mjs`, `tests/swarm_activity_test.mjs`: transport,
+  membership, waiting and status tests.
 - [Accepted contract](knowledge/contracts/agent-swarm.md) and
   [sequence](knowledge/uml/agent-swarm.md): normative development-tooling behavior.
 
@@ -103,6 +146,8 @@ filesystem sandbox. Core and Qt builds do not depend on this JavaScript tooling.
 `just test-swarm` verifies routing, family isolation, resume/delivery parameters,
 initialization, migration, automatic/concurrent enrollment, explicit exclusions,
 more than three workers, persistence, cancellation and partial broadcast failure.
+Activity tests cover wait deadlines, native idleness, admission/preparation races,
+cancellation/cleanup and status authorization/privacy.
 A live swarm smoke test must additionally observe native completion, principal wake-up
 and idle sibling wake-up with the configured models. Automated transport tests
 alone do not prove provider authentication or successful live model execution.
@@ -147,3 +192,30 @@ successfully called `swarm.init` before launching two read-only native backgroun
 
 This verifies the amended startup protocol, live parent/sibling routing and idle
 sibling wake. A separately idle principal wake scenario remains untested live.
+
+### Bounded waiting verified 2026-10-02 (V2.0.22)
+
+The seven-tool plugin exposes `wait` and `status` in the running session. Live
+verification caught two assumptions absent from mocks: child plugins need not
+share JavaScript storage-object identity, and the plugin event adapter does not
+emit the public client's `server.connected` marker. Regression tests now model
+both conditions; wake routing uses native events and persisted notifications.
+
+- A native child sent `LIVE_WAIT_NATIVE` during an active message-only wait.
+  `wait` returned `reason: message` after 23797 ms, with the same sender and
+  inbox ID reported by the child's actual send admission.
+- A subsequent wait watching that outstanding child returned `reason: idle`
+  after 3494 ms; its native completion notification arrived as well.
+- An already-idle child returned immediately (9 ms). A message persisted before
+  wait returned immediately (3 ms), without consuming native inbox input.
+- After the message notification was observed, a message-only wait with a
+  one-second deadline returned timeout at 1000 ms, rather than replaying it.
+- `status` returned the recorded successful outcome, timestamps and latest
+  completed tool name. Native active-session listing is unavailable in this
+  plugin context, so activity was reported as unknown, not fabricated.
+- `just swarm-setup`, all 46 `just test-swarm` tests, syntax checks and
+  `git diff --check` passed. The 270-second deadline and invalid values are
+  verified with deterministic clocks/schema tests, not a 4.5-minute live sleep.
+
+Initial unsuccessful live probes are not counted as passing verification. They
+led to the corrected event adapter and no-readiness-marker regression coverage.

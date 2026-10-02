@@ -19,7 +19,10 @@ BEFORE launching any native background child session. Direct children automatica
 enroll on first mailbox use or when addressed; no post-launch registration barrier
 is needed. There is no fixed project-level worker concurrency maximum: choose the
 number by independent work, resources and runtime/provider limits, with disjoint
-file ownership. Native completion notifications require no polling.
+file ownership. Native completion notifications require no polling. When there is
+no useful independent work, the principal may use bounded `swarm.wait` (maximum
+270 seconds) instead of busywork or shell sleep; after timeout, one `swarm.status`
+inspection can guide next steps. Required results must still be reviewed.
 
 Use `fff` MCP tools for every file search. Preserve user changes. Do not expose
 secrets. Keep implementation small and idiomatic C. Use `justfile` for build

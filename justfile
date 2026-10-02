@@ -40,4 +40,4 @@ swarm-setup:
     node -e 'import("./.opencode/swarm-mailbox/index.js").then(p => console.log(p.default.id))'
 
 test-swarm:
-    node --test tests/swarm_mailbox_test.mjs
+    node --test tests/swarm_mailbox_test.mjs tests/swarm_activity_test.mjs

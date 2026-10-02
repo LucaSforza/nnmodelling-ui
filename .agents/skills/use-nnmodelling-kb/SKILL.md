@@ -35,4 +35,18 @@ resources and runtime/provider limits, always with disjoint file ownership. Work
 must not spawn agents. Process native completion notifications without polling;
 review all required results and run relevant checks before finishing.
 
+When there is no useful independent work, the principal may call
+`swarm.wait({children: outstandingSessionIDs, timeout_seconds: 270})` instead of
+inventing busywork, polling or sleeping in the shell. The timeout is optional
+(default 270 seconds), must be an integer from 1 to 270, and bounds preparation
+and waiting. Wake reasons are incoming `message`, child `idle`, `timeout` or
+`unavailable`; idleness is not necessarily successful completion. Omitting children
+watches currently enrolled children; `children: []` waits only for messages.
+Already-idle children wake immediately, so pass outstanding IDs rather than
+previously reviewed children. After timeout, `swarm.status({children: outstandingSessionIDs})`
+provides a one-time activity/outcome/tool-name snapshot, not reasoning or transcripts.
+Timeout alone is not a stuck-agent diagnosis. Do not repeatedly poll status or
+acknowledge wake events; process the actual native message/result and coordinate
+only when useful. Wait cancellation stops observation, never the child agents.
+
 Current scope is client UI only. Local `nnmodelctl` is accepted by `docs/knowledge/contracts/automation.md`; backend and training remain future boundaries. Preserve exact core package assets and historical UML. Run relevant tests and `git diff --check` before completion; report open questions and missing tooling accurately.

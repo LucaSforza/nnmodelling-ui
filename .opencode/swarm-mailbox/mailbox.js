@@ -1,12 +1,15 @@
 // Session IDs and parent relationships come from OpenCode, not tool arguments.
+import { createActivity } from "./activity.js";
+
 // Share locks with fresh mailbox instances using the same plugin storage context.
 const storageLocks = new WeakMap();
 
-export function createMailbox(ctx) {
+export function createMailbox(ctx, clock) {
   const key = (rootID) => `members/${rootID}`;
   const reply = (data) => ({ content: JSON.stringify(data) });
   if (!storageLocks.has(ctx.storage)) storageLocks.set(ctx.storage, new Map());
   const locks = storageLocks.get(ctx.storage);
+  const activity = createActivity(ctx, clock);
 
   async function locked(rootID, action) {
     const previous = locks.get(rootID) ?? Promise.resolve();
@@ -40,10 +43,10 @@ export function createMailbox(ctx) {
       a.location.directory === b.location.directory;
   }
 
-  async function sessions(sessionID) {
-    const self = await ctx.session.get({ sessionID });
+  async function sessions(sessionID, signal) {
+    const self = await ctx.session.get({ sessionID }, { signal });
     const root = self.parentID
-      ? await ctx.session.get({ sessionID: self.parentID }) : self;
+      ? await ctx.session.get({ sessionID: self.parentID }, { signal }) : self;
     if (root.parentID || !sameCheckout(self, root)) {
       throw new Error("Mailbox requires a principal and direct children in one checkout");
     }
@@ -52,7 +55,7 @@ export function createMailbox(ctx) {
   }
 
   async function enroll(root, sessionID, signal) {
-    await member(root, sessionID);
+    await member(root, sessionID, signal);
     return locked(root.id, async () => {
       const state = registry(await ctx.storage.get(key(root.id)));
       if (state.excluded.includes(sessionID)) {
@@ -69,21 +72,35 @@ export function createMailbox(ctx) {
   }
 
   async function family(context) {
-    const group = await sessions(context.sessionID);
+    const group = await sessions(context.sessionID, context.signal);
     const ids = await enroll(group.root, group.self.id, context.signal);
     return { ...group, ids };
   }
 
-  async function member(root, sessionID) {
+  async function member(root, sessionID, signal) {
     if (typeof sessionID !== "string" || !sessionID) throw new Error("Recipient must be a session ID");
     const session = sessionID === root.id ? root
-      : await ctx.session.get({ sessionID });
+      : await ctx.session.get({ sessionID }, { signal });
     if (!sameCheckout(session, root) ||
         (session.id !== root.id && session.parentID !== root.id)) {
       throw new Error("Recipient is not a direct member of this checkout's swarm");
     }
     if (session.time.archived) throw new Error("Session is archived");
     return session;
+  }
+
+  async function watched(input, context, inspect = false) {
+    const group = await family(context);
+    if (group.self.id !== group.root.id) throw new Error("Only the principal may wait or inspect child status");
+    const ids = input.children === undefined ? group.ids : input.children;
+    if (!validIDs(ids)) throw new Error("children must be an array of session IDs");
+    const children = [...new Set(ids)];
+    for (const id of children) {
+      if (id === group.root.id) throw new Error("Principal is not a child");
+      if (inspect && group.ids.includes(id)) continue;
+      await enroll(group.root, id, context.signal);
+    }
+    return { ...group, children };
   }
 
   function message(input) {
@@ -113,10 +130,67 @@ export function createMailbox(ctx) {
       delivery,
       resume: true,
     }, { signal });
-    return { to: recipient.id, admitted: true, inboxID: admitted.id, delivery };
+    const observationError = await activity.admitted(recipient.id, group.self.id, admitted.id, group.root.id);
+    return { to: recipient.id, admitted: true, inboxID: admitted.id, delivery,
+      observation_error: observationError };
   }
 
   return {
+    async wait(input, context) {
+      return reply(await activity.wait(input, context, async (signal) => {
+        const group = await watched(input, { ...context, signal });
+        return { children: group.children, async accepts(sender) {
+          if (sender === group.root.id) return false;
+          try {
+            await enroll(group.root, sender, signal);
+            return true;
+          } catch (error) {
+            signal.throwIfAborted();
+            return false;
+          }
+        } };
+      }));
+    },
+
+    async status(input, context) {
+      const group = await watched(input, context, true);
+      let active;
+      let activityError;
+      try {
+        if (typeof ctx.session.active !== "function") {
+          throw new Error("Native active-session listing is not exposed by this runtime's plugin context");
+        }
+        active = await ctx.session.active(undefined, { signal: context.signal });
+      } catch (error) {
+        context.signal?.throwIfAborted();
+        activityError = error.message;
+      }
+      const children = await Promise.all(group.children.map(async (sessionID) => {
+        try {
+          const session = await member(group.root, sessionID, context.signal);
+          const result = { sessionID, agent: session.agent, title: session.title,
+            activity: active ? (active[sessionID] ? "running" : "idle") : "unknown",
+            outcome: session.outcome, updated: session.time.updated, idle: session.time.idle };
+          try {
+            const messages = await ctx.session.context({ sessionID }, { signal: context.signal });
+            const latest = [...messages].reverse().find((item) => item.type === "assistant" &&
+              item.content.some((part) => part.type === "tool"));
+            result.tools = (latest?.content ?? []).filter((part) => part.type === "tool")
+              .map((part) => ({ name: part.name, status: part.state.status }));
+          } catch (error) {
+            context.signal?.throwIfAborted();
+            result.context_error = error.message;
+          }
+          return result;
+        } catch (error) {
+          context.signal?.throwIfAborted();
+          return { sessionID, activity: "unavailable", error: error.message };
+        }
+      }));
+      context.signal?.throwIfAborted();
+      return reply({ principal: group.root.id, observed_at: Date.now(), activity_error: activityError, children });
+    },
+
     async init(_input, context) {
       const { self, root } = await sessions(context.sessionID);
       if (self.id !== root.id) throw new Error("Only the principal may initialize the swarm");

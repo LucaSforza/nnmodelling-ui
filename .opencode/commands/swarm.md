@@ -20,5 +20,9 @@ enroll on mailbox use or when addressed; no post-launch swarm.register is needed
 Use swarm.send for actionable coordination and swarm.members for progressive peer
 discovery. Optional register explicitly replaces membership and excludes omitted
 enrolled children; do not submit stale launch lists.
+If no useful independent work remains, use swarm.wait with outstanding child IDs
+and an optional timeout_seconds from 1 to 270 (default/max 270), not busywork or
+shell sleep. After timeout, inspect swarm.status once if useful. Idle does not
+mean success; process native messages/results and do not repeatedly poll status.
 Process native completion notifications, review all results, and run relevant
 justfile checks plus git diff --check before reporting completion.

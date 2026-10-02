@@ -270,7 +270,7 @@ test("plugin registers executable Code Mode tools against the V2 context", async
       add(tool) { tools.set(tool.name, tool); } });
   } };
   await plugin.setup(f.ctx);
-  assert.deepEqual([...tools.keys()], ["init", "register", "members", "send", "broadcast"]);
+  assert.deepEqual([...tools.keys()], ["init", "register", "members", "wait", "status", "send", "broadcast"]);
   for (const tool of tools.values()) assert.equal(tool.options.codemode, true);
   await tools.get("init").execute({}, caller("root"));
   await tools.get("send").execute({ to: "parent", message: "Question" }, caller("a"));

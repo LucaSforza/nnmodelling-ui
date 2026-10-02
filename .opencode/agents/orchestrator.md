@@ -41,9 +41,19 @@ Record their sessionIDs. Direct children automatically enroll on first mailbox u
 or when addressed by session ID; no post-launch registration barrier is needed.
 Pass parent/peer sessionIDs to workers when needed, or tell them to use
 swarm.members. Continue independent principal work while they run. Completion
-notifications arrive natively: do not poll, sleep or finish the task while required
+notifications arrive natively: do not poll, shell-sleep or finish the task while required
 worker results remain outstanding. Resume a child with its sessionID for follow-up
 implementation work.
+
+When no useful independent work remains, use swarm.wait with outstanding child
+sessionIDs instead of busywork. timeout_seconds defaults to 270 and must be an
+integer from 1 to 270 (maximum 4 minutes 30 seconds). It wakes for a message, child
+idleness, timeout or unavailable observation. Idle is not proof of success; native
+messages/results still need review. Pass outstanding IDs to avoid repeated wakes
+on previously reviewed idle children; children: [] waits for messages only. After
+timeout, use swarm.status once for activity/outcome/latest tool names and decide
+whether clarification, follow-up or another bounded wait is appropriate. Never
+treat timeout alone as a stuck-agent diagnosis or repeatedly poll status.
 
 swarm.send addresses a sessionID; a child may use to: "parent".
 Use actionable messages for questions,

@@ -35,6 +35,26 @@ sequenceDiagram
     A->>Mailbox: send(B, coordination message)
     Mailbox->>Runtime: synthetic(B, resume=true)
     Runtime-->>B: Deliver / wake if idle
+    Principal->>Mailbox: wait(children=outstanding IDs, timeout_seconds<=270)
+    Mailbox->>Runtime: Subscribe to native events before notification snapshot
+    Mailbox->>Mailbox: Start one deadline timer
+    Mailbox->>Runtime: Observe child idleness
+    Mailbox->>Mailbox: Read persisted notification / observed inbox ID
+    alt Incoming swarm message
+        B->>Mailbox: send(parent, actionable blocker)
+        Mailbox->>Runtime: synthetic(principal, resume=true)
+        Runtime-->>Mailbox: session.inbox.enqueued
+        Mailbox-->>Principal: reason=message (without consuming inbox)
+    else Child loop becomes idle
+        Runtime-->>Mailbox: Native session.wait resolves
+        Mailbox-->>Principal: reason=idle (not necessarily success)
+    else Deadline expires
+        Mailbox-->>Principal: reason=timeout
+        Principal->>Mailbox: status(outstanding IDs), one diagnostic snapshot
+        Mailbox->>Runtime: Read child metadata/tools; active sessions if API exposed
+        Mailbox-->>Principal: Activity/outcome/tools, no transcript or reasoning
+    end
+    Mailbox->>Mailbox: Remove listener/timer; abort observation requests only
     A-->>Runtime: Final implementation result
     Runtime-->>Principal: Native background completion
     Principal->>Principal: Review, integrate, run relevant checks
