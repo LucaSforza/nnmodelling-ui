@@ -1,7 +1,7 @@
 #define _XOPEN_SOURCE 700
-#include "inference.h"
-#include "model.h"
-#include "project.h"
+#include "inference/inference.h"
+#include "model/model.h"
+#include "project/project.h"
 
 #include <assert.h>
 #include <stdio.h>

@@ -20,23 +20,46 @@ if(UNIX)
     target_compile_definitions(nn_lua PRIVATE LUA_USE_LINUX)
     target_link_libraries(nn_lua PUBLIC ${CMAKE_DL_LIBS} m)
 endif()
+
 add_library(nn_json STATIC third_party/yyjson/yyjson.c)
 target_include_directories(nn_json PUBLIC third_party/yyjson)
-add_library(nn_utils STATIC src/utils.c)
+add_library(nn_utils STATIC src/utils/utils.c)
 target_include_directories(nn_utils PUBLIC src)
 if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(nn_utils PRIVATE -Wall -Wextra -Werror -pedantic)
 endif()
 
-add_library(nnmodelling_core STATIC src/model.c src/catalog.c src/project.c
-    src/inference.c src/application.c src/automation.c)
+set(NN_MODEL_SOURCES
+    src/model/model.c src/model/nodes.c src/model/edges.c
+    src/model/parameters.c src/model/values.c src/model/model_utils.c)
+set(NN_CATALOG_SOURCES
+    src/catalog/catalog.c src/catalog/catalog_utils.c src/catalog/definition.c
+    src/catalog/manifest.c src/catalog/dependencies.c)
+set(NN_PROJECT_SOURCES
+    src/project/project.c src/project/open.c src/project/graph_json.c
+    src/project/save.c src/project/datasets.c src/project/templates.c
+    src/project/resources.c src/project/project_utils.c)
+set(NN_INFERENCE_SOURCES
+    src/inference/results.c src/inference/evaluation_utils.c src/inference/scope.c src/inference/lua_rule.c
+    src/inference/lua_runtime.c src/inference/lua_sandbox.c
+    src/inference/lua_tensor_ops.c src/inference/owned_tensors.c
+    src/inference/result_extraction.c src/inference/report.c src/inference/status.c)
+set(NN_APPLICATION_SOURCES
+    src/application/application.c src/application/resources.c
+    src/application/graph_commands.c src/application/parameters.c src/application/ports.c)
+set(NN_AUTOMATION_SOURCES
+    src/automation/dispatch.c src/automation/commands.c src/automation/snapshot.c
+    src/automation/diagnostics.c src/automation/transport.c src/automation/automation_utils.c)
+add_library(nnmodelling_core STATIC
+    ${NN_MODEL_SOURCES} ${NN_CATALOG_SOURCES} ${NN_PROJECT_SOURCES}
+    ${NN_INFERENCE_SOURCES} ${NN_APPLICATION_SOURCES} ${NN_AUTOMATION_SOURCES})
 target_include_directories(nnmodelling_core PUBLIC src)
 target_link_libraries(nnmodelling_core PRIVATE nn_json nn_lua nn_utils)
 if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(nnmodelling_core PRIVATE -Wall -Wextra -Werror -pedantic)
 endif()
 
-add_executable(nnmodelctl src/nnmodelctl.c)
+add_executable(nnmodelctl src/nnmodelctl/main.c src/nnmodelctl/request.c src/nnmodelctl/transport.c)
 target_link_libraries(nnmodelctl PRIVATE nn_json)
 if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(nnmodelctl PRIVATE -Wall -Wextra -Werror -pedantic)
@@ -65,7 +88,7 @@ if(BUILD_TESTING)
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}" LABELS core)
     endif()
     # This existing fixture supplies its own catalog, isolating persistence.
-    add_executable(project_test tests/project_test.c src/project.c src/model.c)
+    add_executable(project_test tests/project_test.c ${NN_PROJECT_SOURCES} ${NN_MODEL_SOURCES})
     target_include_directories(project_test PRIVATE src)
     target_link_libraries(project_test PRIVATE nn_json nn_utils m)
     add_test(NAME project COMMAND project_test)
@@ -89,17 +112,24 @@ if(NN_BUILD_GUI)
     set(CMAKE_CXX_EXTENSIONS OFF)
     find_package(Qt6 REQUIRED COMPONENTS Widgets)
     set(QT_CANVAS_SOURCES
-        gui/qt/GraphScene.cpp gui/qt/GraphScene.hpp
-        gui/qt/GraphView.cpp gui/qt/GraphView.hpp
-        gui/qt/NodeItem.cpp gui/qt/NodeItem.hpp
-        gui/qt/PortItem.cpp gui/qt/PortItem.hpp
-        gui/qt/EdgeItem.cpp gui/qt/EdgeItem.hpp
-        gui/qt/SubflowItem.cpp gui/qt/SubflowItem.hpp)
+        src/gui/qt/GraphScene.cpp src/gui/qt/GraphScene.hpp
+        src/gui/qt/GraphView.cpp src/gui/qt/GraphView.hpp
+        src/gui/qt/NodeItem.cpp src/gui/qt/NodeItem.hpp
+        src/gui/qt/PortItem.cpp src/gui/qt/PortItem.hpp
+        src/gui/qt/EdgeItem.cpp src/gui/qt/EdgeItem.hpp
+        src/gui/qt/SubflowItem.cpp src/gui/qt/SubflowItem.hpp)
+    set(QT_WINDOW_SOURCES
+        src/gui/qt/MainWindow.cpp src/gui/qt/MainWindow.hpp
+        src/gui/qt/MainWindowProject.cpp src/gui/qt/MainWindowAutomation.cpp
+        src/gui/qt/MainWindowStereotypeAuthoring.cpp src/gui/qt/MainWindowDatasetAuthoring.cpp
+        src/gui/qt/MainWindowRefresh.cpp src/gui/qt/MainWindowInspectorResources.cpp
+        src/gui/qt/MainWindowDiagnostics.cpp src/gui/qt/MainWindowGraphActions.cpp
+        src/gui/qt/MainWindowUtils.cpp src/gui/qt/MainWindowUtils.hpp)
     add_library(nnmodelling_canvas STATIC ${QT_CANVAS_SOURCES})
     set_target_properties(nnmodelling_canvas PROPERTIES AUTOMOC ON)
-    target_include_directories(nnmodelling_canvas PUBLIC gui/qt)
+    target_include_directories(nnmodelling_canvas PUBLIC src/gui/qt)
     target_link_libraries(nnmodelling_canvas PUBLIC Qt6::Widgets nnmodelling_core)
-    add_executable(nnmodelling-ui gui/qt/main.cpp gui/qt/MainWindow.cpp gui/qt/MainWindow.hpp)
+    add_executable(nnmodelling-ui src/gui/qt/main.cpp ${QT_WINDOW_SOURCES})
     set_target_properties(nnmodelling-ui PROPERTIES AUTOMOC ON)
     target_compile_definitions(nnmodelling-ui PRIVATE NN_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
     target_link_libraries(nnmodelling-ui PRIVATE nnmodelling_canvas)
@@ -113,7 +143,7 @@ if(NN_BUILD_GUI)
         set_target_properties(qt_canvas_test PROPERTIES AUTOMOC ON)
         target_link_libraries(qt_canvas_test PRIVATE nnmodelling_canvas Qt6::Test)
         target_compile_definitions(qt_canvas_test PRIVATE NN_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
-        add_executable(qt_window_test tests/qt_window_test.cpp gui/qt/MainWindow.cpp gui/qt/MainWindow.hpp)
+        add_executable(qt_window_test tests/qt_window_test.cpp ${QT_WINDOW_SOURCES})
         set_target_properties(qt_window_test PROPERTIES AUTOMOC ON)
         target_link_libraries(qt_window_test PRIVATE nnmodelling_canvas Qt6::Test)
         target_compile_definitions(qt_window_test PRIVATE NN_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
@@ -129,4 +159,24 @@ if(NN_BUILD_GUI)
         set_tests_properties(cli_ui PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
             LABELS gui TIMEOUT 60)
     endif()
+endif()
+
+# Audit explicit target source coverage in both C-only and optional Qt builds.
+if(BUILD_TESTING)
+    set(NN_LAYOUT_SOURCES)
+    set(NN_LAYOUT_TARGETS nn_utils nnmodelling_core nnmodelctl)
+    if(NN_BUILD_GUI)
+        list(APPEND NN_LAYOUT_TARGETS nnmodelling_canvas nnmodelling-ui)
+    endif()
+    foreach(target IN LISTS NN_LAYOUT_TARGETS)
+        get_target_property(sources ${target} SOURCES)
+        list(APPEND NN_LAYOUT_SOURCES ${sources})
+    endforeach()
+    string(JOIN "\n" NN_LAYOUT_MANIFEST ${NN_LAYOUT_SOURCES})
+    file(WRITE "${CMAKE_BINARY_DIR}/source-layout-manifest.txt" "${NN_LAYOUT_MANIFEST}\n")
+    add_test(NAME source_layout COMMAND ${CMAKE_COMMAND}
+        -DROOT=${CMAKE_SOURCE_DIR} -DGUI=${NN_BUILD_GUI}
+        -DMANIFEST=${CMAKE_BINARY_DIR}/source-layout-manifest.txt
+        -P ${CMAKE_SOURCE_DIR}/tests/source_layout_test.cmake)
+    set_tests_properties(source_layout PROPERTIES LABELS core)
 endif()

@@ -49,7 +49,7 @@ and return a function in a protected bounded runtime before activation.
 Validation failures keep the Qt form open, preserve fields and display English
 errors beside the form/Lua source, with Lua line when available (diagnostics.md).
 
-Only project.c writes files. Generated paths: packages/<id>-<version> or
+Only the project module writes project/resource files. Generated paths: packages/<id>-<version> or
 datasets/<id>-<version>; safe IDs and semantic versions required. Reject core
 replacement, duplicate identity, existing destination, missing dependency,
 symlink parents, traversal and existing catalog/resource limits. Creation stages

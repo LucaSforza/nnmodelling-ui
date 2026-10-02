@@ -1,4 +1,4 @@
-#include "../src/model.h"
+#include "model/model.h"
 
 #include <assert.h>
 #include <stdio.h>

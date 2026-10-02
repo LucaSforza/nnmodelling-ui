@@ -16,6 +16,12 @@ to the repository-root `compile_commands.json` for clangd; the file is generated
 and ignored by git.
 Run `git diff --check`. Report missing tooling/desktop limitations honestly.
 
+Source reorganization gate (2026-10-02): source_layout runs in both configurations,
+auditing the module directories, private-header boundaries, separately compiled
+units and explicit target source coverage. `just test-sanitize` configures a
+separate instrumented C-only build using Clang by default (override
+NN_SANITIZER_CC), then runs the same core suite with ASan/UBSan and leak checks.
+
 Resource gate covers indented JSON, positioned definition metadata, typed
 authoring defaults, invalid Lua/dependency/schema/slot rejection, symlink
 confinement, save rollback (disk and dirty flag), save/reopen and VAE copying.

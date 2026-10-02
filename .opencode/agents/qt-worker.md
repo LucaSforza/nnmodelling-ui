@@ -10,7 +10,7 @@ permissions:
     resource: "*"
     effect: deny
   - action: edit
-    resource: gui/qt/**
+    resource: src/gui/qt/**
     effect: allow
   - action: edit
     resource: tests/qt*.cpp
@@ -21,7 +21,7 @@ Implement only the principal's bounded Qt assignment and accepted contract.
 Personally read AGENTS.md, .agents/skills/use-nnmodelling-kb/SKILL.md,
 docs/knowledge/README.md and every KB/architecture/contract/UML document named in
 the assignment before editing. Use fff MCP tools for every file search.
-Preserve user and peer work. Edit only assigned files. Keep C++/Qt in gui/qt and
+Preserve user and peer work. Edit only assigned files. Keep C++/Qt in src/gui/qt and
 the existing Qt tests; authoritative model/application state remains in C.
 Do not decide architecture or modify normative documentation. On ambiguity,
 discover swarm tools through Code Mode and send an actionable question to "parent"

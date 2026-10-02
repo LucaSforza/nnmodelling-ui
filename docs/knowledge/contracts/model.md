@@ -51,7 +51,7 @@ compiler changes. Subflow creation atomically spawns its declared terminals.
 The application C ABI is specified below. UI and local automation call it
 without reimplementing validation.
 
-The current C graph API is `src/model.h`: `nn_model_new/free`,
+The current C graph API is `src/model/model.h`: `nn_model_new/free`,
 `nn_model_add_node/remove_node/move_node/rename_node`,
 `nn_model_connect/disconnect`, `nn_model_set_parameter`, and borrowed
 `nn_model_node_at/edge_at/find_node` accessors. All mutations return `bool`
@@ -100,7 +100,7 @@ Typed terminal restrictions are client semantics, not backend training rules.
 
 ## Qt migration application ABI (accepted)
 
-`src/application.h` exposes opaque `NNApplication`. `nn_app_new(core_root)`
+`src/application/application.h` exposes opaque `NNApplication`. `nn_app_new(core_root)`
 returns owned state, released with `nn_app_free`. `nn_app_open/create/save/close`
 return bool and write caller-owned error text; close takes explicit discard.
 `nn_app_project/model` return const borrowed snapshots, never mutable owners.

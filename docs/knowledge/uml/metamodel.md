@@ -10,6 +10,11 @@ subclasses. `Module` is represented by a nested graph where needed; legacy
 belong to nodes, not graph nodes. `ParameterIstance` is corrected to
 `ParameterValue`.
 
+Consolidated 2026-10-02: typed outputs and analysis result types, formerly
+duplicated in typed-outputs.md/diagnostics.md, are part of this metamodel.
+Their operation sequences live in sequences.md; no older single-output design
+is retained as a current alternative.
+
 ## Diagram
 
 ```mermaid
@@ -65,6 +70,31 @@ classDiagram
       +Handle[] handles
       +infer(Tensor[],Parameters) InferenceResult
     }
+    class OutputDefinition {
+      +string id
+      +OutputType type output or loss
+      +uint order
+    }
+    class OutputTensor {
+      +string handleId
+      +OutputType type
+      +string dtype
+      +Dimension[] shape
+    }
+    class InferenceResult {
+      +NodeId nodeId
+      +Status status
+      +string code
+      +NodeId causeNodeId optional
+      +string sourceFile optional
+      +uint sourceLine
+      +string message optional
+      +Tensor primaryOrConsumedView
+    }
+    class InferenceReport {
+      +Status rootStatus
+      +string rootMessage optional
+    }
     class ParameterDefinition {
       +string key
       +ValueType type
@@ -96,6 +126,11 @@ classDiagram
     Parameters "1" *-- "0..*" ParameterValue
     Connection --> Node : endpoints
     Connection --> Handle : source/target
+    Stereotype "1" *-- "0..2" OutputDefinition : normalized outputs
+    Connection --> OutputDefinition : sourceHandle / derived type
+    Node --> OutputDefinition : terminal boundaryHandle mapping
+    InferenceReport *-- InferenceResult
+    InferenceResult "1" *-- "0..2" OutputTensor
 ```
 
 ## Operations
@@ -136,7 +171,7 @@ For package definitions without declared handles, `kind=join` derives ordered
 output-bearing kinds derive out/output except loss derives loss/loss.
 Explicit declarations replace defaults, at most one handle per type; output
 and loss-output terminal kinds expose no output handles. See typed-outputs.md
-and typed-outputs UML for terminal restrictions and complete boundary mappings.
+and the boundary constraints below for terminal restrictions and mappings.
 
 Formal: `node.nestedGraph≠null ⇔ node.kind=Subflow` for current concept;
 `hidden(node) ⇏ remove(node.nestedGraph)`. Natural: subflows own child graphs
@@ -150,3 +185,22 @@ package ID selects definition data, never a switch over concrete packages.
 Optional nested graph and tagged primitive parameter values replace UML
 inheritance. `Connection` stores IDs, not raw node pointers. `Handle` is
 definition data. The application owns model storage and catalog lifetime.
+
+## Typed boundary constraints (accepted 2026-10-01)
+
+Every declared output matches exactly one immediate terminal with equal ID and
+type. Tensor mapping is not a cross-scope edge: an inherited Input feeds the
+internal graph, whose Output/Loss Output terminals map to parent output/loss
+handles. Default subflow has out/output only. Root has exactly one Output and
+one Loss Output, without mappings; multiple root Inputs remain allowed. All
+terminal inputs have at most one producer; accumulation requires explicit join.
+Intermediate nodes accept either edge type; their own outputs classify fanout.
+Analysis reads keyed sourceHandle tensors without mutation. Computational Lua
+success chooses the complete keyed map OR single-handle shorthand; terminal
+success uses consumed-tensor shorthand only. Missing completion is Incomplete;
+invalid declarations/mappings are semantic errors; invalid edge commands reject
+without mutation. Root completion is report metadata even for zero nodes:
+Incomplete with a non-navigable null-node Root problem, never synthetic IDs or
+discarded successful tensors. The CLI complete flag conjuncts root/per-node
+success. Report-construction allocation failure is an explicit whole-report
+failure, not partial successful state.

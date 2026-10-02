@@ -1,5 +1,5 @@
 #define _POSIX_C_SOURCE 200809L
-#include "automation.h"
+#include "automation/automation.h"
 
 #include <assert.h>
 #include <fcntl.h>

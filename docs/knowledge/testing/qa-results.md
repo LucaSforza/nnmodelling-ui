@@ -222,3 +222,65 @@ edge-crossing optimizer. Form/connection/error interactions are automated Qt
 coverage, not exhaustive manual testing of every desktop dialog.
 
 Status: accepted implementation and final release gates passed.
+
+## Source modules and UML consolidation — 2026-10-02
+
+Environment: Linux Wayland (`wayland-0`), GCC 16.2.1, Qt Widgets/Test 6.11.2,
+Clang 22.1.8 for sanitizers. Principal alone updated KB/UML; three configured
+GPT-6 Luna workers implemented bounded C/Qt partitions and follow-up corrections.
+
+All application sources now live in module directories under src, including
+src/gui/qt. Public C declarations are unchanged apart from include paths; global
+utils and private module helpers are distinct. Largest production C unit is
+339 lines (previously 1,662); MainWindow's 1,608-line implementation is split
+into window/panel/form/action units. The largest C++ unit is the existing canvas
+scene, 422 lines. Build explicitly enumerates all 45 C and 17 C++ units.
+
+Principal review compared all 218 original core function bodies against their
+new units: differences were private symbol/registry-key and local-variable
+renames only. All 27 MainWindow method bodies match after comments/whitespace
+normalization. Header audit confirms unchanged public declarations; historical
+UML, package assets, examples and vendors are unchanged. Initial full Qt link
+exposed a duplicated addSelectedPackage method from the split; it was removed
+and the complete GUI suite rerun. Syntax-only checks were not counted as a
+successful final build.
+
+Final gates (exit 0):
+
+* `just test`: 11/11 C-only tests, including allocation-failure sweeps and the
+  new source-layout/private-header/explicit-target-coverage audit.
+* `just test-ui`: 3/3 Qt window/canvas and real CLI/UI tests; builds Qt and CLI.
+* `just test-cli`: 1/1 real CLI/UI integration test.
+* `just test-swarm`: 11/11 development mailbox tests.
+* `just test-sanitize`: fresh separate Clang ASan/UBSan build, 11/11 core tests
+  with leak detection and halt-on-UB enabled; no sanitizer/leak diagnostics.
+* Fresh C-only production build in `/tmp/opencode/nn-refactor-c-only`, with GUI
+  and tests disabled and a nonexistent CXX compiler setting: passed without
+  discovering/enabling C++. CMake correctly reports the unused CXX setting.
+* Qt-configuration source-layout audit passed separately. All 69 local Markdown
+  link destinations across README and 31 docs resolve after consolidation.
+* `git diff --check`: passed.
+
+Visible native Wayland MLP startup/render/capture/exit passed without platform
+errors. The complete offscreen Qt window suite was rerun with normal and small
+capture output (10 test cases passed, none skipped), covering retained forms,
+errors, inspector, lifecycle and automation. Reviewed actual PNG evidence:
+
+* `/tmp/opencode/nn-refactor-mlp-wayland.png` (2000x1250)
+* `/tmp/opencode/nn-refactor-window-normal.png`
+* `/tmp/opencode/nn-refactor-window-small.png` (900x560)
+* `/tmp/opencode/nn-refactor-problems-normal.png`
+* `/tmp/opencode/nn-refactor-problems-small.png` (900x560)
+
+Panels, typed circles/fanout, inspector tensors and wrapped problem rows render
+as before. Small windows still require graph pan/zoom, panel scrolling and
+toolbar overflow; long labels retain existing elision. Native scale was not
+measured. This is not exhaustive manual desktop-dialog testing; resource
+authoring, project round trips and graph failures are covered by automated
+core/GUI/CLI tests. Evidence/logs remain local temporary artifacts, not assets.
+
+Current graphics/report UML was merged into editor.md, typed output/result UML
+into metamodel.md, and analysis/navigation into sequences.md. Removed the three
+overlapping current UML files rather than retain parallel versions. Explicitly
+historical legacy.md and original analysis/uml assets remain preserved; user
+approved this distinction and consolidation. No backend/training behavior added.

@@ -5,8 +5,8 @@
 #include "PortItem.hpp"
 #include "SubflowItem.hpp"
 
-#include "application.h"
-#include "model.h"
+#include "application/application.h"
+#include "model/model.h"
 
 #include <QTemporaryDir>
 #include <QImage>

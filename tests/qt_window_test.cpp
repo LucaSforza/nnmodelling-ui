@@ -4,10 +4,10 @@
 #include "NodeItem.hpp"
 #include "PortItem.hpp"
 #include "EdgeItem.hpp"
-#include "application.h"
-#include "catalog.h"
-#include "inference.h"
-#include "project.h"
+#include "application/application.h"
+#include "catalog/catalog.h"
+#include "inference/inference.h"
+#include "project/project.h"
 
 #include <QAction>
 #include <QApplication>

@@ -1,5 +1,5 @@
 #define _XOPEN_SOURCE 700
-#include "../src/application.h"
+#include "application/application.h"
 
 #include <assert.h>
 #include <math.h>

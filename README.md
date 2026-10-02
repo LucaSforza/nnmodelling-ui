@@ -3,12 +3,23 @@
 Qt 6 Widgets frontend over an independent C11 NNModelling core. The C library
 owns graph/model state, coordinates, validation, package metadata, Lua shape
 analysis, application operations and schema-v2 project persistence. Only
-`gui/qt/` is C++; Qt items hold stable model IDs and transient graphical state.
+`src/gui/qt/` is C++; Qt items hold stable model IDs and transient graphical state.
 There is no training backend or compiler/IR implementation in this checkout.
 
 The [knowledge base](docs/knowledge/README.md) defines ownership and semantics.
 The dependency direction is Qt GUI → pure C API → C core, never the reverse.
 Preserved stereotype packages and historical UML remain reference assets.
+
+## Source organization
+
+Each module has its own directory under `src/`: `model`, `catalog`, `project`,
+`inference`, `application`, `automation`, `nnmodelctl`, `utils` and `gui/qt`.
+Implementation files are split by responsibility (e.g. project loading/saving,
+datasets/resource transactions, Lua runtime/tensors/reports, window panels/forms).
+Include public headers as `application/application.h`, `model/model.h`, etc.
+`utils/utils.h` contains global helpers; module-qualified private helper headers
+and `*_internal.h` stay inside their owning module. Tests remain under `tests/`.
+See the [source-layout contract](docs/knowledge/contracts/source-layout.md).
 
 ## Build and test
 
@@ -21,6 +32,7 @@ are vendored C sources; builds download nothing.
 just test      # C-only configuration; no Qt or C++ compiler required
 just build
 just test-ui   # separate offscreen Qt interaction tests
+just test-sanitize # C-only ASan/UBSan/leak gate (Clang by default)
 just run examples/mnist-mlp
 ```
 

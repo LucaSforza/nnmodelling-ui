@@ -229,3 +229,30 @@ transport adapters hold pointers/IDs to the same application owner. Project
 staging uses temporary owned structs, swapped only after validation. No second
 graph is allocated for command service beyond immutable response snapshots.
 Analysis queries/invalidation and problem navigation follow diagnostics.md.
+
+## Analysis cache and problem navigation
+
+Accepted 2026-09-30, consolidated 2026-10-02 from diagnostics UML; owner diagram
+is editor.md and result types are metamodel.md. contracts/diagnostics.md remains
+normative. Typed spawning is already included in Create node above.
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Entry as Qt or CLI
+    participant App as C NNApplication
+    participant Analysis as C Lua analysis
+    participant Scene as Qt GraphScene
+    Entry->>App: semantic mutation
+    App->>App: invalidate report on success
+    Entry->>App: analysis query
+    alt cache missing
+        App->>Analysis: infer immutable project
+        Analysis-->>App: owned report or failure
+    end
+    App-->>Entry: borrowed outcomes or explicit failure
+    Note over Entry: Problems grouped by root cause; tensors separate
+    User->>Entry: click problem or ui.reveal(node)
+    Entry->>Scene: validate ID, switch scope, queued refresh
+    Scene->>Scene: select and center node
+```

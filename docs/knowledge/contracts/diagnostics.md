@@ -9,7 +9,7 @@ backend or training is introduced: compilation errors mean Lua syntax errors.
 Operation APIs use bool/NULL and optional caller-owned bounded UTF-8 error
 buffers. Success clears the buffer; failure supplies a meaningful English
 message when capacity permits. NULL/zero-capacity buffers are valid. Error
-formatting and copying live in utils.c/h, without allocations for errors.
+formatting and copying live in src/utils/utils.c/h, without allocations for errors.
 Preserve the original failure through cleanup. Partial allocations are never
 published as successful results; allocation failure is not unresolved state.
 Cleanup must tolerate partially initialized owners. No global last-error,

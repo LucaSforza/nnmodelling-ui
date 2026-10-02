@@ -23,7 +23,7 @@ package applications. Static dependencies resolve only within active core plus
 model-owned set. This release runs inference locally; previous bootstrap only
 proved interpreter linkage.
 
-`src/inference.h` exposes owned `NNInferenceReport *nn_infer_project(const
+`src/inference/inference.h` exposes owned `NNInferenceReport *nn_infer_project(const
 NNProject *)`, `nn_inference_free`, count and borrowed per-node result accessors.
 Each result has node ID, status (`success`, `Lua compilation error`, `semantic
 error`, `unresolved`, `runtime fault`), message and owned handle-keyed tensors

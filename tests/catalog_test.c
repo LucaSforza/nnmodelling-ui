@@ -1,5 +1,5 @@
 #define _XOPEN_SOURCE 700
-#include "catalog.h"
+#include "catalog/catalog.h"
 
 #include <assert.h>
 #include <stdio.h>

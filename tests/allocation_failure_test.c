@@ -1,7 +1,7 @@
 #define _XOPEN_SOURCE 700
-#include "application.h"
-#include "automation.h"
-#include "inference.h"
+#include "application/application.h"
+#include "automation/automation.h"
+#include "inference/inference.h"
 #include "yyjson.h"
 
 #include <assert.h>
