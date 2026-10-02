@@ -37,6 +37,39 @@ on an existing session. `/swarm` selects the orchestrator in the current session
 If a newly added plugin is not visible in an already running location, start a
 new session in this checkout or reload that location's configuration.
 
+## CLI model authoring
+
+Select `model-builder` in OpenCode's agent picker to author models directly, or
+ask `orchestrator` to delegate a bounded model-authoring task to it. Its English
+description/prompt live in `.opencode/agents/model-builder.md`; `mode: all` makes
+it visible for primary selection and child invocation. The configured model is
+`openai/gpt-6.1-sol#high`. V2 stores a primary session's model separately: selecting
+an agent does not switch the current model, so select Sol high in the session's
+model picker as needed. Child invocations use the configured agent model.
+`orchestrator` remains the project default.
+
+The builder uses `nnmodelctl`, not an executable named `nnmodeling-cli`. Supply
+a GUI socket started with `--socket PATH`, project/destination and intended
+graph/resources. It can create blank, MNIST MLP or MNIST VAE designs, author
+datasets/stereotypes, add parameters/connections/subflows, query diagnostics,
+save and capture through the existing CLI. It cannot edit project/source files,
+spawn agents, change contracts or perform numerical execution/training.
+
+Read/KB discovery is available; shell is ask-by-default except the PATH CLI and
+`./build/qt/nnmodelctl`. GUI startup/build and other commands remain approval-
+controlled. CLI permissions do not authorize discarding existing work: that
+requires explicit user/assignment authorization. Resource creation saves all
+current edits. Shell rules are not a filesystem sandbox or JSON payload filter.
+
+Delegation uses the existing init-before-launch and automatic-enrollment protocol.
+The orchestrator assigns exclusive mutation ownership of the whole application
+behind a socket and its writable project, not just separate nodes/files. Do not
+edit the same graph concurrently in the UI or another agent. Review the actual
+`analysis.diagnostics` result and save status; an incomplete graph or unavailable
+analysis must be reported, not presented as a complete model. See the
+[tooling contract](knowledge/contracts/agent-swarm.md#model-authoring-assignments)
+and [agent sequence](knowledge/uml/agent-swarm.md#cli-model-authoring-agent).
+
 ## Messaging
 
 BEFORE launching any native background child, the principal discovers the `swarm`
@@ -131,7 +164,8 @@ whether to clarify or wait again; do not poll status repeatedly.
 ## Files and verification
 
 - `opencode.jsonc`: default model, agent, KB skill directory and local plugin.
-- `.opencode/agents/`: principal and bounded implementation workers.
+- `.opencode/agents/`: orchestrator, bounded implementation workers and the
+  primary/child CLI model builder.
 - `.opencode/commands/swarm.md`: explicit swarm workflow.
 - `.opencode/swarm-mailbox/`: dependency-free JavaScript plugin for the V2 API.
 - `tests/swarm_mailbox_test.mjs`, `tests/swarm_activity_test.mjs`: transport,
@@ -219,3 +253,15 @@ both conditions; wake routing uses native events and persisted notifications.
 
 Initial unsuccessful live probes are not counted as passing verification. They
 led to the corrected event adapter and no-readiness-marker regression coverage.
+
+### Model-builder configuration verified 2026-10-02 (V2.0.22)
+
+The running service's location-scoped `/api/agent` discovery returned the new
+`model-builder` with `mode: all`, `hidden: false` and OpenAI Sol 6.1 high. Assertions
+checked its English CLI description, edit/delegation denials, shell ask/default
+and CLI allowances, and the orchestrator's explicit launch permission.
+`just swarm-setup`, all 46 `just test-swarm` tests and `git diff --check` passed.
+Private `--standalone` discovery returned no agents, so it was not counted as
+successful verification; discovery on the existing service verified the project
+definition without reloading running sessions. No model-provider child execution,
+graph mutation or screenshot was exercised by this configuration-only check.

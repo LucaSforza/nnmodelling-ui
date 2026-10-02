@@ -16,6 +16,16 @@ automatically, and there is no fixed project-level worker concurrency maximum.
   and implement bounded assignments. Each personally reads the KB index and
   the exact documents listed in the assignment. Architectural ambiguity returns
   to the principal.
+- Accepted 2026-10-02: `model-builder` uses `openai/gpt-6.1-sol#high` and
+  `mode: all`: it is visible as a selectable primary agent and callable by the
+  orchestrator as a child. It authors model graphs/resources through `nnmodelctl`
+  under the existing automation contract, not through source or project-file
+  edits. Its description and instructions are English. It cannot launch agents
+  or decide new architecture/contracts; ambiguous semantics return to the
+  orchestrator (or the user when selected directly). The default primary remains
+  `orchestrator`. In OpenCode V2 a primary session's selected model remains
+  separate from the agent's configured model; child sessions use the configured
+  Sol high model.
 - `/swarm` explicitly requests delegation. The principal starts independent
   assignments with the native `subagent` tool in background only after completing
   `swarm.init`. It retains session IDs and processes native completion notifications.
@@ -24,6 +34,39 @@ automatically, and there is no fixed project-level worker concurrency maximum.
   may run. The principal sizes concurrency to independent work, resources and
   actual runtime/provider limits. File ownership must be disjoint. Workers do not
   launch additional agents. The principal runs final checks.
+
+## Model-authoring assignments
+
+`model-builder` personally reads the project skill, KB index, architecture,
+automation/resource/model/typed-output/diagnostic contracts and their relevant
+UML before commands. Lua resource authoring additionally requires the Lua
+contract. It first checks CLI availability and inspects the active project.
+The GUI must already expose a private local socket; starting/building the GUI
+requires shell approval rather than silent fallback to another project.
+
+An assignment identifies socket, project/destination, intended graph/resources,
+allowed mutations and acceptance criteria. Exclusive mutation ownership covers
+the entire application behind a socket and its writable project/resources,
+not just separate node IDs or files. Do not run two mutating authors against the
+same application or writable project; UI edits are also shared-state mutations.
+Parallel work is allowed on independent applications and project directories.
+Child launches follow the same initialization/enrollment protocol as workers.
+
+All graph/resource changes use the existing CLI operations. Core packages,
+source, KB and model/resource files are not edited directly. Shell is ask-by-
+default with narrow allowances for `nnmodelctl` and the local Qt-build CLI;
+edit tools and further delegation are denied. These are tool permissions,
+not a filesystem sandbox or payload-level authorization. The agent must never
+discard existing changes without explicit authorization and must account for
+resource creation saving all current graph edits. Invalid commands are atomic,
+but a sequence of successful commands is not a single transaction; report
+partial progress instead of retrying blindly or inventing rollback.
+
+Completion reports include project path, graph/resources authored, actual
+diagnostic availability/completeness/problems, successful save status and any
+requested screenshot path. Incomplete graphs are allowed but must be labelled;
+no backend, numerical execution or training claim is permitted. CLI protocol
+and model semantics remain unchanged (see automation.md and typed-outputs.md).
 
 ## Mailbox
 

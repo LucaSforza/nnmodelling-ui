@@ -65,3 +65,53 @@ Each launch follows successful initialization; no later `register` call is neede
 Registry updates serialize within the plugin storage context. Optional explicit
 replacement with `register` excludes omitted enrolled children until the principal
 explicitly restores them. Repeating `init` preserves membership and exclusions.
+
+## CLI model-authoring agent
+
+`model-builder` is a Sol high agent with `mode: all`; native primary selection
+and child invocation both use the same KB-first CLI authoring instructions.
+It does not replace the orchestrator's architecture/review ownership.
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Principal as Orchestrator
+    participant Runtime as OpenCode V2
+    participant Mailbox as Local swarm plugin
+    participant Builder as model-builder (Sol high)
+    participant CLI as nnmodelctl
+    participant App as Existing GUI / C application
+    alt Selected as primary
+        User->>Runtime: Select visible model-builder
+        Runtime->>Builder: Model-authoring objective
+    else Delegated by orchestrator
+        Principal->>Principal: Assign exclusive application/project mutation ownership
+        Principal->>Mailbox: init({}) before child launch
+        Principal->>Runtime: subagent(model-builder, background=true, bounded objective)
+        Runtime-->>Principal: Child sessionID
+        Runtime->>Builder: Socket, project, allowed mutations, KB and acceptance criteria
+        Builder->>Mailbox: members() / actionable send(parent) when needed
+    end
+    Builder->>Builder: Read KB; verify CLI and assigned socket
+    Builder->>CLI: project.snapshot
+    CLI->>App: Read authoritative project state
+    App-->>Builder: Identity, dirty flag, graph and resources via CLI
+    Builder->>CLI: Authorized project/resource/node/edge operations
+    CLI->>App: Validate and commit each operation
+    App-->>Builder: Success or explicit error via CLI
+    Builder->>CLI: analysis.diagnostics; arrange/save/capture as requested
+    CLI->>App: Analyze and persist through existing application authority
+    App-->>Builder: Diagnostics, save/capture results via CLI
+    alt Primary session
+        Builder-->>User: Actual authored model, save status and limitations
+    else Child session
+        Builder-->>Runtime: Final authoring report
+        Runtime-->>Principal: Native completion
+        Principal->>Principal: Review against assignment and actual diagnostics
+    end
+```
+
+One mutating author owns a socket's application and writable project at a time;
+disjoint node IDs do not provide independent state. Builder owns no separate
+graph and cannot edit project files or spawn workers. CLI failure does not undo
+earlier successful commands. Numerical execution/training remain deferred.
