@@ -288,6 +288,7 @@ sequenceDiagram
     Entry->>App: analysis query
     alt cache missing
         App->>Analysis: infer immutable project
+        Note over Analysis: Embedding/Cast use bounded fresh-tensor append_dimension/with_dtype helpers
         Analysis-->>App: owned report or failure
     end
     App-->>Entry: borrowed outcomes or explicit failure

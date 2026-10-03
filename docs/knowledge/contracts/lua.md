@@ -54,3 +54,14 @@ returns bool, compiles <=1 MiB source in protected isolated bounded Lua state,
 evaluates only package initialization, requires a returned function, then frees
 state. Application calls it before the project module stages resource files.
 No project-module inference dependency is required.
+
+Accepted 2026-10-03 after the GUI LLM trial exposed missing host functions used
+by preserved core Embedding/Cast rules: `tensor.append_dimension(tensor,size)`
+returns a fresh tensor retaining dtype and prior dimensions with one positive
+integer dimension appended (maximum rank 64). `tensor.with_dtype(tensor,dtype)`
+returns a fresh tensor retaining shape and replacing dtype with a nonempty
+string. Invalid tensor/arguments/rank return nil plus an English error; neither
+helper mutates its input. Both run inside the existing protected bounded Lua
+state and preserve host allocation-failure reporting and temporary ownership.
+No numerical embedding/cast or model mutation is introduced. Core package
+rules remain unchanged; the host must supply these declared primitives.
