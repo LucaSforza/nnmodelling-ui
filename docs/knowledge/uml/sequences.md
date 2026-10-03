@@ -330,7 +330,8 @@ sequenceDiagram
     participant App as C NNApplication
     User->>Scene: expand owner
     Scene->>App: read real scope-local children/edges
-    Scene->>Scene: transient dataflow layout + uniform scale inside boundary, route internal edges
+    Scene->>Scene: transient dataflow layout + uniform scale inside boundary
+    Scene->>Scene: push overlapping peers with derived visual offsets, route edges
     Note over Scene: Current scope and C model unchanged
     User->>Scene: hover node or preview child
     Scene->>App: query cached inferred outputs

@@ -95,6 +95,8 @@ DataflowLayout computes DAG ranks with barycentric ordering, port-centered lanes
 and corridor spacing. MainWindow uses it for Arrange,
 committing scope-local positions through C. Fit only recomputes routes and frames
 content including labels and expanded boundaries; never commits coordinates.
+GraphScene derives visual offsets to push overlapping peers downstream on expansion,
+subtracts those offsets on drag commit and restores compact placement on collapse.
 GraphScene owns expanded IDs and read-only model-backed preview items, copied tensor
 hover text and route caches. OrthogonalRouter computes explicit polylines from item
 rectangles/port positions and existing tracks; EdgeItem paints them. All affected

@@ -120,6 +120,12 @@ show expanded nested owners. Child items borrow model identity, never create ano
 NNModel; preview geometry uses the same dataflow layout as Arrange, normalized and uniformly
 scaled to a bounded preview area, without persisting child coordinates. Put the
 owner header above its contents; align external ports with the container center.
+Expanding temporarily pushes overlapping current-scope peers along flow direction,
+with grid-aligned visual offsets derived from C positions and item bounds. Recompute
+these offsets on refresh; collapse restores compact model-backed placement. Drag
+commits subtract the visual offset; Arrange persists its computed scope layout,
+then refreshes offsets (zero for nonoverlapping placement). Fit never computes a
+new placement. These offsets are Qt presentation only, not another graph/history.
 Preview is read-only:
 no drag, selection mutation, edge drafting or join-slot mutation inside it. Hover remains
 available. Expansion IDs survive refresh/navigation during the project session and reset
