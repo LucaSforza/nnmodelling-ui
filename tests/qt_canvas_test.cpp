@@ -44,6 +44,16 @@ private:
         QCoreApplication::processEvents();
     }
 
+    QImage renderPort(PortItem *port) {
+        QImage image(15, 15, QImage::Format_ARGB32_Premultiplied);
+        image.fill(Qt::transparent);
+        QPainter painter(&image);
+        painter.translate(7.0, 7.0);
+        port->paint(&painter, nullptr);
+        painter.end();
+        return image;
+    }
+
 private slots:
     void init() {
         directory_ = std::make_unique<QTemporaryDir>();
@@ -117,6 +127,42 @@ private slots:
         QCOMPARE(QString::fromUtf8(edge->source_id), QStringLiteral("source"));
         QCOMPARE(QString::fromUtf8(edge->target_id), QStringLiteral("target"));
         QVERIFY(scene_->edgeItem(QString::fromUtf8(edge->id)));
+    }
+
+    void boundaryOutputAcceptsRealMouseDrag() {
+        NodeItem *source = scene_->nodeItem(QStringLiteral("source"));
+        QVERIFY(source);
+        PortItem *out = nullptr;
+        for (PortItem *port : source->ports())
+            if (port->isOutput()) out = port;
+
+        NodeItem *terminal = nullptr;
+        const NNModel *model = nn_app_model(application_);
+        for (size_t i = 0; i < nn_model_node_count(model); ++i) {
+            const NNNode *node = nn_model_node_at(model, i);
+            if (node && node->package_id && std::strcmp(node->package_id, "core.output") == 0 &&
+                (!node->scope_id || !*node->scope_id))
+                terminal = scene_->nodeItem(QString::fromUtf8(node->id));
+        }
+        QVERIFY(out && terminal);
+        PortItem *in = nullptr;
+        for (PortItem *port : terminal->ports())
+            if (!port->isOutput()) in = port;
+        QVERIFY(in);
+        const QString terminalId = terminal->id();
+
+        const QPoint start = view_->mapFromScene(out->scenePos());
+        const QPoint end = view_->mapFromScene(in->scenePos());
+        QTest::mousePress(view_->viewport(), Qt::LeftButton, Qt::NoModifier, start);
+        QTest::mouseMove(view_->viewport(), end, 30);
+        QTest::mouseRelease(view_->viewport(), Qt::LeftButton, Qt::NoModifier, end);
+        pumpEvents();
+
+        QCOMPARE(nn_model_edge_count(nn_app_model(application_)), size_t(1));
+        const NNEdge *edge = nn_model_edge_at(nn_app_model(application_), 0);
+        QVERIFY(edge);
+        QCOMPARE(QString::fromUtf8(edge->source_id), QStringLiteral("source"));
+        QCOMPARE(QString::fromUtf8(edge->target_id), terminalId);
     }
 
     void selectionDeleteAndScopeNavigation() {
@@ -297,7 +343,14 @@ private slots:
             NodeItem *terminal = scene_->nodeItem(QString::fromUtf8(node->id));
             QVERIFY(terminal);
             QVERIFY(!terminal->ports().isEmpty());
-            for (PortItem *port : terminal->ports()) QVERIFY(port->glyphSuppressed());
+            for (PortItem *port : terminal->ports()) {
+                const QImage portImage = renderPort(port);
+                QVERIFY(port->shape().contains(QPointF(0, 0)));
+                QCOMPARE(portImage.pixelColor(7, 7),
+                         port->outputType() == QStringLiteral("loss") ? QColor("#c62828")
+                            : port->isOutput() ? QColor("#161616") : QColor("#ffffff"));
+                QCOMPARE(portImage.pixelColor(11, 5), QColor(Qt::white));
+            }
         }
         NodeItem output(nullptr, QStringLiteral("output"), QStringLiteral("Prediction"),
                         QStringLiteral("core.output"), {}, QColor("#45a"));
@@ -371,7 +424,16 @@ private slots:
             if (port->handleId() == QStringLiteral("objective")) lossPort = port;
         }
         QVERIFY(outputPort && lossPort);
-        QVERIFY(outputPort->glyphSuppressed() && lossPort->glyphSuppressed());
+        for (PortItem *port : {outputPort, lossPort}) {
+            const QImage portImage = renderPort(port);
+            QCOMPARE(portImage.pixelColor(7, 7),
+                     port == outputPort ? QColor("#161616") : QColor("#c62828"));
+            QCOMPARE(portImage.pixelColor(11, 5), QColor(Qt::white));
+        }
+        const QImage atRest = renderPort(outputPort);
+        QTest::mouseMove(view_->viewport(), view_->mapFromScene(outputPort->scenePos()));
+        pumpEvents();
+        QVERIFY(renderPort(outputPort) != atRest);
         QVERIFY(QLineF(outputPort->pos(), lossPort->pos()).length() > 14.0);
         QVERIFY(outputPort->toolTip().contains(QStringLiteral("prediction")));
         QVERIFY(lossPort->toolTip().contains(QStringLiteral("loss")));

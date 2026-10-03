@@ -254,9 +254,7 @@ void NodeItem::addPort(PortItem *port) {
             } else {
                 candidate->setPos(25.0, 38.0);
             }
-            // Keep the single terminal glyph clean while retaining PortItem's
-            // generous interactive shape for drag-to-connect.
-            candidate->setGlyphSuppressed(true);
+            candidate->setBoundaryHandlePresentation(true);
         }
         return;
     }

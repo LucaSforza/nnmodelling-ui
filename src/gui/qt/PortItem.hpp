@@ -21,8 +21,10 @@ public:
     QString label() const { return label_; }
     bool isOutput() const { return output_; }
     QString outputType() const { return outputType_; }
-    bool glyphSuppressed() const { return glyphSuppressed_; }
-    void setGlyphSuppressed(bool suppressed) { glyphSuppressed_ = suppressed; update(); }
+    void setBoundaryHandlePresentation(bool boundary) {
+        boundaryHandlePresentation_ = boundary;
+        update();
+    }
 
 protected:
     void mousePressEvent(QGraphicsSceneMouseEvent *event) override;
@@ -39,7 +41,7 @@ private:
     QString outputType_;
     bool output_;
     bool hovered_ = false;
-    bool glyphSuppressed_ = false;
+    bool boundaryHandlePresentation_ = false;
 };
 
 #endif

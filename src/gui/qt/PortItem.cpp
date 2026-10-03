@@ -21,10 +21,23 @@ PortItem::PortItem(GraphScene *owner, QString nodeId, QString handleId, bool out
 QRectF PortItem::boundingRect() const { return QRectF(-7, -7, 14, 14); }
 
 void PortItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWidget *) {
-    if (glyphSuppressed_) return;
     painter->setRenderHint(QPainter::Antialiasing);
     const QColor typeColor = outputType_ == QStringLiteral("loss") ? QColor("#c62828")
         : outputType_ == QStringLiteral("output") ? QColor("#161616") : QColor("#ffffff");
+    if (boundaryHandlePresentation_) {
+        painter->setPen(QPen(QColor("#263446"), 1.0));
+        painter->setBrush(Qt::white);
+        painter->drawEllipse(QPointF(0, 0), 6.3, 6.3);
+        if (hovered_) {
+            painter->setPen(QPen(QColor(42, 108, 179), 1.5));
+            painter->setBrush(Qt::NoBrush);
+            painter->drawEllipse(QPointF(0, 0), 6.1, 6.1);
+        }
+        painter->setPen(QPen(QColor(51, 65, 81), 1.0));
+        painter->setBrush(typeColor);
+        painter->drawEllipse(QPointF(0, 0), 3.8, 3.8);
+        return;
+    }
     if (hovered_) {
         painter->setPen(QPen(QColor(42, 108, 179), 1.5));
         painter->setBrush(Qt::NoBrush);
