@@ -149,6 +149,17 @@ static const NNNode *find_mapped_terminal(const NNModel *model, const char *owne
     return NULL;
 }
 
+static const NNNode *find_scoped_package(const NNModel *model, const char *owner,
+                                         const char *package_id)
+{
+    for (size_t i = 0; i < nn_model_node_count(model); ++i) {
+        const NNNode *node = nn_model_node_at(model, i);
+        if (!strcmp(node->scope_id, owner) && !strcmp(node->package_id, package_id))
+            return node;
+    }
+    return NULL;
+}
+
 static void assert_typed_tensors(const NNInferenceReport *report)
 {
     for (size_t i = 0; i < nn_inference_count(report); ++i) {
@@ -221,17 +232,27 @@ static void sweep_multi_output_analysis(void)
                            error, sizeof(error)));
     assert(nn_app_connect(app, "root-input-owner", "input", "out", "owner", "in",
                           error, sizeof(error)));
-    assert(nn_app_add_node(app, "inner-input", "core.input", "0.1.0", "owner", 0, 0,
-                           error, sizeof(error)));
-    assert(nn_app_set_parameter_text(app, "inner-input", "binding", "",
-                                     error, sizeof(error)));
+    const NNNode *inner_input = find_scoped_package(nn_app_model(app), "owner", "core.input");
+    assert(inner_input);
+    size_t immediate_children = 0, immediate_inputs = 0;
+    for (size_t i = 0; i < nn_model_node_count(nn_app_model(app)); ++i) {
+        const NNNode *node = nn_model_node_at(nn_app_model(app), i);
+        if (strcmp(node->scope_id, "owner")) continue;
+        ++immediate_children;
+        if (!strcmp(node->package_id, "core.input")) ++immediate_inputs;
+    }
+    assert(immediate_children == 3 && immediate_inputs == 1);
+    char inner_input_id[256];
+    snprintf(inner_input_id, sizeof(inner_input_id), "%s", inner_input->id);
     assert(nn_app_add_node(app, "inner-two", "local.sweep-two", "0.1.0", "owner", 0, 0,
                            error, sizeof(error)));
-    assert(nn_app_connect(app, "inner-input-two", "inner-input", "out", "inner-two", "in",
+    assert(nn_app_connect(app, "inner-input-two", inner_input_id, "out", "inner-two", "in",
                           error, sizeof(error)));
     const NNNode *objective = find_mapped_terminal(nn_app_model(app), "owner", "objective");
     const NNNode *prediction = find_mapped_terminal(nn_app_model(app), "owner", "prediction");
     assert(objective && prediction);
+    assert(objective->x == 0 && objective->y == 240);
+    assert(prediction->x == 0 && prediction->y == 360);
     char objective_id[128], prediction_id[128];
     snprintf(objective_id, sizeof(objective_id), "%s", objective->id);
     snprintf(prediction_id, sizeof(prediction_id), "%s", prediction->id);
@@ -387,6 +408,58 @@ static void sweep_add_node(NNApplication *app)
            count, failed, succeeded);
 }
 
+static void sweep_add_subflow(NNApplication *app)
+{
+    char error[512] = "";
+    assert(nn_app_open(app, "examples/mnist-vae", error, sizeof(error)));
+    count_begin();
+    assert(nn_app_add_node(app, "spawn-probe", "core.repeat", "0.1.0", "",
+                           100, 100, error, sizeof(error)));
+    size_t count = count_end();
+    assert(count > 0);
+
+    size_t failed = 0, succeeded = 0;
+    for (size_t i = 1; i <= count; ++i) {
+        assert(nn_app_open(app, "examples/mnist-vae", error, sizeof(error)));
+        const NNModel *old_model = nn_app_model(app);
+        const NNInferenceReport *old_report = nn_app_analysis(app, error, sizeof(error));
+        size_t old_nodes = nn_model_node_count(old_model);
+        assert(old_model && old_report && !nn_project_dirty(nn_app_project(app)));
+
+        error[0] = '\0';
+        fail_begin(i);
+        bool okay = nn_app_add_node(app, "spawn-probe", "core.repeat", "0.1.0", "",
+                                    100, 100, error, sizeof(error));
+        (void)count_end();
+        assert(failure_observed);
+        if (!okay) {
+            ++failed;
+            assert(error[0]);
+            assert(nn_app_model(app) == old_model);
+            assert(nn_model_node_count(nn_app_model(app)) == old_nodes);
+            assert(!nn_model_find_node(nn_app_model(app), "spawn-probe"));
+            assert(!nn_model_find_node(nn_app_model(app), "spawn-probe-input"));
+            assert(!nn_model_find_node(nn_app_model(app), "spawn-probe-boundary-out"));
+            assert(!nn_project_dirty(nn_app_project(app)));
+            assert(nn_app_analysis(app, NULL, 0) == old_report);
+        } else {
+            ++succeeded;
+            assert(error[0] == '\0');
+            assert(nn_model_node_count(nn_app_model(app)) == old_nodes + 3);
+            const NNNode *input = nn_model_find_node(nn_app_model(app), "spawn-probe-input");
+            const NNNode *terminal = nn_model_find_node(nn_app_model(app),
+                                                        "spawn-probe-boundary-out");
+            assert(nn_model_find_node(nn_app_model(app), "spawn-probe"));
+            assert(input && !strcmp(input->package_id, "core.input") &&
+                   !strcmp(input->scope_id, "spawn-probe") && input->x == 0 && input->y == 0);
+            assert(terminal && terminal->x == 0 && terminal->y == 240);
+            assert(nn_project_dirty(nn_app_project(app)));
+        }
+    }
+    printf("subflow spawn allocation fail-index sweep: %zu wrapped calls, %zu failed, %zu succeeded\n",
+           count, failed, succeeded);
+}
+
 static void assert_valid_response(const char *response, const char *operation)
 {
     assert(response);
@@ -459,6 +532,7 @@ int main(void)
     sweep_analysis(app);
     sweep_project_open(app);
     sweep_add_node(app);
+    sweep_add_subflow(app);
 
     assert(nn_app_open(app, "examples/mnist-vae", error, sizeof(error)));
     const NNInferenceReport *report = nn_app_analysis(app, error, sizeof(error));

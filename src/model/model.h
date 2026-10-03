@@ -3,8 +3,11 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 
 typedef struct NNModel NNModel;
+
+enum { NN_MODEL_GRID_SPACING = 20 };
 
 #ifdef __cplusplus
 extern "C" {
@@ -43,7 +46,7 @@ typedef struct {
     const char *package_version;
     const char *scope_id;
     const char *boundary_handle_id;
-    double x, y;
+    int32_t x, y;
     const NNParameter *parameters;
     size_t parameter_count;
 } NNNode;

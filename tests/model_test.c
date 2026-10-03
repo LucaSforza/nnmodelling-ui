@@ -1,6 +1,7 @@
 #include "model/model.h"
 
 #include <assert.h>
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -23,8 +24,11 @@ int main(void) {
     assert(add(m, "b", "root"));
     assert(add(m, "c", "root"));
     assert(add(m, "other", "nested"));
+    assert(nn_model_add_node(m, "grid", "grid", "core.layer", "1", "root",
+                             10, -10, error, sizeof(error)));
+    assert(nn_model_find_node(m, "grid")->x == 20 && nn_model_find_node(m, "grid")->y == -20);
     assert(!add(m, "a", "root"));
-    assert(nn_model_node_count(m) == 4);
+    assert(nn_model_node_count(m) == 5);
 
     assert(connect(m, "ab", "a", "out", "b", "in", error));
     assert(connect(m, "bc", "b", "out", "c", "in", error));
@@ -55,14 +59,23 @@ int main(void) {
     assert(nn_model_set_boundary_handle(m, "a", mapping, error, sizeof(error)));
     mapping[0] = 'X';
     assert(!strcmp(nn_model_find_node(m, "a")->boundary_handle_id, "prediction"));
-    assert(nn_model_find_node(m, "a")->x == 12.5);
+    assert(nn_model_find_node(m, "a")->x == 20 && nn_model_find_node(m, "a")->y == 0);
+    assert(!nn_model_move_node(m, "a", NAN, 40, error, sizeof(error)));
+    assert(strstr(error, "finite"));
+    assert(nn_model_find_node(m, "a")->x == 20 && nn_model_find_node(m, "a")->y == 0);
+    assert(!nn_model_move_node(m, "a", 2147483650.0, 40, error, sizeof(error)));
+    assert(strstr(error, "range"));
+    assert(nn_model_find_node(m, "a")->x == 20 && nn_model_find_node(m, "a")->y == 0);
+    assert(!nn_model_add_node(m, "invalid", "invalid", "core.layer", "1", "root",
+                              0, INFINITY, error, sizeof(error)));
+    assert(nn_model_find_node(m, "invalid") == NULL);
     assert(!strcmp(nn_model_find_node(m, "a")->label, "renamed"));
-    assert(nn_model_node_at(m, 4) == NULL && nn_model_edge_at(m, 2) == NULL);
+    assert(nn_model_node_at(m, 5) == NULL && nn_model_edge_at(m, 2) == NULL);
     const NNNode *borrowed = nn_model_find_node(m, "c");
     assert(borrowed && nn_model_remove_node(m, borrowed->id, error, sizeof(error)));
-    assert(nn_model_node_count(m) == 3 && nn_model_edge_count(m) == 1);
+    assert(nn_model_node_count(m) == 4 && nn_model_edge_count(m) == 1);
     assert(nn_model_remove_node(m, "b", error, sizeof(error)));
-    assert(nn_model_node_count(m) == 2 && nn_model_edge_count(m) == 0);
+    assert(nn_model_node_count(m) == 3 && nn_model_edge_count(m) == 0);
     assert(!nn_model_disconnect(m, "ab", error, sizeof(error)));
 
     nn_model_free(m);

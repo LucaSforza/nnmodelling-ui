@@ -92,8 +92,8 @@ bool nn_project_write_project_document(NNProject *project, char **json, size_t *
         okay = item && position && data && package && params &&
             add_string(doc, item, "id", node->id) && add_string(doc, item, "type", "custom") &&
             yyjson_mut_obj_add_val(doc, item, "position", position) &&
-            yyjson_mut_obj_add_double(doc, position, "x", node->x) &&
-            yyjson_mut_obj_add_double(doc, position, "y", node->y) &&
+            yyjson_mut_obj_add_int(doc, position, "x", node->x) &&
+            yyjson_mut_obj_add_int(doc, position, "y", node->y) &&
             yyjson_mut_obj_add_val(doc, item, "data", data) &&
             add_string(doc, data, "name", node->label) &&
             add_string(doc, data, "scope", node->scope_id) &&

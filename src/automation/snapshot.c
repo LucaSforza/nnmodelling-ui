@@ -88,8 +88,8 @@ yyjson_mut_val *nn_automation_snapshot(yyjson_mut_doc *doc, NNApplication *app)
         if (!item || !params || !package || !nn_automation_json_string(doc, item, "id", n->id) ||
             !nn_automation_json_string(doc, item, "name", n->label) || !nn_automation_json_string(doc, item, "scope", n->scope_id) ||
             !yyjson_mut_obj_add_val(doc, item, "package", package) ||
-            !yyjson_mut_obj_add_double(doc, item, "x", n->x) ||
-            !yyjson_mut_obj_add_double(doc, item, "y", n->y)) return NULL;
+            !yyjson_mut_obj_add_int(doc, item, "x", n->x) ||
+            !yyjson_mut_obj_add_int(doc, item, "y", n->y)) return NULL;
         if (n->boundary_handle_id) {
             if (!nn_automation_json_string(doc, item, "boundaryHandle", n->boundary_handle_id)) return NULL;
         } else if (!yyjson_mut_obj_add_null(doc, item, "boundaryHandle")) return NULL;

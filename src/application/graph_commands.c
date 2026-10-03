@@ -12,6 +12,43 @@
 #include <stdlib.h>
 #include <string.h>
 
+static bool generated_child_id(const NNModel *model, const char *owner_id,
+                               const char *kind, char *result, size_t capacity,
+                               char *error, size_t error_capacity)
+{
+    for (unsigned attempt = 0; attempt < 10000; ++attempt) {
+        int length = attempt
+            ? snprintf(result, capacity, "%s-%s-%u", owner_id, kind, attempt)
+            : snprintf(result, capacity, "%s-%s", owner_id, kind);
+        if (length < 0 || (size_t)length >= capacity)
+            return nn_fail(error, error_capacity, "generated subflow child ID is too long");
+        bool unique = nn_model_find_node(model, result) == NULL;
+        for (size_t i = 0; unique && i < nn_model_edge_count(model); ++i)
+            if (!strcmp(nn_model_edge_at(model, i)->id, result)) unique = false;
+        if (unique) return true;
+    }
+    return nn_fail(error, error_capacity, "unable to generate a unique subflow child ID");
+}
+
+static void rollback_subflow(NNModel *model, const char *owner_id,
+                             char child_ids[][256], size_t child_count)
+{
+    char ignored[64];
+    while (child_count)
+        (void)nn_model_remove_node(model, child_ids[--child_count], ignored, sizeof(ignored));
+    (void)nn_model_remove_node(model, owner_id, ignored, sizeof(ignored));
+}
+
+static bool add_package_defaults(NNApplication *app, NNModel *model,
+                                 const char *id, const NNPackage *package,
+                                 char *error, size_t capacity)
+{
+    for (size_t i = 0; i < package->parameter_count; ++i)
+        if (!nn_app_add_default(app, model, id, package, &package->parameters[i],
+                                error, capacity)) return false;
+    return true;
+}
+
 bool nn_app_add_node(NNApplication *app, const char *id, const char *package_id,
                      const char *version, const char *scope, double x, double y,
                      char *error, size_t cap)
@@ -22,6 +59,11 @@ bool nn_app_add_node(NNApplication *app, const char *id, const char *package_id,
     const NNPackage *package = nn_catalog_find(nn_project_catalog(app->project),
                                                 package_id, version);
     if (!package) return nn_fail(error, cap, "package is not active in this project");
+    const NNCatalog *catalog = nn_project_catalog(app->project);
+    const NNPackage *input_package = nn_app_kind_is(package, "subflow")
+        ? nn_catalog_find(catalog, "core.input", "0.1.0") : NULL;
+    if (nn_app_kind_is(package, "subflow") && !input_package)
+        return nn_fail(error, cap, "required core.input package is unavailable");
     NNModel *model = nn_project_model(app->project);
     if (*scope) {
         const NNNode *owner = nn_model_find_node(model, scope);
@@ -44,64 +86,61 @@ bool nn_app_add_node(NNApplication *app, const char *id, const char *package_id,
         }
     }
     if (nn_app_kind_is(package, "subflow")) {
-        char spawned_ids[2][256] = {{0}};
+        char spawned_ids[3][256] = {{0}};
         size_t spawned = 0;
+        char failure[256] = "";
+        if (!generated_child_id(model, id, "input", spawned_ids[spawned],
+                                sizeof(spawned_ids[spawned]), failure, sizeof(failure))) {
+            rollback_subflow(model, id, spawned_ids, spawned);
+            return nn_fail(error, cap, failure);
+        }
+        if (!nn_model_add_node(model, spawned_ids[spawned], input_package->name,
+                               input_package->id, input_package->version, id, 0, 0,
+                               failure, sizeof(failure))) {
+            rollback_subflow(model, id, spawned_ids, spawned);
+            return nn_fail(error, cap, failure);
+        }
+        ++spawned;
+        if (!add_package_defaults(app, model, spawned_ids[spawned - 1], input_package,
+                                  failure, sizeof(failure))) {
+            rollback_subflow(model, id, spawned_ids, spawned);
+            return nn_fail(error, cap, failure);
+        }
         for (size_t i = 0; i < package->output_count; ++i) {
             const NNOutputDef *output = &package->outputs[i];
             const char *terminal_id = !strcmp(output->type, "loss")
                 ? "core.loss-output" : "core.output";
-            const NNCatalog *catalog = nn_project_catalog(app->project);
             const NNPackage *terminal = nn_catalog_find(catalog, terminal_id, "0.1.0");
-            bool unique = false;
-            bool current_created = false;
-            double terminal_x = x + 220.0;
-            double terminal_y = y + (double)spawned * 100.0;
-            bool position_valid = isfinite(terminal_x) && isfinite(terminal_y);
-            char failure[256] = "";
-            if (!position_valid)
-                nn_error_set(failure, sizeof(failure), "subflow terminal position must be finite");
-            for (unsigned attempt = 0; attempt < 10000 && !unique; ++attempt) {
-                int n = attempt
-                    ? snprintf(spawned_ids[spawned], sizeof(spawned_ids[spawned]),
-                               "%s-boundary-%s-%u", id, output->id, attempt)
-                    : snprintf(spawned_ids[spawned], sizeof(spawned_ids[spawned]),
-                               "%s-boundary-%s", id, output->id);
-                if (n < 0 || (size_t)n >= sizeof(spawned_ids[spawned])) {
-                    nn_error_set(failure, sizeof(failure), "generated subflow terminal ID is too long");
-                    break;
-                }
-                unique = nn_model_find_node(model, spawned_ids[spawned]) == NULL;
-                for (size_t e = 0; unique && e < nn_model_edge_count(model); ++e)
-                    if (!strcmp(nn_model_edge_at(model, e)->id, spawned_ids[spawned])) unique = false;
-            }
+            double terminal_x = 0;
+            double terminal_y = 240.0 + (double)i * 120.0;
+            char kind[256];
+            int kind_length = snprintf(kind, sizeof(kind), "boundary-%s", output->id);
+            bool kind_valid = kind_length >= 0 && (size_t)kind_length < sizeof(kind);
+            bool unique = kind_valid && generated_child_id(
+                model, id, kind, spawned_ids[spawned], sizeof(spawned_ids[spawned]),
+                failure, sizeof(failure));
+            if (!kind_valid) nn_error_set(failure, sizeof(failure), "generated subflow terminal ID is too long");
             if (!terminal && !failure[0])
                 nn_error_set(failure, sizeof(failure), "required boundary package is unavailable");
             if (!unique && !failure[0])
                 nn_error_set(failure, sizeof(failure), "unable to generate a unique subflow terminal ID");
-            if (!position_valid && !failure[0])
-                nn_error_set(failure, sizeof(failure), "subflow terminal position must be finite");
-            bool ready = terminal && unique && position_valid;
+            bool ready = terminal && unique;
             if (ready) {
                 bool added = nn_model_add_node(model, spawned_ids[spawned], output->id,
                                                terminal->id, terminal->version, id,
                                                terminal_x, terminal_y,
                                                failure, sizeof(failure));
-                current_created = added;
+                if (added) ++spawned;
                 bool mapped = added && nn_model_set_boundary_handle(
-                    model, spawned_ids[spawned], output->id, failure, sizeof(failure));
+                    model, spawned_ids[spawned - 1], output->id, failure, sizeof(failure));
                 ready = added && mapped;
             }
             if (!ready) {
-                char ignored[64];
-                if (current_created)
-                    (void)nn_model_remove_node(model, spawned_ids[spawned], ignored, sizeof(ignored));
-                while (spawned) (void)nn_model_remove_node(model, spawned_ids[--spawned], ignored, sizeof(ignored));
-                (void)nn_model_remove_node(model, id, ignored, sizeof(ignored));
+                rollback_subflow(model, id, spawned_ids, spawned);
                 if (!failure[0])
                     nn_error_set(failure, sizeof(failure), "unable to spawn subflow output terminal");
                 return nn_fail(error, cap, failure);
             }
-            ++spawned;
         }
     }
     nn_project_mark_dirty(app->project);

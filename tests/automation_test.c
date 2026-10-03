@@ -64,6 +64,14 @@ int main(void)
     dispatch(app, "{\"operation\":\"node.add\",\"args\":{\"id\":\"relu\",\"package\":\"core.relu\",\"version\":\"0.1.0\"}}", true);
     dispatch(app, "{\"operation\":\"node.move\",\"args\":{\"id\":\"relu\",\"x\":\"bad\",\"y\":2}}", false);
     assert(nn_model_find_node(nn_app_model(app), "relu")->x == 0);
+    dispatch(app, "{\"operation\":\"node.move\",\"args\":{\"id\":\"relu\",\"x\":23,\"y\":-12}}", true);
+    assert(nn_model_find_node(nn_app_model(app), "relu")->x == 20);
+    assert(nn_model_find_node(nn_app_model(app), "relu")->y == -20);
+    char *grid_snapshot = nn_automation_dispatch(app,
+        "{\"operation\":\"project.snapshot\",\"args\":{}}", NULL, NULL);
+    assert(grid_snapshot && strstr(grid_snapshot, "\"x\":20") &&
+           strstr(grid_snapshot, "\"y\":-20"));
+    free(grid_snapshot);
     dispatch(app, "{\"operation\":\"project.open\",\"args\":{\"path\":\"examples/mnist-vae\"}}", false);
     assert(nn_model_find_node(nn_app_model(app), "relu"));
     dispatch(app, "{\"operation\":\"edge.connect\",\"args\":{\"id\":\"edge\",\"source\":\"input\",\"sourceHandle\":\"out\",\"target\":\"relu\",\"targetHandle\":\"in\"}}", true);

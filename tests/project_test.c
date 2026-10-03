@@ -114,7 +114,7 @@ int main(void)
     char *model = path_join(fixture, "model.json");
     write_file(model,
         "{\"layoutDirection\":\"vertical\",\"nodes\":["
-        "{\"id\":\"n1\",\"type\":\"custom\",\"position\":{\"x\":1,\"y\":2},"
+        "{\"id\":\"n1\",\"type\":\"custom\",\"position\":{\"x\":11,\"y\":-31},"
         "\"data\":{\"package\":{\"id\":\"core.layer\",\"version\":\"1.0\"},"
         "\"scope\":\"\",\"name\":\"one\",\"params\":{\"config\":[true,7,\"x\"]}}},"
         "{\"id\":\"n2\",\"type\":\"custom\",\"position\":{\"x\":3,\"y\":4},"
@@ -133,6 +133,8 @@ int main(void)
     assert(!strcmp(nn_project_active_dataset(project)->name, "Toy data"));
     assert(nn_model_node_count(nn_project_model(project)) == 2);
     assert(nn_model_edge_count(nn_project_model(project)) == 1);
+    assert(nn_model_find_node(nn_project_model(project), "n1")->x == 20);
+    assert(nn_model_find_node(nn_project_model(project), "n1")->y == -40);
     const NNValue *config = &nn_model_find_node(nn_project_model(project), "n1")->parameters[0].value;
     assert(config->type == NN_VALUE_ARRAY && config->as.array.count == 3);
 
@@ -146,6 +148,14 @@ int main(void)
     assert(nn_project_dirty(project));
     assert(nn_project_save(project, error, sizeof(error)));
     assert(!nn_project_dirty(project));
+    FILE *saved_file = fopen(model, "rb");
+    assert(saved_file);
+    char saved_json[16384];
+    size_t saved_length = fread(saved_json, 1, sizeof(saved_json) - 1, saved_file);
+    assert(!ferror(saved_file) && fclose(saved_file) == 0);
+    saved_json[saved_length] = '\0';
+    assert(strstr(saved_json, "\"x\": 40") && strstr(saved_json, "\"y\": 40"));
+    assert(!strstr(saved_json, "\"x\": 40.0"));
 
     char *invalid = path_join(root, "invalid");
     assert(mkdir(invalid, 0755) == 0);
@@ -189,7 +199,7 @@ int main(void)
     assert(nn_model_node_count(nn_project_model(project)) == 2);
     assert(nn_model_edge_count(nn_project_model(project)) == 1);
     const NNNode *saved_node = nn_model_find_node(nn_project_model(project), "n2");
-    assert(saved_node && saved_node->x == 33 && saved_node->y == 44);
+    assert(saved_node && saved_node->x == 40 && saved_node->y == 40);
     assert(saved_node->boundary_handle_id &&
            !strcmp(saved_node->boundary_handle_id, "prediction"));
     config = &nn_model_find_node(nn_project_model(project), "n1")->parameters[1].value;

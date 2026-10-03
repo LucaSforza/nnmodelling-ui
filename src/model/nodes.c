@@ -2,8 +2,29 @@
 #include "model_utils.h"
 #include "utils/utils.h"
 
+#include <math.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+
+static bool normalize_position(double x, double y, int32_t *normalized_x,
+                               int32_t *normalized_y, char *error, size_t cap) {
+    if (!isfinite(x) || !isfinite(y))
+        return nn_fail(error, cap, "node position must be finite");
+
+    const double min_grid = (double)(INT32_MIN / NN_MODEL_GRID_SPACING);
+    const double max_grid = (double)(INT32_MAX / NN_MODEL_GRID_SPACING);
+    double grid_x = round(x / NN_MODEL_GRID_SPACING);
+    double grid_y = round(y / NN_MODEL_GRID_SPACING);
+    if (!isfinite(grid_x) || !isfinite(grid_y) ||
+        grid_x < min_grid || grid_x > max_grid ||
+        grid_y < min_grid || grid_y > max_grid)
+        return nn_fail(error, cap, "node position is outside the supported range");
+
+    *normalized_x = (int32_t)grid_x * NN_MODEL_GRID_SPACING;
+    *normalized_y = (int32_t)grid_y * NN_MODEL_GRID_SPACING;
+    return true;
+}
 
 void nn_model_node_dispose(NNNode *node) {
     free((char *)node->id); free((char *)node->label);
@@ -21,6 +42,9 @@ bool nn_model_add_node(NNModel *model, const char *id, const char *label,
                        const char *package_id, const char *package_version,
                        const char *scope_id, double x, double y,
                        char *error, size_t error_capacity) {
+    int32_t normalized_x, normalized_y;
+    if (!normalize_position(x, y, &normalized_x, &normalized_y, error, error_capacity))
+        return false;
     if (!model || !nn_model_valid_id(id) || !label || !nn_model_valid_id(package_id) ||
         !nn_model_valid_id(package_version) || !scope_id)
         return nn_fail(error, error_capacity, "invalid node fields");
@@ -29,7 +53,8 @@ bool nn_model_add_node(NNModel *model, const char *id, const char *label,
     NNNode node = {0};
     node.id = nn_text_copy(id); node.label = nn_text_copy(label);
     node.package_id = nn_text_copy(package_id); node.package_version = nn_text_copy(package_version);
-    node.scope_id = nn_text_copy(scope_id); node.x = x; node.y = y;
+    node.scope_id = nn_text_copy(scope_id);
+    node.x = normalized_x; node.y = normalized_y;
     if (!node.id || !node.label || !node.package_id || !node.package_version || !node.scope_id ||
         !nn_model_reserve((void **)&model->nodes, &model->node_capacity, model->node_count + 1, sizeof(*model->nodes))) {
         nn_model_node_dispose(&node);
@@ -59,9 +84,11 @@ bool nn_model_remove_node(NNModel *model, const char *id, char *error, size_t ca
 }
 
 bool nn_model_move_node(NNModel *model, const char *id, double x, double y, char *error, size_t cap) {
+    int32_t normalized_x, normalized_y;
+    if (!normalize_position(x, y, &normalized_x, &normalized_y, error, cap)) return false;
     size_t i = nn_model_node_index(model, id);
     if (i == (size_t)-1) return nn_fail(error, cap, "node not found");
-    model->nodes[i].view.x = x; model->nodes[i].view.y = y;
+    model->nodes[i].view.x = normalized_x; model->nodes[i].view.y = normalized_y;
     nn_error_set(error, cap, ""); return true;
 }
 
