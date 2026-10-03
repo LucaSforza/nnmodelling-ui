@@ -29,11 +29,13 @@ classDiagram
       +diagnostics
       +visualResourceDialogs
       +localAutomationCallback
+      +arrangeCurrentScope(direction)
     }
     class GraphScene {
       +scopeId
       +selection
       +connectionDraft
+      +flowDirection : vertical by default
       +refresh()
     }
     MainWindow --> NNApplication : pure C ABI
@@ -79,6 +81,13 @@ Accepted 2026-10-03: boundary PortItems paint visible contrasting rim handles
 at rest and on hover. Their hit regions remain generous; circle rendering does
 not suppress the only discoverable source/target affordance. Graph/model and
 port ID/type ownership are unchanged.
+Direction comes from GraphScene presentation state and is applied to every
+NodeItem/PortItem and edge/draft tangent. Vertical uses top inputs/bottom
+outputs; Horizontal uses left inputs/right outputs. MainWindow computes
+scope-local DAG ranks and commits separated positions through C, then
+GraphView frames content. Toolbar Fit chooses Vertical; Arrange exposes both
+directions. Internal GraphView framing does not mutate positions. Direction
+does not enter the persisted model; positions do.
 
 C owns graph, coordinates and application mutations. Edge endpoints follow
 PortItem scene positions only for rendering. Release commits positions to C;

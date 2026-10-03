@@ -152,6 +152,10 @@ filled boundary circles with outside labels; the small rim handle makes the
 drag origin/target discoverable without changing graph or terminal semantics.
 Use the same generous hit area for visible boundary handles and connection
 release targeting, including at ordinary fit zoom.
+Boundary handles follow the editor's arrangement direction: top inputs and
+bottom outputs by default; left inputs and right outputs for Horizontal.
+Multiple outputs occupy separate ordered rim positions, with their typed
+colors preserved. This supersedes the initial side-only boundary presentation.
 
 Stereotype form includes loss and loss-output kinds and an optional outputs
 override editor with ID/type rows (max one each). Defaults remain visibly

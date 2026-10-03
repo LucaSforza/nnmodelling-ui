@@ -69,6 +69,33 @@ The diagnostics presentation is governed by diagnostics.md: problems only,
 distinct categories, root-cause grouping, scope filtering and node navigation.
 Canvas command rejection opens an English error dialog, not just a status bar.
 
+## Direction and layout
+
+Accepted 2026-10-03 after the user's computer-use review: the default direction
+is vertical, from top to bottom. Every incoming handle, including Output and
+Loss Output circle handles, sits on the top edge/rim; outgoing handles,
+including Input, sit on the bottom edge/rim. Multiple handles keep definition
+order and remain separate. Horizontal arrangement uses incoming handles on
+the left and outgoing handles on the right for all node kinds. Committed and
+draft Bezier curves use tangents matching the selected direction.
+
+The toolbar Fit action arranges the current scope vertically, then frames its
+content. Arrange exposes explicit Vertical and Horizontal choices; either
+choice arranges and frames the scope using matching handles. Arrangement is
+deterministic and topology-aware: DAG depth orders connected nodes along the
+flow axis, branches occupy separate lanes, and disconnected terminal
+collectors follow the computational ranks. Node dimensions and spacing prevent
+overlap. It never changes edges, handle IDs, tensor semantics or other scopes.
+Positions are committed through NNApplication and saved normally. Direction
+is Qt presentation state, defaults to vertical when opening a project, and
+survives refresh/scope navigation during that window session; no model schema
+or C ABI field is added. Internal framing on open/navigation remains camera-only.
+
+Camera fitting uses the content bounds with margin, recenters after the final
+scale is applied, and must not clip large graphs through a minimum zoom clamp.
+Empty scopes fit harmlessly. Interactive wheel zoom remains positive and
+bounded, including when Fit produced a scale below the normal wheel minimum.
+
 Wheel zoom is bounded using the actual next/current scale ratio and anchored to
 the wheel event's viewport position with native QGraphicsView mapping/transforms,
 not global cursor state (which is unavailable in offscreen tests). This is Qt

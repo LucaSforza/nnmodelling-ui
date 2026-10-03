@@ -57,7 +57,7 @@ sequenceDiagram
     participant App as Application
     participant Model
     participant Types as Lua type analysis
-    Editor-->>User: Visible contrasting boundary rim handles, hover cue
+    Editor-->>User: Visible contrasting handles aligned to flow direction, hover cue
     User->>Editor: drag source output to target input
     Note over User,Editor: Visible PortItem and generous hit region identify the same handle
     Editor->>App: connect(source, sourceHandle, target, targetHandle)
@@ -72,6 +72,27 @@ sequenceDiagram
       Model-->>App: structural error, no mutation
       App-->>Editor: error
     end
+```
+
+## Fit and arrange scope
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Window as MainWindow
+    participant Scene as GraphScene
+    participant App as C NNApplication
+    participant View as GraphView
+    User->>Window: Fit or Arrange(Vertical/Horizontal)
+    Note over Window: Fit always chooses Vertical
+    Window->>Scene: set presentation direction
+    Window->>App: read current-scope nodes and edges
+    Window->>Window: deterministic DAG ranks and spaced lanes
+    Window->>App: move nodes using copied stable IDs
+    App-->>Window: committed positions or visible error
+    Window->>Scene: refresh matching handles and edge tangents
+    Window->>View: frame content with margin and final centering
+    Note over App,Scene: Positions persist; direction is session presentation state
 ```
 
 ## Edit parameter
