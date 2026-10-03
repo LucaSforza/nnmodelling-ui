@@ -45,6 +45,22 @@ New child creation requires an existing package-kind subflow scope. Deleting a
 nonempty subflow fails visibly until children are removed, preventing orphaning.
 Join inputs expose existing numerically ordered in-N handles and the first free
 positive slot (at least two initially); C generates and validates these IDs.
+Accepted 2026-10-03 from the user's Add screenshot: every package with
+kind=join uses a dark junction bar, ordered inputs on its receiving side and
+typed outputs on its outgoing side, with its name outside the bar. This is
+kind-driven, never an Add/Concat/Fork package-ID special case. Vertical flow
+uses a horizontal bar with inputs above and outputs below; horizontal leftward
+flow rotates the junction geometry with inputs on the right and outputs left.
+Place visible minus/plus buttons beside the bar. Plus exposes one additional
+free in-N slot; minus removes only the highest displayed free slot, keeping at
+least two and every occupied handle. Disable minus if reduction would hide an
+occupied handle, and disable plus at 128 displayed inputs. Existing occupied
+handles remain visible even beyond that authoring bound. Additional empty slots
+are Qt editing state retained by node ID across refresh/scope navigation, not
+new graph edges or a new model field; connected handles persist through normal
+edges. C remains final connection validator. Name, schema parameter editing,
+typed colors, selection, drag and problem markers remain available; controls
+must not begin a node drag or connection and refresh is queued after events.
 
 ## Appearance and interaction
 

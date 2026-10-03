@@ -116,6 +116,22 @@ sequenceDiagram
     App-->>Scene: refresh committed positions
 ```
 
+## Adjust visible join slots
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Join as kind=join NodeItem
+    participant Scene as GraphScene
+    participant App as C NNApplication
+    User->>Join: click adjacent + or -
+    Join->>Scene: request visible free-input count adjustment
+    Scene->>App: inspect occupied handles
+    Scene->>Scene: retain occupied handles, minimum two, queued refresh
+    Scene-->>User: junction bar with ordered visible PortItems
+    Note over App,Scene: Empty-slot controls create/delete no edges; C validates later connections
+```
+
 ## Edit parameter
 
 ```mermaid

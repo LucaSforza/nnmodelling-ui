@@ -190,6 +190,9 @@ subflow node ID for children; Qt scope navigation never changes containment.
 
 Use explicit structs and IDs; `NodeKind` discriminates only topology, while
 package ID selects definition data, never a switch over concrete packages.
+In Qt, kind=join selects the junction bar and generic +/- empty-input-slot
+controls; graph edges retain occupied in-N handles, while extra empty slots are
+editor state. No package-ID special case or fork-output semantic change.
 Optional nested graph and tagged primitive parameter values replace UML
 inheritance. `Connection` stores IDs, not raw node pointers. `Handle` is
 definition data. The application owns model storage and catalog lifetime.
