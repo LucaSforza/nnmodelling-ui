@@ -63,5 +63,10 @@ returns a fresh tensor retaining shape and replacing dtype with a nonempty
 string. Invalid tensor/arguments/rank return nil plus an English error; neither
 helper mutates its input. Both run inside the existing protected bounded Lua
 state and preserve host allocation-failure reporting and temporary ownership.
+`tensor.equal(first,second)`, used by the preserved core Add rule, compares
+dtype, rank and corresponding dimension values exactly (numeric dimensions
+compare by their integer value; symbolic dimensions by text), returning a
+boolean or nil/error for invalid tensors. It performs no broadcasting or
+numerical tensor comparison and never mutates either argument.
 No numerical embedding/cast or model mutation is introduced. Core package
 rules remain unchanged; the host must supply these declared primitives.
