@@ -144,6 +144,15 @@ edges/arrows are black/output or red/loss; drafts follow source classification.
 Selection/hover must not erase classification (use a separate halo/outline).
 Other nodes retain card/parameter/subflow design.
 
+Accepted 2026-10-03 after a computer-use trial: boundary connection handles
+must remain visible on the circle rim at rest, with contrasting backing/outline
+against the filled boundary and a hover cue. Do not hide a PortItem's glyph
+while retaining an invisible hit region. Keep Input/Output/Loss Output as
+filled boundary circles with outside labels; the small rim handle makes the
+drag origin/target discoverable without changing graph or terminal semantics.
+Use the same generous hit area for visible boundary handles and connection
+release targeting, including at ordinary fit zoom.
+
 Stereotype form includes loss and loss-output kinds and an optional outputs
 override editor with ID/type rows (max one each). Defaults remain visibly
 distinguished from explicit choices. Terminal forms allow no outputs only.

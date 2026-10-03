@@ -61,7 +61,11 @@ Show package identity/details in inspector. Subflows
 must look like containers and remain distinguishable from ordinary layers.
 Use Qt font metrics, clipping, high-DPI support and events directly, without a
 new event dispatch or drawing abstraction. All errors stay visible.
-The diagnostics presentation is now governed by diagnostics.md: problems only,
+Accepted 2026-10-03: terminal circles retain visible contrasting rim handles
+and hover cues per typed-outputs.md; invisible connection hit regions are not
+an acceptable substitute for discoverable mouse targets.
+
+The diagnostics presentation is governed by diagnostics.md: problems only,
 distinct categories, root-cause grouping, scope filtering and node navigation.
 Canvas command rejection opens an English error dialog, not just a status bar.
 

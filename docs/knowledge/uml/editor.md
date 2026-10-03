@@ -75,6 +75,10 @@ title; Qt copies text and adapts port positions to height. Boundary kinds render
 filled black/brown/red circles with outside labels, not cards. Ports copy
 C-resolved output/loss classification; fanout/drafts follow source black/red,
 with selection halos separate from that classification.
+Accepted 2026-10-03: boundary PortItems paint visible contrasting rim handles
+at rest and on hover. Their hit regions remain generous; circle rendering does
+not suppress the only discoverable source/target affordance. Graph/model and
+port ID/type ownership are unchanged.
 
 C owns graph, coordinates and application mutations. Edge endpoints follow
 PortItem scene positions only for rendering. Release commits positions to C;
