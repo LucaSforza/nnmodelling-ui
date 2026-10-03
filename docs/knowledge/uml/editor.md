@@ -87,7 +87,9 @@ Direction comes from GraphScene presentation state and is applied to every
 NodeItem/PortItem and edge/draft tangent. Vertical uses top inputs/bottom
 outputs; Horizontal flows left using right inputs/left outputs. MainWindow computes
 scope-local DAG ranks and commits separated positions through C, then
-GraphView frames content. Toolbar Fit chooses Vertical; Arrange exposes both
+GraphView frames content. Toolbar Fit chooses Vertical and focuses the first
+Input near the viewport top at readable scale; without Input it frames content.
+Arrange exposes both
 directions. Internal GraphView framing does not mutate positions. Direction
 does not enter the persisted model; positions do.
 GraphView paints the 20-unit grid and exposes centered Zoom In/Out. NodeItem

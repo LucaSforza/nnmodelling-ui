@@ -91,7 +91,11 @@ sequenceDiagram
     Window->>App: move nodes using copied stable IDs
     App-->>Window: committed positions or visible error
     Window->>Scene: refresh matching handles and edge tangents
-    Window->>View: frame content with margin and final centering
+    alt Fit and Input exists
+      Window->>View: focus first Input near top with readable scale
+    else Arrange or no Input
+      Window->>View: frame content with margin and final centering
+    end
     Note over App,Scene: Positions persist; direction is session presentation state
 ```
 

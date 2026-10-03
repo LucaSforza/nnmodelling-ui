@@ -79,8 +79,12 @@ order and remain separate. Horizontal arrangement flows towards the left:
 incoming handles on the right and outgoing handles on the left for all node kinds. Committed and
 draft Bezier curves use tangents matching the selected direction.
 
-The toolbar Fit action arranges the current scope vertically, then frames its
-content. Arrange exposes explicit Vertical and Horizontal choices; either
+The toolbar Fit action arranges the current scope vertically, then navigates
+to its first Input in stable model order. Accepted user refinement 2026-10-03:
+Input must be visible near the top of the viewport with readable scale (at
+least 0.7 scene-to-viewport scale), so a long graph may extend below the view.
+If no Input exists, Fit frames the scope content instead. Arrange exposes
+explicit Vertical and Horizontal choices; either
 choice arranges and frames the scope using matching handles. Arrangement is
 deterministic and topology-aware: DAG depth orders connected nodes along the
 flow axis, branches occupy separate lanes, and disconnected terminal
@@ -91,7 +95,7 @@ is Qt presentation state, defaults to vertical when opening a project, and
 survives refresh/scope navigation during that window session; no model schema
 or C ABI field is added. Internal framing on open/navigation remains camera-only.
 
-Camera fitting uses the content bounds with margin, recenters after the final
+Content framing (Arrange and internal framing) uses bounds with margin, recenters after the final
 scale is applied, and must not clip large graphs through a minimum zoom clamp.
 Empty scopes fit harmlessly. Interactive wheel zoom remains positive and
 bounded, including when Fit produced a scale below the normal wheel minimum.
