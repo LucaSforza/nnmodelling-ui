@@ -117,8 +117,7 @@ void GraphScene::refresh() {
     if (projectIdentity_ != activeProject) {
         projectIdentity_ = activeProject;
         flowDirection_ = FlowDirection::Vertical;
-        joinInputHandles_.clear();
-        suppressedJoinInputs_.clear();
+        explicitJoinInputHandles_.clear();
         occupiedJoinInputs_.clear();
     }
     refreshing_ = true;
@@ -210,24 +209,12 @@ void GraphScene::refresh() {
                         handles.append(QString::fromUtf8(package->outputs[index].id));
             } else if (join) {
                 const QStringList occupied = occupiedJoinInputs_.value(data.id);
-                const QStringList suppressed = suppressedJoinInputs_.value(data.id);
-                auto appendIfVisible = [&handles, &occupied, &suppressed](const QString &handle) {
-                    if ((occupied.contains(handle) || !suppressed.contains(handle)) &&
-                        !handles.contains(handle)) handles.append(handle);
-                };
-                for (const QString &handle : joinInputHandles_.value(data.id))
-                    appendIfVisible(handle);
-                for (const QString &handle : occupied) appendIfVisible(handle);
-                const size_t count = nn_app_port_count(application_, nodeId.constData(), false);
-                for (size_t index = 0; index < count; ++index) {
-                    char handle[128] = {};
-                    if (nn_app_port_id(application_, nodeId.constData(), false, index,
-                                       handle, sizeof(handle))) appendIfVisible(QString::fromUtf8(handle));
-                }
-                for (int number = 1; handles.size() < 2; ++number)
-                    appendIfVisible(QStringLiteral("in-%1").arg(number));
+                handles = {QStringLiteral("in-1"), QStringLiteral("in-2")};
+                for (const QString &handle : explicitJoinInputHandles_.value(data.id))
+                    if (!handles.contains(handle)) handles.append(handle);
+                for (const QString &handle : occupied)
+                    if (!handles.contains(handle)) handles.append(handle);
                 sortInputHandles(&handles);
-                joinInputHandles_[data.id] = handles;
             } else {
                 const size_t count = nn_app_port_count(application_, nodeId.constData(), false);
                 for (size_t index = 0; index < count; ++index) {
@@ -476,9 +463,14 @@ void GraphScene::beginConnection(PortItem *port) {
 }
 
 void GraphScene::adjustJoinInputSlots(const QString &nodeId, bool add) {
-    QStringList handles = joinInputHandles_.value(nodeId);
-    if (handles.isEmpty()) return;
+    NodeItem *item = nodes_.value(nodeId, nullptr);
+    if (!item) return;
+    QStringList handles;
+    for (PortItem *port : item->ports())
+        if (!port->isOutput()) handles.append(port->handleId());
+    sortInputHandles(&handles);
     const QStringList occupied = occupiedJoinInputs_.value(nodeId);
+    QStringList explicitHandles = explicitJoinInputHandles_.value(nodeId);
     if (add) {
         if (handles.size() >= 128) return;
         quint64 number = 1;
@@ -486,15 +478,14 @@ void GraphScene::adjustJoinInputSlots(const QString &nodeId, bool add) {
         do {
             candidate = QStringLiteral("in-%1").arg(number++);
         } while (handles.contains(candidate) || occupied.contains(candidate));
-        handles.append(candidate);
-        suppressedJoinInputs_[nodeId].removeAll(candidate);
+        explicitHandles.append(candidate);
     } else {
         if (handles.size() <= 2 || occupied.contains(handles.last())) return;
         const QString removed = handles.takeLast();
-        suppressedJoinInputs_[nodeId].append(removed);
+        if (!explicitHandles.removeOne(removed)) return;
     }
-    sortInputHandles(&handles);
-    joinInputHandles_[nodeId] = handles;
+    sortInputHandles(&explicitHandles);
+    explicitJoinInputHandles_[nodeId] = explicitHandles;
     scheduleRefresh();
 }
 

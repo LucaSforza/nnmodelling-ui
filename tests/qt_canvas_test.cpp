@@ -28,6 +28,7 @@ class QtCanvasTest final : public QObject {
     Q_OBJECT
 private:
     std::unique_ptr<QTemporaryDir> directory_;
+    QByteArray projectPath_;
     NNApplication *application_ = nullptr;
     GraphScene *scene_ = nullptr;
     GraphView *view_ = nullptr;
@@ -65,6 +66,7 @@ private slots:
         const QByteArray parent = directory_->path().toUtf8();
         const QByteArray projectId = (QStringLiteral("canvas-") +
             QUuid::createUuid().toString(QUuid::WithoutBraces)).toUtf8();
+        projectPath_ = (directory_->path() + QLatin1Char('/') + QString::fromUtf8(projectId)).toUtf8();
         char error[512] = {};
         QVERIFY2(nn_app_create(application_, parent.constData(), projectId.constData(), "Canvas", false,
                                error, sizeof(error)), error);
@@ -490,15 +492,14 @@ private slots:
         scene_->refresh();
         NodeItem *join = scene_->nodeItem(QStringLiteral("custom-join"));
         QVERIFY(join);
-        QCOMPARE(join->ports().size(), 4);
+        QCOMPARE(join->ports().size(), 3);
         QVERIFY(join->boundingRect().contains(join->joinAddControlRect()));
         QVERIFY(join->boundingRect().contains(join->joinRemoveControlRect()));
         QVERIFY(join->joinRemoveControlRect().center().x() < join->joinAddControlRect().center().x());
-        PortItem *joinInputThree = nullptr;
+        QStringList visibleInputs;
         for (PortItem *port : join->ports())
-            if (!port->isOutput() && port->handleId() == QStringLiteral("in-3")) joinInputThree = port;
-        QVERIFY(joinInputThree);
-        QVERIFY(joinInputThree->y() < join->boundingRect().center().y());
+            if (!port->isOutput()) visibleInputs.append(port->handleId());
+        QCOMPARE(visibleInputs, QStringList({QStringLiteral("in-1"), QStringLiteral("in-2")}));
         QImage junctionImage(join->boundingRect().size().toSize(), QImage::Format_ARGB32_Premultiplied);
         junctionImage.fill(Qt::transparent);
         QPainter junctionPainter(&junctionImage);
@@ -514,28 +515,51 @@ private slots:
         pumpEvents();
         join = scene_->nodeItem(QStringLiteral("custom-join"));
         QVERIFY(join);
-        PortItem *joinInputFour = nullptr;
+        PortItem *joinInputThree = nullptr;
         for (PortItem *port : join->ports())
-            if (!port->isOutput() && port->handleId() == QStringLiteral("in-4")) joinInputFour = port;
-        QVERIFY(joinInputFour);
+            if (!port->isOutput() && port->handleId() == QStringLiteral("in-3")) joinInputThree = port;
+        QVERIFY(joinInputThree);
+        QCOMPARE(join->ports().size(), 4);
+        scene_->refresh();
+        join = scene_->nodeItem(QStringLiteral("custom-join"));
+        QVERIFY(std::any_of(join->ports().cbegin(), join->ports().cend(), [](PortItem *port) {
+            return !port->isOutput() && port->handleId() == QStringLiteral("in-3");
+        }));
 
         PortItem *sourceOutput = nullptr;
         for (PortItem *port : scene_->nodeItem(QStringLiteral("source"))->ports())
             if (port->isOutput()) sourceOutput = port;
         QVERIFY(sourceOutput);
+        joinInputThree = nullptr;
+        for (PortItem *port : scene_->nodeItem(QStringLiteral("custom-join"))->ports())
+            if (!port->isOutput() && port->handleId() == QStringLiteral("in-3")) joinInputThree = port;
+        QVERIFY(joinInputThree);
         const QPoint start = view_->mapFromScene(sourceOutput->scenePos());
-        const QPoint end = view_->mapFromScene(joinInputFour->scenePos());
+        const QPoint end = view_->mapFromScene(joinInputThree->scenePos());
         QTest::mousePress(view_->viewport(), Qt::LeftButton, Qt::NoModifier, start);
         QTest::mouseMove(view_->viewport(), end, 30);
         QTest::mouseRelease(view_->viewport(), Qt::LeftButton, Qt::NoModifier, end);
         pumpEvents();
         QCOMPARE(nn_model_edge_count(nn_app_model(application_)), size_t(3));
-        bool connectedFour = false;
+        bool connectedThree = false;
         for (size_t i = 0; i < nn_model_edge_count(nn_app_model(application_)); ++i) {
             const NNEdge *edge = nn_model_edge_at(nn_app_model(application_), i);
-            connectedFour |= edge && QString::fromUtf8(edge->target_handle_id) == QStringLiteral("in-4");
+            connectedThree |= edge && QString::fromUtf8(edge->target_handle_id) == QStringLiteral("in-3");
         }
-        QVERIFY(connectedFour);
+        QVERIFY(connectedThree);
+        join = scene_->nodeItem(QStringLiteral("custom-join"));
+        QCOMPARE(join->ports().size(), 4);
+        QVERIFY(std::none_of(join->ports().cbegin(), join->ports().cend(), [](PortItem *port) {
+            return !port->isOutput() && port->handleId() == QStringLiteral("in-4");
+        }));
+
+        const QPoint addFourth = view_->mapFromScene(join->mapToScene(join->joinAddControlRect().center()));
+        QTest::mouseClick(view_->viewport(), Qt::LeftButton, Qt::NoModifier, addFourth);
+        pumpEvents();
+        join = scene_->nodeItem(QStringLiteral("custom-join"));
+        QVERIFY(std::any_of(join->ports().cbegin(), join->ports().cend(), [](PortItem *port) {
+            return !port->isOutput() && port->handleId() == QStringLiteral("in-4");
+        }));
 
         scene_->setFlowDirection(FlowDirection::Horizontal);
         join = scene_->nodeItem(QStringLiteral("custom-join"));
@@ -553,23 +577,57 @@ private slots:
         QTest::mouseClick(view_->viewport(), Qt::LeftButton, Qt::NoModifier, remove);
         pumpEvents();
         join = scene_->nodeItem(QStringLiteral("custom-join"));
-        bool retainedOne = false, retainedFour = false, exposedFive = false;
+        bool retainedOne = false, retainedThree = false, exposedFour = false;
         for (PortItem *port : join->ports()) {
             if (port->isOutput()) continue;
             retainedOne |= port->handleId() == QStringLiteral("in-1");
-            retainedFour |= port->handleId() == QStringLiteral("in-4");
-            exposedFive |= port->handleId() == QStringLiteral("in-5");
+            retainedThree |= port->handleId() == QStringLiteral("in-3");
+            exposedFour |= port->handleId() == QStringLiteral("in-4");
         }
-        QVERIFY(retainedOne && retainedFour);
-        QVERIFY(!exposedFive);
-        QVERIFY(join->joinRemoveControlRect().isValid());
+        QVERIFY(retainedOne && retainedThree);
+        QVERIFY(!exposedFour);
         QTest::mouseClick(view_->viewport(), Qt::LeftButton, Qt::NoModifier,
             view_->mapFromScene(join->mapToScene(join->joinRemoveControlRect().center())));
         pumpEvents();
         join = scene_->nodeItem(QStringLiteral("custom-join"));
         QVERIFY(std::any_of(join->ports().cbegin(), join->ports().cend(), [](PortItem *port) {
-            return !port->isOutput() && port->handleId() == QStringLiteral("in-4");
+            return !port->isOutput() && port->handleId() == QStringLiteral("in-3");
         }));
+
+        QByteArray thirdEdgeId;
+        for (size_t i = 0; i < nn_model_edge_count(nn_app_model(application_)); ++i) {
+            const NNEdge *edge = nn_model_edge_at(nn_app_model(application_), i);
+            if (edge && QString::fromUtf8(edge->target_handle_id) == QStringLiteral("in-3"))
+                thirdEdgeId = edge->id;
+        }
+        QVERIFY(!thirdEdgeId.isEmpty());
+        QVERIFY2(nn_app_disconnect(application_, thirdEdgeId.constData(), error, sizeof(error)), error);
+        scene_->refresh();
+        join = scene_->nodeItem(QStringLiteral("custom-join"));
+        QTest::mouseClick(view_->viewport(), Qt::LeftButton, Qt::NoModifier,
+            view_->mapFromScene(join->mapToScene(join->joinRemoveControlRect().center())));
+        pumpEvents();
+        join = scene_->nodeItem(QStringLiteral("custom-join"));
+        QCOMPARE(join->ports().size(), 3);
+        QVERIFY(std::none_of(join->ports().cbegin(), join->ports().cend(), [](PortItem *port) {
+            return !port->isOutput() && port->handleId() == QStringLiteral("in-3");
+        }));
+        const QPoint addAgain = view_->mapFromScene(join->mapToScene(join->joinAddControlRect().center()));
+        QTest::mouseClick(view_->viewport(), Qt::LeftButton, Qt::NoModifier, addAgain);
+        pumpEvents();
+        join = scene_->nodeItem(QStringLiteral("custom-join"));
+        QVERIFY(std::any_of(join->ports().cbegin(), join->ports().cend(), [](PortItem *port) {
+            return !port->isOutput() && port->handleId() == QStringLiteral("in-3");
+        }));
+        QVERIFY2(nn_app_save(application_, error, sizeof(error)), error);
+        QVERIFY2(nn_app_open(application_, projectPath_.constData(), error, sizeof(error)), error);
+        scene_->refresh();
+        join = scene_->nodeItem(QStringLiteral("custom-join"));
+        QCOMPARE(join->ports().size(), 3);
+        QVERIFY(std::none_of(join->ports().cbegin(), join->ports().cend(), [](PortItem *port) {
+            return !port->isOutput() && port->handleId() == QStringLiteral("in-3");
+        }));
+        QCOMPARE(nn_model_edge_count(nn_app_model(application_)), size_t(2));
     }
 
     void terminalRimPortsFollowBothDirections() {

@@ -68,8 +68,7 @@ private:
     QHash<QString, NodeItem *> nodes_;
     QHash<QString, EdgeItem *> edges_;
     QHash<QString, QString> problemCategories_;
-    QHash<QString, QStringList> joinInputHandles_;
-    QHash<QString, QStringList> suppressedJoinInputs_;
+    QHash<QString, QStringList> explicitJoinInputHandles_;
     QHash<QString, QStringList> occupiedJoinInputs_;
     PortItem *draftSource_ = nullptr;
     QGraphicsPathItem *draftPath_ = nullptr;
