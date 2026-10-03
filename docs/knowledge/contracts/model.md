@@ -35,7 +35,8 @@ Accepted 2026-09-30 additions and exact C ABI: see
 [resource authoring](resource-authoring.md). Parameters additionally carry
 optional top/bottom presentation position; nested scopes now have bounded
 typed per-handle inference per typed-outputs.md, without cross-scope edges or
-compiler changes. Subflow creation atomically spawns its declared terminals.
+compiler changes. Subflow creation atomically spawns one inherited Input and
+its declared terminals per typed-outputs.md.
 
 | Operation | Parameters and result | Mutation/failure |
 | --- | --- | --- |

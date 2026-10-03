@@ -41,7 +41,7 @@ sequenceDiagram
     App->>Catalog: resolve definition + defaults
     App->>Model: validate and insert node
     opt kind=subflow
-      App->>Model: insert mapped terminal per declared output atomically
+      App->>Model: insert one inherited Input and mapped terminal per declared output atomically
     end
     Model-->>App: NodeId or error
     App->>Types: invalidate dependent region

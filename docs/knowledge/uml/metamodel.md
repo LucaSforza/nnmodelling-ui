@@ -144,6 +144,8 @@ classDiagram
 Accepted 2026-10-01: a subflow's single Input inherits owner tensor; mapped
 typed terminals supply keyed owner outputs through services.infer_subflow.
 Nested inference follows typed-outputs.md and includes hidden children.
+Creating a subflow seeds one immediate Input and each mapped terminal atomically,
+with scope-local integer grid positions; no edges or existing-scope repair.
 
 `Graph.connect(s,sh,t,th) -> Result<EdgeId>` requires both nodes in graph,
 source/output and target/input handles on those nodes, equal immediate scope,

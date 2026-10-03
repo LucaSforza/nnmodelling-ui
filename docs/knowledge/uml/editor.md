@@ -67,6 +67,8 @@ Problem navigation, cause grouping and C report ownership follow
 contracts/diagnostics.md and the analysis sequence in sequences.md.
 Typed output forms, spawned subflow terminals, mapped boundaries and circles
 follow contracts/typed-outputs.md and metamodel.md (2026-10-01).
+Accepted 2026-10-03: a new subflow seeds exactly one Input along with its mapped
+terminals in the same C transaction; Qt refresh displays all children on entry.
 
 ## Graphics and report lifetimes
 

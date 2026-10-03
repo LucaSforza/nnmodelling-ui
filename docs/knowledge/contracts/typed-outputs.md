@@ -57,9 +57,14 @@ Incomplete graphs remain editable/saveable: do not force completion at open,
 node removal or every mutation. Invalid handle/type edges do fail before commit
 and on project load, including resource candidate validation.
 
-Adding a subflow atomically adds its owner and one immediate terminal per resolved
-output, using core.output/core.loss-output by type. It does not create internal
-Input or internal edges: designers build those. Spawned IDs are generated stable
+Adding a subflow atomically adds its owner, exactly one immediate core.input,
+and one immediate terminal per resolved output, using core.output/core.loss-output
+by type. Accepted 2026-10-03: Input is mandatory for inherited analysis and is
+seeded automatically, superseding the earlier manual Input requirement. It has
+the normal package defaults; its tensor comes from the owner, not a root dataset
+binding. No internal edges are created: designers build those. Child positions
+are scope-local grid positions, Input at (0,0), terminals at (0,240+120*index).
+Spawned IDs are generated stable
 IDs, labels use output IDs, positions are scope-local. Rollback leaves no owner,
 children, dirty change or analysis invalidation on failure. No automatic repair
 on open or analysis. Designers can inspect/edit terminal mappings.
