@@ -80,7 +80,7 @@ CLI integration. Subflow navigation remains scope-local; recursive type analysis
 now delegates through the existing Proxy Lua rule.
 
 Use white canvas, light gray dock panels, compact text, restrained blue accents,
-colored computational cards and directed Bezier connections. Boundary circles
+colored computational cards and directed orthogonal connections. Boundary circles
 and typed output/edge colors override package colors per typed-outputs.md.
 Show package identity/details in inspector. Subflows
 must look like containers and remain distinguishable from ordinary layers.
@@ -101,24 +101,56 @@ is vertical, from top to bottom. Every incoming handle, including Output and
 Loss Output circle handles, sits on the top edge/rim; outgoing handles,
 including Input, sit on the bottom edge/rim. Multiple handles keep definition
 order and remain separate. Horizontal arrangement flows towards the left:
-incoming handles on the right and outgoing handles on the left for all node kinds. Committed and
-draft Bezier curves use tangents matching the selected direction.
+incoming handles on the right and outgoing handles on the left for all node kinds. Committed and draft connections use only horizontal/vertical segments aligned with the selected port direction.
 
-The toolbar Fit action arranges the current scope vertically, then navigates
-to its first Input in stable model order. Accepted user refinement 2026-10-03:
-Input must be visible near the top of the viewport with readable scale (at
-least 0.7 scene-to-viewport scale), so a long graph may extend below the view.
-If no Input exists, Fit frames the scope content instead. Arrange exposes
-explicit Vertical and Horizontal choices; either
-choice arranges and frames the scope using matching handles. Arrangement is
-deterministic and topology-aware: DAG depth orders connected nodes along the
-flow axis, branches occupy separate lanes, and disconnected terminal
-collectors follow the computational ranks. Node dimensions and spacing prevent
-overlap. It never changes edges, handle IDs, tensor semantics or other scopes.
-Positions are committed through NNApplication and saved normally. Direction
-is Qt presentation state, defaults to vertical when opening a project, and
-survives refresh/scope navigation during that window session; no model schema
-or C ABI field is added. Internal framing on open/navigation remains camera-only.
+Accepted 2026-10-03 editor revision: Fit is camera-only. It first updates routes,
+then frames nodes, labels, inline previews and routed edges with margin. It never
+moves nodes or changes flow direction. Arrange retains Vertical/Horizontal choices,
+uses deterministic DAG ranks, barycentric branch ordering and spaced lanes/corridors,
+commits positions through C, refreshes routes and frames content. Node rectangles
+must not overlap. Direction is session Qt presentation state, default vertical.
+No edge/handle/tensor semantics or other-scope coordinates change.
+
+## Inline previews, tensors and navigation
+
+Expand/collapse and enter are separate actions. Subflow cards expose expand/collapse;
+double-click and an Enter action still navigate scope. Expansion retains current scope,
+shows real immediate children and edges within a labelled boundary and may recursively
+show expanded nested owners. Child items borrow model identity, never create another
+NNModel; graphical offsets only translate scope-local positions. Preview is read-only:
+no drag, selection mutation, edge drafting or join-slot mutation inside it. Hover remains
+available. Expansion IDs survive refresh/navigation during the project session and reset
+on project replacement; deleting an owner removes its expansion state.
+
+Node hover shows all successful C-inferred outputs beside the node: handle name, dtype,
+shape. Terminal consumed tensors may also be shown. Copy report text; retain no borrowed
+report pointers across mutation. Leave hides popup; refresh clears it. No Qt inference.
+This applies to current-scope nodes and preview children. Hover popup is excluded from Fit.
+
+Scope selector uses a real Qt tree/model-view with Root and actual scope_id containment,
+current item highlighted, and refreshed labels/membership after rename/add/remove.
+Imported orphan scopes remain explicitly accessible; malformed/cyclic containment must
+not hang tree building or preview recursion.
+
+Application actions use File, Model and View QMenuBar/QMenu/QAction menus with standard
+shortcuts. File includes template submenu; Save As remains omitted until supported.
+Graph toolbar retains compact scope/fit/zoom/arrange controls without application buttons.
+
+## Orthogonal routing
+
+Routes are explicit Qt editor polylines, separate from painting and C graph semantics.
+Only horizontal/vertical segments and right-angle bends; no Bezier/diagonal connection
+segments. Rectangles including labels and preview boundaries plus a small margin are
+obstacles. Source/target allow only port escape/entry; unrelated interiors are forbidden.
+Route current and preview scopes independently, excluding graphical ancestor boundaries
+from their internal obstacles. Recompute all affected routes on geometry/direction,
+expansion, refresh and drag (including unrelated obstacle movement), before Fit.
+Deterministic rectilinear visibility routing prefers obstacle-free paths first, then
+penalizes shared tracks and crossings, bends and distance. Use parallel tracks where
+space permits. Shared source stems may be unavoidable; crossings show no junction dots.
+If endpoints/obstacles overlap and no safe route exists, omit failed route and expose a
+visible routing diagnostic rather than draw through nodes. Cache remains Qt-only;
+no persistence/schema/C ABI changes.
 
 Content framing (Arrange and internal framing) uses bounds with margin, recenters after the final
 scale is applied, and must not clip large graphs through a minimum zoom clamp.

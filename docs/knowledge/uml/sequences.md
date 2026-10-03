@@ -83,19 +83,19 @@ sequenceDiagram
     participant Scene as GraphScene
     participant App as C NNApplication
     participant View as GraphView
-    User->>Window: Fit or Arrange(Vertical/Horizontal)
-    Note over Window: Fit always chooses Vertical
-    Window->>Scene: set presentation direction
-    Window->>App: read current-scope nodes and edges
-    Window->>Window: deterministic DAG ranks and grid-aligned spaced lanes
-    Window->>App: move nodes using copied stable IDs
-    App-->>Window: committed positions or visible error
-    Window->>Scene: refresh matching handles and edge tangents
-    alt Fit and Input exists
-      Window->>View: focus first Input near top with readable scale
-    else Arrange or no Input
-      Window->>View: frame content with margin and final centering
+    alt Arrange(Vertical/Horizontal)
+      User->>Window: Arrange
+      Window->>Scene: set presentation direction
+      Window->>App: read current-scope nodes and edges
+      Window->>Window: DAG ranks, barycentric lanes, grid-aligned corridors
+      Window->>App: move nodes using copied stable IDs
+      App-->>Window: committed positions or visible error
+      Window->>Scene: refresh handles and obstacle-free orthogonal routes
+    else Fit
+      User->>Window: Fit
+      Window->>Scene: recompute routes only
     end
+    Window->>View: frame nodes, labels, previews and routes with margin
     Note over App,Scene: Positions persist; direction is session presentation state
 ```
 
@@ -319,4 +319,23 @@ sequenceDiagram
     User->>Entry: click problem or ui.reveal(node)
     Entry->>Scene: validate ID, switch scope, queued refresh
     Scene->>Scene: select and center node
+```
+
+## Preview and hover
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Scene as GraphScene
+    participant App as C NNApplication
+    User->>Scene: expand owner
+    Scene->>App: read real scope-local children/edges
+    Scene->>Scene: translated read-only items inside boundary, route internal edges
+    Note over Scene: Current scope and C model unchanged
+    User->>Scene: hover node or preview child
+    Scene->>App: query cached inferred outputs
+    Scene->>Scene: copy handle/dtype/shape into temporary popup
+    User->>Scene: leave
+    Scene->>Scene: hide popup
+    User->>Scene: collapse owner or enter scope separately
 ```

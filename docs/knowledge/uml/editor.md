@@ -50,6 +50,8 @@ classDiagram
     GraphView --> GraphScene
     GraphScene *-- NodeItem
     GraphScene *-- EdgeItem
+    GraphScene --> OrthogonalRouter : rectangles / ports / tracks
+    EdgeItem --> OrthogonalRouter : explicit polyline
     NodeItem *-- PortItem
     MainWindow *-- GraphScene
     GraphScene --> NNApplication : snapshots / mutations
@@ -83,15 +85,15 @@ Accepted 2026-10-03: boundary PortItems paint visible contrasting rim handles
 at rest and on hover. Their hit regions remain generous; circle rendering does
 not suppress the only discoverable source/target affordance. Graph/model and
 port ID/type ownership are unchanged.
-Direction comes from GraphScene presentation state and is applied to every
-NodeItem/PortItem and edge/draft tangent. Vertical uses top inputs/bottom
-outputs; Horizontal flows left using right inputs/left outputs. MainWindow computes
-scope-local DAG ranks and commits separated positions through C, then
-GraphView frames content. Toolbar Fit chooses Vertical and focuses the first
-Input near the viewport top at readable scale; without Input it frames content.
-Arrange exposes both
-directions. Internal GraphView framing does not mutate positions. Direction
-does not enter the persisted model; positions do.
+Direction is GraphScene presentation state: Vertical top/bottom, Horizontal right/left.
+MainWindow arranges DAG ranks with barycentric lane ordering and corridor spacing,
+committing scope-local positions through C. Fit only recomputes routes and frames
+content including labels and expanded boundaries; never commits coordinates.
+GraphScene owns expanded IDs and read-only model-backed preview items, copied tensor
+hover text and route caches. OrthogonalRouter computes explicit polylines from item
+rectangles/port positions and existing tracks; EdgeItem paints them. All affected
+routes update when any obstacle moves. Scope QTreeWidget reflects real containment.
+QMenuBar owns File/Model/View actions; compact toolbar owns graph controls.
 GraphView paints the 20-unit grid and exposes centered Zoom In/Out. NodeItem
 drag previews snap to that grid; NNModel remains final coordinate normalizer.
 NodeItem selects junction-bar presentation by resolved kind=join. GraphScene

@@ -40,3 +40,9 @@ type/ID rejection, source-handle-sensitive tensors, terminal-only compatibility,
 single-input collectors, root completion, transactional subflow terminal spawn,
 mapping persistence/diagnostics, two-output recursion, circle/edge/draft colors,
 output form and CLI parity. Rewrite templates/fixtures; no legacy migration.
+
+Editor revision gate (2026-10-03): orthogonal segment/obstacle tests, unrelated
+node rerouting, hierarchical scopes, camera-only Fit, read-only expansion and
+C-backed multi-output hover. Browser Computer Use through existing .computer-use
+Qt VNC/noVNC integration verifies actual menus, grid, pan/zoom, previews, routing,
+Arrange and Fit. Project-local launch skill owns repeatable bridge lifecycle.
