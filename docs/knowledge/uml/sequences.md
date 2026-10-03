@@ -124,6 +124,9 @@ sequenceDiagram
     participant Join as kind=join NodeItem
     participant Scene as GraphScene
     participant App as C NNApplication
+    Scene->>App: read occupied in-N handles
+    Scene->>Scene: initialize in-1/in-2 plus occupied handles and retained explicit slots
+    Note over Scene: Connecting a slot never automatically adds another empty slot
     User->>Join: click adjacent + or -
     Join->>Scene: request visible free-input count adjustment
     Scene->>App: inspect occupied handles

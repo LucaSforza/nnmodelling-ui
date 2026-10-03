@@ -95,10 +95,12 @@ does not enter the persisted model; positions do.
 GraphView paints the 20-unit grid and exposes centered Zoom In/Out. NodeItem
 drag previews snap to that grid; NNModel remains final coordinate normalizer.
 NodeItem selects junction-bar presentation by resolved kind=join. GraphScene
-retains extra free-input-slot counts by stable node ID and supplies ordered
+starts with in-1/in-2 plus occupied handles, retains explicitly added free
+slots by stable node ID and supplies ordered
 PortItems; adjacent +/- controls change empty-slot presentation only, through
 queued refresh. Occupied handles and typed outputs cannot be removed by these
-controls. Package names/IDs do not select junction behavior.
+controls. Connection/refresh never automatically adds a third empty handle.
+Package names/IDs do not select junction behavior.
 
 C owns graph, coordinates and application mutations. Edge endpoints follow
 PortItem scene positions only for rendering. Release commits positions to C;

@@ -43,15 +43,24 @@ and black/red handles/fanout. No cross-scope edges or compiler are introduced.
 
 New child creation requires an existing package-kind subflow scope. Deleting a
 nonempty subflow fails visibly until children are removed, preventing orphaning.
-Join inputs expose existing numerically ordered in-N handles and the first free
-positive slot (at least two initially); C generates and validates these IDs.
+Join inputs use numerically ordered in-N handles; C generates and validates
+these IDs. Accepted user refinement 2026-10-03: the GUI initially shows exactly
+in-1 and in-2 plus any additional occupied handles. Connecting an input does
+not automatically expose another empty input. Extra empty handles appear only
+through the + control and survive refresh/scope navigation during the session.
+C's dynamic port enumeration may expose a first-free candidate; that candidate
+does not itself increase the GUI's visible slot count.
 Accepted 2026-10-03 from the user's Add screenshot: every package with
-kind=join uses a dark junction bar, ordered inputs on its receiving side and
-typed outputs on its outgoing side, with its name outside the bar. This is
+kind=join uses a dark junction bar without a computational card backing,
+ordered inputs separated from its receiving side and typed outputs separated
+from its outgoing side, with its name below/outside the bar. This is
 kind-driven, never an Add/Concat/Fork package-ID special case. Vertical flow
 uses a horizontal bar with inputs above and outputs below; horizontal leftward
 flow rotates the junction geometry with inputs on the right and outputs left.
-Place visible minus/plus buttons beside the bar. Plus exposes one additional
+In vertical flow place circular minus to the left and plus to the right of
+the bar, matching the supplied reference; in horizontal flow rotate their
+positions above/below the bar. Place parameter rows outside the junction and
+keep contrast against the canvas. Plus exposes one additional
 free in-N slot; minus removes only the highest displayed free slot, keeping at
 least two and every occupied handle. Disable minus if reduction would hide an
 occupied handle, and disable plus at 128 displayed inputs. Existing occupied
