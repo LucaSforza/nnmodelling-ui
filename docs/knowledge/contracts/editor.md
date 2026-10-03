@@ -106,7 +106,7 @@ incoming handles on the right and outgoing handles on the left for all node kind
 Accepted 2026-10-03 editor revision: Fit is camera-only. It first updates routes,
 then frames nodes, labels, inline previews and routed edges with margin. It never
 moves nodes or changes flow direction. Arrange retains Vertical/Horizontal choices,
-uses deterministic DAG ranks, barycentric branch ordering and spaced lanes/corridors,
+uses deterministic DAG ranks, barycentric branch ordering, port-centered lanes and spaced corridors,
 commits positions through C, refreshes routes and frames content. Node rectangles
 must not overlap. Direction is session Qt presentation state, default vertical.
 No edge/handle/tensor semantics or other-scope coordinates change.
@@ -117,7 +117,10 @@ Expand/collapse and enter are separate actions. Subflow cards expose expand/coll
 double-click and an Enter action still navigate scope. Expansion retains current scope,
 shows real immediate children and edges within a labelled boundary and may recursively
 show expanded nested owners. Child items borrow model identity, never create another
-NNModel; graphical offsets only translate scope-local positions. Preview is read-only:
+NNModel; preview geometry uses the same dataflow layout as Arrange, normalized and uniformly
+scaled to a bounded preview area, without persisting child coordinates. Put the
+owner header above its contents; align external ports with the container center.
+Preview is read-only:
 no drag, selection mutation, edge drafting or join-slot mutation inside it. Hover remains
 available. Expansion IDs survive refresh/navigation during the project session and reset
 on project replacement; deleting an owner removes its expansion state.
@@ -169,3 +172,25 @@ the wheel event's viewport position with native QGraphicsView mapping/transforms
 not global cursor state (which is unavailable in offscreen tests). This is Qt
 presentation state only; model coordinates remain unchanged. Native scrollbar
 rounding is tolerated within two scene units by interaction tests.
+
+## Undo and redo (accepted 2026-10-03)
+
+C NNApplication owns one bounded, project-local graph edit history (100 edits).
+Graph add/remove (including incident edges and spawned subflow terminals), connect/
+disconnect, move, rename, parameter and boundary-mapping changes are reversible.
+Each successful changed command records one edit; failed and no-op commands preserve
+history and redo. Multi-node drag, Delete selection and Arrange use a C edit group,
+committing one history entry or rolling back the entire group on failure.
+Qt exposes Edit > Undo/Redo using standard shortcuts and enabled state from C;
+Qt stores no parallel command/model history. Undo/redo restore owned C snapshots,
+invalidate analysis, refresh graph/tree/inspector/diagnostics and recompute routes.
+If restored graph removes current scope, return to Root. Camera, expansion, hover,
+selection and flow direction remain transient UI state and are not semantic history.
+
+Save retains history and marks the saved revision; undo/redo dirty state reflects
+whether current revision equals that saved revision. Successful project replacement/
+close clears history; failed replacement preserves it. Resource creation persists
+files and all graph edits, so success creates a history barrier. Dataset selection
+also creates a barrier in this initial graph-history implementation. Neither barrier
+pretends to undo filesystem/resource operations. Failure preserves history.
+History lives in memory only; schema v2 and package semantics stay unchanged.

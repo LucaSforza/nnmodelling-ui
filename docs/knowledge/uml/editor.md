@@ -17,6 +17,10 @@ classDiagram
       +connect(id,source,handle,target,handle) bool
       +setParameter(node,key,value) bool
       +setBoundaryHandle(node,handle) bool
+      +undo() bool
+      +redo() bool
+      +beginEdit() bool
+      +endEdit(commit) bool
       +outputType(node,handle) string
       +createStereotype(definition,Lua,dependencies) bool
       +createDataset(definition,select) bool
@@ -55,6 +59,7 @@ classDiagram
     NodeItem *-- PortItem
     MainWindow *-- GraphScene
     GraphScene --> NNApplication : snapshots / mutations
+    NNApplication *-- NNEditHistory : owned C model snapshots
     NNApplication *-- NNProject
     NNProject *-- NNModel
     NNApplication *-- NNInferenceReport : lazy semantic analysis
@@ -86,14 +91,17 @@ at rest and on hover. Their hit regions remain generous; circle rendering does
 not suppress the only discoverable source/target affordance. Graph/model and
 port ID/type ownership are unchanged.
 Direction is GraphScene presentation state: Vertical top/bottom, Horizontal right/left.
-MainWindow arranges DAG ranks with barycentric lane ordering and corridor spacing,
+DataflowLayout computes DAG ranks with barycentric ordering, port-centered lanes
+and corridor spacing. MainWindow uses it for Arrange,
 committing scope-local positions through C. Fit only recomputes routes and frames
 content including labels and expanded boundaries; never commits coordinates.
 GraphScene owns expanded IDs and read-only model-backed preview items, copied tensor
 hover text and route caches. OrthogonalRouter computes explicit polylines from item
 rectangles/port positions and existing tracks; EdgeItem paints them. All affected
 routes update when any obstacle moves. Scope QTreeWidget reflects real containment.
-QMenuBar owns File/Model/View actions; compact toolbar owns graph controls.
+Read-only previews reuse DataflowLayout and uniformly scale temporary child geometry.
+C history restores model snapshots; Edit Undo/Redo refreshes Qt without Qt history.
+QMenuBar owns File/Edit/Model/View actions; compact toolbar owns graph controls.
 GraphView paints the 20-unit grid and exposes centered Zoom In/Out. NodeItem
 drag previews snap to that grid; NNModel remains final coordinate normalizer.
 NodeItem selects junction-bar presentation by resolved kind=join. GraphScene

@@ -153,3 +153,19 @@ integer positions. Invalid positions preserve graph, dirty state and analysis.
 Node creation, drag previews and layout use the same grid in Qt; view scale and
 card dimensions remain floating presentation geometry. Position changes do not
 invalidate tensor analysis. Saving and reopening preserve integer coordinates.
+
+## Graph edit history (accepted 2026-10-03)
+
+Application owns undo/redo snapshots of the existing NNModel, never a second
+inference system. Model supports owned deep `nn_model_copy`, structural
+`nn_model_equal` and allocation-free `nn_model_swap` for restoring history while
+preserving the project owner. Copy preserves IDs, order, scope, typed parameters,
+integer coordinates, boundary mappings and edges. Equality compares all fields.
+Project exposes `nn_project_set_dirty` for restoring saved-revision state.
+`nn_app_can_undo/can_redo`, `nn_app_undo/redo` use the normal caller-owned error
+buffer convention. `nn_app_begin_edit` begins one nonnested graph transaction;
+`nn_app_end_edit(app,commit,error,cap)` commits one changed edit or restores its
+starting graph. History allocation succeeds before mutating active graph; failed
+commands/groups preserve graph and history. Lifecycle/save/resource operations
+reject an active group. Maximum 100 completed edits; oldest snapshots are released.
+See editor.md for UI behavior, save revisions and resource barriers.

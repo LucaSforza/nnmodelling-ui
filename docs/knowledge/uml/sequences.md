@@ -330,7 +330,7 @@ sequenceDiagram
     participant App as C NNApplication
     User->>Scene: expand owner
     Scene->>App: read real scope-local children/edges
-    Scene->>Scene: translated read-only items inside boundary, route internal edges
+    Scene->>Scene: transient dataflow layout + uniform scale inside boundary, route internal edges
     Note over Scene: Current scope and C model unchanged
     User->>Scene: hover node or preview child
     Scene->>App: query cached inferred outputs
@@ -338,4 +338,27 @@ sequenceDiagram
     User->>Scene: leave
     Scene->>Scene: hide popup
     User->>Scene: collapse owner or enter scope separately
+```
+
+## Undo and grouped graph edits
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Qt as Qt editor
+    participant App as C NNApplication
+    participant History as C edit history
+    participant Model as Existing C model
+    User->>Qt: graph edit or multi-node gesture
+    Qt->>App: beginEdit for grouped gesture
+    App->>History: deep-copy graph before first mutation
+    Qt->>App: validated graph commands
+    App->>Model: mutate existing graph
+    Qt->>App: endEdit(success)
+    App->>History: one changed revision or full rollback
+    User->>Qt: Undo / Redo
+    Qt->>App: undo / redo
+    App->>History: swap active graph with owned snapshot
+    App->>App: update dirty revision, invalidate analysis
+    Qt->>Qt: refresh items, scope tree, inspector, diagnostics and routes
 ```

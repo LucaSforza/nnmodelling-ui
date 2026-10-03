@@ -46,3 +46,10 @@ node rerouting, hierarchical scopes, camera-only Fit, read-only expansion and
 C-backed multi-output hover. Browser Computer Use through existing .computer-use
 Qt VNC/noVNC integration verifies actual menus, grid, pan/zoom, previews, routing,
 Arrange and Fit. Project-local launch skill owns repeatable bridge lifecycle.
+
+History gate: graph commands, deep snapshot values/topology, grouped drag/Delete/
+Arrange atomicity, failed/no-op redo preservation, save/undo/redo dirty revisions,
+project replacement and resource barriers, C-only and sanitizer tests. GUI checks
+Edit actions/shortcuts, rerouted restored geometry and scope fallback. Shared
+layout tests check nonoverlap, feed-forward ranks, branch/join centering and compact
+preview bounds without C coordinate mutation; restart Qt/bridge after every change.
