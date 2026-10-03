@@ -5,6 +5,7 @@
 #include <QKeyEvent>
 #include <QMouseEvent>
 #include <QScrollBar>
+#include <QTransform>
 #include <QWheelEvent>
 
 GraphView::GraphView(GraphScene *scene, QWidget *parent) : QGraphicsView(scene, parent) {
@@ -21,24 +22,46 @@ GraphView::GraphView(GraphScene *scene, QWidget *parent) : QGraphicsView(scene, 
 }
 
 void GraphView::fitGraph() {
-    QRectF bounds = sceneRect();
-    if (scene() && !scene()->items().isEmpty()) bounds = scene()->itemsBoundingRect().adjusted(-50, -50, 50, 50);
-    if (bounds.isEmpty()) return;
-    fitInView(bounds, Qt::KeepAspectRatio);
-    zoom_ = qBound<qreal>(0.2, transform().m11(), 3.0);
+    if (!scene() || scene()->items().isEmpty()) return;
+    const QRectF bounds = scene()->itemsBoundingRect().adjusted(-50, -50, 50, 50);
+    if (bounds.isEmpty() || viewport()->width() <= 0 || viewport()->height() <= 0) return;
+    zoom_ = qMin<qreal>(3.0, qMin(viewport()->width() / bounds.width(),
+                                  viewport()->height() / bounds.height()));
+    if (!(zoom_ > 0.0)) return;
+    minimumZoom_ = qMin<qreal>(0.2, zoom_);
     setTransform(QTransform::fromScale(zoom_, zoom_));
+    const qreal horizontalReach = viewport()->width() / zoom_;
+    const qreal verticalReach = viewport()->height() / zoom_;
+    scene()->setSceneRect(bounds.adjusted(-horizontalReach, -verticalReach,
+                                           horizontalReach, verticalReach));
+    centerOn(bounds.center());
 }
 
-void GraphView::wheelEvent(QWheelEvent *event) {
-    const qreal requestedFactor = event->angleDelta().y() > 0 ? 1.15 : 1.0 / 1.15;
-    const qreal next = qBound<qreal>(0.2, zoom_ * requestedFactor, 3.0);
-    if (qFuzzyCompare(next, zoom_)) {
-        event->accept();
-        return;
-    }
-    const qreal factor = next / zoom_;
-    const QPoint viewportPosition = event->position().toPoint();
+void GraphView::focusAtTop(const QRectF &bounds) {
+    if (bounds.isEmpty() || viewport()->width() <= 0 || viewport()->height() <= 0) return;
+    zoom_ = 0.7;
+    minimumZoom_ = 0.2;
+    setTransform(QTransform::fromScale(zoom_, zoom_));
+    const QPointF center(bounds.center().x(),
+                         bounds.center().y() + viewport()->height() / (4.0 * zoom_));
+    const qreal horizontalReach = viewport()->width() / zoom_;
+    const qreal verticalReach = viewport()->height() / zoom_;
+    const QRectF cameraRect(center.x() - horizontalReach, center.y() - verticalReach,
+                            horizontalReach * 2.0, verticalReach * 2.0);
+    scene()->setSceneRect(cameraRect.united(
+        scene()->itemsBoundingRect().adjusted(-1.0, -1.0, 1.0, 1.0)));
+    centerOn(center);
+}
+
+void GraphView::zoomIn() { zoomAt(1.15, viewport()->rect().center()); }
+
+void GraphView::zoomOut() { zoomAt(1.0 / 1.15, viewport()->rect().center()); }
+
+void GraphView::zoomAt(qreal requestedFactor, const QPoint &viewportPosition) {
+    const qreal next = qBound<qreal>(minimumZoom_, zoom_ * requestedFactor, 3.0);
+    if (qFuzzyCompare(next, zoom_)) return;
     const QPointF scenePositionBefore = mapToScene(viewportPosition);
+    const qreal factor = next / zoom_;
     zoom_ = next;
     scale(factor, factor);
     const QPoint mappedAnchor = mapFromScene(scenePositionBefore);
@@ -46,6 +69,12 @@ void GraphView::wheelEvent(QWheelEvent *event) {
                                     mappedAnchor.x() - viewportPosition.x());
     verticalScrollBar()->setValue(verticalScrollBar()->value() +
                                   mappedAnchor.y() - viewportPosition.y());
+}
+
+void GraphView::wheelEvent(QWheelEvent *event) {
+    const qreal requestedFactor = event->angleDelta().y() > 0 ? 1.15 : 1.0 / 1.15;
+    const QPoint viewportPosition = event->position().toPoint();
+    zoomAt(requestedFactor, viewportPosition);
     event->accept();
 }
 

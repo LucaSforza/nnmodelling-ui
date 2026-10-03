@@ -17,6 +17,8 @@
 #include <QComboBox>
 #include <QPushButton>
 #include <QMessageBox>
+#include <QMenu>
+#include <QLineF>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QEventLoop>
@@ -47,8 +49,151 @@ private slots:
     void visualResourceAuthoringForms();
     void typedOutputAuthoringBoundariesAndInspector();
     void automationRejectsInvalidScopeAndCapturesCurrentScope();
+    void arrangeMenuAndFitUseDirectedGridLayout();
     void socketOptionRequiresPath();
 };
+
+void WindowTest::arrangeMenuAndFitUseDirectedGridLayout() {
+    QTemporaryDir temporary;
+    QVERIFY(temporary.isValid());
+    NNApplication *app = nn_app_new(NN_SOURCE_DIR "/stereotype-packages/core");
+    QVERIFY(app);
+    char error[512] = {};
+    const QByteArray parent = temporary.path().toUtf8();
+    QVERIFY2(nn_app_create(app, parent.constData(), "layout-test", "Layout test", false,
+                           error, sizeof(error)), error);
+    auto add = [app, &error](const char *id, const char *package) {
+        return nn_app_add_node(app, id, package, "0.1.0", "", 0, 0, error, sizeof(error));
+    };
+    QVERIFY2(add("source", "core.input"), error);
+    QVERIFY2(add("branch-a", "core.relu"), error);
+    QVERIFY2(add("branch-b", "core.relu"), error);
+    QVERIFY2(add("tail", "core.relu"), error);
+    for (int i = 1; i <= 6; ++i) {
+        const QByteArray id = QStringLiteral("chain-%1").arg(i).toUtf8();
+        QVERIFY2(add(id.constData(), "core.relu"), error);
+    }
+    const NNModel *model = nn_app_model(app);
+    const NNNode *output = nullptr;
+    const NNNode *lossOutput = nullptr;
+    QByteArray firstInputId;
+    for (size_t i = 0; i < nn_model_node_count(model); ++i) {
+        const NNNode *node = nn_model_node_at(model, i);
+        if (node && node->package_id && std::strcmp(node->package_id, "core.output") == 0)
+            output = node;
+        if (node && node->package_id && std::strcmp(node->package_id, "core.loss-output") == 0)
+            lossOutput = node;
+        if (node && node->package_id && std::strcmp(node->package_id, "core.input") == 0 &&
+            firstInputId.isEmpty()) firstInputId = node->id;
+    }
+    QVERIFY(output && lossOutput && !firstInputId.isEmpty());
+    const QByteArray outputId(output->id);
+    const QByteArray lossOutputId(lossOutput->id);
+    QVERIFY2(nn_app_connect(app, "branch-a-edge", "source", "out", "branch-a", "in",
+                            error, sizeof(error)), error);
+    QVERIFY2(nn_app_connect(app, "branch-b-edge", "source", "out", "branch-b", "in",
+                            error, sizeof(error)), error);
+    QVERIFY2(nn_app_connect(app, "tail-edge", "branch-a", "out", "tail", "in",
+                            error, sizeof(error)), error);
+    QByteArray previous = "tail";
+    for (int i = 1; i <= 6; ++i) {
+        const QByteArray target = QStringLiteral("chain-%1").arg(i).toUtf8();
+        const QByteArray edge = QStringLiteral("chain-edge-%1").arg(i).toUtf8();
+        QVERIFY2(nn_app_connect(app, edge.constData(), previous.constData(), "out",
+                                target.constData(), "in", error, sizeof(error)), error);
+        previous = target;
+    }
+    QVERIFY2(nn_app_connect(app, "output-edge", previous.constData(), "out", outputId.constData(), "in",
+                            error, sizeof(error)), error);
+
+    MainWindow window(app);
+    window.show();
+    QCoreApplication::processEvents();
+    auto *scene = window.findChild<GraphScene *>();
+    auto *view = window.findChild<GraphView *>();
+    QVERIFY(scene && view);
+    QAction *zoomIn = window.findChild<QAction *>("zoomIn");
+    QAction *zoomOut = window.findChild<QAction *>("zoomOut");
+    QVERIFY(zoomIn && zoomOut);
+    const QPoint zoomAnchor = view->viewport()->rect().center();
+    const QPointF beforeZoom = view->mapToScene(zoomAnchor);
+    zoomIn->trigger();
+    QCOMPARE(view->transform().m11(), 1.15);
+    QVERIFY(QLineF(beforeZoom, view->mapToScene(zoomAnchor)).length() < 2.0);
+    zoomOut->trigger();
+    QVERIFY(qAbs(view->transform().m11() - 1.0) < 0.001);
+    QMenu *arrangeMenu = nullptr;
+    for (QMenu *menu : window.findChildren<QMenu *>())
+        if (menu->actions().size() == 2 && menu->actions()[0]->text() == QStringLiteral("Vertical"))
+            arrangeMenu = menu;
+    QVERIFY(arrangeMenu);
+    arrangeMenu->actions()[0]->trigger();
+    QCoreApplication::processEvents();
+    QVERIFY(scene->flowDirection() == FlowDirection::Vertical);
+    model = nn_app_model(app);
+    const NNNode *source = nn_model_find_node(model, "source");
+    const NNNode *branchA = nn_model_find_node(model, "branch-a");
+    const NNNode *branchB = nn_model_find_node(model, "branch-b");
+    const NNNode *tail = nn_model_find_node(model, "tail");
+    const NNNode *chainEnd = nn_model_find_node(model, "chain-6");
+    const NNNode *laidOutOutput = nn_model_find_node(model, outputId.constData());
+    const NNNode *laidOutLoss = nn_model_find_node(model, lossOutputId.constData());
+    QVERIFY(source && branchA && branchB && tail && chainEnd && laidOutOutput && laidOutLoss);
+    QVERIFY(source->y < branchA->y && branchA->y < tail->y && tail->y < chainEnd->y &&
+            chainEnd->y < laidOutOutput->y && chainEnd->y < laidOutLoss->y);
+    QVERIFY(branchA->x != branchB->x);
+    for (const NNNode *node : {source, branchA, branchB, tail, chainEnd, laidOutOutput, laidOutLoss}) {
+        QCOMPARE(qint32(node->x) % 20, 0);
+        QCOMPARE(qint32(node->y) % 20, 0);
+    }
+
+    arrangeMenu->actions()[1]->trigger();
+    QCoreApplication::processEvents();
+    QVERIFY(scene->flowDirection() == FlowDirection::Horizontal);
+    model = nn_app_model(app);
+    source = nn_model_find_node(model, "source");
+    branchA = nn_model_find_node(model, "branch-a");
+    branchB = nn_model_find_node(model, "branch-b");
+    tail = nn_model_find_node(model, "tail");
+    chainEnd = nn_model_find_node(model, "chain-6");
+    laidOutOutput = nn_model_find_node(model, outputId.constData());
+    laidOutLoss = nn_model_find_node(model, lossOutputId.constData());
+    QVERIFY(source && branchA && branchB && tail && chainEnd && laidOutOutput && laidOutLoss);
+    QVERIFY(source->x > branchA->x && branchA->x > tail->x && tail->x > chainEnd->x &&
+            chainEnd->x > laidOutOutput->x && chainEnd->x > laidOutLoss->x);
+    QVERIFY(branchA->y != branchB->y);
+    QVERIFY(QLineF(view->mapFromScene(scene->itemsBoundingRect().center()),
+                   view->viewport()->rect().center()).length() < 2.0);
+
+    QAction *fit = nullptr;
+    for (QAction *action : window.findChildren<QAction *>())
+        if (action->text() == QStringLiteral("Fit")) fit = action;
+    QVERIFY(fit);
+    fit->trigger();
+    QCoreApplication::processEvents();
+    QVERIFY(scene->flowDirection() == FlowDirection::Vertical);
+    QVERIFY(qAbs(view->transform().m11() - 0.7) < 0.001);
+    const QRectF focusedSceneRect = scene->sceneRect();
+    const QRectF focusedItems = scene->itemsBoundingRect();
+    QVERIFY2(focusedSceneRect.contains(focusedItems),
+        qPrintable(QStringLiteral("scene rect %1,%2 %3x%4 excludes items %5,%6 %7x%8")
+            .arg(focusedSceneRect.x()).arg(focusedSceneRect.y())
+            .arg(focusedSceneRect.width()).arg(focusedSceneRect.height())
+            .arg(focusedItems.x()).arg(focusedItems.y())
+            .arg(focusedItems.width()).arg(focusedItems.height())));
+    const NodeItem *firstInput = scene->nodeItem(QString::fromUtf8(firstInputId));
+    const NodeItem *lastLayer = scene->nodeItem(QStringLiteral("chain-6"));
+    QVERIFY(firstInput && lastLayer);
+    const QPoint inputViewport = view->mapFromScene(firstInput->sceneBoundingRect().center());
+    QVERIFY(qAbs(inputViewport.y() - view->viewport()->height() / 4) <= 2);
+    QVERIFY(view->mapFromScene(lastLayer->sceneBoundingRect().center()).y() >
+            view->viewport()->height());
+    const QByteArray projectPath = (temporary.path() + QStringLiteral("/layout-test")).toUtf8();
+    QVERIFY2(nn_app_save(app, error, sizeof(error)), error);
+    scene->setFlowDirection(FlowDirection::Horizontal);
+    QVERIFY2(window.openProject(QString::fromUtf8(projectPath)), "Could not reopen test project");
+    QVERIFY(scene->flowDirection() == FlowDirection::Vertical);
+}
 
 static void answerDialog(QMessageBox::StandardButton answer) {
     QTimer::singleShot(0, [answer] {

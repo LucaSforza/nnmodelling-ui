@@ -2,6 +2,7 @@
 
 #include "GraphScene.hpp"
 #include "PortItem.hpp"
+#include "model/model.h"
 
 #include <QBrush>
 #include <QFont>
@@ -34,6 +35,7 @@ NodeItem::NodeItem(GraphScene *owner, QString id, QString label, QString package
         required = qMax(required, metrics.horizontalAdvance(entry.first) +
                          valueMetrics.horizontalAdvance(entry.second) + 64.0);
     width_ = required;
+    contentWidth_ = required;
     setPos(position);
     setFlags(ItemIsMovable | ItemIsSelectable | ItemSendsGeometryChanges);
     setCacheMode(DeviceCoordinateCache);
@@ -55,8 +57,194 @@ void NodeItem::setBoundaryKind(const QString &kind) {
     update();
 }
 
+void NodeItem::setFlowDirection(FlowDirection direction) {
+    if (flowDirection_ != direction) prepareGeometryChange();
+    flowDirection_ = direction;
+    if (joinNode_) {
+        layoutJoin();
+        update();
+        return;
+    }
+    layoutPorts();
+    update();
+}
+
+void NodeItem::setJoinNode(bool join) {
+    if (joinNode_ == join) return;
+    prepareGeometryChange();
+    joinNode_ = join;
+    if (joinNode_) layoutJoin();
+    update();
+}
+
+void NodeItem::setJoinInputControls(bool canRemove, bool canAdd) {
+    canRemoveJoinInput_ = canRemove;
+    canAddJoinInput_ = canAdd;
+    update();
+}
+
+void NodeItem::layoutJoin() {
+    const int inputCount = std::count_if(ports_.cbegin(), ports_.cend(), [](PortItem *port) {
+        return !port->isOutput();
+    });
+    const int outputCount = ports_.size() - inputCount;
+    const int spreadCount = qMax(inputCount, outputCount);
+    const int parameterCount = topParameters_.size() + bottomParameters_.size();
+    if (flowDirection_ == FlowDirection::Vertical) {
+        width_ = qMax<qreal>(contentWidth_, qMax<qreal>(220.0, spreadCount * 20.0 + 48.0));
+        height_ = qMax<qreal>(170.0, 145.0 + parameterCount * 24.0);
+        junctionRect_ = QRectF(width_ / 2.0 - 50.0, 58.0, 100.0, 18.0);
+        joinRemoveRect_ = QRectF(junctionRect_.left() - 30.0, junctionRect_.center().y() - 11.0, 22.0, 22.0);
+        joinAddRect_ = QRectF(junctionRect_.right() + 8.0, junctionRect_.center().y() - 11.0, 22.0, 22.0);
+    } else {
+        width_ = qMax<qreal>(contentWidth_, qMax<qreal>(260.0, 236.0 + 20.0 * parameterCount));
+        const qreal barHeight = qMax<qreal>(60.0, spreadCount * 20.0 + 20.0);
+        height_ = barHeight + 100.0 + parameterCount * 24.0;
+        junctionRect_ = QRectF(width_ / 2.0 - 9.0, 34.0, 18.0, barHeight);
+        joinRemoveRect_ = QRectF(junctionRect_.center().x() - 11.0,
+                                 junctionRect_.top() - 28.0, 22.0, 22.0);
+        joinAddRect_ = QRectF(junctionRect_.center().x() - 11.0,
+                              junctionRect_.bottom() + 6.0, 22.0, 22.0);
+    }
+    layoutPorts();
+}
+
+void NodeItem::layoutPorts() {
+    for (bool output : {true, false}) {
+        int order = 0;
+        const int count = std::count_if(ports_.cbegin(), ports_.cend(), [output](PortItem *p) {
+            return p->isOutput() == output;
+        });
+        for (PortItem *port : ports_) {
+            if (port->isOutput() != output) continue;
+            if (!boundaryKind_.isEmpty()) {
+                const qreal centerX = 47.0, centerY = 38.0, radius = 22.0;
+                const bool horizontal = flowDirection_ == FlowDirection::Horizontal;
+                const qreal spread = count <= 1 ? 0.0 : (order - (count - 1) / 2.0) * 0.75;
+                const qreal angle = horizontal
+                    ? (output ? 3.14159265358979323846 + spread : spread)
+                    : (output ? 1.57079632679489661923 + spread
+                              : -1.57079632679489661923 + spread);
+                port->setPos(centerX + radius * std::cos(angle),
+                             centerY + radius * std::sin(angle));
+                port->setBoundaryHandlePresentation(true);
+            } else if (joinNode_) {
+                if (flowDirection_ == FlowDirection::Vertical) {
+                    const qreal centerX = width_ / 2.0;
+                    const qreal span = width_ - 48.0;
+                    port->setPos(centerX + (count <= 1 ? 0.0 :
+                        (order - (count - 1) / 2.0) * (span / (count - 1))),
+                        output ? junctionRect_.bottom() + 24.0 : junctionRect_.top() - 22.0);
+                } else {
+                    const qreal span = junctionRect_.height() - 24.0;
+                    port->setPos(junctionRect_.center().x() + (output ? -24.0 : 24.0),
+                                 junctionRect_.center().y() + (count <= 1 ? 0.0 :
+                                    (order - (count - 1) / 2.0) * span / (count - 1)));
+                }
+            } else if (flowDirection_ == FlowDirection::Vertical) {
+                port->setPos(width_ * (order + 1.0) / (count + 1.0), output ? height_ - 9.0 : 9.0);
+            } else {
+                port->setPos(output ? 9.0 : width_ - 9.0,
+                             height_ * (order + 1.0) / (count + 1.0));
+            }
+            ++order;
+        }
+    }
+    update();
+}
+
 void NodeItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWidget *) {
     painter->setRenderHint(QPainter::Antialiasing);
+    if (joinNode_) {
+        if (isSelected()) {
+            painter->setPen(QPen(QColor("#3978c5"), 2.0));
+            painter->setBrush(Qt::NoBrush);
+            painter->drawRoundedRect(boundingRect().adjusted(2.0, 2.0, -2.0, -2.0), 8.0, 8.0);
+        }
+        painter->setPen(Qt::NoPen);
+        painter->setBrush(QColor(32, 39, 48));
+        painter->drawRoundedRect(junctionRect_, 2.0, 2.0);
+
+        const auto drawControl = [painter](const QRectF &rect, const QString &symbol, bool enabled) {
+            painter->setPen(QPen(enabled ? QColor(95, 108, 124) : QColor(172, 178, 185), 1.0));
+            painter->setBrush(enabled ? QColor(246, 248, 250) : QColor(229, 232, 235));
+            painter->drawEllipse(rect);
+            painter->setPen(enabled ? QColor(43, 54, 67) : QColor(149, 155, 162));
+            QFont font = painter->font();
+            font.setBold(true);
+            font.setPointSizeF(10.0);
+            painter->setFont(font);
+            painter->drawText(rect, Qt::AlignCenter, symbol);
+        };
+        drawControl(joinRemoveRect_, QStringLiteral("−"), canRemoveJoinInput_);
+        drawControl(joinAddRect_, QStringLiteral("+"), canAddJoinInput_);
+
+        QFont portFont = painter->font();
+        portFont.setPointSizeF(8.0);
+        painter->setFont(portFont);
+        painter->setPen(QColor(74, 86, 99));
+        for (PortItem *port : ports_) {
+            if (flowDirection_ == FlowDirection::Vertical) {
+                const qreal y = port->isOutput() ? port->y() + 5.0 : port->y() - 16.0;
+                painter->drawText(QRectF(port->x() - 45.0, y, 90.0, 12.0),
+                    Qt::AlignHCenter | Qt::AlignVCenter, port->label());
+            } else {
+                const QRectF label = port->isOutput()
+                    ? QRectF(5.0, port->y() - 7.0, port->x() - 17.0, 14.0)
+                    : QRectF(port->x() + 7.0, port->y() - 7.0, width_ - port->x() - 12.0, 14.0);
+                painter->drawText(label, port->isOutput() ? Qt::AlignRight | Qt::AlignVCenter
+                                                         : Qt::AlignLeft | Qt::AlignVCenter,
+                                  port->label());
+            }
+        }
+
+        QFont titleFont = painter->font();
+        titleFont.setBold(true);
+        titleFont.setPointSizeF(11.0);
+        painter->setFont(titleFont);
+        painter->setPen(QColor(38, 52, 70));
+        const qreal titleY = flowDirection_ == FlowDirection::Vertical
+            ? junctionRect_.bottom() + 48.0 : junctionRect_.bottom() + 39.0;
+        painter->drawText(QRectF(8.0, titleY, width_ - 16.0, 20.0),
+                          Qt::AlignHCenter | Qt::AlignVCenter, label_);
+        const int parameterCount = topParameters_.size() + bottomParameters_.size();
+        const qreal parameterY = height_ - parameterCount * 22.0 - 8.0;
+        QFont parameterFont = painter->font();
+        parameterFont.setBold(false);
+        parameterFont.setPointSizeF(9.0);
+        painter->setFont(parameterFont);
+        int row = 0;
+        for (const auto &entry : topParameters_ + bottomParameters_) {
+            const qreal y = parameterY + row++ * 22.0;
+            painter->setPen(QColor(74, 86, 99));
+            painter->drawText(QRectF(12.0, y, width_ * 0.55, 18.0),
+                              Qt::AlignLeft | Qt::AlignVCenter, entry.first);
+            painter->setPen(QColor(38, 52, 70));
+            painter->drawText(QRectF(width_ * 0.57, y, width_ * 0.4, 18.0),
+                              Qt::AlignRight | Qt::AlignVCenter, entry.second);
+        }
+        if (!problemCategory_.isEmpty()) {
+            QColor marker = problemCategory_ == QStringLiteral("lua-compilation") ? QColor("#9c3d79")
+                : problemCategory_ == QStringLiteral("incomplete") ? QColor("#a66a12")
+                : problemCategory_ == QStringLiteral("internal") ? QColor("#554d79")
+                : QColor("#b23b35");
+            painter->setPen(Qt::NoPen);
+            painter->setBrush(marker);
+            painter->drawEllipse(QRectF(2.0, 2.0, 16.0, 16.0));
+            painter->setPen(Qt::white);
+            QFont badge = painter->font();
+            badge.setBold(true);
+            badge.setPointSizeF(8.0);
+            painter->setFont(badge);
+            const QString symbol = problemCategory_ == QStringLiteral("incomplete")
+                ? QStringLiteral("?")
+                : problemCategory_ == QStringLiteral("lua-compilation") ? QStringLiteral("L")
+                : problemCategory_ == QStringLiteral("internal") ? QStringLiteral("×")
+                : QStringLiteral("!");
+            painter->drawText(QRectF(2.0, 2.0, 16.0, 16.0), Qt::AlignCenter, symbol);
+        }
+        return;
+    }
     if (!boundaryKind_.isEmpty()) {
         const QColor fill = boundaryKind_ == QStringLiteral("input") ? QColor("#111111")
             : boundaryKind_ == QStringLiteral("output") ? QColor("#8b5a2b") : QColor("#c62828");
@@ -230,47 +418,30 @@ void NodeItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWidge
     QFont portFont = painter->font();
     portFont.setPointSizeF(6.8);
     painter->setFont(portFont);
+    if (!boundaryKind_.isEmpty()) return;
     for (PortItem *port : ports_) {
-        const qreal y = port->isOutput() ? height_ - 21.0 : 0.0;
-        painter->drawText(QRectF(port->x() - 46.0, y, 92.0, 10.0),
-                          Qt::AlignHCenter | Qt::AlignVCenter, port->label());
+        const bool vertical = flowDirection_ == FlowDirection::Vertical;
+        const QRectF labelRect = vertical
+            ? QRectF(port->x() - 46.0, port->isOutput() ? height_ - 21.0 : 0.0, 92.0, 10.0)
+            : port->isOutput()
+                ? QRectF(14.0, port->y() - 5.0, width_ / 2.0 - 18.0, 10.0)
+                : QRectF(width_ / 2.0, port->y() - 5.0, width_ / 2.0 - 14.0, 10.0);
+        painter->drawText(labelRect, vertical ? Qt::AlignHCenter | Qt::AlignVCenter
+                                              : (port->isOutput() ? Qt::AlignRight : Qt::AlignLeft) |
+                                                    Qt::AlignVCenter,
+                          port->label());
     }
 }
 
 void NodeItem::addPort(PortItem *port) {
     ports_.append(port);
-    if (!boundaryKind_.isEmpty()) {
-        QList<PortItem *> outputPorts;
-        for (PortItem *candidate : ports_)
-            if (candidate->isOutput()) outputPorts.append(candidate);
-        int outputIndex = 0;
-        for (PortItem *candidate : ports_) {
-            if (candidate->isOutput()) {
-                if (outputPorts.size() > 1)
-                    candidate->setPos(63.0, outputIndex == 0 ? 26.0 : 50.0);
-                else
-                    candidate->setPos(69.0, 38.0);
-                ++outputIndex;
-            } else {
-                candidate->setPos(25.0, 38.0);
-            }
-            candidate->setBoundaryHandlePresentation(true);
-        }
-        return;
+    if (joinNode_) {
+        prepareGeometryChange();
+        layoutJoin();
+    } else {
+        layoutPorts();
     }
-    for (bool output : {true, false}) {
-        int order = 0;
-        const int count = std::count_if(ports_.cbegin(), ports_.cend(), [output](PortItem *p) {
-            return p->isOutput() == output;
-        });
-        for (PortItem *candidate : ports_) {
-            if (candidate->isOutput() != output) continue;
-            const qreal x = width_ * (order + 1.0) / (count + 1.0);
-            const qreal y = output ? height_ - 9.0 : 9.0;
-            candidate->setPos(x, y);
-            ++order;
-        }
-    }
+    update();
 }
 
 void NodeItem::setChildCount(int) {}
@@ -282,12 +453,30 @@ void NodeItem::setProblemCategory(const QString &category) {
 }
 
 QVariant NodeItem::itemChange(GraphicsItemChange change, const QVariant &value) {
+    if (change == ItemPositionChange && owner_ && !owner_->refreshing_) {
+        const QPointF position = value.toPointF();
+        constexpr qreal grid = NN_MODEL_GRID_SPACING;
+        return QPointF(qRound(position.x() / grid) * grid,
+                       qRound(position.y() / grid) * grid);
+    }
     if (change == ItemPositionHasChanged && owner_)
         owner_->updateEdgesForNode(id_);
     return QGraphicsObject::itemChange(change, value);
 }
 
 void NodeItem::mousePressEvent(QGraphicsSceneMouseEvent *event) {
+    if (joinNode_ && owner_ && event->button() == Qt::LeftButton) {
+        if (joinRemoveRect_.contains(event->pos())) {
+            owner_->adjustJoinInputSlots(id_, false);
+            event->accept();
+            return;
+        }
+        if (joinAddRect_.contains(event->pos())) {
+            owner_->adjustJoinInputSlots(id_, true);
+            event->accept();
+            return;
+        }
+    }
     QGraphicsObject::mousePressEvent(event);
     if (owner_) owner_->beginNodeDrag(this);
 }

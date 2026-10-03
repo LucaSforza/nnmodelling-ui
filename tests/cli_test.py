@@ -133,7 +133,7 @@ def main():
                 assert command("project.snapshot")["dirty"] is True
                 command("project.save")
 
-                # Two-output subflows spawn mapped terminals only, not Input or edges.
+                # Two-output subflows seed one editable Input and mapped terminals, not edges.
                 subflow_definition = dict(definition, name="Typed subflow", kind="subflow", parameters={})
                 command("stereotype.create", {
                     "id": "local.subflow", "version": "0.1.0", "definition": subflow_definition,
@@ -141,20 +141,22 @@ def main():
                 })
                 command("node.add", {"id": "nested", "package": "local.subflow", "version": "0.1.0", "y": 400})
                 children = [n for n in command("project.snapshot")["nodes"] if n["scope"] == "nested"]
-                assert len(children) == 2
-                terminals = {n["boundaryHandle"]: n for n in children}
+                seeded_inputs = [n for n in children if n["package"]["id"] == "core.input"]
+                assert len(seeded_inputs) == 1
+                assert len(children) == 3
+                terminals = {n["boundaryHandle"]: n for n in children
+                             if n["package"]["id"] in {"core.output", "core.loss-output"}}
                 assert set(terminals) == {"prediction", "objective"}
                 assert terminals["prediction"]["package"]["id"] == "core.output"
                 assert terminals["objective"]["package"]["id"] == "core.loss-output"
                 command("node.boundary", {"id": terminals["prediction"]["id"], "handle": "objective"}, expected=1)
                 command("node.boundary", {"id": output, "handle": "prediction"}, expected=1)
                 command("node.boundary", {"id": terminals["prediction"]["id"], "handle": "prediction"})
-                command("node.add", {"id": "nested-input", "package": "core.input", "version": "0.1.0", "scope": "nested"})
                 command("node.add", {"id": "nested-mse", "package": "core.mse-loss", "version": "0.1.0", "scope": "nested", "y": 180})
                 for edge_id, source, handle, target in [
                     ("local-nested", "local", "prediction", "nested"),
-                    ("nested-normal", "nested-input", "out", terminals["prediction"]["id"]),
-                    ("nested-mse-input", "nested-input", "out", "nested-mse"),
+                    ("nested-normal", seeded_inputs[0]["id"], "out", terminals["prediction"]["id"]),
+                    ("nested-mse-input", seeded_inputs[0]["id"], "out", "nested-mse"),
                     ("nested-loss", "nested-mse", "loss", terminals["objective"]["id"]),
                 ]:
                     command("edge.connect", {"id": edge_id, "source": source, "sourceHandle": handle, "target": target, "targetHandle": "in"})

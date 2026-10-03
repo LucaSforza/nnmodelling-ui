@@ -10,6 +10,9 @@ class GraphView final : public QGraphicsView {
 public:
     explicit GraphView(GraphScene *scene, QWidget *parent = nullptr);
     void fitGraph();
+    void focusAtTop(const QRectF &bounds);
+    void zoomIn();
+    void zoomOut();
 
 protected:
     void wheelEvent(QWheelEvent *event) override;
@@ -20,10 +23,12 @@ protected:
     void keyReleaseEvent(QKeyEvent *event) override;
 
 private:
+    void zoomAt(qreal factor, const QPoint &position);
     bool spaceDown_ = false;
     bool panning_ = false;
     QPoint lastPan_;
     qreal zoom_ = 1.0;
+    qreal minimumZoom_ = 0.2;
 };
 
 #endif

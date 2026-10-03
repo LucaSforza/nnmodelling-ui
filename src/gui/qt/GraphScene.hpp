@@ -9,11 +9,12 @@
 #include <QStringList>
 
 #include "application/application.h"
+#include "NodeItem.hpp"
 
 class EdgeItem;
-class NodeItem;
 class PortItem;
 class QGraphicsPathItem;
+class QPainter;
 
 class GraphScene final : public QGraphicsScene {
     Q_OBJECT
@@ -22,6 +23,8 @@ public:
 
     void refresh();
     void setScope(const QString &scopeId);
+    void setFlowDirection(FlowDirection direction);
+    FlowDirection flowDirection() const { return flowDirection_; }
     QString scope() const { return scopeId_; }
     void deleteSelection();
     void goToParentScope();
@@ -40,6 +43,7 @@ signals:
 
 protected:
     void keyPressEvent(QKeyEvent *event) override;
+    void drawBackground(QPainter *painter, const QRectF &rect) override;
 
 private:
     friend class NodeItem;
@@ -50,6 +54,7 @@ private:
     void cancelNodeDrag();
     void scheduleRefresh();
     void beginConnection(PortItem *port);
+    void adjustJoinInputSlots(const QString &nodeId, bool add);
     void updateConnection(const QPointF &position);
     void finishConnection(PortItem *port);
     void cancelConnection();
@@ -57,10 +62,15 @@ private:
     QString parentScope() const;
 
     NNApplication *application_;
+    const void *projectIdentity_ = nullptr;
+    FlowDirection flowDirection_ = FlowDirection::Vertical;
     QString scopeId_;
     QHash<QString, NodeItem *> nodes_;
     QHash<QString, EdgeItem *> edges_;
     QHash<QString, QString> problemCategories_;
+    QHash<QString, QStringList> joinInputHandles_;
+    QHash<QString, QStringList> suppressedJoinInputs_;
+    QHash<QString, QStringList> occupiedJoinInputs_;
     PortItem *draftSource_ = nullptr;
     QGraphicsPathItem *draftPath_ = nullptr;
     bool refreshing_ = false;

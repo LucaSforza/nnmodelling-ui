@@ -14,6 +14,7 @@
 #include <QGraphicsView>
 #include <QKeyEvent>
 #include <QPainterPath>
+#include <QPainter>
 #include <QPen>
 #include <QSet>
 #include <QSignalBlocker>
@@ -57,6 +58,18 @@ QColor packageColor(const NNApplication *application, const QString &packageId,
     return QColor::fromHsv(202 + int(h % 22), 72 + int((h >> 5) % 18),
                            177 + int((h >> 9) % 26));
 }
+quint64 inputNumber(const QString &handle) {
+    bool ok = false;
+    const quint64 number = handle.startsWith(QStringLiteral("in-"))
+        ? handle.mid(3).toULongLong(&ok) : 0;
+    return ok ? number : 0;
+}
+void sortInputHandles(QStringList *handles) {
+    std::sort(handles->begin(), handles->end(), [](const QString &left, const QString &right) {
+        const quint64 a = inputNumber(left), b = inputNumber(right);
+        return a == b ? left < right : a < b;
+    });
+}
 }
 
 GraphScene::GraphScene(NNApplication *application, QObject *parent)
@@ -67,8 +80,47 @@ GraphScene::GraphScene(NNApplication *application, QObject *parent)
     refresh();
 }
 
+void GraphScene::drawBackground(QPainter *painter, const QRectF &rect) {
+    QGraphicsScene::drawBackground(painter, rect);
+    qreal viewScale = 0.0;
+    for (QGraphicsView *view : views())
+        viewScale = qMax(viewScale, qMin(qAbs(view->transform().m11()),
+                                        qAbs(view->transform().m22())));
+    if (!(viewScale > 0.0)) viewScale = 1.0;
+    constexpr qreal baseSpacing = NN_MODEL_GRID_SPACING;
+    const qreal desiredSpacing = qMax<qreal>(10.0 / viewScale,
+        qMax(rect.width(), rect.height()) / 300.0);
+    const qreal spacing = baseSpacing * qMax<qreal>(1.0,
+        std::ceil(desiredSpacing / baseSpacing));
+    const qint64 left = qint64(std::floor(rect.left() / spacing));
+    const qint64 right = qint64(std::ceil(rect.right() / spacing));
+    const qint64 top = qint64(std::floor(rect.top() / spacing));
+    const qint64 bottom = qint64(std::ceil(rect.bottom() / spacing));
+    QPainterPath grid;
+    for (qint64 x = left; x <= right; ++x) {
+        grid.moveTo(x * spacing, rect.top());
+        grid.lineTo(x * spacing, rect.bottom());
+    }
+    for (qint64 y = top; y <= bottom; ++y) {
+        grid.moveTo(rect.left(), y * spacing);
+        grid.lineTo(rect.right(), y * spacing);
+    }
+    painter->save();
+    painter->setPen(QPen(QColor(224, 229, 235), 0));
+    painter->drawPath(grid);
+    painter->restore();
+}
+
 void GraphScene::refresh() {
     if (!application_ || refreshing_) return;
+    const void *activeProject = nn_app_project(application_);
+    if (projectIdentity_ != activeProject) {
+        projectIdentity_ = activeProject;
+        flowDirection_ = FlowDirection::Vertical;
+        joinInputHandles_.clear();
+        suppressedJoinInputs_.clear();
+        occupiedJoinInputs_.clear();
+    }
     refreshing_ = true;
     QSignalBlocker signalBlocker(this);
     dragPositions_.clear();
@@ -81,6 +133,7 @@ void GraphScene::refresh() {
 
     QVector<NodeSnapshot> nodeData;
     QVector<EdgeSnapshot> edgeData;
+    occupiedJoinInputs_.clear();
     const NNModel *model = nn_app_model(application_);
     if (model) {
         nodeData.reserve(int(nn_model_node_count(model)));
@@ -101,6 +154,7 @@ void GraphScene::refresh() {
             edgeData.push_back({copyText(edge->id), copyText(edge->source_id),
                                 copyText(edge->source_handle_id), copyText(edge->target_id),
                                 copyText(edge->target_handle_id)});
+            occupiedJoinInputs_[copyText(edge->target_id)].append(copyText(edge->target_handle_id));
         }
     }
 
@@ -141,28 +195,70 @@ void GraphScene::refresh() {
                             topParameters, bottomParameters);
         if (data.kind == QStringLiteral("input") || data.kind == QStringLiteral("output") ||
             data.kind == QStringLiteral("loss-output")) item->setBoundaryKind(data.kind);
+        const bool join = data.kind == QStringLiteral("join");
+        item->setJoinNode(join);
+        item->setFlowDirection(flowDirection_);
         nodes_.insert(data.id, item);
         item->setProblemCategory(problemCategories_.value(data.id));
         addItem(item);
         for (bool output : {true, false}) {
-            const size_t count = output ? (package ? package->output_count : 0)
-                                        : nn_app_port_count(application_, data.id.toUtf8().constData(), false);
-            for (size_t index = 0; index < count; ++index) {
+            const QByteArray nodeId = data.id.toUtf8();
+            QStringList handles;
+            if (output) {
+                for (size_t index = 0; package && index < package->output_count; ++index)
+                    if (package->outputs[index].id)
+                        handles.append(QString::fromUtf8(package->outputs[index].id));
+            } else if (join) {
+                const QStringList occupied = occupiedJoinInputs_.value(data.id);
+                const QStringList suppressed = suppressedJoinInputs_.value(data.id);
+                auto appendIfVisible = [&handles, &occupied, &suppressed](const QString &handle) {
+                    if ((occupied.contains(handle) || !suppressed.contains(handle)) &&
+                        !handles.contains(handle)) handles.append(handle);
+                };
+                for (const QString &handle : joinInputHandles_.value(data.id))
+                    appendIfVisible(handle);
+                for (const QString &handle : occupied) appendIfVisible(handle);
+                const size_t count = nn_app_port_count(application_, nodeId.constData(), false);
+                for (size_t index = 0; index < count; ++index) {
+                    char handle[128] = {};
+                    if (nn_app_port_id(application_, nodeId.constData(), false, index,
+                                       handle, sizeof(handle))) appendIfVisible(QString::fromUtf8(handle));
+                }
+                for (int number = 1; handles.size() < 2; ++number)
+                    appendIfVisible(QStringLiteral("in-%1").arg(number));
+                sortInputHandles(&handles);
+                joinInputHandles_[data.id] = handles;
+            } else {
+                const size_t count = nn_app_port_count(application_, nodeId.constData(), false);
+                for (size_t index = 0; index < count; ++index) {
+                    char handle[128] = {};
+                    if (nn_app_port_id(application_, nodeId.constData(), false, index,
+                                       handle, sizeof(handle))) handles.append(QString::fromUtf8(handle));
+                }
+            }
+            for (int index = 0; index < handles.size(); ++index) {
                 QString handleId;
                 QString type;
                 if (output) {
-                    const NNOutputDef &definition = package->outputs[index];
-                    if (!definition.id) continue;
-                    handleId = QString::fromUtf8(definition.id);
-                    type = copyText(definition.type);
+                    handleId = handles[index];
+                    const NNOutputDef *definition = nullptr;
+                    for (size_t outputIndex = 0; package && outputIndex < package->output_count; ++outputIndex)
+                        if (package->outputs[outputIndex].id &&
+                            handleId == QString::fromUtf8(package->outputs[outputIndex].id))
+                            definition = &package->outputs[outputIndex];
+                    if (!definition) continue;
+                    type = copyText(definition->type);
                 } else {
-                    char handle[128] = {};
-                    if (!nn_app_port_id(application_, data.id.toUtf8().constData(), false, index,
-                                        handle, sizeof(handle))) continue;
-                    handleId = QString::fromUtf8(handle);
+                    handleId = handles[index];
                 }
                 auto *port = new PortItem(this, data.id, handleId, output, handleId, type, item);
                 item->addPort(port);
+            }
+            if (join) {
+                const QStringList occupied = occupiedJoinInputs_.value(data.id);
+                const QString highest = handles.isEmpty() ? QString() : handles.last();
+                const bool canRemove = handles.size() > 2 && !occupied.contains(highest);
+                item->setJoinInputControls(canRemove, handles.size() < 128);
             }
         }
     }
@@ -205,6 +301,14 @@ void GraphScene::setScope(const QString &scopeId) {
     scopeId_ = scopeId;
     scheduleRefresh();
     emit scopeChanged(scopeId_);
+}
+
+void GraphScene::setFlowDirection(FlowDirection direction) {
+    if (flowDirection_ == direction) return;
+    flowDirection_ = direction;
+    for (NodeItem *item : nodes_) item->setFlowDirection(direction);
+    for (EdgeItem *edge : edges_) edge->updatePath();
+    if (draftPath_ && draftSource_) updateConnection(draftSource_->scenePos());
 }
 
 void GraphScene::goToParentScope() { setScope(parentScope()); }
@@ -371,12 +475,38 @@ void GraphScene::beginConnection(PortItem *port) {
     updateConnection(port->scenePos());
 }
 
+void GraphScene::adjustJoinInputSlots(const QString &nodeId, bool add) {
+    QStringList handles = joinInputHandles_.value(nodeId);
+    if (handles.isEmpty()) return;
+    const QStringList occupied = occupiedJoinInputs_.value(nodeId);
+    if (add) {
+        if (handles.size() >= 128) return;
+        quint64 number = 1;
+        QString candidate;
+        do {
+            candidate = QStringLiteral("in-%1").arg(number++);
+        } while (handles.contains(candidate) || occupied.contains(candidate));
+        handles.append(candidate);
+        suppressedJoinInputs_[nodeId].removeAll(candidate);
+    } else {
+        if (handles.size() <= 2 || occupied.contains(handles.last())) return;
+        const QString removed = handles.takeLast();
+        suppressedJoinInputs_[nodeId].append(removed);
+    }
+    sortInputHandles(&handles);
+    joinInputHandles_[nodeId] = handles;
+    scheduleRefresh();
+}
+
 void GraphScene::updateConnection(const QPointF &position) {
     if (!draftPath_ || !draftSource_) return;
     const QPointF start = draftSource_->scenePos();
-    const qreal bend = qMax<qreal>(32.0, qAbs(position.y() - start.y()) * 0.4);
+    const bool horizontal = flowDirection_ == FlowDirection::Horizontal;
+    const qreal delta = horizontal ? start.x() - position.x() : position.y() - start.y();
+    const qreal bend = qMax<qreal>(32.0, qAbs(delta) * 0.4);
     QPainterPath path(start);
-    path.cubicTo(start + QPointF(0, bend), position - QPointF(0, bend), position);
+    const QPointF tangent = horizontal ? QPointF(-bend, 0) : QPointF(0, bend);
+    path.cubicTo(start + tangent, position - tangent, position);
     draftPath_->setPath(path);
 }
 

@@ -1,6 +1,8 @@
 #include "EdgeItem.hpp"
 
+#include "NodeItem.hpp"
 #include "PortItem.hpp"
+#include "GraphScene.hpp"
 
 #include <QPainterPath>
 #include <QPen>
@@ -19,9 +21,13 @@ void EdgeItem::updatePath() {
     if (!source_ || !target_) return;
     const QPointF start = source_->scenePos();
     const QPointF end = target_->scenePos();
-    const qreal bend = qMax<qreal>(36.0, qAbs(end.y() - start.y()) * 0.48);
+    const auto *scene = dynamic_cast<const GraphScene *>(source_->scene());
+    const bool horizontal = scene && scene->flowDirection() == FlowDirection::Horizontal;
+    const qreal delta = horizontal ? start.x() - end.x() : end.y() - start.y();
+    const qreal bend = qMax<qreal>(36.0, qAbs(delta) * 0.48);
+    const QPointF controlOffset = horizontal ? QPointF(-bend, 0) : QPointF(0, bend);
     QPainterPath curve(start);
-    curve.cubicTo(start + QPointF(0, bend), end - QPointF(0, bend), end);
+    curve.cubicTo(start + controlOffset, end - controlOffset, end);
     setPath(curve);
     QPolygonF arrow;
     const QPointF tangent = end - curve.pointAtPercent(0.985);

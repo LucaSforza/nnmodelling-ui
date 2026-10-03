@@ -18,6 +18,7 @@
 #include <QJsonObject>
 #include <QUuid>
 #include <QWheelEvent>
+#include <QScrollBar>
 #include <QtTest>
 
 #include <memory>
@@ -99,8 +100,8 @@ private slots:
         pumpEvents();
         const NNNode *saved = nn_model_find_node(nn_app_model(application_), "target");
         QVERIFY(saved);
-        QVERIFY(qAbs(saved->x - 138.0) < 1.0);
-        QVERIFY(qAbs(saved->y - 307.0) < 1.0);
+        QCOMPARE(saved->x, 140.0);
+        QCOMPARE(saved->y, 300.0);
     }
 
     void portsConnectThroughApplication() {
@@ -118,6 +119,14 @@ private slots:
         const QPoint end = view_->mapFromScene(in->scenePos());
         QTest::mousePress(view_->viewport(), Qt::LeftButton, Qt::NoModifier, start);
         QTest::mouseMove(view_->viewport(), end, 30);
+        QGraphicsPathItem *draft = nullptr;
+        for (QGraphicsItem *item : scene_->items()) {
+            if (dynamic_cast<EdgeItem *>(item)) continue;
+            if (auto *path = dynamic_cast<QGraphicsPathItem *>(item)) draft = path;
+        }
+        QVERIFY(draft);
+        QVERIFY(draft->path().elementAt(1).y > draft->path().elementAt(0).y);
+        QVERIFY(qAbs(draft->path().elementAt(1).x - draft->path().elementAt(0).x) < 0.1);
         QTest::mouseRelease(view_->viewport(), Qt::LeftButton, Qt::NoModifier, end);
         pumpEvents();
         QCOMPARE(nn_model_edge_count(nn_app_model(application_)), size_t(1));
@@ -185,16 +194,19 @@ private slots:
         QVERIFY(spawnedBoundary);
         QVERIFY(spawnedBoundary->boundary_handle_id);
         QCOMPARE(QString::fromUtf8(spawnedBoundary->boundary_handle_id), QStringLiteral("out"));
+        scene_->setFlowDirection(FlowDirection::Horizontal);
         QSignalSpy scopeSpy(scene_, &GraphScene::scopeChanged);
         const QPoint center = view_->mapFromScene(flow->sceneBoundingRect().center());
         QTest::mouseDClick(view_->viewport(), Qt::LeftButton, Qt::NoModifier, center);
         pumpEvents();
         QCOMPARE(scene_->scope(), QStringLiteral("flow"));
         QCOMPARE(scopeSpy.count(), 1);
+        QVERIFY(scene_->flowDirection() == FlowDirection::Horizontal);
         QVERIFY(scene_->nodeItem(QStringLiteral("child")));
         scene_->goToParentScope();
         pumpEvents();
         QVERIFY(scene_->scope().isEmpty());
+        QVERIFY(scene_->flowDirection() == FlowDirection::Horizontal);
 
         NodeItem *target = scene_->nodeItem(QStringLiteral("target"));
         QVERIFY(target);
@@ -240,10 +252,10 @@ private slots:
         const NNNode *savedSource = nn_model_find_node(model, "source");
         const NNNode *savedTarget = nn_model_find_node(model, "target");
         QVERIFY(savedSource && savedTarget);
-        QVERIFY(qAbs(savedSource->x - (sourceBefore.x() + 31.0)) < 1.0);
-        QVERIFY(qAbs(savedSource->y - (sourceBefore.y() + 24.0)) < 1.0);
-        QVERIFY(qAbs(savedTarget->x - (targetBefore.x() + 31.0)) < 1.0);
-        QVERIFY(qAbs(savedTarget->y - (targetBefore.y() + 24.0)) < 1.0);
+        QCOMPARE(savedSource->x, 140.0);
+        QCOMPARE(savedSource->y, 120.0);
+        QCOMPARE(savedTarget->x, 140.0);
+        QCOMPARE(savedTarget->y, 300.0);
     }
 
     void escapeRestoresNodeDragPreview() {
@@ -395,6 +407,251 @@ private slots:
         QVERIFY(!longImage.isNull());
     }
 
+    void horizontalDirectionPlacesHandlesAndConnectsRightToLeft() {
+        NodeItem *source = scene_->nodeItem(QStringLiteral("source"));
+        NodeItem *target = scene_->nodeItem(QStringLiteral("target"));
+        QVERIFY(source && target);
+        PortItem *out = nullptr;
+        PortItem *in = nullptr;
+        for (PortItem *port : source->ports()) if (port->isOutput()) out = port;
+        for (PortItem *port : target->ports()) if (!port->isOutput()) in = port;
+        QVERIFY(out && in);
+        QCOMPARE(out->y(), 60.0);
+        QCOMPARE(in->y(), 9.0);
+        char error[512] = {};
+        QVERIFY2(nn_app_move_node(application_, "flow", 800, 400, error, sizeof(error)), error);
+        QVERIFY2(nn_app_move_node(application_, "source", 400, 100, error, sizeof(error)), error);
+        QVERIFY2(nn_app_move_node(application_, "target", 100, 100, error, sizeof(error)), error);
+        scene_->refresh();
+        view_->centerOn(QPointF(280, 150));
+        source = scene_->nodeItem(QStringLiteral("source"));
+        target = scene_->nodeItem(QStringLiteral("target"));
+        QVERIFY(source && target);
+        out = nullptr;
+        in = nullptr;
+        for (PortItem *port : source->ports()) if (port->isOutput()) out = port;
+        for (PortItem *port : target->ports()) if (!port->isOutput()) in = port;
+        QVERIFY(out && in);
+
+        scene_->setFlowDirection(FlowDirection::Horizontal);
+        QCOMPARE(out->x(), 25.0);
+        QCOMPARE(in->x(), target->boundingRect().width() - 8.0);
+        QVERIFY(out->scenePos().x() > in->scenePos().x());
+        const QPoint start = view_->mapFromScene(out->scenePos());
+        const QPoint end = view_->mapFromScene(in->scenePos());
+        QTest::mousePress(view_->viewport(), Qt::LeftButton, Qt::NoModifier, start);
+        QTest::mouseMove(view_->viewport(), end, 30);
+        QGraphicsPathItem *draft = nullptr;
+        for (QGraphicsItem *item : scene_->items()) {
+            if (dynamic_cast<EdgeItem *>(item)) continue;
+            if (auto *path = dynamic_cast<QGraphicsPathItem *>(item)) draft = path;
+        }
+        QVERIFY(draft);
+        QVERIFY(draft->path().elementAt(1).x < draft->path().elementAt(0).x);
+        QVERIFY(qAbs(draft->path().elementAt(1).y - draft->path().elementAt(0).y) < 0.1);
+        QTest::mouseRelease(view_->viewport(), Qt::LeftButton, Qt::NoModifier, end);
+        pumpEvents();
+        QCOMPARE(nn_model_edge_count(nn_app_model(application_)), size_t(1));
+        const NNEdge *connected = nn_model_edge_at(nn_app_model(application_), 0);
+        QVERIFY(connected);
+        EdgeItem *edge = scene_->edgeItem(QString::fromUtf8(connected->id));
+        QVERIFY(edge);
+        source = scene_->nodeItem(QStringLiteral("source"));
+        target = scene_->nodeItem(QStringLiteral("target"));
+        out = nullptr;
+        in = nullptr;
+        for (PortItem *port : source->ports()) if (port->isOutput()) out = port;
+        for (PortItem *port : target->ports()) if (!port->isOutput()) in = port;
+        const QPainterPath edgePath = edge->path();
+        QVERIFY(edgePath.elementAt(1).x < edgePath.elementAt(0).x);
+        QVERIFY(qAbs(edgePath.elementAt(1).y - edgePath.elementAt(0).y) < 0.1);
+
+        scene_->setFlowDirection(FlowDirection::Vertical);
+        QCOMPARE(out->y(), 60.0);
+        QCOMPARE(in->y(), 9.0);
+        const QPainterPath vertical = edge->path();
+        QVERIFY(vertical.elementAt(1).y > vertical.elementAt(0).y);
+        QVERIFY(qAbs(vertical.elementAt(1).x - vertical.elementAt(0).x) < 0.1);
+    }
+
+    void genericJoinJunctionResizesWithoutDroppingConnections() {
+        const QByteArray definition = R"({"name":"Custom merge","description":"","kind":"join","outputs":[{"id":"out","type":"output"}],"parameters":{},"view":{"color":"#6688aa","width":190,"height":100}})";
+        const QByteArray lua = "return function(context, parameters, services) return { status = 'unresolved', message = 'No inputs' } end";
+        char error[512] = {};
+        QVERIFY2(nn_app_create_stereotype(application_, "test.custom-join", "1.0.0",
+                                          definition.constData(), lua.constData(), "{}",
+                                          error, sizeof(error)), error);
+        QVERIFY2(nn_app_add_node(application_, "custom-join", "test.custom-join", "1.0.0", "",
+                                 420, 220, error, sizeof(error)), error);
+        QVERIFY2(nn_app_connect(application_, "join-input-one", "source", "out", "custom-join",
+                                "in-1", error, sizeof(error)), error);
+        QVERIFY2(nn_app_connect(application_, "join-input-two", "source", "out", "custom-join",
+                                "in-2", error, sizeof(error)), error);
+        scene_->refresh();
+        NodeItem *join = scene_->nodeItem(QStringLiteral("custom-join"));
+        QVERIFY(join);
+        QCOMPARE(join->ports().size(), 4);
+        QVERIFY(join->boundingRect().contains(join->joinAddControlRect()));
+        QVERIFY(join->boundingRect().contains(join->joinRemoveControlRect()));
+        QVERIFY(join->joinRemoveControlRect().center().x() < join->joinAddControlRect().center().x());
+        PortItem *joinInputThree = nullptr;
+        for (PortItem *port : join->ports())
+            if (!port->isOutput() && port->handleId() == QStringLiteral("in-3")) joinInputThree = port;
+        QVERIFY(joinInputThree);
+        QVERIFY(joinInputThree->y() < join->boundingRect().center().y());
+        QImage junctionImage(join->boundingRect().size().toSize(), QImage::Format_ARGB32_Premultiplied);
+        junctionImage.fill(Qt::transparent);
+        QPainter junctionPainter(&junctionImage);
+        junctionPainter.translate(-join->boundingRect().topLeft());
+        join->paint(&junctionPainter, nullptr);
+        junctionPainter.end();
+        QCOMPARE(junctionImage.pixelColor(5, 5).alpha(), 0);
+        QCOMPARE(junctionImage.pixelColor(int(join->junctionRect().center().x()),
+                                         int(join->junctionRect().center().y())), QColor(32, 39, 48));
+
+        const QPoint add = view_->mapFromScene(join->mapToScene(join->joinAddControlRect().center()));
+        QTest::mouseClick(view_->viewport(), Qt::LeftButton, Qt::NoModifier, add);
+        pumpEvents();
+        join = scene_->nodeItem(QStringLiteral("custom-join"));
+        QVERIFY(join);
+        PortItem *joinInputFour = nullptr;
+        for (PortItem *port : join->ports())
+            if (!port->isOutput() && port->handleId() == QStringLiteral("in-4")) joinInputFour = port;
+        QVERIFY(joinInputFour);
+
+        PortItem *sourceOutput = nullptr;
+        for (PortItem *port : scene_->nodeItem(QStringLiteral("source"))->ports())
+            if (port->isOutput()) sourceOutput = port;
+        QVERIFY(sourceOutput);
+        const QPoint start = view_->mapFromScene(sourceOutput->scenePos());
+        const QPoint end = view_->mapFromScene(joinInputFour->scenePos());
+        QTest::mousePress(view_->viewport(), Qt::LeftButton, Qt::NoModifier, start);
+        QTest::mouseMove(view_->viewport(), end, 30);
+        QTest::mouseRelease(view_->viewport(), Qt::LeftButton, Qt::NoModifier, end);
+        pumpEvents();
+        QCOMPARE(nn_model_edge_count(nn_app_model(application_)), size_t(3));
+        bool connectedFour = false;
+        for (size_t i = 0; i < nn_model_edge_count(nn_app_model(application_)); ++i) {
+            const NNEdge *edge = nn_model_edge_at(nn_app_model(application_), i);
+            connectedFour |= edge && QString::fromUtf8(edge->target_handle_id) == QStringLiteral("in-4");
+        }
+        QVERIFY(connectedFour);
+
+        scene_->setFlowDirection(FlowDirection::Horizontal);
+        join = scene_->nodeItem(QStringLiteral("custom-join"));
+        PortItem *horizontalInput = nullptr, *horizontalOutput = nullptr;
+        for (PortItem *port : join->ports()) {
+            if (port->isOutput()) horizontalOutput = port;
+            else if (port->handleId() == QStringLiteral("in-1")) horizontalInput = port;
+        }
+        QVERIFY(horizontalInput && horizontalOutput);
+        QVERIFY(horizontalInput->x() > join->boundingRect().center().x());
+        QVERIFY(horizontalOutput->x() < join->boundingRect().center().x());
+        QVERIFY(join->joinRemoveControlRect().center().y() < join->joinAddControlRect().center().y());
+
+        const QPoint remove = view_->mapFromScene(join->mapToScene(join->joinRemoveControlRect().center()));
+        QTest::mouseClick(view_->viewport(), Qt::LeftButton, Qt::NoModifier, remove);
+        pumpEvents();
+        join = scene_->nodeItem(QStringLiteral("custom-join"));
+        bool retainedOne = false, retainedFour = false, exposedFive = false;
+        for (PortItem *port : join->ports()) {
+            if (port->isOutput()) continue;
+            retainedOne |= port->handleId() == QStringLiteral("in-1");
+            retainedFour |= port->handleId() == QStringLiteral("in-4");
+            exposedFive |= port->handleId() == QStringLiteral("in-5");
+        }
+        QVERIFY(retainedOne && retainedFour);
+        QVERIFY(!exposedFive);
+        QVERIFY(join->joinRemoveControlRect().isValid());
+        QTest::mouseClick(view_->viewport(), Qt::LeftButton, Qt::NoModifier,
+            view_->mapFromScene(join->mapToScene(join->joinRemoveControlRect().center())));
+        pumpEvents();
+        join = scene_->nodeItem(QStringLiteral("custom-join"));
+        QVERIFY(std::any_of(join->ports().cbegin(), join->ports().cend(), [](PortItem *port) {
+            return !port->isOutput() && port->handleId() == QStringLiteral("in-4");
+        }));
+    }
+
+    void terminalRimPortsFollowBothDirections() {
+        NodeItem *input = scene_->nodeItem(QStringLiteral("source"));
+        QVERIFY(input);
+        PortItem *inputOutput = nullptr;
+        for (PortItem *port : input->ports()) if (port->isOutput()) inputOutput = port;
+        QVERIFY(inputOutput);
+        QCOMPARE(inputOutput->y(), 60.0);
+
+        NodeItem *output = nullptr;
+        const NNModel *model = nn_app_model(application_);
+        for (size_t i = 0; i < nn_model_node_count(model); ++i) {
+            const NNNode *node = nn_model_node_at(model, i);
+            if (node && std::strcmp(node->package_id, "core.output") == 0 &&
+                (!node->scope_id || !*node->scope_id))
+                output = scene_->nodeItem(QString::fromUtf8(node->id));
+        }
+        QVERIFY(output);
+        const QByteArray outputId = output->id().toUtf8();
+        PortItem *terminalInput = nullptr;
+        for (PortItem *port : output->ports()) if (!port->isOutput()) terminalInput = port;
+        QVERIFY(terminalInput);
+        QCOMPARE(terminalInput->y(), 16.0);
+        char error[512] = {};
+        QVERIFY2(nn_app_move_node(application_, "flow", 800, 400, error, sizeof(error)), error);
+        QVERIFY2(nn_app_move_node(application_, "source", 400, 100, error, sizeof(error)), error);
+        QVERIFY2(nn_app_move_node(application_, outputId.constData(), 100, 100, error, sizeof(error)), error);
+        scene_->refresh();
+        view_->centerOn(QPointF(280, 150));
+        input = scene_->nodeItem(QStringLiteral("source"));
+        output = scene_->nodeItem(QString::fromUtf8(outputId));
+        QVERIFY(input && output);
+        inputOutput = nullptr;
+        terminalInput = nullptr;
+        for (PortItem *port : input->ports()) if (port->isOutput()) inputOutput = port;
+        for (PortItem *port : output->ports()) if (!port->isOutput()) terminalInput = port;
+        QVERIFY(inputOutput && terminalInput);
+
+        scene_->setFlowDirection(FlowDirection::Horizontal);
+        QCOMPARE(inputOutput->x(), 25.0);
+        QCOMPARE(terminalInput->x(), 69.0);
+        QVERIFY(inputOutput->scenePos().x() > terminalInput->scenePos().x());
+        const QPoint start = view_->mapFromScene(inputOutput->scenePos());
+        const QPoint end = view_->mapFromScene(terminalInput->scenePos());
+        QTest::mousePress(view_->viewport(), Qt::LeftButton, Qt::NoModifier, start);
+        QTest::mouseMove(view_->viewport(), end, 30);
+        QTest::mouseRelease(view_->viewport(), Qt::LeftButton, Qt::NoModifier, end);
+        pumpEvents();
+        QCOMPARE(nn_model_edge_count(nn_app_model(application_)), size_t(1));
+        const NNEdge *edge = nn_model_edge_at(nn_app_model(application_), 0);
+        QVERIFY(edge);
+        QCOMPARE(QString::fromUtf8(edge->target_id), QString::fromUtf8(outputId));
+
+        scene_->setFlowDirection(FlowDirection::Vertical);
+        input = scene_->nodeItem(QStringLiteral("source"));
+        output = scene_->nodeItem(QString::fromUtf8(outputId));
+        inputOutput = nullptr;
+        terminalInput = nullptr;
+        for (PortItem *port : input->ports()) if (port->isOutput()) inputOutput = port;
+        for (PortItem *port : output->ports()) if (!port->isOutput()) terminalInput = port;
+        QCOMPARE(inputOutput->y(), 60.0);
+        QCOMPARE(terminalInput->y(), 16.0);
+    }
+
+    void fitFramesLargeBoundsAndRecentersAfterPan() {
+        QVERIFY(addNode("far", "core.relu", "", 200000, 200000));
+        scene_->refresh();
+        view_->horizontalScrollBar()->setValue(view_->horizontalScrollBar()->maximum());
+        view_->verticalScrollBar()->setValue(view_->verticalScrollBar()->maximum());
+        view_->fitGraph();
+        const QRectF bounds = scene_->itemsBoundingRect();
+        QVERIFY(view_->transform().m11() < 0.2);
+        const QPoint mappedCenter = view_->mapFromScene(bounds.center());
+        const QPoint viewportCenter = view_->viewport()->rect().center();
+        const qreal centerError = QLineF(mappedCenter, viewportCenter).length();
+        QVERIFY2(centerError < 2.0,
+                 qPrintable(QStringLiteral("fit center error %1 px (mapped %2,%3; viewport %4,%5; zoom %6)")
+                    .arg(centerError).arg(mappedCenter.x()).arg(mappedCenter.y())
+                    .arg(viewportCenter.x()).arg(viewportCenter.y()).arg(view_->transform().m11())));
+    }
+
     void inputWithTwoTypedOutputsHasDistinctConnectableHotspots() {
         const QByteArray definition = R"({"name":"Dual input","description":"","kind":"input","outputs":[{"id":"prediction","type":"output"},{"id":"objective","type":"loss"}],"parameters":{},"view":{"color":"#6688aa","width":190,"height":100}})";
         const QByteArray lua = "return function(context, parameters, services) return { status = 'unresolved', message = 'No dataset binding' } end";
@@ -435,6 +692,11 @@ private slots:
         pumpEvents();
         QVERIFY(renderPort(outputPort) != atRest);
         QVERIFY(QLineF(outputPort->pos(), lossPort->pos()).length() > 14.0);
+        scene_->setFlowDirection(FlowDirection::Horizontal);
+        QVERIFY(outputPort->x() < input->boundingRect().center().x());
+        QVERIFY(lossPort->x() < input->boundingRect().center().x());
+        QVERIFY(qAbs(outputPort->y() - lossPort->y()) > 10.0);
+        scene_->setFlowDirection(FlowDirection::Vertical);
         QVERIFY(outputPort->toolTip().contains(QStringLiteral("prediction")));
         QVERIFY(lossPort->toolTip().contains(QStringLiteral("loss")));
         QVERIFY2(nn_app_connect(application_, "dual-output-edge", "dual-input", "prediction",

@@ -2,6 +2,7 @@
 
 #include "GraphScene.hpp"
 #include "GraphView.hpp"
+#include "NodeItem.hpp"
 #include "MainWindowUtils.hpp"
 #include "application/application.h"
 #include "automation/automation.h"
@@ -26,6 +27,7 @@
 #include <QStatusBar>
 #include <QTimer>
 #include <QToolBar>
+#include <QToolButton>
 #include <QTreeWidget>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -207,7 +209,20 @@ void MainWindow::buildUi() {
     scopeSelector_->setMinimumWidth(190);
     toolbar->addWidget(scopeSelector_);
     auto *fitAction = toolbar->addAction(tr("Fit"));
+    auto *zoomInAction = toolbar->addAction(tr("+"));
+    zoomInAction->setObjectName(QStringLiteral("zoomIn"));
+    zoomInAction->setToolTip(tr("Zoom in"));
+    auto *zoomOutAction = toolbar->addAction(tr("−"));
+    zoomOutAction->setObjectName(QStringLiteral("zoomOut"));
+    zoomOutAction->setToolTip(tr("Zoom out"));
     auto *arrangeAction = toolbar->addAction(tr("Arrange"));
+    auto *arrangeMenu = new QMenu(this);
+    QAction *verticalAction = arrangeMenu->addAction(tr("Vertical"));
+    QAction *horizontalAction = arrangeMenu->addAction(tr("Horizontal"));
+    if (auto *button = qobject_cast<QToolButton *>(toolbar->widgetForAction(arrangeAction))) {
+        button->setMenu(arrangeMenu);
+        button->setPopupMode(QToolButton::MenuButtonPopup);
+    }
 
     auto *workspace = new QSplitter(Qt::Horizontal, this);
     auto *left = new QWidget(workspace);
@@ -353,6 +368,18 @@ void MainWindow::buildUi() {
             [this](QTreeWidgetItem *item, int column) { selectDataset(item, column); });
     connect(stereotypeButton, &QPushButton::clicked, this, &MainWindow::createStereotype);
     connect(datasetButton, &QPushButton::clicked, this, &MainWindow::createDataset);
-    connect(fitAction, &QAction::triggered, view_, &GraphView::fitGraph);
-    connect(arrangeAction, &QAction::triggered, this, [this] { arrangeCurrentScope(); });
+    connect(fitAction, &QAction::triggered, this, [this] {
+        arrangeCurrentScope(FlowDirection::Vertical, false);
+    });
+    connect(zoomInAction, &QAction::triggered, view_, &GraphView::zoomIn);
+    connect(zoomOutAction, &QAction::triggered, view_, &GraphView::zoomOut);
+    connect(arrangeAction, &QAction::triggered, this, [this] {
+        arrangeCurrentScope(FlowDirection::Vertical);
+    });
+    connect(verticalAction, &QAction::triggered, this, [this] {
+        arrangeCurrentScope(FlowDirection::Vertical);
+    });
+    connect(horizontalAction, &QAction::triggered, this, [this] {
+        arrangeCurrentScope(FlowDirection::Horizontal);
+    });
 }

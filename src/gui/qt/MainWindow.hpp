@@ -16,6 +16,7 @@ class NNApplication;
 struct NNAutomation;
 class GraphScene;
 class GraphView;
+enum class FlowDirection;
 
 class MainWindow final : public QMainWindow {
     Q_OBJECT
@@ -44,7 +45,7 @@ private:
     void createProject(bool mnist);
     void createVaeProject();
     void addSelectedPackage();
-    void arrangeCurrentScope();
+    void arrangeCurrentScope(FlowDirection direction, bool frameContent = true);
     void editNodeName(const QString &nodeId, const QString &name);
     void editNodeParameter(const QString &nodeId, const QString &key, const QString &value);
     void selectResource(QTreeWidgetItem *item, int column);

@@ -10,6 +10,8 @@
 class GraphScene;
 class PortItem;
 
+enum class FlowDirection { Vertical, Horizontal };
+
 class NodeItem : public QGraphicsObject {
     Q_OBJECT
 public:
@@ -28,6 +30,12 @@ public:
     virtual void setChildCount(int count);
     void setProblemCategory(const QString &category);
     void setBoundaryKind(const QString &kind);
+    void setFlowDirection(FlowDirection direction);
+    void setJoinNode(bool join);
+    void setJoinInputControls(bool canRemove, bool canAdd);
+    QRectF joinRemoveControlRect() const { return joinRemoveRect_; }
+    QRectF joinAddControlRect() const { return joinAddRect_; }
+    QRectF junctionRect() const { return junctionRect_; }
     QString boundaryKind() const { return boundaryKind_; }
     QString problemCategory() const { return problemCategory_; }
 
@@ -42,11 +50,21 @@ protected:
     QColor color_;
     QString problemCategory_;
     QString boundaryKind_;
+    bool joinNode_ = false;
+    bool canRemoveJoinInput_ = false;
+    bool canAddJoinInput_ = false;
+    FlowDirection flowDirection_ = FlowDirection::Vertical;
     QList<PortItem *> ports_;
     QList<QPair<QString, QString>> topParameters_;
     QList<QPair<QString, QString>> bottomParameters_;
     qreal width_ = 190.0;
+    qreal contentWidth_ = 190.0;
     qreal height_ = 96.0;
+    QRectF joinRemoveRect_;
+    QRectF joinAddRect_;
+    QRectF junctionRect_;
+    void layoutPorts();
+    void layoutJoin();
 };
 
 #endif

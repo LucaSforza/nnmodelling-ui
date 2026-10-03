@@ -1,6 +1,7 @@
 #include "MainWindow.hpp"
 #include "GraphScene.hpp"
 #include "MainWindowUtils.hpp"
+#include "NodeItem.hpp"
 #include "application/application.h"
 #include "automation/automation.h"
 #include "project/project.h"
@@ -102,11 +103,13 @@ char *MainWindow::automationUiCallback(void *user, const char *operation,
         self->refreshAll();
         result.insert(QStringLiteral("scope"), self->scene_->scope());
     } else if (op == QStringLiteral("ui.arrange")) {
-        self->arrangeCurrentScope();
+        self->arrangeCurrentScope(FlowDirection::Vertical);
         result.insert(QStringLiteral("arranged"), true);
     } else if (op == QStringLiteral("ui.screenshot")) {
         const QString path = argsDoc.object().value(QStringLiteral("path")).toString();
         if (path.isEmpty()) return fail("Screenshot path is required");
+        if (argsDoc.object().value(QStringLiteral("arrange")).toBool())
+            self->arrangeCurrentScope(FlowDirection::Vertical, true);
         self->refreshAll();
         if (self->centralWidget() && self->centralWidget()->layout())
             self->centralWidget()->layout()->activate();
