@@ -43,8 +43,11 @@ CLI help lists operations and resource payloads. Payload keys:
 * edge.connect {id,source,sourceHandle,target,targetHandle}; edge.disconnect {id}.
 * ui.inspect {} returns stable semantic widget IDs/roles/labels and current scope.
 * ui.scope {id:string} navigates root (empty) or existing scope.
-* ui.arrange {} arranges current scope and refreshes model-backed layout.
-* ui.screenshot {path} refreshes scene/widgets and commits layout before capture.
+* ui.arrange {} arranges current scope vertically and frames the complete
+  model-backed layout, following editor.md.
+* ui.screenshot {path,arrange:boolean=false} refreshes scene/widgets and commits
+  widget layout before capture. Optional arrange=true first arranges current
+  scope vertically and frames content; it never performs Input-focused Fit.
 * analysis.diagnostics {} returns the same structured C problems and successful
   tensors used by the UI, per diagnostics.md; it is read-only.
 * ui.reveal {id} selects/centers an existing node, opening its scope as needed.

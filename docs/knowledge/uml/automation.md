@@ -7,7 +7,8 @@ Accepted 2026-09-30: implement local Unix command interface according to
 serves UI, tests and nnmodelctl. Backend training remains deferred.
 Accepted 2026-10-01: typed-outputs.md extends definition payloads, snapshots,
 handle-keyed diagnostic tensors and node.boundary mapping edits. C remains the
-only command validator; UI/CLI subflow creation spawns identical terminals.
+only command validator; UI/CLI subflow creation spawns identical Input and
+mapped terminals atomically (2026-10-03).
 
 ## Diagram
 
@@ -93,7 +94,8 @@ or `id:"decoder"`; project.snapshot exposes the nodes for parameter edits.
 `dispatch` validates request shape and semantic target, invokes one
 application operation, and returns success/error/diagnostics. `inspect` reads
 semantic UI tree without a graph copy. `capture` synchronizes layout and frame
-before saving screenshot. Nonblocking Linux AF_UNIX, bounded newline-delimited
+before saving screenshot; optional arrange=true uses vertical arrangement and
+whole-content framing, not Input-focused Fit. Nonblocking Linux AF_UNIX, bounded newline-delimited
 JSON, private same-user permissions and exact commands follow automation.md.
 Backend training operations are outside this client milestone.
 
