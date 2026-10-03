@@ -400,7 +400,9 @@ int main(void)
         false, "stereotype-packages/core", error, sizeof(error));
     assert(diagnostic_project);
     assert(nn_project_create_dataset(diagnostic_project, "local.data", "0.1.0",
-        "{\"name\":\"Data\",\"batch\":{\"inputs\":{\"image\":{\"dtype\":\"float32\",\"shape\":[\"B\",8]}},\"targets\":{}}}",
+        "{\"name\":\"Data\",\"batch\":{\"inputs\":{"
+        "\"image\":{\"dtype\":\"float32\",\"shape\":[\"B\",8]},"
+        "\"indices\":{\"dtype\":\"int64\",\"shape\":[\"B\",128]}},\"targets\":{}}}",
         true, error, sizeof(error)));
     assert(nn_project_create_stereotype(diagnostic_project, "local.broken", "0.1.0",
         "{\"name\":\"Broken\",\"kind\":\"layer\",\"view\":{\"color\":\"#444444\",\"width\":200,\"height\":100},\"parameters\":{}}",
@@ -416,6 +418,95 @@ int main(void)
     NNValue binding_value = { .type = NN_VALUE_STRING, .as.string = "image" };
     assert(nn_model_set_parameter(nn_project_model(diagnostic_project), "diagnostic-input",
         "binding", &binding_value, error, sizeof(error)));
+
+    assert(nn_project_create_stereotype(diagnostic_project, "local.tensor-primitives", "0.1.0",
+        "{\"name\":\"Tensor primitives\",\"kind\":\"layer\","
+        "\"view\":{\"color\":\"#444444\",\"width\":200,\"height\":100},"
+        "\"parameters\":{}}",
+        "return function() "
+        "local t=tensor.create({'B',2},'float32'); "
+        "local appended, err=tensor.append_dimension(t,7); "
+        "assert(appended and not err and #t.shape==2 and t.dtype=='float32'); "
+        "assert(#appended.shape==3 and appended.shape[3]==7); "
+        "local bad, message=tensor.append_dimension(t,0); "
+        "assert(bad==nil and type(message)=='string'); "
+        "bad, message=tensor.append_dimension(t,1.5); "
+        "assert(bad==nil and type(message)=='string'); "
+        "local changed, change_error=tensor.with_dtype(t,'int64'); "
+        "assert(changed and not change_error and changed.dtype=='int64'); "
+        "assert(t.dtype=='float32' and #changed.shape==#t.shape); "
+        "local symbolic={dtype='float32',shape={'B','2'}}; "
+        "local symbolic_copy=tensor.with_dtype(symbolic,'int64'); "
+        "local symbolic_append=tensor.append_dimension(symbolic,3); "
+        "assert(type(symbolic_copy.shape[2])=='string' and symbolic_copy.shape[2]=='2'); "
+        "assert(type(symbolic_append.shape[2])=='string' and symbolic_append.shape[2]=='2'); "
+        "assert(not tensor.equal(symbolic_copy,tensor.create({'B',2},'int64'))); "
+        "bad, message=tensor.with_dtype(t,''); "
+        "assert(bad==nil and type(message)=='string'); "
+        "assert(tensor.equal(t,tensor.create({'B',2},'float32'))); "
+        "assert(tensor.equal({dtype='x',shape={2}}, {dtype='x',shape={2}})); "
+        "assert(not tensor.equal({dtype='x',shape={2}}, {dtype='x',shape={'2'}})); "
+        "assert(not tensor.equal(t,tensor.create({'B',3},'float32'))); "
+        "bad, message=tensor.equal({},t); assert(bad==nil and type(message)=='string'); "
+        "local rank64={}; for i=1,64 do rank64[i]='D'..i end; "
+        "local max_rank=tensor.create(rank64,'float32'); "
+        "bad, message=tensor.append_dimension(max_rank,1); "
+        "assert(bad==nil and type(message)=='string'); "
+        "return {status='success',output=t} end",
+        "{}", error, sizeof(error)));
+    assert(nn_model_add_node(nn_project_model(diagnostic_project), "tensor-primitives",
+        "Tensor primitives", "local.tensor-primitives", "0.1.0", "", 0, 0,
+        error, sizeof(error)));
+    assert(nn_model_connect(nn_project_model(diagnostic_project), "tensor-primitives-edge",
+        "diagnostic-input", "out", "tensor-primitives", "in", error, sizeof(error)));
+
+    assert(nn_model_add_node(nn_project_model(diagnostic_project), "embedding-input",
+        "Indices", "core.input", "0.1.0", "", 0, 0, error, sizeof(error)));
+    NNValue indices_binding = { .type = NN_VALUE_STRING, .as.string = "indices" };
+    assert(nn_model_set_parameter(nn_project_model(diagnostic_project), "embedding-input",
+        "binding", &indices_binding, error, sizeof(error)));
+    assert(nn_model_add_node(nn_project_model(diagnostic_project), "embedding-a", "Embedding A",
+        "core.embedding", "0.1.0", "", 0, 0, error, sizeof(error)));
+    assert(nn_model_add_node(nn_project_model(diagnostic_project), "embedding-b", "Embedding B",
+        "core.embedding", "0.1.0", "", 0, 0, error, sizeof(error)));
+    NNValue embedding_count = { .type = NN_VALUE_INT, .as.integer = 32000 };
+    NNValue embedding_dim = { .type = NN_VALUE_INT, .as.integer = 512 };
+    NNValue embedding_input_dtype = { .type = NN_VALUE_STRING, .as.string = "int64" };
+    NNValue embedding_dtype = { .type = NN_VALUE_STRING, .as.string = "float32" };
+    assert(nn_model_set_parameter(nn_project_model(diagnostic_project), "embedding-a",
+        "num_embeddings", &embedding_count, error, sizeof(error)));
+    assert(nn_model_set_parameter(nn_project_model(diagnostic_project), "embedding-a",
+        "embedding_dim", &embedding_dim, error, sizeof(error)));
+    assert(nn_model_set_parameter(nn_project_model(diagnostic_project), "embedding-b",
+        "num_embeddings", &embedding_count, error, sizeof(error)));
+    assert(nn_model_set_parameter(nn_project_model(diagnostic_project), "embedding-b",
+        "embedding_dim", &embedding_dim, error, sizeof(error)));
+    assert(nn_model_set_parameter(nn_project_model(diagnostic_project), "embedding-a",
+        "input_dtype", &embedding_input_dtype, error, sizeof(error)));
+    assert(nn_model_set_parameter(nn_project_model(diagnostic_project), "embedding-a",
+        "dtype", &embedding_dtype, error, sizeof(error)));
+    assert(nn_model_set_parameter(nn_project_model(diagnostic_project), "embedding-b",
+        "input_dtype", &embedding_input_dtype, error, sizeof(error)));
+    assert(nn_model_set_parameter(nn_project_model(diagnostic_project), "embedding-b",
+        "dtype", &embedding_dtype, error, sizeof(error)));
+    assert(nn_model_connect(nn_project_model(diagnostic_project), "embedding-a-edge",
+        "embedding-input", "out", "embedding-a", "in", error, sizeof(error)));
+    assert(nn_model_connect(nn_project_model(diagnostic_project), "embedding-b-edge",
+        "embedding-input", "out", "embedding-b", "in", error, sizeof(error)));
+    assert(nn_model_add_node(nn_project_model(diagnostic_project), "embedding-cast",
+        "Embedding cast", "core.cast", "0.1.0", "", 0, 0, error, sizeof(error)));
+    NNValue cast_dtype = { .type = NN_VALUE_STRING, .as.string = "float32" };
+    assert(nn_model_set_parameter(nn_project_model(diagnostic_project), "embedding-cast",
+        "dtype", &cast_dtype, error, sizeof(error)));
+    assert(nn_model_connect(nn_project_model(diagnostic_project), "embedding-cast-edge",
+        "embedding-a", "out", "embedding-cast", "in", error, sizeof(error)));
+    assert(nn_model_add_node(nn_project_model(diagnostic_project), "embedding-add", "Embedding add",
+        "core.add", "0.1.0", "", 0, 0, error, sizeof(error)));
+    assert(nn_model_connect(nn_project_model(diagnostic_project), "embedding-add-a-edge",
+        "embedding-a", "out", "embedding-add", "in-1", error, sizeof(error)));
+    assert(nn_model_connect(nn_project_model(diagnostic_project), "embedding-add-b-edge",
+        "embedding-b", "out", "embedding-add", "in-2", error, sizeof(error)));
+
     assert(nn_model_add_node(nn_project_model(diagnostic_project), "broken-rule", "Broken",
         "local.broken", "0.1.0", "", 0, 0, error, sizeof(error)));
     assert(nn_model_connect(nn_project_model(diagnostic_project), "diagnostic-edge",
@@ -442,6 +533,12 @@ int main(void)
     const NNInferenceResult *adversarial = find_result(report, "adversarial-rule");
     assert(adversarial && adversarial->status == NN_INFERENCE_RUNTIME_FAULT);
     assert(!strcmp(adversarial->code, "analysis.internal"));
+    const char *embedding_shape[] = { "B", "128", "512" };
+    assert_shape(find_result(report, "embedding-a"), "float32", embedding_shape, 3);
+    assert_shape(find_result(report, "embedding-b"), "float32", embedding_shape, 3);
+    assert_shape(find_result(report, "embedding-cast"), "float32", embedding_shape, 3);
+    assert_shape(find_result(report, "embedding-add"), "float32", embedding_shape, 3);
+    assert(find_result(report, "tensor-primitives")->status == NN_INFERENCE_SUCCESS);
     nn_inference_free(report);
 
     assert(nn_project_create_stereotype(diagnostic_project, "local.two-outputs", "0.1.0",

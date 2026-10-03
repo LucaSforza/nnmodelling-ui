@@ -142,6 +142,113 @@ int nn_inference_tensor_with_dimension(lua_State *state)
     return 1;
 }
 
+static bool nn_inference_tensor_shape_valid(lua_State *state, int tensor, size_t *count)
+{
+    if (!nn_inference_tensor_read(state, tensor)) return false;
+    nn_inference_raw_getfield(state, tensor, "shape");
+    *count = lua_rawlen(state, -1);
+    bool valid = *count <= 64;
+    for (size_t i = 0; valid && i < *count; ++i) {
+        lua_rawgeti(state, -1, (lua_Integer)i + 1);
+        valid = lua_isinteger(state, -1) || lua_type(state, -1) == LUA_TSTRING;
+        lua_pop(state, 1);
+    }
+    lua_pop(state, 1);
+    return valid;
+}
+
+static void nn_inference_tensor_clone(lua_State *state, int tensor, int dtype,
+                                      size_t count, bool append, lua_Integer size)
+{
+    tensor = lua_absindex(state, tensor);
+    dtype = lua_absindex(state, dtype);
+    nn_inference_raw_getfield(state, tensor, "shape");
+    int input_shape = lua_absindex(state, -1);
+    lua_createtable(state, (int)(count + (append ? 1 : 0)), 0);
+    int output = lua_absindex(state, -1);
+    lua_pushvalue(state, dtype);
+    lua_setfield(state, output, "dtype");
+    lua_createtable(state, (int)(count + (append ? 1 : 0)), 0);
+    int shape = lua_absindex(state, -1);
+    for (size_t i = 1; i <= count; ++i) {
+        lua_rawgeti(state, input_shape, (lua_Integer)i);
+        lua_rawseti(state, shape, (lua_Integer)i);
+    }
+    if (append) {
+        lua_pushinteger(state, size);
+        lua_rawseti(state, shape, (lua_Integer)count + 1);
+    }
+    lua_setfield(state, output, "shape");
+}
+
+static int nn_inference_tensor_append_dimension(lua_State *state)
+{
+    size_t count = 0;
+    if (!nn_inference_tensor_shape_valid(state, 1, &count) || !lua_isinteger(state, 2) ||
+        lua_tointeger(state, 2) < 1)
+        return nn_inference_push_error(state, "expected a tensor and positive integer size");
+    if (count == 64) return nn_inference_push_error(state, "tensor rank exceeds limit");
+    nn_inference_raw_getfield(state, 1, "dtype");
+    int dtype = lua_absindex(state, -1);
+    nn_inference_tensor_clone(state, 1, dtype, count, true, lua_tointeger(state, 2));
+    return 1;
+}
+
+static int nn_inference_tensor_with_dtype(lua_State *state)
+{
+    size_t count = 0;
+    if (!nn_inference_tensor_shape_valid(state, 1, &count) || lua_type(state, 2) != LUA_TSTRING ||
+        lua_rawlen(state, 2) == 0)
+        return nn_inference_push_error(state, "expected a tensor and nonempty dtype");
+    nn_inference_tensor_clone(state, 1, 2, count, false, 0);
+    return 1;
+}
+
+static bool nn_inference_dimensions_equal(lua_State *state, int first, int second)
+{
+    int first_type = lua_type(state, first), second_type = lua_type(state, second);
+    if (first_type == LUA_TNUMBER && second_type == LUA_TNUMBER)
+        return lua_tointeger(state, first) == lua_tointeger(state, second);
+    if (first_type != LUA_TSTRING || second_type != LUA_TSTRING) return false;
+    size_t first_length = 0, second_length = 0;
+    const char *first_text = lua_tolstring(state, first, &first_length);
+    const char *second_text = lua_tolstring(state, second, &second_length);
+    return first_length == second_length && !memcmp(first_text, second_text, first_length);
+}
+
+static int nn_inference_tensor_equal(lua_State *state)
+{
+    size_t first_count = 0, second_count = 0;
+    if (!nn_inference_tensor_shape_valid(state, 1, &first_count) ||
+        !nn_inference_tensor_shape_valid(state, 2, &second_count))
+        return nn_inference_push_error(state, "expected two valid tensors");
+
+    nn_inference_raw_getfield(state, 1, "dtype");
+    size_t first_dtype_length = 0;
+    const char *first_dtype = lua_tolstring(state, -1, &first_dtype_length);
+    nn_inference_raw_getfield(state, 2, "dtype");
+    size_t second_dtype_length = 0;
+    const char *second_dtype = lua_tolstring(state, -1, &second_dtype_length);
+    bool equal = first_dtype_length == second_dtype_length &&
+        !memcmp(first_dtype, second_dtype, first_dtype_length) && first_count == second_count;
+    lua_pop(state, 2);
+    if (equal) {
+        nn_inference_raw_getfield(state, 1, "shape");
+        int first_shape = lua_absindex(state, -1);
+        nn_inference_raw_getfield(state, 2, "shape");
+        int second_shape = lua_absindex(state, -1);
+        for (size_t i = 1; equal && i <= first_count; ++i) {
+            lua_rawgeti(state, first_shape, (lua_Integer)i);
+            lua_rawgeti(state, second_shape, (lua_Integer)i);
+            equal = nn_inference_dimensions_equal(state, -2, -1);
+            lua_pop(state, 2);
+        }
+        lua_pop(state, 2);
+    }
+    lua_pushboolean(state, equal);
+    return 1;
+}
+
 int nn_inference_tensor_create(lua_State *state)
 {
     if (!lua_istable(state, 1) || lua_type(state, 2) != LUA_TSTRING)
@@ -224,6 +331,9 @@ void nn_inference_set_tensor_functions(lua_State *state)
     lua_pushcfunction(state, nn_inference_tensor_dtype); lua_setfield(state, -2, "dtype");
     lua_pushcfunction(state, nn_inference_tensor_dimension); lua_setfield(state, -2, "dimension");
     lua_pushcfunction(state, nn_inference_tensor_with_dimension); lua_setfield(state, -2, "with_dimension");
+    lua_pushcfunction(state, nn_inference_tensor_append_dimension); lua_setfield(state, -2, "append_dimension");
+    lua_pushcfunction(state, nn_inference_tensor_with_dtype); lua_setfield(state, -2, "with_dtype");
+    lua_pushcfunction(state, nn_inference_tensor_equal); lua_setfield(state, -2, "equal");
     lua_pushcfunction(state, nn_inference_tensor_flatten); lua_setfield(state, -2, "flatten");
     lua_pushcfunction(state, nn_inference_tensor_create); lua_setfield(state, -2, "create");
     lua_setglobal(state, "tensor");
