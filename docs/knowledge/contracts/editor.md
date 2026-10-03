@@ -75,8 +75,8 @@ Accepted 2026-10-03 after the user's computer-use review: the default direction
 is vertical, from top to bottom. Every incoming handle, including Output and
 Loss Output circle handles, sits on the top edge/rim; outgoing handles,
 including Input, sit on the bottom edge/rim. Multiple handles keep definition
-order and remain separate. Horizontal arrangement uses incoming handles on
-the left and outgoing handles on the right for all node kinds. Committed and
+order and remain separate. Horizontal arrangement flows towards the left:
+incoming handles on the right and outgoing handles on the left for all node kinds. Committed and
 draft Bezier curves use tangents matching the selected direction.
 
 The toolbar Fit action arranges the current scope vertically, then frames its
@@ -95,6 +95,13 @@ Camera fitting uses the content bounds with margin, recenters after the final
 scale is applied, and must not clip large graphs through a minimum zoom clamp.
 Empty scopes fit harmlessly. Interactive wheel zoom remains positive and
 bounded, including when Fit produced a scale below the normal wheel minimum.
+Visible Zoom In (+) and Zoom Out (-) toolbar actions provide the same bounded
+camera scaling without requiring a mouse wheel, anchored to viewport center.
+The canvas shows a restrained 20-scene-unit grid. Node creation, dragging and
+arrangement snap positions to this grid; drag previews and connected edges
+follow the snapped positions. Multi-node moves preserve grid-aligned offsets.
+The authoritative integer coordinate contract is in model.md; Qt may keep
+floating transforms and item dimensions but cannot persist fractional positions.
 
 Wheel zoom is bounded using the actual next/current scale ratio and anchored to
 the wheel event's viewport position with native QGraphicsView mapping/transforms,

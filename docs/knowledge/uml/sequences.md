@@ -87,12 +87,29 @@ sequenceDiagram
     Note over Window: Fit always chooses Vertical
     Window->>Scene: set presentation direction
     Window->>App: read current-scope nodes and edges
-    Window->>Window: deterministic DAG ranks and spaced lanes
+    Window->>Window: deterministic DAG ranks and grid-aligned spaced lanes
     Window->>App: move nodes using copied stable IDs
     App-->>Window: committed positions or visible error
     Window->>Scene: refresh matching handles and edge tangents
     Window->>View: frame content with margin and final centering
     Note over App,Scene: Positions persist; direction is session presentation state
+```
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Item as NodeItem
+    participant Scene as GraphScene
+    participant App as C NNApplication
+    participant Model as C NNModel
+    User->>Item: drag node(s)
+    Item->>Item: snap preview to 20-unit grid
+    Item->>Scene: update edges from snapped ports
+    User->>Scene: release
+    Scene->>App: move copied stable IDs with coordinates
+    App->>Model: normalize finite coordinates to int32 grid; validate range
+    Model-->>App: stored integers or unchanged graph + error
+    App-->>Scene: refresh committed positions
 ```
 
 ## Edit parameter

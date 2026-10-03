@@ -49,6 +49,11 @@ classDiagram
       +Parameters values
       +Graph nestedGraph
     }
+    class Position {
+      +int32 x
+      +int32 y
+      +gridSpacing = 20
+    }
     class Connection {
       +EdgeId id
       +NodeId source
@@ -116,6 +121,7 @@ classDiagram
     NNModel "1" *-- "1" Graph : root
     NNModel "1" *-- "1" ModelManifest
     Graph "1" *-- "0..*" Node
+    Node *-- Position : normalized integer grid
     Graph "1" *-- "0..*" Connection
     Node "1" --> "1" StereotypeApplication
     Node "0..1" *-- "1" Graph : subflow
@@ -185,6 +191,10 @@ package ID selects definition data, never a switch over concrete packages.
 Optional nested graph and tagged primitive parameter values replace UML
 inheritance. `Connection` stores IDs, not raw node pointers. `Handle` is
 definition data. The application owns model storage and catalog lifetime.
+Accepted 2026-10-03: model add/move normalize finite double input coordinates
+to signed 32-bit multiples of 20, nearest with ties away from zero, rejecting
+range errors before mutation. Project load uses the same path; save and command
+snapshots emit integer positions. Camera transforms remain Qt floating geometry.
 
 ## Typed boundary constraints (accepted 2026-10-01)
 

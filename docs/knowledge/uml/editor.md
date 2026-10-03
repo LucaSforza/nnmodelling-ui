@@ -83,11 +83,13 @@ not suppress the only discoverable source/target affordance. Graph/model and
 port ID/type ownership are unchanged.
 Direction comes from GraphScene presentation state and is applied to every
 NodeItem/PortItem and edge/draft tangent. Vertical uses top inputs/bottom
-outputs; Horizontal uses left inputs/right outputs. MainWindow computes
+outputs; Horizontal flows left using right inputs/left outputs. MainWindow computes
 scope-local DAG ranks and commits separated positions through C, then
 GraphView frames content. Toolbar Fit chooses Vertical; Arrange exposes both
 directions. Internal GraphView framing does not mutate positions. Direction
 does not enter the persisted model; positions do.
+GraphView paints the 20-unit grid and exposes centered Zoom In/Out. NodeItem
+drag previews snap to that grid; NNModel remains final coordinate normalizer.
 
 C owns graph, coordinates and application mutations. Edge endpoints follow
 PortItem scene positions only for rendering. Release commits positions to C;

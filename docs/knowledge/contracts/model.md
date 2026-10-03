@@ -122,8 +122,8 @@ for the call; model copies committed data. IDs stay stable strings.
 
 Scope display follows editor contract. New non-root scopes require a subflow
 owner; existing imported scope strings are preserved. Nonempty subflow deletion
-is rejected rather than silently orphaning children. Finite coordinates are
-required. Fix borrowed-ID deletion safety in model without changing graph
+is rejected rather than silently orphaning children. Coordinate rules below
+apply. Fix borrowed-ID deletion safety in model without changing graph
 semantics. Schema v2 now persists optional data.boundaryHandle; no legacy
 migration is required. Existing core assets remain intact; core.loss-output is
 added. Typed boundary setter and output type query follow typed-outputs.md.
@@ -135,3 +135,20 @@ keep the package selectable and report unsupported editing explicitly. Do not
 invent a string encoding or extend model semantics during this GUI migration.
 The inspector presents this field read-only. Existing supported primitive/array
 values and schema-v2 persistence remain unchanged.
+
+## Integer grid positions (accepted 2026-10-03)
+
+Node position snapshots store signed 32-bit integer x/y, aligned to a fixed
+20-unit scene grid (`NN_MODEL_GRID_SPACING = 20`). Model add/move operations
+retain double arguments at the input boundary to support Qt gestures and JSON
+numbers, but normalize once in C before storing: round each coordinate/20 to
+the nearest integer, ties away from zero, then multiply by 20. Reject non-finite
+or out-of-range normalized coordinates before mutation; no overflow or clipping.
+All producers, including imported project positions and spawned subflow
+terminals, use this same normalization. Existing fractional project coordinates
+normalize on open; saving writes JSON integer positions. No schema version
+change or parallel coordinate representation. Snapshot responses also serialize
+integer positions. Invalid positions preserve graph, dirty state and analysis.
+Node creation, drag previews and layout use the same grid in Qt; view scale and
+card dimensions remain floating presentation geometry. Position changes do not
+invalidate tensor analysis. Saving and reopening preserve integer coordinates.

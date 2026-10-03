@@ -153,7 +153,7 @@ drag origin/target discoverable without changing graph or terminal semantics.
 Use the same generous hit area for visible boundary handles and connection
 release targeting, including at ordinary fit zoom.
 Boundary handles follow the editor's arrangement direction: top inputs and
-bottom outputs by default; left inputs and right outputs for Horizontal.
+bottom outputs by default; right inputs and left outputs for Horizontal.
 Multiple outputs occupy separate ordered rim positions, with their typed
 colors preserved. This supersedes the initial side-only boundary presentation.
 
