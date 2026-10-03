@@ -1,5 +1,29 @@
 # OpenCode V2 agent swarm
 
+## Runtime selection (accepted 2026-10-03)
+
+The KB-first workflow and principal/implementation-worker ownership apply to
+OpenCode and Codex. The mailbox protocol below belongs only to OpenCode V2;
+it is not a prerequisite for Codex delegation. Select the current runtime's
+available tools before launching workers, and never emulate a missing runtime.
+
+In Codex, use native `collaboration` tools for subtasks of the current request:
+`spawn_agent`, `send_message`, `followup_task` and `wait_agent`. No `swarm.init`
+or OpenCode session enrollment is required. Use `gpt-6-luna` with `high`
+reasoning for bounded implementation assignments; when a model override
+requires a limited history fork, include all required KB documents, accepted
+contract, file ownership, acceptance criteria and tests in the prompt.
+Workers do not delegate. Respect the runtime's actual concurrency limit.
+Codex sidebar chat creation is not subagent delegation.
+
+Delegation must be requested by the user or applicable instructions. `/swarm`
+requests parallel agent work using the current runtime's native mechanism.
+Retain returned agent IDs, review required results and run final checks. When
+workers are asked to commit, give disjoint file ownership and serialize Git
+index/commit mutations in a shared checkout. Do not stage other agents' edits.
+Missing requested models or tools are explicit blockers, not permission to
+substitute models or invoke the other runtime silently.
+
 Accepted 2026-09-30: repository-local OpenCode V2 tooling supports background
 implementation agents and messages between the principal and its direct children.
 This contract concerns development tooling, not the native client or its future

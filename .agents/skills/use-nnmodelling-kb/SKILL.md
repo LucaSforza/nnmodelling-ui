@@ -1,6 +1,6 @@
 ---
 name: use-nnmodelling-kb
-description: Contract-first workflow for NNModelling native client architecture and implementation.
+description: Contract-first NNModelling native client workflow for OpenCode and Codex.
 ---
 
 # Use native NNModelling knowledge base
@@ -11,10 +11,36 @@ Before changing architecture, ownership, public APIs, model/graph/stereotype sem
 
 Implementation tasks for GPT-6 Luna must cite exact relevant KB documents and UML, accepted contract, files/modules, constraints, acceptance criteria and tests. Luna implements only bounded tasks; it does not set architecture or normative text. Principal reviews implementation against KB, runs/inspects relevant tests, updates plan/status, and checks for stale contracts.
 
-## Swarm initialization and communication
+## Choose the current agent runtime
 
-For swarm/parallel work, personally read `docs/knowledge/contracts/agent-swarm.md`
-and `docs/knowledge/uml/agent-swarm.md`. The principal must discover the `swarm`
+The KB-first rules above apply to OpenCode and Codex. Before delegation, read
+`docs/knowledge/contracts/agent-swarm.md` and `docs/knowledge/uml/agent-swarm.md`.
+Delegate only when the user or applicable instructions request agent work.
+Use the current runtime's available tools; missing OpenCode tools must not
+block Codex work. Workers do not spawn agents. Give disjoint file ownership;
+serialize Git staging/commits when workers share a checkout. Review every
+required result and run relevant final checks.
+
+### Codex
+
+Use native `collaboration.spawn_agent`, `send_message`, `followup_task` and
+`wait_agent`; no `swarm.init` or mailbox enrollment is needed. Bounded
+implementation workers use `gpt-6-luna` with `high` reasoning. If model override
+requires a limited history fork, include all exact KB documents, accepted
+contract/plan, assigned files, constraints, acceptance criteria and tests in
+the prompt. Respect the available concurrency limit. Use subagents for current
+request subtasks; do not create sidebar chats as substitute workers. Report
+missing requested model/tool instead of silently substituting another.
+
+For UI tasks, discover actual computer-use surfaces before promising native
+control. Browser access does not imply native desktop access. Preserve the
+user's requested UI workflow; do not silently substitute `nnmodelctl` or direct
+project-file generation for a computer-use trial. Report unavailable surfaces
+and distinguish environment limitations from observed application defects.
+
+### OpenCode V2 swarm initialization and communication
+
+The principal must discover the `swarm`
 tools in Code Mode and successfully complete `swarm.init({})` BEFORE launching
 any subagent. If initialization fails or the tool is unavailable, resolve/report
 the blocker before launching workers. `register({children: []})` is not a substitute.

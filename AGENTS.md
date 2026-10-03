@@ -14,8 +14,8 @@ to the principal rather than choose a new contract.
 OpenCode V2 local swarm setup is in `docs/opencode2.md`; its normative tooling
 contract and sequence are `docs/knowledge/contracts/agent-swarm.md` and
 `docs/knowledge/uml/agent-swarm.md`. `/swarm` explicitly requests delegation.
-The principal must discover `swarm` tools and successfully complete `swarm.init`
-BEFORE launching any native background child session. Direct children automatically
+In OpenCode V2, the principal must discover `swarm` tools and successfully complete
+`swarm.init` BEFORE launching any native background child session. Direct children automatically
 enroll on first mailbox use or when addressed; no post-launch registration barrier
 is needed. There is no fixed project-level worker concurrency maximum: choose the
 number by independent work, resources and runtime/provider limits, with disjoint
@@ -23,6 +23,14 @@ file ownership. Native completion notifications require no polling. When there i
 no useful independent work, the principal may use bounded `swarm.wait` (maximum
 270 seconds) instead of busywork or shell sleep; after timeout, one `swarm.status`
 inspection can guide next steps. Required results must still be reviewed.
+
+In Codex, use native `collaboration` subagents; OpenCode `swarm.init` and mailbox
+enrollment do not apply. Bounded implementation workers use `gpt-6-luna` with
+`high` reasoning and explicit KB/contract/file/test assignments. Respect native
+runtime concurrency limits; workers do not delegate. Serialize shared-checkout
+Git staging/commits and stage only assigned files. Use computer use for requested
+UI trials; report unavailable native surfaces instead of silently replacing the
+trial with CLI or direct project-file edits.
 
 Use `fff` MCP tools for every file search. Preserve user changes. Do not expose
 secrets. Keep implementation small and idiomatic C. Use `justfile` for build
