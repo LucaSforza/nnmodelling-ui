@@ -1,0 +1,24 @@
+{
+  "batch": {
+    "inputs": {
+      "tokens": {
+        "dtype": "int64",
+        "shape": [
+          "B",
+          128
+        ]
+      }
+    },
+    "targets": {
+      "target": {
+        "dtype": "int64",
+        "shape": [
+          "B",
+          128
+        ]
+      }
+    }
+  },
+  "description": "Token IDs and next-token targets; vocabulary 32000; context 128. Metadata only.",
+  "name": "Autoregressive token sequences"
+}

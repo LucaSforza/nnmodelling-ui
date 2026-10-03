@@ -1,0 +1,532 @@
+{
+  "nodes": [
+    {
+      "id": "output",
+      "type": "custom",
+      "position": {
+        "x": 340,
+        "y": 1420
+      },
+      "data": {
+        "name": "Output",
+        "scope": "",
+        "package": {
+          "id": "core.output",
+          "version": "0.1.0"
+        },
+        "params": {}
+      }
+    },
+    {
+      "id": "loss-output",
+      "type": "custom",
+      "position": {
+        "x": 80,
+        "y": 1420
+      },
+      "data": {
+        "name": "Loss Output",
+        "scope": "",
+        "package": {
+          "id": "core.loss-output",
+          "version": "0.1.0"
+        },
+        "params": {}
+      }
+    },
+    {
+      "id": "node-db779a38-b309-4178-9dfb-c4b710cb7bd1",
+      "type": "custom",
+      "position": {
+        "x": 80,
+        "y": 80
+      },
+      "data": {
+        "name": "Input",
+        "scope": "",
+        "package": {
+          "id": "core.input",
+          "version": "0.1.0"
+        },
+        "params": {
+          "binding": "tokens"
+        }
+      }
+    },
+    {
+      "id": "node-8f0411ea-21bd-400e-89d1-c950e29a1600",
+      "type": "custom",
+      "position": {
+        "x": 80,
+        "y": 220
+      },
+      "data": {
+        "name": "Embedding",
+        "scope": "",
+        "package": {
+          "id": "core.embedding",
+          "version": "0.1.0"
+        },
+        "params": {
+          "num_embeddings": 32000,
+          "embedding_dim": 512,
+          "input_dtype": "int64",
+          "dtype": "float32"
+        }
+      }
+    },
+    {
+      "id": "node-2bef3628-a313-4906-8c11-21ac42967001",
+      "type": "custom",
+      "position": {
+        "x": 80,
+        "y": 440
+      },
+      "data": {
+        "name": "Positional Encoding",
+        "scope": "",
+        "package": {
+          "id": "core.positional-encoding",
+          "version": "0.1.0"
+        },
+        "params": {
+          "d_model": 512,
+          "max_len": 128
+        }
+      }
+    },
+    {
+      "id": "node-467fa101-ec5a-4e0a-82e5-56594d350337",
+      "type": "custom",
+      "position": {
+        "x": 80,
+        "y": 660
+      },
+      "data": {
+        "name": "Repeat",
+        "scope": "",
+        "package": {
+          "id": "core.repeat",
+          "version": "0.1.0"
+        },
+        "params": {
+          "times": 6
+        }
+      }
+    },
+    {
+      "id": "node-467fa101-ec5a-4e0a-82e5-56594d350337-boundary-out",
+      "type": "custom",
+      "position": {
+        "x": 80,
+        "y": 1820
+      },
+      "data": {
+        "name": "out",
+        "scope": "node-467fa101-ec5a-4e0a-82e5-56594d350337",
+        "package": {
+          "id": "core.output",
+          "version": "0.1.0"
+        },
+        "params": {},
+        "boundaryHandle": "out"
+      }
+    },
+    {
+      "id": "node-97361556-3ed5-44f0-a672-efec5171cd0b",
+      "type": "custom",
+      "position": {
+        "x": 80,
+        "y": 860
+      },
+      "data": {
+        "name": "LayerNorm",
+        "scope": "",
+        "package": {
+          "id": "core.layer-norm",
+          "version": "0.1.0"
+        },
+        "params": {
+          "normalized_shape": 512,
+          "eps": 0.00001,
+          "elementwise_affine": true
+        }
+      }
+    },
+    {
+      "id": "node-ff11db8b-e74e-4d83-a2c1-98f709226021",
+      "type": "custom",
+      "position": {
+        "x": 80,
+        "y": 1040
+      },
+      "data": {
+        "name": "Linear",
+        "scope": "",
+        "package": {
+          "id": "core.linear",
+          "version": "0.1.0"
+        },
+        "params": {
+          "in_features": 512,
+          "out_features": 32000,
+          "bias": true,
+          "dtype": "float32"
+        }
+      }
+    },
+    {
+      "id": "node-629ae37f-cc79-4d0b-98ee-e0eb31776c21",
+      "type": "custom",
+      "position": {
+        "x": 80,
+        "y": 1260
+      },
+      "data": {
+        "name": "Cross Entropy",
+        "scope": "",
+        "package": {
+          "id": "core.cross-entropy",
+          "version": "0.1.0"
+        },
+        "params": {}
+      }
+    },
+    {
+      "id": "node-67c788a3-7378-4218-9139-ad9231d74d74",
+      "type": "custom",
+      "position": {
+        "x": 80,
+        "y": 80
+      },
+      "data": {
+        "name": "Input",
+        "scope": "node-467fa101-ec5a-4e0a-82e5-56594d350337",
+        "package": {
+          "id": "core.input",
+          "version": "0.1.0"
+        },
+        "params": {
+          "binding": "tokens"
+        }
+      }
+    },
+    {
+      "id": "node-84386f78-e355-46d1-8245-f0d9ef9adaa7",
+      "type": "custom",
+      "position": {
+        "x": 80,
+        "y": 220
+      },
+      "data": {
+        "name": "LayerNorm",
+        "scope": "node-467fa101-ec5a-4e0a-82e5-56594d350337",
+        "package": {
+          "id": "core.layer-norm",
+          "version": "0.1.0"
+        },
+        "params": {
+          "normalized_shape": 512,
+          "eps": 0.00001,
+          "elementwise_affine": true
+        }
+      }
+    },
+    {
+      "id": "node-157113a3-191c-411d-8077-1eefbbe8d21c",
+      "type": "custom",
+      "position": {
+        "x": 80,
+        "y": 400
+      },
+      "data": {
+        "name": "Causal Self Attention",
+        "scope": "node-467fa101-ec5a-4e0a-82e5-56594d350337",
+        "package": {
+          "id": "llm.causal-attention",
+          "version": "1.0.0"
+        },
+        "params": {}
+      }
+    },
+    {
+      "id": "node-e3559593-d442-4fa9-b6eb-5242548fcea8",
+      "type": "custom",
+      "position": {
+        "x": 80,
+        "y": 560
+      },
+      "data": {
+        "name": "Add",
+        "scope": "node-467fa101-ec5a-4e0a-82e5-56594d350337",
+        "package": {
+          "id": "core.add",
+          "version": "0.1.0"
+        },
+        "params": {}
+      }
+    },
+    {
+      "id": "node-ddce090d-23f7-4996-a009-04522b450851",
+      "type": "custom",
+      "position": {
+        "x": 80,
+        "y": 800
+      },
+      "data": {
+        "name": "LayerNorm",
+        "scope": "node-467fa101-ec5a-4e0a-82e5-56594d350337",
+        "package": {
+          "id": "core.layer-norm",
+          "version": "0.1.0"
+        },
+        "params": {
+          "normalized_shape": 512,
+          "eps": 0.00001,
+          "elementwise_affine": true
+        }
+      }
+    },
+    {
+      "id": "node-38c9ab12-f6c1-4b47-9d71-cfa2a0b5e9c4",
+      "type": "custom",
+      "position": {
+        "x": 80,
+        "y": 980
+      },
+      "data": {
+        "name": "Linear",
+        "scope": "node-467fa101-ec5a-4e0a-82e5-56594d350337",
+        "package": {
+          "id": "core.linear",
+          "version": "0.1.0"
+        },
+        "params": {
+          "in_features": 512,
+          "out_features": 2048,
+          "bias": true,
+          "dtype": "float32"
+        }
+      }
+    },
+    {
+      "id": "node-5d5706f8-6b7c-4bba-ae34-ecb7fccea09e",
+      "type": "custom",
+      "position": {
+        "x": 80,
+        "y": 1200
+      },
+      "data": {
+        "name": "ReLU",
+        "scope": "node-467fa101-ec5a-4e0a-82e5-56594d350337",
+        "package": {
+          "id": "core.relu",
+          "version": "0.1.0"
+        },
+        "params": {
+          "inplace": false
+        }
+      }
+    },
+    {
+      "id": "node-1b784cfa-0d88-47b5-93b3-415e93a9a49c",
+      "type": "custom",
+      "position": {
+        "x": 80,
+        "y": 1360
+      },
+      "data": {
+        "name": "Linear",
+        "scope": "node-467fa101-ec5a-4e0a-82e5-56594d350337",
+        "package": {
+          "id": "core.linear",
+          "version": "0.1.0"
+        },
+        "params": {
+          "in_features": 2048,
+          "out_features": 512,
+          "bias": true,
+          "dtype": "float32"
+        }
+      }
+    },
+    {
+      "id": "node-15509341-ecd5-4591-a057-dd4c10a823ed",
+      "type": "custom",
+      "position": {
+        "x": 80,
+        "y": 1580
+      },
+      "data": {
+        "name": "Add",
+        "scope": "node-467fa101-ec5a-4e0a-82e5-56594d350337",
+        "package": {
+          "id": "core.add",
+          "version": "0.1.0"
+        },
+        "params": {}
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "1d851f33-3702-4385-bdbf-b8db8a581da6",
+      "source": "node-db779a38-b309-4178-9dfb-c4b710cb7bd1",
+      "sourceHandle": "out",
+      "target": "node-8f0411ea-21bd-400e-89d1-c950e29a1600",
+      "targetHandle": "in"
+    },
+    {
+      "id": "811d8fc8-51ca-4216-bb61-edd60539ed36",
+      "source": "node-8f0411ea-21bd-400e-89d1-c950e29a1600",
+      "sourceHandle": "out",
+      "target": "node-2bef3628-a313-4906-8c11-21ac42967001",
+      "targetHandle": "in"
+    },
+    {
+      "id": "b130a424-0ef7-4cc2-949e-528b2f8e362d",
+      "source": "node-2bef3628-a313-4906-8c11-21ac42967001",
+      "sourceHandle": "out",
+      "target": "node-467fa101-ec5a-4e0a-82e5-56594d350337",
+      "targetHandle": "in"
+    },
+    {
+      "id": "13b659ce-02db-44a7-af71-5e53edc55391",
+      "source": "node-467fa101-ec5a-4e0a-82e5-56594d350337",
+      "sourceHandle": "out",
+      "target": "node-97361556-3ed5-44f0-a672-efec5171cd0b",
+      "targetHandle": "in"
+    },
+    {
+      "id": "be9021d8-04cd-4f06-9e83-35552c631ecd",
+      "source": "node-97361556-3ed5-44f0-a672-efec5171cd0b",
+      "sourceHandle": "out",
+      "target": "node-ff11db8b-e74e-4d83-a2c1-98f709226021",
+      "targetHandle": "in"
+    },
+    {
+      "id": "726567f4-4975-44f6-98d1-99852e6258c8",
+      "source": "node-ff11db8b-e74e-4d83-a2c1-98f709226021",
+      "sourceHandle": "out",
+      "target": "output",
+      "targetHandle": "in"
+    },
+    {
+      "id": "5bafe994-596b-40c4-b7ed-dc873124854e",
+      "source": "node-ff11db8b-e74e-4d83-a2c1-98f709226021",
+      "sourceHandle": "out",
+      "target": "node-629ae37f-cc79-4d0b-98ee-e0eb31776c21",
+      "targetHandle": "in"
+    },
+    {
+      "id": "2c322e5a-0121-4a7e-b1f6-1228cd935fd9",
+      "source": "node-629ae37f-cc79-4d0b-98ee-e0eb31776c21",
+      "sourceHandle": "loss",
+      "target": "loss-output",
+      "targetHandle": "in"
+    },
+    {
+      "id": "70639502-11d6-4f3e-9e1c-a83dd2d135a6",
+      "source": "node-67c788a3-7378-4218-9139-ad9231d74d74",
+      "sourceHandle": "out",
+      "target": "node-84386f78-e355-46d1-8245-f0d9ef9adaa7",
+      "targetHandle": "in"
+    },
+    {
+      "id": "337d8757-0344-4bde-bbea-dc9f1d1ec175",
+      "source": "node-84386f78-e355-46d1-8245-f0d9ef9adaa7",
+      "sourceHandle": "out",
+      "target": "node-157113a3-191c-411d-8077-1eefbbe8d21c",
+      "targetHandle": "in"
+    },
+    {
+      "id": "1c2b26f6-ff49-49c5-98a3-f78eff4c9570",
+      "source": "node-67c788a3-7378-4218-9139-ad9231d74d74",
+      "sourceHandle": "out",
+      "target": "node-e3559593-d442-4fa9-b6eb-5242548fcea8",
+      "targetHandle": "in-1"
+    },
+    {
+      "id": "3c172f1c-cb21-433b-a7e4-3f59baff3862",
+      "source": "node-157113a3-191c-411d-8077-1eefbbe8d21c",
+      "sourceHandle": "out",
+      "target": "node-e3559593-d442-4fa9-b6eb-5242548fcea8",
+      "targetHandle": "in-2"
+    },
+    {
+      "id": "51e8a825-9634-4b09-b078-d9236bfdb65a",
+      "source": "node-e3559593-d442-4fa9-b6eb-5242548fcea8",
+      "sourceHandle": "out",
+      "target": "node-ddce090d-23f7-4996-a009-04522b450851",
+      "targetHandle": "in"
+    },
+    {
+      "id": "21f76714-b73d-49cd-aa76-80683d00f919",
+      "source": "node-ddce090d-23f7-4996-a009-04522b450851",
+      "sourceHandle": "out",
+      "target": "node-38c9ab12-f6c1-4b47-9d71-cfa2a0b5e9c4",
+      "targetHandle": "in"
+    },
+    {
+      "id": "7f125806-5b60-496b-9d7f-245b2199ae21",
+      "source": "node-38c9ab12-f6c1-4b47-9d71-cfa2a0b5e9c4",
+      "sourceHandle": "out",
+      "target": "node-5d5706f8-6b7c-4bba-ae34-ecb7fccea09e",
+      "targetHandle": "in"
+    },
+    {
+      "id": "5600a6ec-530e-423f-82d8-97d9e10a99cc",
+      "source": "node-5d5706f8-6b7c-4bba-ae34-ecb7fccea09e",
+      "sourceHandle": "out",
+      "target": "node-1b784cfa-0d88-47b5-93b3-415e93a9a49c",
+      "targetHandle": "in"
+    },
+    {
+      "id": "49ccedfa-61e6-4963-9b78-9981201d69d9",
+      "source": "node-e3559593-d442-4fa9-b6eb-5242548fcea8",
+      "sourceHandle": "out",
+      "target": "node-15509341-ecd5-4591-a057-dd4c10a823ed",
+      "targetHandle": "in-1"
+    },
+    {
+      "id": "9f3acc21-2bff-4e50-b8c3-6a84b143f17f",
+      "source": "node-1b784cfa-0d88-47b5-93b3-415e93a9a49c",
+      "sourceHandle": "out",
+      "target": "node-15509341-ecd5-4591-a057-dd4c10a823ed",
+      "targetHandle": "in-2"
+    },
+    {
+      "id": "ca2f9548-9b72-4879-94c7-ca6a28285941",
+      "source": "node-15509341-ecd5-4591-a057-dd4c10a823ed",
+      "sourceHandle": "out",
+      "target": "node-467fa101-ec5a-4e0a-82e5-56594d350337-boundary-out",
+      "targetHandle": "in"
+    }
+  ],
+  "layoutDirection": "horizontal",
+  "manifest": {
+    "schemaVersion": 2,
+    "id": "tiny-decoder-llm",
+    "version": "0.1.0",
+    "name": "Tiny Decoder LLM",
+    "description": "",
+    "customPackages": [
+      {
+        "id": "llm.causal-attention",
+        "version": "1.0.0",
+        "path": "packages/llm.causal-attention-1.0.0"
+      }
+    ],
+    "customDatasets": [
+      {
+        "id": "llm.tokens",
+        "version": "1.0.0",
+        "path": "datasets/llm.tokens-1.0.0"
+      }
+    ],
+    "activeDataset": {
+      "id": "llm.tokens",
+      "version": "1.0.0"
+    }
+  }
+}

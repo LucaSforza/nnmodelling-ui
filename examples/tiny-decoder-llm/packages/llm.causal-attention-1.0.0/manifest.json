@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "id": "llm.causal-attention",
+  "version": "1.0.0",
+  "dependencies": {},
+  "entrypoints": {
+    "definition": "definition.json",
+    "inference": {
+      "language": "lua",
+      "file": "inference.lua"
+    }
+  }
+}
