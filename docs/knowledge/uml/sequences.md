@@ -57,7 +57,9 @@ sequenceDiagram
     participant App as Application
     participant Model
     participant Types as Lua type analysis
+    Editor-->>User: Visible contrasting boundary rim handles, hover cue
     User->>Editor: drag source output to target input
+    Note over User,Editor: Visible PortItem and generous hit region identify the same handle
     Editor->>App: connect(source, sourceHandle, target, targetHandle)
     App->>Catalog: resolve output type and terminal-only restriction
     App->>Model: check same scope, handle directions, occupancy, cycle
