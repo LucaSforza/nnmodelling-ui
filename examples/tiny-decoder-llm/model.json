@@ -21,7 +21,7 @@
       "id": "loss-output",
       "type": "custom",
       "position": {
-        "x": 80,
+        "x": 40,
         "y": 1420
       },
       "data": {
@@ -38,7 +38,7 @@
       "id": "node-db779a38-b309-4178-9dfb-c4b710cb7bd1",
       "type": "custom",
       "position": {
-        "x": 80,
+        "x": 100,
         "y": 80
       },
       "data": {
@@ -100,7 +100,7 @@
       "type": "custom",
       "position": {
         "x": 80,
-        "y": 660
+        "y": 640
       },
       "data": {
         "name": "Repeat",
@@ -137,7 +137,7 @@
       "type": "custom",
       "position": {
         "x": 80,
-        "y": 860
+        "y": 840
       },
       "data": {
         "name": "LayerNorm",
@@ -179,7 +179,7 @@
       "id": "node-629ae37f-cc79-4d0b-98ee-e0eb31776c21",
       "type": "custom",
       "position": {
-        "x": 80,
+        "x": 0,
         "y": 1260
       },
       "data": {
@@ -215,8 +215,8 @@
       "id": "node-84386f78-e355-46d1-8245-f0d9ef9adaa7",
       "type": "custom",
       "position": {
-        "x": 80,
-        "y": 220
+        "x": 160,
+        "y": 200
       },
       "data": {
         "name": "LayerNorm",
@@ -236,7 +236,7 @@
       "id": "node-157113a3-191c-411d-8077-1eefbbe8d21c",
       "type": "custom",
       "position": {
-        "x": 80,
+        "x": 160,
         "y": 400
       },
       "data": {
@@ -253,7 +253,7 @@
       "id": "node-e3559593-d442-4fa9-b6eb-5242548fcea8",
       "type": "custom",
       "position": {
-        "x": 80,
+        "x": 40,
         "y": 560
       },
       "data": {
@@ -270,7 +270,7 @@
       "id": "node-ddce090d-23f7-4996-a009-04522b450851",
       "type": "custom",
       "position": {
-        "x": 80,
+        "x": 300,
         "y": 800
       },
       "data": {
@@ -291,7 +291,7 @@
       "id": "node-38c9ab12-f6c1-4b47-9d71-cfa2a0b5e9c4",
       "type": "custom",
       "position": {
-        "x": 80,
+        "x": 300,
         "y": 980
       },
       "data": {
@@ -313,7 +313,7 @@
       "id": "node-5d5706f8-6b7c-4bba-ae34-ecb7fccea09e",
       "type": "custom",
       "position": {
-        "x": 80,
+        "x": 300,
         "y": 1200
       },
       "data": {
@@ -332,8 +332,8 @@
       "id": "node-1b784cfa-0d88-47b5-93b3-415e93a9a49c",
       "type": "custom",
       "position": {
-        "x": 80,
-        "y": 1360
+        "x": 300,
+        "y": 1380
       },
       "data": {
         "name": "Linear",
