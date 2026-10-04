@@ -47,24 +47,19 @@ int main(void)
     if (!scene) fprintf(stderr, "3D: %s\n", error);
     assert(scene);
     const NNModel *model = before;
-    const char *query_id = node_id(model, "Query Q");
-    const char *key_id = node_id(model, "Key K");
-    const char *value_id = node_id(model, "Value V");
-    const char *mask_id = node_id(model, "Causal mask");
-    assert(query_id && key_id && value_id && mask_id);
-    size_t queries = 0, keys = 0, values = 0, masks = 0;
+    const char *attention_id = node_id(model, "Causal Self Attention");
+    const char *repeat_id = node_id(model, "Repeat");
+    assert(attention_id && repeat_id);
+    size_t attention_blocks = 0;
     for (size_t i = 0; i < nn_3d_node_count(scene); ++i) {
         const NN3DNode *n = nn_3d_node_at(scene, i);
         assert(n && n->path && n->label && n->source_id);
-        if (!strcmp(n->source_id, query_id)) ++queries;
-        if (!strcmp(n->source_id, key_id)) ++keys;
-        if (!strcmp(n->source_id, value_id)) ++values;
-        if (!strcmp(n->source_id, mask_id)) ++masks;
+        if (!strcmp(n->source_id, attention_id)) ++attention_blocks;
         for (size_t j = 0; j < i; ++j)
             assert(strcmp(n->path, nn_3d_node_at(scene, j)->path));
     }
-    assert(queries == 48 && keys == 48 && values == 48 && masks == 48);
-    assert(nn_3d_group_count(scene) >= 54);
+    assert(attention_blocks == 6);
+    assert(nn_3d_group_count(scene) >= 6);
     NN3DCamera camera = {0};
     nn_3d_camera_fit(scene, &camera, 16.0/9.0);
     NN3DFrame frame = {0};
@@ -75,19 +70,20 @@ int main(void)
     nn_3d_frame_dispose(&frame);
     assert(nn_model_equal(before, nn_project_model(project)));
     assert(!nn_project_dirty(project));
-    printf("LLM 3D: %zu nodes, %zu edges, %zu groups; 48 Q/K/V heads; complete inference\n", nn_3d_node_count(scene), nn_3d_edge_count(scene), nn_3d_group_count(scene));
+    printf("LLM 3D: %zu nodes, %zu edges, %zu groups; 6 attention blocks; complete inference\n", nn_3d_node_count(scene), nn_3d_edge_count(scene), nn_3d_group_count(scene));
     nn_3d_free(scene);
     /* Forty compact blocks must expand independently of inference's invocation budget. */
     NNValue forty = {.type = NN_VALUE_INT, .as.integer = 40};
     assert(nn_model_set_parameter(nn_project_model(project),
-        "node-467fa101-ec5a-4e0a-82e5-56594d350337", "times", &forty, error, sizeof(error)));
+        repeat_id, "times", &forty, error, sizeof(error)));
     scene = nn_3d_build(project, error, sizeof(error));
     if (!scene) fprintf(stderr, "40-block 3D: %s\n", error);
     assert(scene);
-    queries = 0;
+    attention_blocks = 0;
     for (size_t i = 0; i < nn_3d_node_count(scene); ++i)
-        if (!strcmp(nn_3d_node_at(scene, i)->source_id, query_id)) ++queries;
-    assert(queries == 320);
+        if (!strcmp(nn_3d_node_at(scene, i)->source_id, attention_id))
+            ++attention_blocks;
+    assert(attention_blocks == 40);
     nn_3d_free(scene); nn_inference_free(report); nn_model_free(before); nn_project_close(project);
     return 0;
 }

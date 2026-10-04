@@ -3,9 +3,9 @@
 
 #include "utils/utils.h"
 
-#include "lauxlib.h"
-#include "lua.h"
-#include "lualib.h"
+#include <lauxlib.h>
+#include <lua.h>
+#include <lualib.h>
 
 #include <errno.h>
 #include <fcntl.h>
