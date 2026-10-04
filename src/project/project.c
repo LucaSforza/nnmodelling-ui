@@ -23,6 +23,8 @@ void nn_project_close(NNProject *project)
 
 void nn_project_mark_dirty(NNProject *project) { if (project) project->dirty = true; }
 
+void nn_project_set_dirty(NNProject *project, bool dirty) { if (project) project->dirty = dirty; }
+
 const char *nn_project_directory(const NNProject *project) { return project ? project->directory : NULL; }
 
 const char *nn_project_id(const NNProject *project) { return project ? project->id : NULL; }

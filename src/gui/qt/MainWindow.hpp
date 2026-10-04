@@ -4,13 +4,14 @@
 #include <QMainWindow>
 #include <memory>
 
-class QComboBox;
+class QAction;
 class QCheckBox;
 class QCloseEvent;
 class QLineEdit;
 class QTreeWidget;
 class QTreeWidgetItem;
 class QTimer;
+class QToolButton;
 class QWidget;
 class NNApplication;
 struct NNAutomation;
@@ -45,7 +46,8 @@ private:
     void createProject(bool mnist);
     void createVaeProject();
     void addSelectedPackage();
-    void arrangeCurrentScope(FlowDirection direction, bool frameContent = true);
+    void arrangeCurrentScope(FlowDirection direction);
+    void restoreEdit(bool redo);
     void editNodeName(const QString &nodeId, const QString &name);
     void editNodeParameter(const QString &nodeId, const QString &key, const QString &value);
     void selectResource(QTreeWidgetItem *item, int column);
@@ -64,7 +66,10 @@ private:
     QTreeWidget *resources_ = nullptr;
     QTreeWidget *diagnostics_ = nullptr;
     QCheckBox *currentScopeProblems_ = nullptr;
-    QComboBox *scopeSelector_ = nullptr;
+    QToolButton *scopeSelector_ = nullptr;
+    QTreeWidget *scopeTree_ = nullptr;
+    QAction *undoAction_ = nullptr;
+    QAction *redoAction_ = nullptr;
     QTimer *automationTimer_ = nullptr;
     NNAutomation *automation_ = nullptr;
     QString selectedPaletteId_;

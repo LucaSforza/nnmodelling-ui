@@ -66,6 +66,10 @@ int main(void) {
     assert(!strcmp(package->outputs[0].type, "loss"));
     package = nn_catalog_find(catalog, "core.loss-output", "0.1.0");
     assert(package && package->output_count == 0);
+    package = nn_catalog_find(catalog, "core.repeat", "0.1.0");
+    assert(package && package->parameter_count == 1);
+    assert(!strcmp(package->parameters[0].key, "times"));
+    assert(package->parameters[0].position && !strcmp(package->parameters[0].position, "top"));
     nn_catalog_free(catalog);
 
     assert(mkdtemp(temp));

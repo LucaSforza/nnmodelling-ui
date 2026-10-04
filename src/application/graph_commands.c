@@ -53,27 +53,30 @@ bool nn_app_add_node(NNApplication *app, const char *id, const char *package_id,
                      const char *version, const char *scope, double x, double y,
                      char *error, size_t cap)
 {
-    if (!app || !app->project) return nn_fail(error, cap, "no active project");
+    if (!app || !app->project) return nn_app_history_fail(app, error, cap, "no active project");
     if (!id || !*id || !package_id || !version || !scope || !isfinite(x) || !isfinite(y))
-        return nn_fail(error, cap, "invalid node fields or non-finite position");
+        return nn_app_history_fail(app, error, cap, "invalid node fields or non-finite position");
     const NNPackage *package = nn_catalog_find(nn_project_catalog(app->project),
                                                 package_id, version);
-    if (!package) return nn_fail(error, cap, "package is not active in this project");
+    if (!package) return nn_app_history_fail(app, error, cap, "package is not active in this project");
     const NNCatalog *catalog = nn_project_catalog(app->project);
     const NNPackage *input_package = nn_app_kind_is(package, "subflow")
         ? nn_catalog_find(catalog, "core.input", "0.1.0") : NULL;
     if (nn_app_kind_is(package, "subflow") && !input_package)
-        return nn_fail(error, cap, "required core.input package is unavailable");
+        return nn_app_history_fail(app, error, cap, "required core.input package is unavailable");
     NNModel *model = nn_project_model(app->project);
     if (*scope) {
         const NNNode *owner = nn_model_find_node(model, scope);
         if (!owner || !nn_app_kind_is(nn_app_find_package(app, owner), "subflow"))
-            return nn_fail(error, cap, "scope must name an existing subflow");
+            return nn_app_history_fail(app, error, cap, "scope must name an existing subflow");
     }
+    if (!nn_app_history_prepare(app, error, cap)) return false;
     char local_error[256] = "";
     if (!nn_model_add_node(model, id, package->name, package->id, package->version,
-                           scope, x, y, local_error, sizeof(local_error)))
+                           scope, x, y, local_error, sizeof(local_error))) {
+        nn_app_history_finish(app, false);
         return nn_fail(error, cap, local_error);
+    }
     for (size_t i = 0; i < package->parameter_count; ++i) {
         const NNParameterDef *definition = &package->parameters[i];
         /* Preserve the existing editor behavior for object-valued defaults. */
@@ -82,6 +85,7 @@ bool nn_app_add_node(NNApplication *app, const char *id, const char *package_id,
         if (!nn_app_add_default(app, model, id, package, definition, error, cap)) {
             char ignored[64];
             (void)nn_model_remove_node(model, id, ignored, sizeof(ignored));
+            nn_app_history_finish(app, false);
             return false;
         }
     }
@@ -92,18 +96,21 @@ bool nn_app_add_node(NNApplication *app, const char *id, const char *package_id,
         if (!generated_child_id(model, id, "input", spawned_ids[spawned],
                                 sizeof(spawned_ids[spawned]), failure, sizeof(failure))) {
             rollback_subflow(model, id, spawned_ids, spawned);
+            nn_app_history_finish(app, false);
             return nn_fail(error, cap, failure);
         }
         if (!nn_model_add_node(model, spawned_ids[spawned], input_package->name,
                                input_package->id, input_package->version, id, 0, 0,
                                failure, sizeof(failure))) {
             rollback_subflow(model, id, spawned_ids, spawned);
+            nn_app_history_finish(app, false);
             return nn_fail(error, cap, failure);
         }
         ++spawned;
         if (!add_package_defaults(app, model, spawned_ids[spawned - 1], input_package,
                                   failure, sizeof(failure))) {
             rollback_subflow(model, id, spawned_ids, spawned);
+            nn_app_history_finish(app, false);
             return nn_fail(error, cap, failure);
         }
         for (size_t i = 0; i < package->output_count; ++i) {
@@ -139,11 +146,12 @@ bool nn_app_add_node(NNApplication *app, const char *id, const char *package_id,
                 rollback_subflow(model, id, spawned_ids, spawned);
                 if (!failure[0])
                     nn_error_set(failure, sizeof(failure), "unable to spawn subflow output terminal");
+                nn_app_history_finish(app, false);
                 return nn_fail(error, cap, failure);
             }
         }
     }
-    nn_project_mark_dirty(app->project);
+    nn_app_history_finish(app, true);
     nn_app_invalidate_analysis(app);
     nn_error_set(error, cap, "");
     return true;
@@ -151,19 +159,22 @@ bool nn_app_add_node(NNApplication *app, const char *id, const char *package_id,
 
 bool nn_app_remove_node(NNApplication *app, const char *id, char *error, size_t cap)
 {
-    if (!app || !app->project || !id) return nn_fail(error, cap, "no active project or invalid node ID");
+    if (!app || !app->project || !id)
+        return nn_app_history_fail(app, error, cap, "no active project or invalid node ID");
     NNModel *model = nn_project_model(app->project);
     const NNNode *node = nn_model_find_node(model, id);
-    if (!node) return nn_fail(error, cap, "node not found");
+    if (!node) return nn_app_history_fail(app, error, cap, "node not found");
     if (nn_app_kind_is(nn_app_find_package(app, node), "subflow")) {
         for (size_t i = 0; i < nn_model_node_count(model); ++i) {
             const NNNode *child = nn_model_node_at(model, i);
             if (!strcmp(child->scope_id, id))
-                return nn_fail(error, cap, "subflow still contains nodes");
+                return nn_app_history_fail(app, error, cap, "subflow still contains nodes");
         }
     }
-    if (!nn_model_remove_node(model, id, error, cap)) return false;
-    nn_project_mark_dirty(app->project);
+    if (!nn_app_history_prepare(app, error, cap)) return false;
+    const bool okay = nn_model_remove_node(model, id, error, cap);
+    nn_app_history_finish(app, okay);
+    if (!okay) return false;
     nn_app_invalidate_analysis(app);
     nn_error_set(error, cap, "");
     return true;
@@ -172,10 +183,12 @@ bool nn_app_remove_node(NNApplication *app, const char *id, char *error, size_t 
 bool nn_app_move_node(NNApplication *app, const char *id, double x, double y,
                       char *error, size_t cap)
 {
-    if (!app || !app->project) return nn_fail(error, cap, "no active project");
-    if (!isfinite(x) || !isfinite(y)) return nn_fail(error, cap, "position must be finite");
-    if (!nn_model_move_node(nn_project_model(app->project), id, x, y, error, cap)) return false;
-    nn_project_mark_dirty(app->project);
+    if (!app || !app->project) return nn_app_history_fail(app, error, cap, "no active project");
+    if (!isfinite(x) || !isfinite(y)) return nn_app_history_fail(app, error, cap, "position must be finite");
+    if (!nn_app_history_prepare(app, error, cap)) return false;
+    const bool okay = nn_model_move_node(nn_project_model(app->project), id, x, y, error, cap);
+    nn_app_history_finish(app, okay);
+    if (!okay) return false;
     nn_error_set(error, cap, "");
     return true;
 }
@@ -183,9 +196,11 @@ bool nn_app_move_node(NNApplication *app, const char *id, double x, double y,
 bool nn_app_rename_node(NNApplication *app, const char *id, const char *label,
                         char *error, size_t cap)
 {
-    if (!app || !app->project) return nn_fail(error, cap, "no active project");
-    if (!nn_model_rename_node(nn_project_model(app->project), id, label, error, cap)) return false;
-    nn_project_mark_dirty(app->project);
+    if (!app || !app->project) return nn_app_history_fail(app, error, cap, "no active project");
+    if (!nn_app_history_prepare(app, error, cap)) return false;
+    const bool okay = nn_model_rename_node(nn_project_model(app->project), id, label, error, cap);
+    nn_app_history_finish(app, okay);
+    if (!okay) return false;
     nn_error_set(error, cap, "");
     return true;
 }
@@ -194,22 +209,22 @@ bool nn_app_connect(NNApplication *app, const char *id, const char *source,
                     const char *source_handle, const char *target,
                     const char *target_handle, char *error, size_t cap)
 {
-    if (!app || !app->project) return nn_fail(error, cap, "no active project");
+    if (!app || !app->project) return nn_app_history_fail(app, error, cap, "no active project");
     NNModel *model = nn_project_model(app->project);
     const NNNode *source_node = nn_model_find_node(model, source);
     const NNNode *target_node = nn_model_find_node(model, target);
-    if (!source_node || !target_node) return nn_fail(error, cap, "edge endpoint not found");
+    if (!source_node || !target_node) return nn_app_history_fail(app, error, cap, "edge endpoint not found");
     const NNPackage *source_package = nn_app_find_package(app, source_node);
     const NNPackage *target_package = nn_app_find_package(app, target_node);
-    if (!source_package || !target_package) return nn_fail(error, cap, "edge package is unresolved");
+    if (!source_package || !target_package) return nn_app_history_fail(app, error, cap, "edge package is unresolved");
     if (!nn_app_valid_output_handle(source_package, source_handle))
-        return nn_fail(error, cap, "invalid output handle");
+        return nn_app_history_fail(app, error, cap, "invalid output handle");
     if (!nn_app_valid_input_handle(target_package, target_handle))
-        return nn_fail(error, cap, "invalid input handle");
+        return nn_app_history_fail(app, error, cap, "invalid input handle");
     const char *type = nn_app_output_type(app, source, source_handle);
     if ((nn_app_kind_is(target_package, "output") && (!type || strcmp(type, "output"))) ||
         (nn_app_kind_is(target_package, "loss-output") && (!type || strcmp(type, "loss"))))
-        return nn_fail(error, cap, "output type is incompatible with terminal");
+        return nn_app_history_fail(app, error, cap, "output type is incompatible with terminal");
     if (nn_app_kind_is(target_package, "join")) {
         size_t requested;
         (void)nn_join_handle_order(target_handle, &requested);
@@ -218,12 +233,13 @@ bool nn_app_connect(NNApplication *app, const char *id, const char *source,
             size_t occupied;
             if (!strcmp(edge->target_id, target) &&
                 nn_join_handle_order(edge->target_handle_id, &occupied) && occupied == requested)
-                return nn_fail(error, cap, "join input position is already occupied");
+                return nn_app_history_fail(app, error, cap, "join input position is already occupied");
         }
     }
-    if (!nn_model_connect(model, id, source, source_handle, target, target_handle, error, cap))
-        return false;
-    nn_project_mark_dirty(app->project);
+    if (!nn_app_history_prepare(app, error, cap)) return false;
+    const bool okay = nn_model_connect(model, id, source, source_handle, target, target_handle, error, cap);
+    nn_app_history_finish(app, okay);
+    if (!okay) return false;
     nn_app_invalidate_analysis(app);
     nn_error_set(error, cap, "");
     return true;
@@ -231,9 +247,11 @@ bool nn_app_connect(NNApplication *app, const char *id, const char *source,
 
 bool nn_app_disconnect(NNApplication *app, const char *id, char *error, size_t cap)
 {
-    if (!app || !app->project) return nn_fail(error, cap, "no active project");
-    if (!nn_model_disconnect(nn_project_model(app->project), id, error, cap)) return false;
-    nn_project_mark_dirty(app->project);
+    if (!app || !app->project) return nn_app_history_fail(app, error, cap, "no active project");
+    if (!nn_app_history_prepare(app, error, cap)) return false;
+    const bool okay = nn_model_disconnect(nn_project_model(app->project), id, error, cap);
+    nn_app_history_finish(app, okay);
+    if (!okay) return false;
     nn_app_invalidate_analysis(app);
     nn_error_set(error, cap, "");
     return true;
@@ -242,29 +260,31 @@ bool nn_app_set_boundary_handle(NNApplication *app, const char *node_id,
                                 const char *handle_id, char *error, size_t cap)
 {
     if (!app || !app->project || !node_id || !handle_id || !*handle_id)
-        return nn_fail(error, cap, "invalid boundary mapping");
+        return nn_app_history_fail(app, error, cap, "invalid boundary mapping");
     NNModel *model = nn_project_model(app->project);
     const NNNode *node = nn_model_find_node(model, node_id);
     const NNPackage *terminal = nn_app_find_package(app, node);
     if (!node || (!nn_app_kind_is(terminal, "output") && !nn_app_kind_is(terminal, "loss-output")))
-        return nn_fail(error, cap, "boundary mapping requires an output terminal");
+        return nn_app_history_fail(app, error, cap, "boundary mapping requires an output terminal");
     const NNNode *owner = *node->scope_id ? nn_model_find_node(model, node->scope_id) : NULL;
     const NNPackage *owner_package = nn_app_find_package(app, owner);
     if (!owner || !nn_app_kind_is(owner_package, "subflow"))
-        return nn_fail(error, cap, "root terminals cannot have boundary mappings");
+        return nn_app_history_fail(app, error, cap, "root terminals cannot have boundary mappings");
     const NNOutputDef *mapping = NULL;
     for (size_t i = 0; i < owner_package->output_count; ++i)
         if (!strcmp(owner_package->outputs[i].id, handle_id)) mapping = &owner_package->outputs[i];
-    if (!mapping) return nn_fail(error, cap, "unknown subflow output handle");
+    if (!mapping) return nn_app_history_fail(app, error, cap, "unknown subflow output handle");
     const char *expected_kind = !strcmp(mapping->type, "loss") ? "loss-output" : "output";
     if (!nn_app_kind_is(terminal, expected_kind))
-        return nn_fail(error, cap, "boundary handle type does not match terminal");
+        return nn_app_history_fail(app, error, cap, "boundary handle type does not match terminal");
     if (node->boundary_handle_id && !strcmp(node->boundary_handle_id, handle_id)) {
         nn_error_set(error, cap, "");
         return true;
     }
-    if (!nn_model_set_boundary_handle(model, node_id, handle_id, error, cap)) return false;
-    nn_project_mark_dirty(app->project);
+    if (!nn_app_history_prepare(app, error, cap)) return false;
+    const bool okay = nn_model_set_boundary_handle(model, node_id, handle_id, error, cap);
+    nn_app_history_finish(app, okay);
+    if (!okay) return false;
     nn_app_invalidate_analysis(app);
     nn_error_set(error, cap, "");
     return true;

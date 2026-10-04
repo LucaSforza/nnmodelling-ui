@@ -28,6 +28,7 @@
   "parameters": {
     "times": {
       "type": "integer",
+      "position": "top",
       "minimum": 1
     }
   }

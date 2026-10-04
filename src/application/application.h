@@ -27,6 +27,12 @@ bool nn_app_create_vae(NNApplication *app, const char *parent, const char *id,
                       const char *name, char *error, size_t cap);
 bool nn_app_save(NNApplication *app, char *error, size_t cap);
 bool nn_app_close(NNApplication *app, bool discard, char *error, size_t cap);
+bool nn_app_can_undo(const NNApplication *app);
+bool nn_app_can_redo(const NNApplication *app);
+bool nn_app_undo(NNApplication *app, char *error, size_t cap);
+bool nn_app_redo(NNApplication *app, char *error, size_t cap);
+bool nn_app_begin_edit(NNApplication *app, char *error, size_t cap);
+bool nn_app_end_edit(NNApplication *app, bool commit, char *error, size_t cap);
 /* Borrowed read-only state; do not retain pointers across mutations. */
 const NNProject *nn_app_project(const NNApplication *app);
 const NNModel *nn_app_model(const NNApplication *app);

@@ -9,6 +9,8 @@
 
 class GraphScene;
 class PortItem;
+class QGraphicsRectItem;
+class QGraphicsSimpleTextItem;
 
 enum class FlowDirection { Vertical, Horizontal };
 
@@ -30,7 +32,7 @@ public:
     virtual void setChildCount(int count);
     void setProblemCategory(const QString &category);
     void setBoundaryKind(const QString &kind);
-    void setFlowDirection(FlowDirection direction);
+    virtual void setFlowDirection(FlowDirection direction);
     void setJoinNode(bool join);
     void setJoinInputControls(bool canRemove, bool canAdd);
     QRectF joinRemoveControlRect() const { return joinRemoveRect_; }
@@ -38,11 +40,22 @@ public:
     QRectF junctionRect() const { return junctionRect_; }
     QString boundaryKind() const { return boundaryKind_; }
     QString problemCategory() const { return problemCategory_; }
+    void setReadOnlyPreview(bool preview);
+    bool isReadOnlyPreview() const { return readOnlyPreview_; }
+    void setTensorSummary(const QString &summary);
+    QString tensorSummary() const { return tensorSummary_; }
+    void setTensorPopupVisible(bool visible);
+    void setRoutingWarning(bool warning);
+    void setExternalPortsOnBoundary(bool enabled) { externalPortsOnBoundary_ = enabled; }
 
 protected:
     QVariant itemChange(GraphicsItemChange change, const QVariant &value) override;
     void mousePressEvent(QGraphicsSceneMouseEvent *event) override;
     void mouseReleaseEvent(QGraphicsSceneMouseEvent *event) override;
+    void hoverEnterEvent(QGraphicsSceneHoverEvent *event) override;
+    void hoverMoveEvent(QGraphicsSceneHoverEvent *event) override;
+    void hoverLeaveEvent(QGraphicsSceneHoverEvent *event) override;
+    virtual QRectF tensorHoverRegion() const { return NodeItem::boundingRect(); }
     GraphScene *owner_;
     QString id_;
     QString label_;
@@ -51,6 +64,12 @@ protected:
     QString problemCategory_;
     QString boundaryKind_;
     bool joinNode_ = false;
+    bool readOnlyPreview_ = false;
+    bool externalPortsOnBoundary_ = false;
+    QString tensorSummary_;
+    QGraphicsRectItem *tensorPopupBackground_ = nullptr;
+    QGraphicsSimpleTextItem *tensorPopupText_ = nullptr;
+    QGraphicsSimpleTextItem *routingWarningItem_ = nullptr;
     bool canRemoveJoinInput_ = false;
     bool canAddJoinInput_ = false;
     FlowDirection flowDirection_ = FlowDirection::Vertical;

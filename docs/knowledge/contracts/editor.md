@@ -144,6 +144,9 @@ not hang tree building or preview recursion.
 Application actions use File, Model and View QMenuBar/QMenu/QAction menus with standard
 shortcuts. File includes template submenu; Save As remains omitted until supported.
 Graph toolbar retains compact scope/fit/zoom/arrange controls without application buttons.
+On the Qt VNC platform, recreate closed popup containers before reuse to avoid
+stale window composition. Preserve their QAction and tree objects and state;
+the frontend still owns them. This does not change desktop menu semantics.
 
 ## Orthogonal routing
 

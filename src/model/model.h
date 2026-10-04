@@ -65,6 +65,9 @@ void nn_value_dispose(NNValue *value);
 
 NNModel *nn_model_new(void);
 void nn_model_free(NNModel *model);
+NNModel *nn_model_copy(const NNModel *model);
+bool nn_model_equal(const NNModel *left, const NNModel *right);
+void nn_model_swap(NNModel *left, NNModel *right);
 
 bool nn_model_add_node(NNModel *model, const char *id, const char *label,
                        const char *package_id, const char *package_version,

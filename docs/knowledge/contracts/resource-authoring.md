@@ -11,7 +11,7 @@ Backend, numerical execution and training remain deferred.
 All newly written project/resource JSON uses two-space indentation and a final
 newline. Reading accepts compact JSON; schema versions and atomic save remain.
 Core semantics/assets remain preserved. Accepted 2026-10-03 user-requested
-presentation-only exception: core Repeat declares repeat position=top; no rule,
+presentation-only exception: core Repeat declares `times` (repeat count) position=top; no rule,
 parameter validation/default or package identity changes. `NNParameterDef.position` is optional borrowed text,
 `top` or `bottom`; absent means inspector-only, invalid values fail loading.
 Cards show positioned parameters in definition order in key/value rows above

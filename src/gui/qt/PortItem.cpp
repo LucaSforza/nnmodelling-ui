@@ -18,6 +18,11 @@ PortItem::PortItem(GraphScene *owner, QString nodeId, QString handleId, bool out
     setZValue(3.0);
 }
 
+void PortItem::setReadOnlyPreview(bool preview) {
+    setAcceptedMouseButtons(preview ? Qt::NoButton : Qt::LeftButton);
+    setAcceptHoverEvents(true);
+}
+
 QRectF PortItem::boundingRect() const { return QRectF(-7, -7, 14, 14); }
 
 void PortItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWidget *) {

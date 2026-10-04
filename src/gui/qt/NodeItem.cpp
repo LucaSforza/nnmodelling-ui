@@ -8,6 +8,9 @@
 #include <QFont>
 #include <QFontMetricsF>
 #include <QGraphicsSceneMouseEvent>
+#include <QGraphicsSceneHoverEvent>
+#include <QGraphicsRectItem>
+#include <QGraphicsSimpleTextItem>
 #include <algorithm>
 #include <cmath>
 #include <QPainter>
@@ -38,6 +41,7 @@ NodeItem::NodeItem(GraphScene *owner, QString id, QString label, QString package
     contentWidth_ = required;
     setPos(position);
     setFlags(ItemIsMovable | ItemIsSelectable | ItemSendsGeometryChanges);
+    setAcceptHoverEvents(true);
     setCacheMode(DeviceCoordinateCache);
     setZValue(1.0);
 }
@@ -418,6 +422,7 @@ void NodeItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWidge
     QFont portFont = painter->font();
     portFont.setPointSizeF(6.8);
     painter->setFont(portFont);
+    if (externalPortsOnBoundary_) return;
     if (!boundaryKind_.isEmpty()) return;
     for (PortItem *port : ports_) {
         const bool vertical = flowDirection_ == FlowDirection::Vertical;
@@ -446,6 +451,91 @@ void NodeItem::addPort(PortItem *port) {
 
 void NodeItem::setChildCount(int) {}
 
+void NodeItem::setReadOnlyPreview(bool preview) {
+    readOnlyPreview_ = preview;
+    setFlag(ItemIsMovable, !preview);
+    setFlag(ItemIsSelectable, !preview);
+    for (PortItem *port : ports_) port->setReadOnlyPreview(preview);
+}
+
+void NodeItem::setTensorSummary(const QString &summary) {
+    tensorSummary_ = summary;
+    if (!tensorSummary_.isEmpty() && !tensorPopupBackground_) {
+        tensorPopupBackground_ = new QGraphicsRectItem(this);
+        tensorPopupBackground_->setBrush(QColor(255, 255, 255, 245));
+        tensorPopupBackground_->setPen(QPen(QColor(142, 155, 169), 1.0));
+        tensorPopupBackground_->setZValue(1000.0);
+        tensorPopupBackground_->setAcceptedMouseButtons(Qt::NoButton);
+        tensorPopupBackground_->setFlag(QGraphicsItem::ItemIgnoresTransformations);
+        tensorPopupText_ = new QGraphicsSimpleTextItem(tensorPopupBackground_);
+        tensorPopupText_->setBrush(QColor(36, 48, 62));
+        QFont font = tensorPopupText_->font();
+        font.setPointSizeF(9.0);
+        tensorPopupText_->setFont(font);
+        tensorPopupBackground_->hide();
+    }
+    if (tensorPopupBackground_) {
+        if (tensorSummary_.isEmpty()) {
+            tensorPopupBackground_->hide();
+            tensorPopupText_->setText(QString());
+        } else {
+            tensorPopupText_->setText(tensorSummary_);
+            const QRectF textRect = tensorPopupText_->boundingRect();
+            tensorPopupText_->setPos(8, 6);
+            tensorPopupBackground_->setRect(0, 0, textRect.width() + 16, textRect.height() + 12);
+            tensorPopupBackground_->setPos(boundingRect().right() + 12, 4);
+        }
+    }
+    setToolTip(QString());
+}
+
+void NodeItem::setRoutingWarning(bool warning) {
+    if (warning && !routingWarningItem_) {
+        routingWarningItem_ = new QGraphicsSimpleTextItem(QStringLiteral("!"), this);
+        QFont font = routingWarningItem_->font();
+        font.setBold(true);
+        font.setPointSizeF(13.0);
+        routingWarningItem_->setFont(font);
+        routingWarningItem_->setBrush(QColor("#bd5a20"));
+        routingWarningItem_->setToolTip(tr("Routing blocked. Move overlapping nodes or Arrange."));
+        routingWarningItem_->setAcceptedMouseButtons(Qt::NoButton);
+        routingWarningItem_->setFlag(QGraphicsItem::ItemIgnoresTransformations);
+        routingWarningItem_->setZValue(10.0);
+    }
+    if (routingWarningItem_) {
+        routingWarningItem_->setVisible(warning);
+        routingWarningItem_->setPos(boundingRect().right() - 17.0, 0.0);
+    }
+}
+
+void NodeItem::setTensorPopupVisible(bool visible) {
+    if (tensorPopupBackground_ && !tensorSummary_.isEmpty())
+        tensorPopupBackground_->setVisible(visible);
+}
+
+void NodeItem::hoverEnterEvent(QGraphicsSceneHoverEvent *event) {
+    if (tensorHoverRegion().contains(event->pos())) setTensorPopupVisible(true);
+    setZValue(1000.0);
+    for (QGraphicsItem *parent = parentItem(); parent; parent = parent->parentItem()) {
+        parent->setZValue(1000.0);
+        if (auto *node = dynamic_cast<NodeItem *>(parent)) node->setTensorPopupVisible(false);
+    }
+    QGraphicsObject::hoverEnterEvent(event);
+}
+
+void NodeItem::hoverMoveEvent(QGraphicsSceneHoverEvent *event) {
+    setTensorPopupVisible(tensorHoverRegion().contains(event->pos()));
+    QGraphicsObject::hoverMoveEvent(event);
+}
+
+void NodeItem::hoverLeaveEvent(QGraphicsSceneHoverEvent *event) {
+    setTensorPopupVisible(false);
+    setZValue(1.0);
+    for (QGraphicsItem *parent = parentItem(); parent; parent = parent->parentItem())
+        parent->setZValue(1.0);
+    QGraphicsObject::hoverLeaveEvent(event);
+}
+
 void NodeItem::setProblemCategory(const QString &category) {
     if (problemCategory_ == category) return;
     problemCategory_ = category;
@@ -465,6 +555,7 @@ QVariant NodeItem::itemChange(GraphicsItemChange change, const QVariant &value) 
 }
 
 void NodeItem::mousePressEvent(QGraphicsSceneMouseEvent *event) {
+    if (readOnlyPreview_) { event->accept(); return; }
     if (joinNode_ && owner_ && event->button() == Qt::LeftButton) {
         if (joinRemoveRect_.contains(event->pos())) {
             owner_->adjustJoinInputSlots(id_, false);
@@ -482,6 +573,7 @@ void NodeItem::mousePressEvent(QGraphicsSceneMouseEvent *event) {
 }
 
 void NodeItem::mouseReleaseEvent(QGraphicsSceneMouseEvent *event) {
+    if (readOnlyPreview_) { event->accept(); return; }
     QGraphicsObject::mouseReleaseEvent(event);
     if (owner_) owner_->commitNodeMoves();
 }

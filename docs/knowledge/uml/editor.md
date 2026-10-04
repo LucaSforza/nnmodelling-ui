@@ -104,7 +104,7 @@ routes update when any obstacle moves. Scope QTreeWidget reflects real containme
 Read-only previews reuse DataflowLayout and uniformly scale temporary child geometry.
 C history restores model snapshots; Edit Undo/Redo refreshes Qt without Qt history.
 QMenuBar owns File/Edit/Model/View actions; compact toolbar owns graph controls.
-GraphView paints the 20-unit grid and exposes centered Zoom In/Out. NodeItem
+GraphScene paints the 20-unit grid; GraphView exposes centered Zoom In/Out. NodeItem
 drag previews snap to that grid; NNModel remains final coordinate normalizer.
 NodeItem selects junction-bar presentation by resolved kind=join. GraphScene
 starts with in-1/in-2 plus occupied handles, retains explicitly added free

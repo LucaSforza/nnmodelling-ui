@@ -38,6 +38,7 @@ NNApplication *nn_app_new(const char *core_root)
     if (!app) return NULL;
     app->core_root = nn_text_copy(core_root);
     if (!app->core_root) { free(app); return NULL; }
+    nn_app_history_reset(app);
     return app;
 }
 
@@ -45,6 +46,7 @@ void nn_app_free(NNApplication *app)
 {
     if (!app) return;
     nn_app_invalidate_analysis(app);
+    nn_app_history_reset(app);
     nn_project_close(app->project);
     free(app->core_root);
     free(app);
@@ -53,11 +55,13 @@ void nn_app_free(NNApplication *app)
 bool nn_app_open(NNApplication *app, const char *directory, char *error, size_t cap)
 {
     if (!app || !directory || !*directory) return nn_fail(error, cap, "invalid project path");
+    if (app->history.group_active) return nn_fail(error, cap, "cannot open a project during an edit group");
     NNProject *staged = nn_project_open(directory, app->core_root, error, cap);
     if (!staged) return false;
     NNProject *old = app->project;
     app->project = staged;
     nn_app_invalidate_analysis(app);
+    nn_app_history_reset(app);
     nn_project_close(old);
     nn_error_set(error, cap, "");
     return true;
@@ -67,12 +71,14 @@ bool nn_app_create(NNApplication *app, const char *parent, const char *id,
                    const char *name, bool mnist, char *error, size_t cap)
 {
     if (!app) return nn_fail(error, cap, "application is null");
+    if (app->history.group_active) return nn_fail(error, cap, "cannot create a project during an edit group");
     NNProject *staged = nn_project_create(parent, id, name, mnist,
                                           app->core_root, error, cap);
     if (!staged) return false;
     NNProject *old = app->project;
     app->project = staged;
     nn_app_invalidate_analysis(app);
+    nn_app_history_reset(app);
     nn_project_close(old);
     nn_error_set(error, cap, "");
     return true;
@@ -81,18 +87,23 @@ bool nn_app_create(NNApplication *app, const char *parent, const char *id,
 bool nn_app_save(NNApplication *app, char *error, size_t cap)
 {
     if (!app || !app->project) return nn_fail(error, cap, "no active project");
-    return nn_project_save(app->project, error, cap);
+    if (app->history.group_active) return nn_fail(error, cap, "cannot save during an edit group");
+    if (!nn_project_save(app->project, error, cap)) return false;
+    nn_app_history_mark_saved(app);
+    return true;
 }
 
 bool nn_app_close(NNApplication *app, bool discard, char *error, size_t cap)
 {
     if (!app) return nn_fail(error, cap, "application is null");
+    if (app->history.group_active) return nn_fail(error, cap, "cannot close during an edit group");
     if (!app->project) { nn_error_set(error, cap, ""); return true; }
     if (nn_project_dirty(app->project) && !discard &&
         !nn_project_save(app->project, error, cap)) return false;
     nn_project_close(app->project);
     app->project = NULL;
     nn_app_invalidate_analysis(app);
+    nn_app_history_reset(app);
     nn_error_set(error, cap, "");
     return true;
 }

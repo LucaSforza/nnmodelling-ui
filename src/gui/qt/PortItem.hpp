@@ -25,6 +25,7 @@ public:
         boundaryHandlePresentation_ = boundary;
         update();
     }
+    void setReadOnlyPreview(bool preview);
 
 protected:
     void mousePressEvent(QGraphicsSceneMouseEvent *event) override;

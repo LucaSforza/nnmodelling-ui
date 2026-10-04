@@ -12,13 +12,13 @@
 #include <QApplication>
 #include <QCheckBox>
 #include <QCloseEvent>
-#include <QComboBox>
 #include <QFileDialog>
 #include <QHeaderView>
 #include <QKeySequence>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMenu>
+#include <QHideEvent>
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QPushButton>
@@ -38,12 +38,49 @@
 #include <QBrush>
 #include <QColor>
 #include <QTreeView>
+#include <QTreeWidgetItemIterator>
+#include <QWidgetAction>
 
 #include <cmath>
 
 using namespace MainWindowUtils;
 
 namespace {
+class EditorMenu final : public QMenu {
+public:
+    using QMenu::QMenu;
+protected:
+    void hideEvent(QHideEvent *event) override {
+        QMenu::hideEvent(event);
+        if (QGuiApplication::platformName() != QStringLiteral("vnc")) return;
+        // Qt VNC miscomposes reused popup surfaces. Replace only the closed
+        // container; retain actions (including shortcuts) and embedded trees.
+        QTimer::singleShot(0, this, [this] {
+            if (isVisible()) return;
+            auto *replacement = new EditorMenu(title(), parentWidget());
+            replacement->setObjectName(objectName());
+            const auto entries = actions();
+            for (QAction *action : entries) {
+                removeAction(action);
+                if (action->parent() == this) action->setParent(replacement);
+                if (action->menu() && action->menu()->parent() == this)
+                    action->menu()->setParent(replacement, action->menu()->windowFlags());
+                replacement->addAction(action);
+            }
+            const auto owners = menuAction()->associatedObjects();
+            for (QObject *owner : owners) {
+                if (auto *button = qobject_cast<QToolButton *>(owner)) {
+                    button->setMenu(replacement);
+                } else if (auto *widget = qobject_cast<QWidget *>(owner)) {
+                    widget->insertAction(menuAction(), replacement->menuAction());
+                    widget->removeAction(menuAction());
+                }
+            }
+            deleteLater();
+        });
+    }
+};
+
 class WrappedTreeDelegate final : public QStyledItemDelegate {
 public:
     using QStyledItemDelegate::QStyledItemDelegate;
@@ -157,26 +194,34 @@ void MainWindow::buildUi() {
         "QPushButton[primary=true] { background: #3978c5; color: white; border: 0; }"
         "QStatusBar { background: #e5e9ee; color: #354154; }"));
 
-    auto *fileMenu = menuBar()->addMenu(tr("&Project"));
-    auto addAction = [this, fileMenu](const QString &label, const QKeySequence &shortcut,
-                                      auto callback) {
-        QAction *action = fileMenu->addAction(label);
+    auto addMenu = [this](const QString &title) {
+        auto *menu = new EditorMenu(title, this);
+        menuBar()->addMenu(menu);
+        return menu;
+    };
+    auto *fileMenu = addMenu(tr("&File"));
+    auto addAction = [this](QMenu *menu, const QString &label, const QKeySequence &shortcut,
+                            auto callback, const char *objectName = nullptr) {
+        QAction *action = menu->addAction(label);
         if (!shortcut.isEmpty()) action->setShortcut(shortcut);
+        if (objectName) action->setObjectName(QString::fromLatin1(objectName));
         connect(action, &QAction::triggered, this, callback);
         return action;
     };
-    addAction(tr("New project…"), {}, [this] { createProject(false); });
-    addAction(tr("New MNIST MLP…"), {}, [this] { createProject(true); });
-    addAction(tr("New MNIST VAE…"), {}, [this] { createVaeProject(); });
+    addAction(fileMenu, tr("New project…"), QKeySequence::New,
+              [this] { createProject(false); }, "newProjectAction");
+    auto *templatesMenu = new EditorMenu(tr("New from template"), fileMenu);
+    fileMenu->addMenu(templatesMenu);
+    templatesMenu->setObjectName(QStringLiteral("projectTemplatesMenu"));
+    addAction(templatesMenu, tr("MNIST MLP…"), {}, [this] { createProject(true); });
+    addAction(templatesMenu, tr("MNIST VAE…"), {}, [this] { createVaeProject(); });
     fileMenu->addSeparator();
-    fileMenu->addAction(tr("Create stereotype…"), this, &MainWindow::createStereotype);
-    fileMenu->addAction(tr("Create dataset…"), this, &MainWindow::createDataset);
-    addAction(tr("Open project…"), QKeySequence::Open, [this] {
+    addAction(fileMenu, tr("Open project…"), QKeySequence::Open, [this] {
         const QString directory = QFileDialog::getExistingDirectory(this, tr("Open project"));
         if (!directory.isEmpty()) openProject(directory);
-    });
-    addAction(tr("Save"), QKeySequence::Save, [this] { saveProject(); });
-    addAction(tr("Close project"), {}, [this] {
+    }, "openProjectAction");
+    addAction(fileMenu, tr("Save"), QKeySequence::Save, [this] { saveProject(); }, "saveProjectAction");
+    addAction(fileMenu, tr("Close project"), QKeySequence::Close, [this] {
         if (!application_ || !nn_app_project(application_.get())) return;
         const NNProject *project = nn_app_project(application_.get());
         bool discard = false;
@@ -196,31 +241,68 @@ void MainWindow::buildUi() {
         }
         refreshAll();
         showProjectChooser();
-    });
+    }, "closeProjectAction");
+
+    auto *editMenu = addMenu(tr("&Edit"));
+    undoAction_ = addAction(editMenu, tr("Undo"), QKeySequence::Undo,
+                            [this] { restoreEdit(false); }, "undoAction");
+    redoAction_ = addAction(editMenu, tr("Redo"), QKeySequence::Redo,
+                            [this] { restoreEdit(true); }, "redoAction");
+
+    auto *modelMenu = addMenu(tr("&Model"));
+    addAction(modelMenu, tr("Create stereotype…"), {}, [this] { createStereotype(); });
+    addAction(modelMenu, tr("Create dataset…"), {}, [this] { createDataset(); });
+
+    auto *viewMenu = addMenu(tr("&View"));
+    addAction(viewMenu, tr("Fit graph"), QKeySequence(QStringLiteral("Ctrl+0")), [this] {
+        view_->fitGraph();
+    }, "fitGraphAction");
+    addAction(viewMenu, tr("Zoom in"), QKeySequence::ZoomIn,
+              [this] { view_->zoomIn(); }, "zoomIn");
+    addAction(viewMenu, tr("Zoom out"), QKeySequence::ZoomOut,
+              [this] { view_->zoomOut(); }, "zoomOut");
+    auto *arrangeMenu = new EditorMenu(tr("Arrange"), viewMenu);
+    viewMenu->addMenu(arrangeMenu);
+    QAction *verticalAction = arrangeMenu->addAction(tr("Vertical"));
+    QAction *horizontalAction = arrangeMenu->addAction(tr("Horizontal"));
 
     auto *toolbar = addToolBar(tr("Workspace"));
     toolbar->setMovable(false);
     toolbar->setIconSize(QSize(16, 16));
-    for (QAction *action : fileMenu->actions()) toolbar->addAction(action);
-    toolbar->addSeparator();
     toolbar->addWidget(new QLabel(tr("Scope"), toolbar));
-    scopeSelector_ = new QComboBox(toolbar);
+    scopeSelector_ = new QToolButton(toolbar);
     scopeSelector_->setObjectName(QStringLiteral("scopeSelector"));
+    scopeSelector_->setText(tr("Root"));
     scopeSelector_->setMinimumWidth(190);
+    scopeSelector_->setPopupMode(QToolButton::InstantPopup);
+    auto *scopeMenu = new EditorMenu(scopeSelector_);
+    scopeTree_ = new QTreeWidget(scopeMenu);
+    scopeTree_->setObjectName(QStringLiteral("scopeTree"));
+    scopeTree_->setHeaderHidden(true);
+    scopeTree_->setRootIsDecorated(true);
+    scopeTree_->setIndentation(16);
+    scopeTree_->setMinimumWidth(250);
+    scopeTree_->setMaximumHeight(360);
+    auto *scopeTreeAction = new QWidgetAction(scopeMenu);
+    scopeTreeAction->setDefaultWidget(scopeTree_);
+    scopeMenu->addAction(scopeTreeAction);
+    scopeSelector_->setMenu(scopeMenu);
     toolbar->addWidget(scopeSelector_);
-    auto *fitAction = toolbar->addAction(tr("Fit"));
-    auto *zoomInAction = toolbar->addAction(tr("+"));
-    zoomInAction->setObjectName(QStringLiteral("zoomIn"));
-    zoomInAction->setToolTip(tr("Zoom in"));
-    auto *zoomOutAction = toolbar->addAction(tr("−"));
-    zoomOutAction->setObjectName(QStringLiteral("zoomOut"));
-    zoomOutAction->setToolTip(tr("Zoom out"));
+    auto *fitButtonAction = toolbar->addAction(tr("Fit"));
+    fitButtonAction->setObjectName(QStringLiteral("fitGraph"));
+    auto *zoomInButtonAction = toolbar->addAction(tr("+"));
+    zoomInButtonAction->setObjectName(QStringLiteral("zoomInButton"));
+    zoomInButtonAction->setToolTip(tr("Zoom in"));
+    auto *zoomOutButtonAction = toolbar->addAction(tr("−"));
+    zoomOutButtonAction->setObjectName(QStringLiteral("zoomOutButton"));
+    zoomOutButtonAction->setToolTip(tr("Zoom out"));
     auto *arrangeAction = toolbar->addAction(tr("Arrange"));
-    auto *arrangeMenu = new QMenu(this);
-    QAction *verticalAction = arrangeMenu->addAction(tr("Vertical"));
-    QAction *horizontalAction = arrangeMenu->addAction(tr("Horizontal"));
+    arrangeAction->setObjectName(QStringLiteral("arrange"));
+    auto *toolbarArrangeMenu = new EditorMenu(this);
+    QAction *toolbarVertical = toolbarArrangeMenu->addAction(tr("Vertical"));
+    QAction *toolbarHorizontal = toolbarArrangeMenu->addAction(tr("Horizontal"));
     if (auto *button = qobject_cast<QToolButton *>(toolbar->widgetForAction(arrangeAction))) {
-        button->setMenu(arrangeMenu);
+        button->setMenu(toolbarArrangeMenu);
         button->setPopupMode(QToolButton::MenuButtonPopup);
     }
 
@@ -250,6 +332,9 @@ void MainWindow::buildUi() {
     scene_ = new GraphScene(application_.get(), this);
     view_ = new GraphView(scene_, workspace);
     view_->setObjectName(QStringLiteral("graph"));
+    connect(fitButtonAction, &QAction::triggered, view_, &GraphView::fitGraph);
+    connect(zoomInButtonAction, &QAction::triggered, view_, &GraphView::zoomIn);
+    connect(zoomOutButtonAction, &QAction::triggered, view_, &GraphView::zoomOut);
     view_->setMinimumWidth(360);
     auto *right = new QSplitter(Qt::Vertical, workspace);
     right->setMinimumWidth(255);
@@ -320,22 +405,32 @@ void MainWindow::buildUi() {
     workspace->setSizes({235, 820, 305});
     setCentralWidget(workspace);
 
-    connect(scopeSelector_, &QComboBox::currentIndexChanged, this, [this](int index) {
-        if (refreshing_ || index < 0 || !scene_) return;
-        scene_->setScope(scopeSelector_->itemData(index).toString());
-    });
+    const auto chooseScope = [this](QTreeWidgetItem *item) {
+        if (refreshing_ || !item || !scene_ || !(item->flags() & Qt::ItemIsSelectable)) return;
+        scene_->setScope(item->data(0, IdRole).toString());
+        scopeSelector_->menu()->close();
+    };
+    connect(scopeTree_, &QTreeWidget::itemClicked, this, chooseScope);
+    connect(scopeTree_, &QTreeWidget::itemActivated, this, chooseScope);
     connect(scene_, &GraphScene::modelChanged, this, [this] {
         QTimer::singleShot(0, this, [this] { refreshAll(); });
     });
     connect(scene_, &GraphScene::scopeChanged, this, [this](const QString &scope) {
         if (refreshing_) return;
-        const int index = scopeSelector_->findData(scope);
-        if (index >= 0) {
-            const QSignalBlocker blocker(scopeSelector_);
-            scopeSelector_->setCurrentIndex(index);
+        QTreeWidgetItemIterator iterator(scopeTree_);
+        while (*iterator) {
+            if ((*iterator)->data(0, IdRole).toString() == scope) {
+                scopeTree_->setCurrentItem(*iterator);
+                scopeSelector_->setText((*iterator)->text(0));
+                break;
+            }
+            ++iterator;
         }
-        refreshInspector();
-        view_->fitGraph();
+        // Scope items synchronize asynchronously after event handlers return.
+        QTimer::singleShot(0, this, [this] {
+            refreshInspector();
+            view_->fitGraph();
+        });
     });
     connect(scene_, &GraphScene::selectionChanged, this, [this] {
         if (!refreshing_) refreshInspector();
@@ -368,11 +463,6 @@ void MainWindow::buildUi() {
             [this](QTreeWidgetItem *item, int column) { selectDataset(item, column); });
     connect(stereotypeButton, &QPushButton::clicked, this, &MainWindow::createStereotype);
     connect(datasetButton, &QPushButton::clicked, this, &MainWindow::createDataset);
-    connect(fitAction, &QAction::triggered, this, [this] {
-        arrangeCurrentScope(FlowDirection::Vertical, false);
-    });
-    connect(zoomInAction, &QAction::triggered, view_, &GraphView::zoomIn);
-    connect(zoomOutAction, &QAction::triggered, view_, &GraphView::zoomOut);
     connect(arrangeAction, &QAction::triggered, this, [this] {
         arrangeCurrentScope(FlowDirection::Vertical);
     });
@@ -382,4 +472,22 @@ void MainWindow::buildUi() {
     connect(horizontalAction, &QAction::triggered, this, [this] {
         arrangeCurrentScope(FlowDirection::Horizontal);
     });
+    connect(toolbarVertical, &QAction::triggered, this, [this] {
+        arrangeCurrentScope(FlowDirection::Vertical);
+    });
+    connect(toolbarHorizontal, &QAction::triggered, this, [this] {
+        arrangeCurrentScope(FlowDirection::Horizontal);
+    });
+}
+
+void MainWindow::restoreEdit(bool redo) {
+    scene_->cancelInteraction();
+    char error[ErrorCapacity] = {};
+    const bool restored = redo ? nn_app_redo(application_.get(), error, sizeof(error))
+                               : nn_app_undo(application_.get(), error, sizeof(error));
+    if (!restored) {
+        QMessageBox::warning(this, tr("Edit failed"), QString::fromUtf8(error));
+        return;
+    }
+    refreshAll();
 }

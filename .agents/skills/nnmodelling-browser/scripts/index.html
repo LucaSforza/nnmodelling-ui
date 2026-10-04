@@ -1,0 +1,11 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>NNModelling UI trial</title>
+<style>html,body{margin:0;background:#ddd;width:100%;height:100%}#screen{width:100%;height:100%}canvas{filter:url(#vnc-channels)}</style>
+</head><body><svg width="0" height="0" style="position:absolute"><defs><filter id="vnc-channels" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="0 0 1 0 0  0 1 0 0 0  1 0 0 0 0  0 0 0 1 0"/></filter></defs></svg><div id="screen"></div><script type="module">
+import RFB from './node_modules/@novnc/novnc/core/rfb.js';
+const rfb = new RFB(document.getElementById('screen'), `ws://${location.host}/vnc`);
+rfb.scaleViewport = true;
+rfb.addEventListener('disconnect', event => {
+  document.title = event.detail.clean ? 'NNModelling disconnected' : 'NNModelling connection failed';
+});
+</script></body></html>

@@ -1,11 +1,12 @@
 #include "EdgeItem.hpp"
 
-#include "NodeItem.hpp"
-#include "PortItem.hpp"
 #include "GraphScene.hpp"
+#include "PortItem.hpp"
 
+#include <QPainter>
 #include <QPainterPath>
 #include <QPen>
+#include <cmath>
 
 EdgeItem::EdgeItem(QString id, PortItem *source, PortItem *target)
     : id_(std::move(id)), source_(source), target_(target) {
@@ -14,29 +15,46 @@ EdgeItem::EdgeItem(QString id, PortItem *source, PortItem *target)
     setPen(QPen(color, 1.9, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
     setFlag(ItemIsSelectable);
     setZValue(-1.0);
-    updatePath();
 }
 
 void EdgeItem::updatePath() {
-    if (!source_ || !target_) return;
-    const QPointF start = source_->scenePos();
-    const QPointF end = target_->scenePos();
-    const auto *scene = dynamic_cast<const GraphScene *>(source_->scene());
-    const bool horizontal = scene && scene->flowDirection() == FlowDirection::Horizontal;
-    const qreal delta = horizontal ? start.x() - end.x() : end.y() - start.y();
-    const qreal bend = qMax<qreal>(36.0, qAbs(delta) * 0.48);
-    const QPointF controlOffset = horizontal ? QPointF(-bend, 0) : QPointF(0, bend);
-    QPainterPath curve(start);
-    curve.cubicTo(start + controlOffset, end - controlOffset, end);
-    setPath(curve);
+    if (auto *owner = dynamic_cast<GraphScene *>(scene())) owner->recomputeRoutes();
+}
+
+void EdgeItem::setRoutePoints(const QVector<QPointF> &points) {
+    prepareGeometryChange();
+    routePoints_ = points;
+    QPainterPath polyline;
+    if (!routePoints_.isEmpty()) {
+        polyline.moveTo(routePoints_.first());
+        for (int i = 1; i < routePoints_.size(); ++i) polyline.lineTo(routePoints_[i]);
+    }
+    setPath(polyline);
+    update();
+}
+
+QRectF EdgeItem::boundingRect() const {
+    return QGraphicsPathItem::boundingRect().adjusted(-8, -8, 8, 8);
+}
+
+void EdgeItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget) {
+    QGraphicsPathItem::paint(painter, option, widget);
+    if (routePoints_.size() < 2) return;
+    const QPointF end = routePoints_.last();
+    const QPointF before = routePoints_[routePoints_.size() - 2];
+    const QPointF delta = end - before;
+    const qreal length = std::hypot(delta.x(), delta.y());
+    if (length < 1e-7) return;
+    const QPointF direction = delta / length;
+    const QPointF normal(-direction.y(), direction.x());
+    constexpr qreal arrowLength = 8.0;
+    constexpr qreal arrowHalfWidth = 4.0;
     QPolygonF arrow;
-    const QPointF tangent = end - curve.pointAtPercent(0.985);
-    const qreal angle = std::atan2(tangent.y(), tangent.x());
-    const qreal size = 7.5;
-    arrow << end
-          << end - QPointF(std::cos(angle - 0.48) * size, std::sin(angle - 0.48) * size)
-          << end - QPointF(std::cos(angle + 0.48) * size, std::sin(angle + 0.48) * size);
-    QPainterPath full = curve;
-    full.addPolygon(arrow);
-    setPath(full);
+    arrow << end << end - direction * arrowLength + normal * arrowHalfWidth
+          << end - direction * arrowLength - normal * arrowHalfWidth;
+    painter->save();
+    painter->setPen(Qt::NoPen);
+    painter->setBrush(pen().color());
+    painter->drawPolygon(arrow);
+    painter->restore();
 }

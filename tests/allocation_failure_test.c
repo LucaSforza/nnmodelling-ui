@@ -313,11 +313,47 @@ static void prepare_dirty_mlp(NNApplication *app)
     char error[512] = "";
     assert(nn_app_open(app, "examples/mnist-mlp", error, sizeof(error)));
     const NNNode *node = first_node(nn_app_model(app));
-    assert(nn_app_move_node(app, node->id, node->x + 1, node->y,
+    assert(nn_app_move_node(app, node->id, node->x + NN_MODEL_GRID_SPACING, node->y,
                             error, sizeof(error)));
     assert(nn_project_dirty(nn_app_project(app)));
     const NNInferenceReport *report = nn_app_analysis(app, error, sizeof(error));
     assert(report);
+}
+
+static void sweep_history_snapshot(NNApplication *app)
+{
+    char error[512] = "";
+    assert(nn_app_open(app, "examples/mnist-mlp", error, sizeof(error)));
+    const NNNode *node = first_node(nn_app_model(app));
+    char id[256];
+    assert(strlen(node->id) < sizeof(id));
+    strcpy(id, node->id);
+    const int32_t x = node->x, y = node->y;
+    assert(nn_app_move_node(app, id, x + NN_MODEL_GRID_SPACING, y, error, sizeof(error)));
+    assert(nn_app_undo(app, error, sizeof(error)));
+    NNModel *baseline = nn_model_copy(nn_app_model(app));
+    assert(baseline);
+    const NNInferenceReport *report = nn_app_analysis(app, error, sizeof(error));
+    assert(report);
+    count_begin();
+    assert(nn_app_move_node(app, id, x + 2 * NN_MODEL_GRID_SPACING, y, error, sizeof(error)));
+    const size_t count = count_end();
+    assert(count > 0);
+    assert(nn_app_undo(app, error, sizeof(error)));
+    report = nn_app_analysis(app, error, sizeof(error));
+    for (size_t i = 1; i <= count; ++i) {
+        fail_begin(i);
+        const bool okay = nn_app_move_node(app, id, x + 2 * NN_MODEL_GRID_SPACING, y,
+                                           error, sizeof(error));
+        (void)count_end();
+        assert(failure_observed && !okay && error[0]);
+        assert(nn_model_equal(baseline, nn_app_model(app)));
+        assert(!nn_app_can_undo(app) && nn_app_can_redo(app));
+        assert(!nn_project_dirty(nn_app_project(app)));
+        assert(nn_app_analysis(app, NULL, 0) == report);
+    }
+    nn_model_free(baseline);
+    printf("history snapshot allocation fail-index sweep: %zu failures preserved graph and redo\n", count);
 }
 
 static void sweep_project_open(NNApplication *app)
@@ -533,6 +569,7 @@ int main(void)
     sweep_project_open(app);
     sweep_add_node(app);
     sweep_add_subflow(app);
+    sweep_history_snapshot(app);
 
     assert(nn_app_open(app, "examples/mnist-vae", error, sizeof(error)));
     const NNInferenceReport *report = nn_app_analysis(app, error, sizeof(error));

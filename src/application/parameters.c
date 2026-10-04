@@ -242,17 +242,22 @@ bool nn_app_add_default(NNApplication *app, NNModel *model, const char *node_id,
 bool nn_app_set_parameter(NNApplication *app, const char *node_id, const char *key,
                           const NNValue *value, char *error, size_t cap)
 {
-    if (!app || !app->project) return nn_fail(error, cap, "no active project");
+    if (!app || !app->project) return nn_app_history_fail(app, error, cap, "no active project");
     const NNNode *node = nn_model_find_node(nn_project_model(app->project), node_id);
-    if (!node) return nn_fail(error, cap, "node not found");
+    if (!node) return nn_app_history_fail(app, error, cap, "node not found");
     const NNPackage *package = nn_app_find_package(app, node);
     const NNParameterDef *definition = NULL;
     if (!parameter_definition(package, key, &definition))
-        return nn_fail(error, cap, "unknown parameter");
-    if (!valid_value(definition, value, error, cap)) return false;
-    if (!nn_model_set_parameter(nn_project_model(app->project), node_id, key,
-                                value, error, cap)) return false;
-    nn_project_mark_dirty(app->project);
+        return nn_app_history_fail(app, error, cap, "unknown parameter");
+    if (!valid_value(definition, value, error, cap)) {
+        if (app->history.group_active) app->history.group_failed = true;
+        return false;
+    }
+    if (!nn_app_history_prepare(app, error, cap)) return false;
+    const bool okay = nn_model_set_parameter(nn_project_model(app->project), node_id,
+                                              key, value, error, cap);
+    nn_app_history_finish(app, okay);
+    if (!okay) return false;
     nn_app_invalidate_analysis(app);
     nn_error_set(error, cap, "");
     return true;
@@ -261,16 +266,19 @@ bool nn_app_set_parameter(NNApplication *app, const char *node_id, const char *k
 bool nn_app_set_parameter_text(NNApplication *app, const char *node, const char *key,
                                const char *text, char *error, size_t cap)
 {
-    if (!app || !app->project) return nn_fail(error, cap, "no active project");
+    if (!app || !app->project) return nn_app_history_fail(app, error, cap, "no active project");
     const NNNode *entry = nn_model_find_node(nn_project_model(app->project), node);
     const NNParameterDef *definition = NULL;
-    if (!entry) return nn_fail(error, cap, "node not found");
+    if (!entry) return nn_app_history_fail(app, error, cap, "node not found");
     if (!parameter_definition(nn_app_find_package(app, entry), key, &definition))
-        return nn_fail(error, cap, "unknown parameter");
+        return nn_app_history_fail(app, error, cap, "unknown parameter");
     if (!strcmp(definition->type, "stereotype"))
-        return nn_fail(error, cap, "object-valued stereotype parameters are not supported by native model");
+        return nn_app_history_fail(app, error, cap, "object-valued stereotype parameters are not supported by native model");
     NNValue value = {0};
-    if (!parse_parameter_text(definition, text, &value, error, cap)) return false;
+    if (!parse_parameter_text(definition, text, &value, error, cap)) {
+        if (app->history.group_active) app->history.group_failed = true;
+        return false;
+    }
     bool okay = nn_app_set_parameter(app, node, key, &value, error, cap);
     if (value.type == NN_VALUE_ARRAY) nn_value_dispose(&value);
     return okay;

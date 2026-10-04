@@ -16,14 +16,16 @@ GraphView::GraphView(GraphScene *scene, QWidget *parent) : QGraphicsView(scene, 
     setDragMode(QGraphicsView::RubberBandDrag);
     setRubberBandSelectionMode(Qt::IntersectsItemShape);
     setViewportUpdateMode(QGraphicsView::FullViewportUpdate);
-    setBackgroundBrush(QColor(250, 251, 253));
     setFrameShape(QFrame::NoFrame);
     setFocusPolicy(Qt::StrongFocus);
 }
 
 void GraphView::fitGraph() {
     if (!scene() || scene()->items().isEmpty()) return;
-    const QRectF bounds = scene()->itemsBoundingRect().adjusted(-50, -50, 50, 50);
+    auto *graph = qobject_cast<GraphScene *>(scene());
+    if (graph) graph->recomputeRoutes();
+    const QRectF bounds = (graph ? graph->contentBounds() : scene()->itemsBoundingRect())
+                              .adjusted(-50, -50, 50, 50);
     if (bounds.isEmpty() || viewport()->width() <= 0 || viewport()->height() <= 0) return;
     zoom_ = qMin<qreal>(3.0, qMin(viewport()->width() / bounds.width(),
                                   viewport()->height() / bounds.height()));

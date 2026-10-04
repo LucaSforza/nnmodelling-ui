@@ -191,9 +191,5 @@ bool MainWindow::revealNode(const QString &id) {
     if (!model || !nn_model_find_node(model, nodeId.constData())) return false;
     currentScopeProblems_->setChecked(false);
     scene_->revealNode(id);
-    const NNNode *node = nn_model_find_node(nn_app_model(application_.get()), nodeId.constData());
-    const QString scope = QString::fromUtf8(node->scope_id ? node->scope_id : "");
-    const int index = scopeSelector_->findData(scope);
-    if (index >= 0) scopeSelector_->setCurrentIndex(index);
     return true;
 }

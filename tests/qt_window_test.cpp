@@ -2,6 +2,7 @@
 #include "GraphScene.hpp"
 #include "GraphView.hpp"
 #include "NodeItem.hpp"
+#include "MainWindowUtils.hpp"
 #include "PortItem.hpp"
 #include "EdgeItem.hpp"
 #include "application/application.h"
@@ -18,6 +19,7 @@
 #include <QPushButton>
 #include <QMessageBox>
 #include <QMenu>
+#include <QMenuBar>
 #include <QLineF>
 #include <QDialog>
 #include <QDialogButtonBox>
@@ -36,8 +38,13 @@
 #include <QTest>
 #include <QTimer>
 #include <QTreeWidget>
+#include <QTreeWidgetItemIterator>
+#include <QToolBar>
+#include <QToolButton>
 #include <cstring>
 #include <functional>
+#include <map>
+#include <vector>
 
 class WindowTest : public QObject {
     Q_OBJECT
@@ -50,6 +57,8 @@ private slots:
     void typedOutputAuthoringBoundariesAndInspector();
     void automationRejectsInvalidScopeAndCapturesCurrentScope();
     void arrangeMenuAndFitUseDirectedGridLayout();
+    void graphHistoryTracksEditsAndScopeFallback();
+    void scopeTreeFollowsContainmentAndMenus();
     void socketOptionRequiresPath();
 };
 
@@ -76,17 +85,14 @@ void WindowTest::arrangeMenuAndFitUseDirectedGridLayout() {
     const NNModel *model = nn_app_model(app);
     const NNNode *output = nullptr;
     const NNNode *lossOutput = nullptr;
-    QByteArray firstInputId;
     for (size_t i = 0; i < nn_model_node_count(model); ++i) {
         const NNNode *node = nn_model_node_at(model, i);
         if (node && node->package_id && std::strcmp(node->package_id, "core.output") == 0)
             output = node;
         if (node && node->package_id && std::strcmp(node->package_id, "core.loss-output") == 0)
             lossOutput = node;
-        if (node && node->package_id && std::strcmp(node->package_id, "core.input") == 0 &&
-            firstInputId.isEmpty()) firstInputId = node->id;
     }
-    QVERIFY(output && lossOutput && !firstInputId.isEmpty());
+    QVERIFY(output && lossOutput);
     const QByteArray outputId(output->id);
     const QByteArray lossOutputId(lossOutput->id);
     QVERIFY2(nn_app_connect(app, "branch-a-edge", "source", "out", "branch-a", "in",
@@ -112,6 +118,32 @@ void WindowTest::arrangeMenuAndFitUseDirectedGridLayout() {
     auto *scene = window.findChild<GraphScene *>();
     auto *view = window.findChild<GraphView *>();
     QVERIFY(scene && view);
+    auto verifyLayoutClearance = [&] {
+        model = nn_app_model(app);
+        std::vector<const NodeItem *> items;
+        for (size_t i = 0; i < nn_model_node_count(model); ++i) {
+            const NNNode *node = nn_model_node_at(model, i);
+            if (!node || (node->scope_id && *node->scope_id)) continue;
+            const NodeItem *item = scene->nodeItem(QString::fromUtf8(node->id));
+            if (item) items.push_back(item);
+        }
+        for (size_t i = 0; i < items.size(); ++i)
+            for (size_t j = i + 1; j < items.size(); ++j)
+                QVERIFY(!items[i]->sceneBoundingRect().intersects(items[j]->sceneBoundingRect()));
+        for (size_t i = 0; i < nn_model_edge_count(model); ++i) {
+            const NNEdge *edge = nn_model_edge_at(model, i);
+            if (!edge || (edge->scope_id && *edge->scope_id)) continue;
+            const NodeItem *sourceItem = scene->nodeItem(QString::fromUtf8(edge->source_id));
+            const NodeItem *targetItem = scene->nodeItem(QString::fromUtf8(edge->target_id));
+            QVERIFY(sourceItem && targetItem);
+            const QRectF sourceRect = sourceItem->sceneBoundingRect();
+            const QRectF targetRect = targetItem->sceneBoundingRect();
+            const qreal corridor = scene->flowDirection() == FlowDirection::Vertical
+                ? targetRect.top() - sourceRect.bottom()
+                : sourceRect.left() - targetRect.right();
+            QVERIFY(corridor >= 60.0);
+        }
+    };
     QAction *zoomIn = window.findChild<QAction *>("zoomIn");
     QAction *zoomOut = window.findChild<QAction *>("zoomOut");
     QVERIFY(zoomIn && zoomOut);
@@ -142,6 +174,7 @@ void WindowTest::arrangeMenuAndFitUseDirectedGridLayout() {
     QVERIFY(source->y < branchA->y && branchA->y < tail->y && tail->y < chainEnd->y &&
             chainEnd->y < laidOutOutput->y && chainEnd->y < laidOutLoss->y);
     QVERIFY(branchA->x != branchB->x);
+    verifyLayoutClearance();
     for (const NNNode *node : {source, branchA, branchB, tail, chainEnd, laidOutOutput, laidOutLoss}) {
         QCOMPARE(qint32(node->x) % 20, 0);
         QCOMPARE(qint32(node->y) % 20, 0);
@@ -162,17 +195,30 @@ void WindowTest::arrangeMenuAndFitUseDirectedGridLayout() {
     QVERIFY(source->x > branchA->x && branchA->x > tail->x && tail->x > chainEnd->x &&
             chainEnd->x > laidOutOutput->x && chainEnd->x > laidOutLoss->x);
     QVERIFY(branchA->y != branchB->y);
+    verifyLayoutClearance();
     QVERIFY(QLineF(view->mapFromScene(scene->itemsBoundingRect().center()),
                    view->viewport()->rect().center()).length() < 2.0);
 
+    std::map<QByteArray, QPoint> beforeFit;
+    model = nn_app_model(app);
+    for (size_t i = 0; i < nn_model_node_count(model); ++i) {
+        const NNNode *node = nn_model_node_at(model, i);
+        beforeFit.emplace(QByteArray(node->id), QPoint(node->x, node->y));
+    }
+    const FlowDirection directionBeforeFit = scene->flowDirection();
     QAction *fit = nullptr;
     for (QAction *action : window.findChildren<QAction *>())
-        if (action->text() == QStringLiteral("Fit")) fit = action;
+        if (action->objectName() == QStringLiteral("fitGraph")) fit = action;
     QVERIFY(fit);
     fit->trigger();
     QCoreApplication::processEvents();
-    QVERIFY(scene->flowDirection() == FlowDirection::Vertical);
-    QVERIFY(qAbs(view->transform().m11() - 0.7) < 0.001);
+    QCOMPARE(scene->flowDirection(), directionBeforeFit);
+    model = nn_app_model(app);
+    for (const auto &entry : beforeFit) {
+        const NNNode *node = nn_model_find_node(model, entry.first.constData());
+        QVERIFY(node);
+        QCOMPARE(QPoint(node->x, node->y), entry.second);
+    }
     const QRectF focusedSceneRect = scene->sceneRect();
     const QRectF focusedItems = scene->itemsBoundingRect();
     QVERIFY2(focusedSceneRect.contains(focusedItems),
@@ -181,18 +227,259 @@ void WindowTest::arrangeMenuAndFitUseDirectedGridLayout() {
             .arg(focusedSceneRect.width()).arg(focusedSceneRect.height())
             .arg(focusedItems.x()).arg(focusedItems.y())
             .arg(focusedItems.width()).arg(focusedItems.height())));
-    const NodeItem *firstInput = scene->nodeItem(QString::fromUtf8(firstInputId));
-    const NodeItem *lastLayer = scene->nodeItem(QStringLiteral("chain-6"));
-    QVERIFY(firstInput && lastLayer);
-    const QPoint inputViewport = view->mapFromScene(firstInput->sceneBoundingRect().center());
-    QVERIFY(qAbs(inputViewport.y() - view->viewport()->height() / 4) <= 2);
-    QVERIFY(view->mapFromScene(lastLayer->sceneBoundingRect().center()).y() >
-            view->viewport()->height());
     const QByteArray projectPath = (temporary.path() + QStringLiteral("/layout-test")).toUtf8();
     QVERIFY2(nn_app_save(app, error, sizeof(error)), error);
     scene->setFlowDirection(FlowDirection::Horizontal);
     QVERIFY2(window.openProject(QString::fromUtf8(projectPath)), "Could not reopen test project");
     QVERIFY(scene->flowDirection() == FlowDirection::Vertical);
+}
+
+void WindowTest::scopeTreeFollowsContainmentAndMenus() {
+    QTemporaryDir temporary;
+    QVERIFY(temporary.isValid());
+    NNApplication *app = nn_app_new(NN_SOURCE_DIR "/stereotype-packages/core");
+    QVERIFY(app);
+    char error[512] = {};
+    const QByteArray parent = temporary.path().toUtf8();
+    QVERIFY2(nn_app_create(app, parent.constData(), "scope-tree-test", "Scope tree", false,
+                           error, sizeof(error)), error);
+    QVERIFY2(nn_app_add_node(app, "outer", "core.subflow-proxy", "0.1.0", "", 0, 0,
+                             error, sizeof(error)), error);
+    QVERIFY2(nn_app_add_node(app, "inner", "core.subflow-proxy", "0.1.0", "outer", 0, 0,
+                             error, sizeof(error)), error);
+    QVERIFY2(nn_app_rename_node(app, "outer", "Outer flow", error, sizeof(error)), error);
+
+    MainWindow window(app);
+    window.show();
+    QCoreApplication::processEvents();
+    auto *scene = window.findChild<GraphScene *>();
+    auto *scopeButton = window.findChild<QToolButton *>("scopeSelector");
+    auto *tree = window.findChild<QTreeWidget *>("scopeTree");
+    QVERIFY(scene && scopeButton && tree);
+    QCOMPARE(tree->topLevelItemCount(), 1);
+    QTreeWidgetItem *root = tree->topLevelItem(0);
+    QCOMPARE(root->text(0), QStringLiteral("Root"));
+    QCOMPARE(root->childCount(), 1);
+    QTreeWidgetItem *outer = root->child(0);
+    QCOMPARE(outer->text(0), QStringLiteral("Outer flow"));
+    QCOMPARE(outer->childCount(), 1);
+    QCOMPARE(outer->child(0)->text(0), QStringLiteral("Subflow Proxy"));
+
+    const QStringList menuNames = {window.menuBar()->actions()[0]->text(),
+                                   window.menuBar()->actions()[1]->text(),
+                                   window.menuBar()->actions()[2]->text(),
+                                   window.menuBar()->actions()[3]->text()};
+    QCOMPARE(menuNames, QStringList({QStringLiteral("&File"), QStringLiteral("&Edit"), QStringLiteral("&Model"),
+                                     QStringLiteral("&View")}));
+    QMenu *templates = window.findChild<QMenu *>("projectTemplatesMenu");
+    QVERIFY(templates && templates->actions().size() == 2);
+    QAction *open = window.findChild<QAction *>("openProjectAction");
+    QAction *save = window.findChild<QAction *>("saveProjectAction");
+    QVERIFY(open && save);
+    QCOMPARE(open->shortcut(), QKeySequence::Open);
+    QCOMPARE(save->shortcut(), QKeySequence::Save);
+    for (QToolBar *toolbar : window.findChildren<QToolBar *>()) {
+        for (QAction *action : toolbar->actions())
+            QVERIFY(action->text() != QStringLiteral("Open project…") &&
+                    action->text() != QStringLiteral("Save"));
+    }
+
+    // VNC renews popup containers after close. Actions and submenu window
+    // flags must survive; losing Qt::Popup embeds the submenu in its parent.
+    for (int i = 0; i < window.menuBar()->actions().size(); ++i) {
+        const auto entries = window.menuBar()->actions()[i]->menu()->actions();
+        for (int repeat = 0; repeat < 2; ++repeat) {
+            QMenu *menu = window.menuBar()->actions()[i]->menu();
+            QVERIFY(menu->windowFlags().testFlag(Qt::Popup));
+            QCOMPARE(menu->actions(), entries);
+            menu->popup(window.mapToGlobal(QPoint(20, 40)));
+            QCoreApplication::processEvents();
+            QVERIFY(menu->isVisible());
+            menu->close();
+            QTest::qWait(25);
+        }
+    }
+    templates = window.findChild<QMenu *>("projectTemplatesMenu");
+    QVERIFY(templates && templates->windowFlags().testFlag(Qt::Popup));
+    QCOMPARE(window.findChild<QAction *>("openProjectAction"), open);
+    QCOMPARE(window.findChild<QAction *>("saveProjectAction"), save);
+
+    // InstantPopup's click runs a nested menu loop. Open nonblocking so QtTest
+    // can drive the real tree row while the menu is visible.
+    scopeButton->menu()->popup(scopeButton->mapToGlobal(QPoint(0, scopeButton->height())));
+    QCoreApplication::processEvents();
+    tree->setCurrentItem(outer->child(0));
+    const QRect row = tree->visualItemRect(outer->child(0));
+    QTest::mouseClick(tree->viewport(), Qt::LeftButton, Qt::NoModifier, row.center());
+    QCoreApplication::processEvents();
+    QCOMPARE(scene->scope(), QStringLiteral("inner"));
+    QCOMPARE(scopeButton->text(), QStringLiteral("Subflow Proxy"));
+
+    const auto reopenScope = [&] {
+        bool visible = false;
+        QTimer::singleShot(20, &window, [&] {
+            visible = scopeButton->menu()->isVisible() && tree->isVisible() &&
+                      tree->width() > 0 && tree->height() > 0;
+            scopeButton->menu()->close();
+        });
+        QTest::mouseClick(scopeButton, Qt::LeftButton);
+        QTest::qWait(25);
+        QVERIFY(visible);
+    };
+    reopenScope();
+
+    QVERIFY2(nn_app_rename_node(app, "outer", "Renamed flow", error, sizeof(error)), error);
+    Q_EMIT scene->modelChanged();
+    QCoreApplication::processEvents();
+    root = tree->topLevelItem(0);
+    QCOMPARE(root->child(0)->text(0), QStringLiteral("Renamed flow"));
+    reopenScope();
+
+    const NNModel *model = nn_app_model(app);
+    std::vector<QByteArray> children;
+    for (size_t i = 0; i < nn_model_node_count(model); ++i) {
+        const NNNode *node = nn_model_node_at(model, i);
+        if (node && node->scope_id && std::strcmp(node->scope_id, "inner") == 0)
+            children.emplace_back(node->id);
+    }
+    for (const QByteArray &id : children)
+        QVERIFY2(nn_app_remove_node(app, id.constData(), error, sizeof(error)), error);
+    QVERIFY2(nn_app_remove_node(app, "inner", error, sizeof(error)), error);
+    Q_EMIT scene->modelChanged();
+    QCoreApplication::processEvents();
+    QTreeWidgetItemIterator iterator(tree);
+    while (*iterator) {
+        QVERIFY((*iterator)->data(0, MainWindowUtils::IdRole).toString() != QStringLiteral("inner"));
+        ++iterator;
+    }
+    QCOMPARE(scene->scope(), QString());
+    reopenScope();
+}
+
+void WindowTest::graphHistoryTracksEditsAndScopeFallback() {
+    QTemporaryDir temporary;
+    QVERIFY(temporary.isValid());
+    NNApplication *app = nn_app_new(NN_SOURCE_DIR "/stereotype-packages/core");
+    QVERIFY(app);
+    char error[512] = {};
+    const QByteArray parent = temporary.path().toUtf8();
+    QVERIFY2(nn_app_create(app, parent.constData(), "history-test", "History test", false,
+                           error, sizeof(error)), error);
+    QVERIFY2(nn_app_add_node(app, "source", "core.input", "0.1.0", "", 20, 40,
+                             error, sizeof(error)), error);
+    QVERIFY2(nn_app_add_node(app, "layer", "core.relu", "0.1.0", "", 260, 300,
+                             error, sizeof(error)), error);
+    QVERIFY2(nn_app_connect(app, "edge", "source", "out", "layer", "in",
+                            error, sizeof(error)), error);
+    QVERIFY2(nn_app_save(app, error, sizeof(error)), error);
+    const QByteArray projectPath = (temporary.path() + QStringLiteral("/history-test")).toUtf8();
+    QVERIFY2(nn_app_open(app, projectPath.constData(), error, sizeof(error)), error);
+
+    MainWindow window(app);
+    window.show();
+    QCoreApplication::processEvents();
+    auto *scene = window.findChild<GraphScene *>();
+    auto *undo = window.findChild<QAction *>("undoAction");
+    auto *redo = window.findChild<QAction *>("redoAction");
+    auto *arrange = window.findChild<QAction *>("arrange");
+    auto *fit = window.findChild<QAction *>("fitGraph");
+    QVERIFY(scene && undo && redo && arrange && fit);
+    QVERIFY(!undo->isEnabled());
+    QVERIFY(!redo->isEnabled());
+    QCOMPARE(undo->shortcut(), QKeySequence::Undo);
+    QCOMPARE(redo->shortcut(), QKeySequence::Redo);
+
+    QVERIFY2(nn_app_move_node(app, "layer", 620, 380, error, sizeof(error)), error);
+    Q_EMIT scene->modelChanged();
+    QCoreApplication::processEvents();
+    QVERIFY(undo->isEnabled());
+    undo->trigger();
+    QCoreApplication::processEvents();
+    QCOMPARE(nn_model_find_node(nn_app_model(app), "layer")->x, 260);
+    QCOMPARE(nn_model_find_node(nn_app_model(app), "layer")->y, 300);
+    QVERIFY(!undo->isEnabled());
+    QVERIFY(redo->isEnabled());
+    redo->trigger();
+    QCoreApplication::processEvents();
+    QCOMPARE(nn_model_find_node(nn_app_model(app), "layer")->x, 620);
+    QCOMPARE(nn_model_find_node(nn_app_model(app), "layer")->y, 380);
+    QVERIFY2(nn_app_rename_node(app, "layer", "Renamed layer", error, sizeof(error)), error);
+    Q_EMIT scene->modelChanged();
+    QCoreApplication::processEvents();
+    QCOMPARE(QString::fromUtf8(nn_model_find_node(nn_app_model(app), "layer")->label),
+             QStringLiteral("Renamed layer"));
+    undo->trigger();
+    QCoreApplication::processEvents();
+    QCOMPARE(QString::fromUtf8(nn_model_find_node(nn_app_model(app), "layer")->label),
+             QStringLiteral("ReLU"));
+    redo->trigger();
+    QCoreApplication::processEvents();
+    QCOMPARE(QString::fromUtf8(nn_model_find_node(nn_app_model(app), "layer")->label),
+             QStringLiteral("Renamed layer"));
+    undo->trigger();
+    QCoreApplication::processEvents();
+    QCOMPARE(QString::fromUtf8(nn_model_find_node(nn_app_model(app), "layer")->label),
+             QStringLiteral("ReLU"));
+    undo->trigger();
+    QCoreApplication::processEvents();
+    QCOMPARE(nn_model_find_node(nn_app_model(app), "layer")->x, 260);
+    QCOMPARE(nn_model_find_node(nn_app_model(app), "layer")->y, 300);
+    QVERIFY(!undo->isEnabled());
+    QVERIFY(redo->isEnabled());
+
+    std::map<QByteArray, QPoint> beforeArrange;
+    const NNModel *model = nn_app_model(app);
+    for (size_t i = 0; i < nn_model_node_count(model); ++i) {
+        const NNNode *node = nn_model_node_at(model, i);
+        beforeArrange.emplace(QByteArray(node->id), QPoint(node->x, node->y));
+    }
+    arrange->trigger();
+    QCoreApplication::processEvents();
+    QVERIFY(undo->isEnabled());
+    const std::map<QByteArray, QPoint> afterArrange = [&] {
+        std::map<QByteArray, QPoint> points;
+        const NNModel *current = nn_app_model(app);
+        for (size_t i = 0; i < nn_model_node_count(current); ++i) {
+            const NNNode *node = nn_model_node_at(current, i);
+            points.emplace(QByteArray(node->id), QPoint(node->x, node->y));
+        }
+        return points;
+    }();
+    fit->trigger();
+    QCoreApplication::processEvents();
+    QVERIFY(undo->isEnabled());
+    for (const auto &entry : afterArrange) {
+        const NNNode *node = nn_model_find_node(nn_app_model(app), entry.first.constData());
+        QVERIFY(node);
+        QCOMPARE(QPoint(node->x, node->y), entry.second);
+    }
+    undo->trigger();
+    QCoreApplication::processEvents();
+    QVERIFY(!undo->isEnabled());
+    for (const auto &entry : beforeArrange) {
+        const NNNode *node = nn_model_find_node(nn_app_model(app), entry.first.constData());
+        QVERIFY(node);
+        QCOMPARE(QPoint(node->x, node->y), entry.second);
+    }
+    redo->trigger();
+    QCoreApplication::processEvents();
+    QVERIFY(undo->isEnabled());
+    for (const auto &entry : afterArrange) {
+        const NNNode *node = nn_model_find_node(nn_app_model(app), entry.first.constData());
+        QVERIFY(node);
+        QCOMPARE(QPoint(node->x, node->y), entry.second);
+    }
+
+    QVERIFY2(nn_app_add_node(app, "flow", "core.subflow-proxy", "0.1.0", "", 0, 0,
+                             error, sizeof(error)), error);
+    Q_EMIT scene->modelChanged();
+    QCoreApplication::processEvents();
+    scene->setScope(QStringLiteral("flow"));
+    QCOMPARE(scene->scope(), QStringLiteral("flow"));
+    undo->trigger();
+    QCoreApplication::processEvents();
+    QCOMPARE(scene->scope(), QString());
+    QVERIFY(!nn_model_find_node(nn_app_model(app), "flow"));
 }
 
 static void answerDialog(QMessageBox::StandardButton answer) {
@@ -407,8 +694,7 @@ void WindowTest::modelProblemDiagnosticsAndNavigation() {
     QVERIFY(rootRect.isValid());
     QVERIFY(rootRect.height() >= diagnostics->fontMetrics().lineSpacing() * 3);
 
-    window.findChild<QComboBox *>("scopeSelector")->setCurrentIndex(
-        window.findChild<QComboBox *>("scopeSelector")->findData(QStringLiteral("flow")));
+    scene->setScope(QStringLiteral("flow"));
     filter->setChecked(true);
     QCoreApplication::processEvents();
     QVERIFY(diagnostics->topLevelItemCount() > 0);
@@ -547,11 +833,8 @@ void WindowTest::currentScopeRetainsOutsideCauseContext() {
     auto *scene = window.findChild<GraphScene *>();
     auto *diagnostics = window.findChild<QTreeWidget *>("diagnostics");
     auto *filter = window.findChild<QCheckBox *>("currentScopeProblems");
-    auto *scopeSelector = window.findChild<QComboBox *>("scopeSelector");
-    QVERIFY(scene && diagnostics && filter && scopeSelector);
-    const int targetIndex = scopeSelector->findData(targetScope);
-    QVERIFY(targetIndex >= 0);
-    scopeSelector->setCurrentIndex(targetIndex);
+    QVERIFY(scene && diagnostics && filter);
+    scene->setScope(targetScope);
     filter->setChecked(true);
     QCoreApplication::processEvents();
 
@@ -568,9 +851,7 @@ void WindowTest::currentScopeRetainsOutsideCauseContext() {
             hasCurrentBlockedNode = true;
     QVERIFY(hasCurrentBlockedNode);
 
-    const int causeIndex = scopeSelector->findData(causeScope);
-    QVERIFY(causeIndex >= 0);
-    scopeSelector->setCurrentIndex(causeIndex);
+    scene->setScope(causeScope);
     QCoreApplication::processEvents();
     NodeItem *causeNode = scene->nodeItem(causeId);
     QVERIFY(causeNode);

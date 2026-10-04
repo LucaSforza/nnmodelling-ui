@@ -6,7 +6,8 @@
 #include "automation/automation.h"
 #include "project/project.h"
 #include <QApplication>
-#include <QComboBox>
+#include <QTreeWidget>
+#include <QTreeWidgetItemIterator>
 #include <QLayout>
 #include <QDir>
 #include <QJsonArray>
@@ -96,8 +97,9 @@ char *MainWindow::automationUiCallback(void *user, const char *operation,
         const QString id = requestedScope.toString();
         if (id.isEmpty()) self->scene_->setScope(QString());
         else {
-            const int index = self->scopeSelector_->findData(id);
-            if (index < 0) return fail("Unknown scope ID");
+            QTreeWidgetItemIterator item(self->scopeTree_);
+            while (*item && (*item)->data(0, IdRole).toString() != id) ++item;
+            if (!*item) return fail("Unknown scope ID");
             self->scene_->setScope(id);
         }
         self->refreshAll();
@@ -109,7 +111,7 @@ char *MainWindow::automationUiCallback(void *user, const char *operation,
         const QString path = argsDoc.object().value(QStringLiteral("path")).toString();
         if (path.isEmpty()) return fail("Screenshot path is required");
         if (argsDoc.object().value(QStringLiteral("arrange")).toBool())
-            self->arrangeCurrentScope(FlowDirection::Vertical, true);
+            self->arrangeCurrentScope(FlowDirection::Vertical);
         self->refreshAll();
         if (self->centralWidget() && self->centralWidget()->layout())
             self->centralWidget()->layout()->activate();

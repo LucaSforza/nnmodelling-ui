@@ -9,6 +9,7 @@
 #include "model/model.h"
 
 #include <QTemporaryDir>
+#include <QGraphicsRectItem>
 #include <QImage>
 #include <QPainter>
 #include <QFontMetricsF>
@@ -219,6 +220,184 @@ private slots:
         QVERIFY(nn_model_find_node(nn_app_model(application_), "target") == nullptr);
     }
 
+    void expandedSubflowIsTranslatedReadOnlyAndDoesNotChangeModel() {
+        char error[512] = {};
+        QVERIFY2(addNode("child-two", "core.relu", "flow", 300, 100), "Could not add preview child");
+        QVERIFY2(nn_app_connect(application_, "preview-edge", "child", "out", "child-two", "in",
+                                error, sizeof(error)), error);
+        scene_->refresh();
+        const NNNode *modelChild = nn_model_find_node(nn_app_model(application_), "child");
+        QVERIFY(modelChild);
+        const QPointF savedPosition(modelChild->x, modelChild->y);
+        const NNNode *modelChildTwo = nn_model_find_node(nn_app_model(application_), "child-two");
+        QVERIFY(modelChildTwo);
+        const QPointF savedPositionTwo(modelChildTwo->x, modelChildTwo->y);
+        NodeItem *owner = scene_->nodeItem(QStringLiteral("flow"));
+        QVERIFY(dynamic_cast<SubflowItem *>(owner));
+        QVERIFY(!scene_->nodeItem(QStringLiteral("child")));
+
+        auto *flowItem = dynamic_cast<SubflowItem *>(owner);
+        const QPoint expand = view_->mapFromScene(flowItem->mapToScene(
+            QRectF(10, flowItem->boundingRect().height() - 30,
+                  flowItem->boundingRect().width() - 20, 21).center()));
+        QTest::mouseClick(view_->viewport(), Qt::LeftButton, Qt::NoModifier, expand);
+        pumpEvents();
+        owner = scene_->nodeItem(QStringLiteral("flow"));
+        NodeItem *preview = scene_->nodeItem(QStringLiteral("child"));
+        QVERIFY(owner && preview);
+        QVERIFY(preview->isReadOnlyPreview());
+        NodeItem *previewTwo = scene_->nodeItem(QStringLiteral("child-two"));
+        QVERIFY(previewTwo && previewTwo->isReadOnlyPreview());
+        QCOMPARE(preview->scale(), previewTwo->scale());
+        QVERIFY(!(preview->flags() & QGraphicsItem::ItemIsMovable));
+        QVERIFY(!(preview->flags() & QGraphicsItem::ItemIsSelectable));
+        for (PortItem *port : preview->ports()) QCOMPARE(port->acceptedMouseButtons(), Qt::NoButton);
+        QCOMPARE(preview->parentItem(), owner);
+        QVERIFY(preview->scenePos() != savedPosition);
+        auto *expandedOwner = dynamic_cast<SubflowItem *>(owner);
+        QVERIFY(!expandedOwner->expandedPreviewRect().isEmpty());
+        QVERIFY(preview->mapRectToParent(preview->boundingRect()).top() >
+                expandedOwner->NodeItem::boundingRect().bottom());
+        const QRectF frame = expandedOwner->expandedPreviewRect();
+        QVERIFY(frame.width() <= 640.0 && frame.height() <= 560.0);
+        QCOMPARE(qAbs(frame.center().x() - owner->boundingRect().center().x()) < 2.0, true);
+        EdgeItem *previewEdge = scene_->edgeItem(QStringLiteral("preview-edge"));
+        QVERIFY(previewEdge && !previewEdge->routePoints().isEmpty());
+        for (const QPointF &point : previewEdge->routePoints())
+            QVERIFY(frame.contains(owner->mapFromScene(point)));
+        QVERIFY(!(previewEdge->flags() & QGraphicsItem::ItemIsSelectable));
+        QCOMPARE(nn_model_find_node(nn_app_model(application_), "child")->x, savedPosition.x());
+        QCOMPARE(nn_model_find_node(nn_app_model(application_), "child")->y, savedPosition.y());
+        QCOMPARE(nn_model_find_node(nn_app_model(application_), "child-two")->x, savedPositionTwo.x());
+        QCOMPARE(nn_model_find_node(nn_app_model(application_), "child-two")->y, savedPositionTwo.y());
+        QCOMPARE(scene_->scope(), QString());
+
+        scene_->toggleExpanded(QStringLiteral("flow"));
+        pumpEvents();
+        QVERIFY(!scene_->nodeItem(QStringLiteral("child")));
+        QCOMPARE(nn_model_find_node(nn_app_model(application_), "child")->x, savedPosition.x());
+        QCOMPARE(nn_model_find_node(nn_app_model(application_), "child")->y, savedPosition.y());
+        QCOMPARE(nn_model_find_node(nn_app_model(application_), "child-two")->x, savedPositionTwo.x());
+        QCOMPARE(nn_model_find_node(nn_app_model(application_), "child-two")->y, savedPositionTwo.y());
+    }
+
+    void scaledPreviewKeepsInternalRoutesOpen() {
+        char error[512] = {};
+        QByteArray previous("child");
+        for (int i = 0; i < 12; ++i) {
+            const QByteArray id = QByteArray("chain-") + QByteArray::number(i);
+            const QByteArray edge = QByteArray("chain-edge-") + QByteArray::number(i);
+            QVERIFY(addNode(id.constData(), "core.relu", "flow", 100, 300 + i * 180));
+            QVERIFY2(nn_app_connect(application_, edge.constData(), previous.constData(), "out",
+                                    id.constData(), "in", error, sizeof(error)), error);
+            previous = id;
+        }
+        scene_->toggleExpanded(QStringLiteral("flow"));
+        pumpEvents();
+        QVERIFY(scene_->nodeItem(QStringLiteral("child"))->scale() < 0.2);
+        for (int i = 0; i < 12; ++i) {
+            EdgeItem *edge = scene_->edgeItem(QStringLiteral("chain-edge-%1").arg(i));
+            QVERIFY(edge && !edge->routePoints().isEmpty());
+            for (int p = 1; p < edge->routePoints().size(); ++p) {
+                const QPointF a = edge->routePoints()[p - 1], b = edge->routePoints()[p];
+                QVERIFY(qFuzzyCompare(a.x() + 1, b.x() + 1) || qFuzzyCompare(a.y() + 1, b.y() + 1));
+            }
+        }
+    }
+
+    void expansionSpacesPeersWithoutPersistingOffsets() {
+        char error[512] = {};
+        QVERIFY2(nn_app_move_node(application_, "target", 420, 280, error, sizeof(error)), error);
+        QVERIFY2(nn_app_connect(application_, "root-edge", "flow", "out", "target", "in",
+                                error, sizeof(error)), error);
+        scene_->refresh();
+        const QPointF compact = scene_->nodeItem(QStringLiteral("target"))->pos();
+        scene_->toggleExpanded(QStringLiteral("flow"));
+        pumpEvents();
+        NodeItem *target = scene_->nodeItem(QStringLiteral("target"));
+        const QPointF expanded = target->pos();
+        QVERIFY(expanded.y() > compact.y());
+        QVERIFY(!target->sceneBoundingRect().intersects(
+            scene_->nodeItem(QStringLiteral("flow"))->sceneBoundingRect()));
+        QCOMPARE(nn_model_find_node(nn_app_model(application_), "target")->y, compact.y());
+        QVERIFY(!scene_->edgeItem(QStringLiteral("root-edge"))->routePoints().isEmpty());
+        view_->fitGraph();
+        QCOMPARE(target->pos(), expanded);
+        const QPoint start = view_->mapFromScene(target->sceneBoundingRect().center());
+        const QPoint end = view_->mapFromScene(target->sceneBoundingRect().center() + QPointF(40, 0));
+        QTest::mousePress(view_->viewport(), Qt::LeftButton, Qt::NoModifier, start);
+        QTest::mouseMove(view_->viewport(), end, 30);
+        QTest::mouseRelease(view_->viewport(), Qt::LeftButton, Qt::NoModifier, end);
+        pumpEvents();
+        QCOMPARE(nn_model_find_node(nn_app_model(application_), "target")->x, compact.x() + 40);
+        QCOMPARE(nn_model_find_node(nn_app_model(application_), "target")->y, compact.y());
+        QVERIFY2(nn_app_undo(application_, error, sizeof(error)), error);
+        scene_->refresh();
+        QCOMPARE(scene_->nodeItem(QStringLiteral("target"))->pos(), expanded);
+        scene_->toggleExpanded(QStringLiteral("flow"));
+        pumpEvents();
+        QCOMPARE(scene_->nodeItem(QStringLiteral("target"))->pos(), compact);
+    }
+
+    void emptyCanvasBackgroundIncludesVisibleGrid() {
+        QImage image(240, 180, QImage::Format_ARGB32_Premultiplied);
+        image.fill(Qt::transparent);
+        QPainter painter(&image);
+        scene_->render(&painter, QRectF(0, 0, 240, 180), QRectF(2000, 2000, 240, 180));
+        painter.end();
+        const QColor background = image.pixelColor(3, 3);
+        bool foundGrid = false;
+        for (int y = 0; y < image.height() && !foundGrid; ++y)
+            for (int x = 0; x < image.width(); ++x)
+                if (image.pixelColor(x, y) != background) { foundGrid = true; break; }
+        QVERIFY(foundGrid);
+    }
+
+    void multiOutputTensorHoverUsesCopiedAnalysisText() {
+        char error[512] = {};
+        const QByteArray dataset = R"({"name":"Features","description":"","batch":{"inputs":{"features":{"dtype":"float32","shape":["B",4]}},"targets":{}}})";
+        QVERIFY2(nn_app_create_dataset(application_, "test.features", "1.0.0", dataset.constData(),
+                                       true, error, sizeof(error)), error);
+        QVERIFY2(nn_app_set_parameter_text(application_, "source", "binding", "features",
+                                           error, sizeof(error)), error);
+        const QByteArray definition = R"({"name":"Dual typed source","description":"","kind":"layer","outputs":[{"id":"prediction","type":"output"},{"id":"objective","type":"loss"}],"parameters":{},"view":{"color":"#6688aa","width":190,"height":100}})";
+        const QByteArray lua = "return function(context, parameters, services)\n"
+            "  local input = context.inputs[1]\n"
+            "  if not input then return { status = 'unresolved', message = 'missing' } end\n"
+            "  return { status = 'success', outputs = { prediction = input, objective = input } }\n"
+            "end";
+        QVERIFY2(nn_app_create_stereotype(application_, "test.dual-hover", "1.0.0",
+                                          definition.constData(), lua.constData(), "{}",
+                                          error, sizeof(error)), error);
+        QVERIFY2(nn_app_add_node(application_, "dual-hover", "test.dual-hover", "1.0.0", "",
+                                 340, 100, error, sizeof(error)), error);
+        QVERIFY2(nn_app_connect(application_, "dual-hover-input", "source", "out", "dual-hover", "in",
+                                error, sizeof(error)), error);
+        scene_->refresh();
+        NodeItem *node = scene_->nodeItem(QStringLiteral("dual-hover"));
+        QVERIFY(node);
+        QTest::mouseMove(view_->viewport(), view_->mapFromScene(node->sceneBoundingRect().center()));
+        pumpEvents();
+        const QString copied = node->tensorSummary();
+        QVERIFY(copied.contains(QStringLiteral("prediction")));
+        QVERIFY(copied.contains(QStringLiteral("objective")));
+        QVERIFY(copied.contains(QStringLiteral("float32")));
+        QVERIFY(copied.contains(QStringLiteral("B, 4")));
+        QGraphicsRectItem *popup = nullptr;
+        for (QGraphicsItem *child : node->childItems())
+            if (auto *rect = dynamic_cast<QGraphicsRectItem *>(child)) popup = rect;
+        QVERIFY(popup && popup->isVisible());
+        QVERIFY(popup->flags() & QGraphicsItem::ItemIgnoresTransformations);
+        QTest::mouseMove(view_->viewport(), QPoint(8, 8));
+        pumpEvents();
+        QVERIFY(!popup->isVisible());
+        QVERIFY2(nn_app_rename_node(application_, "dual-hover", "Renamed", error, sizeof(error)), error);
+        QVERIFY(node->tensorSummary() == copied);
+        scene_->refresh();
+        node = scene_->nodeItem(QStringLiteral("dual-hover"));
+        QVERIFY(node && node->tensorSummary() == copied);
+    }
+
     void escapeCancelsConnectionDraft() {
         NodeItem *source = scene_->nodeItem(QStringLiteral("source"));
         QVERIFY(source);
@@ -424,6 +603,15 @@ private slots:
         QVERIFY2(nn_app_move_node(application_, "flow", 800, 400, error, sizeof(error)), error);
         QVERIFY2(nn_app_move_node(application_, "source", 400, 100, error, sizeof(error)), error);
         QVERIFY2(nn_app_move_node(application_, "target", 100, 100, error, sizeof(error)), error);
+        const NNModel *model = nn_app_model(application_);
+        for (size_t i = 0; i < nn_model_node_count(model); ++i) {
+            const NNNode *node = nn_model_node_at(model, i);
+            if (!node || !node->id || std::strcmp(node->id, "source") == 0 ||
+                std::strcmp(node->id, "target") == 0) continue;
+            const QByteArray nodeId(node->id);
+            QVERIFY2(nn_app_move_node(application_, nodeId.constData(), 4000 + qreal(i) * 240,
+                                      4000 + qreal(i) * 180, error, sizeof(error)), error);
+        }
         scene_->refresh();
         view_->centerOn(QPointF(280, 150));
         source = scene_->nodeItem(QStringLiteral("source"));
@@ -449,8 +637,13 @@ private slots:
             if (auto *path = dynamic_cast<QGraphicsPathItem *>(item)) draft = path;
         }
         QVERIFY(draft);
-        QVERIFY(draft->path().elementAt(1).x < draft->path().elementAt(0).x);
-        QVERIFY(qAbs(draft->path().elementAt(1).y - draft->path().elementAt(0).y) < 0.1);
+        const QPainterPath draftPath = draft->path();
+        QVERIFY(draftPath.elementCount() >= 2);
+        for (int i = 1; i < draftPath.elementCount(); ++i) {
+            const auto a = draftPath.elementAt(i - 1), b = draftPath.elementAt(i);
+            QVERIFY(qFuzzyCompare(a.x + 1.0, b.x + 1.0) || qFuzzyCompare(a.y + 1.0, b.y + 1.0));
+        }
+        QVERIFY(draftPath.elementAt(1).x < draftPath.elementAt(0).x);
         QTest::mouseRelease(view_->viewport(), Qt::LeftButton, Qt::NoModifier, end);
         pumpEvents();
         QCOMPARE(nn_model_edge_count(nn_app_model(application_)), size_t(1));
@@ -464,16 +657,22 @@ private slots:
         in = nullptr;
         for (PortItem *port : source->ports()) if (port->isOutput()) out = port;
         for (PortItem *port : target->ports()) if (!port->isOutput()) in = port;
-        const QPainterPath edgePath = edge->path();
-        QVERIFY(edgePath.elementAt(1).x < edgePath.elementAt(0).x);
-        QVERIFY(qAbs(edgePath.elementAt(1).y - edgePath.elementAt(0).y) < 0.1);
+        const QVector<QPointF> horizontalRoute = edge->routePoints();
+        QVERIFY(horizontalRoute.size() >= 2);
+        for (int i = 1; i < horizontalRoute.size(); ++i)
+            QVERIFY(qFuzzyCompare(horizontalRoute[i - 1].x() + 1.0, horizontalRoute[i].x() + 1.0) ||
+                    qFuzzyCompare(horizontalRoute[i - 1].y() + 1.0, horizontalRoute[i].y() + 1.0));
+        QVERIFY(horizontalRoute[1].x() < horizontalRoute[0].x());
 
         scene_->setFlowDirection(FlowDirection::Vertical);
         QCOMPARE(out->y(), 60.0);
         QCOMPARE(in->y(), 9.0);
-        const QPainterPath vertical = edge->path();
-        QVERIFY(vertical.elementAt(1).y > vertical.elementAt(0).y);
-        QVERIFY(qAbs(vertical.elementAt(1).x - vertical.elementAt(0).x) < 0.1);
+        const QVector<QPointF> verticalRoute = edge->routePoints();
+        QVERIFY(verticalRoute.size() >= 2);
+        for (int i = 1; i < verticalRoute.size(); ++i)
+            QVERIFY(qFuzzyCompare(verticalRoute[i - 1].x() + 1.0, verticalRoute[i].x() + 1.0) ||
+                    qFuzzyCompare(verticalRoute[i - 1].y() + 1.0, verticalRoute[i].y() + 1.0));
+        QVERIFY(verticalRoute[1].y() > verticalRoute[0].y());
     }
 
     void genericJoinJunctionResizesWithoutDroppingConnections() {
