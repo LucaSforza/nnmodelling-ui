@@ -84,6 +84,14 @@ const NNPackage *nn_catalog_find(const NNCatalog *catalog, const char *id,
                                  const char *version);
 const NNPackage *nn_catalog_resolve(const NNCatalog *catalog, const char *id,
                                    const char *version_constraint);
+/* Package metadata pointers are borrowed and valid for catalog lifetime. */
+bool nn_catalog_package_is_kind(const NNPackage *package, const char *kind);
+const NNParameterDef *nn_catalog_package_parameter(const NNPackage *package,
+                                                   const char *key);
+const NNOutputDef *nn_catalog_package_output(const NNPackage *package,
+                                             const char *handle);
+bool nn_catalog_package_input_handle_valid(const NNPackage *package,
+                                           const char *handle);
 bool nn_catalog_parameters(const NNCatalog *catalog, const NNPackage *package,
                            const NNParameter *values, size_t count,
                            NNParameter **effective, size_t *effective_count,

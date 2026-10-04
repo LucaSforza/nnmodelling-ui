@@ -73,6 +73,10 @@ classDiagram
       +NodeKind kind
       +ParameterDefinition[] parameters
       +Handle[] handles
+      +isKind(kind) bool
+      +parameter(key) ParameterDefinition?
+      +output(handle) OutputDefinition?
+      +acceptsInputHandle(handle) bool
       +infer(Tensor[],Parameters) InferenceResult
     }
     class OutputDefinition {
@@ -190,6 +194,11 @@ subflow node ID for children; Qt scope navigation never changes containment.
 
 Use explicit structs and IDs; `NodeKind` discriminates only topology, while
 package ID selects definition data, never a switch over concrete packages.
+Catalog owns read-only package queries for kind comparison, parameter/output
+definition lookup, and kind-derived input-handle validity. Returned definition
+entries are borrowed for catalog lifetime. Graph occupancy, output-type
+compatibility, subflow mapping, and inference status stay in their owning
+consumers; package queries do not absorb graph validation.
 In Qt, kind=join selects the junction bar and generic +/- empty-input-slot
 controls; graph edges retain occupied in-N handles, while extra empty slots are
 editor state. No package-ID special case or fork-output semantic change.

@@ -130,5 +130,11 @@ no mutation and error reporting. Record actual evidence and limitations in KB.
 C catalog shares `nn_catalog_resolve` (unique exact/caret active reference),
 `nn_catalog_parameters` (owned defaulted validated NNParameter list) and
 `nn_catalog_parameters_free` between inference, application and visualization.
+Read-only package metadata queries (`nn_catalog_package_is_kind`,
+`nn_catalog_package_parameter`, `nn_catalog_package_output`, and
+`nn_catalog_package_input_handle_valid`) centralize normalized kind, definition
+lookup, and kind-derived input-handle rules. Visualization keeps its own
+plan/scene and subflow-boundary validation because those checks depend on graph
+context and produce visualization-specific failures.
 Catalog may use public NNValue types; no module includes another module's
 private header. JSON object keys are owned NNParameter entries.

@@ -98,7 +98,6 @@ NNInferenceStatus nn_inference_evaluate_scope(Evaluation *evaluation, const char
     char **cause_node_id);
 size_t nn_inference_find_node_index(const NNModel *model, const char *id);
 Result *nn_inference_report_result(Evaluation *evaluation, const NNNode *node);
-const char *nn_inference_package_kind(Evaluation *evaluation, const NNNode *node);
 void nn_inference_scope_set_status(Evaluation *evaluation, const char *scope,
     NNInferenceStatus status, const char *message);
 NNInferenceStatus nn_inference_execute_rule(Evaluation *evaluation, const NNNode *node,

@@ -35,9 +35,6 @@ static const NNPackage *package_for(const NNCatalog *catalog,
                                     const NNNode *node) {
   return nn_catalog_find(catalog, node->package_id, node->package_version);
 }
-static bool is_subflow(const NNPackage *package) {
-  return package && package->kind && strcmp(package->kind, "subflow") == 0;
-}
 static size_t node_index(const NN3DScene *scene, const char *path) {
   for (size_t i = 0; i < scene->node_count; i++)
     if (strcmp(scene->nodes[i].path, path) == 0)
@@ -176,7 +173,8 @@ static bool validate_plan(const NNCatalog *catalog, const NNPackage *owner,
     }
     node->package =
         nn_catalog_resolve(catalog, node->package_id, node->version);
-    if (!node->package || is_subflow(node->package)) {
+    if (!node->package ||
+        nn_catalog_package_is_kind(node->package, "subflow")) {
       nn_errorf(error, cap,
                 "Visualization recipe has unknown or subflow package %s",
                 node->package_id);
@@ -211,19 +209,14 @@ static bool validate_plan(const NNCatalog *catalog, const NNPackage *owner,
       }
     } else {
       NN3DPlanNode *from = &plan->nodes[source];
-      bool found = false;
-      const char *output_type = NULL;
-      for (size_t j = 0; j < from->package->output_count; j++)
-        if (!strcmp(from->package->outputs[j].id, edge->source_handle)) {
-          found = true;
-          output_type = from->package->outputs[j].type;
-        }
-      if (!found) {
+      const NNOutputDef *output =
+          nn_catalog_package_output(from->package, edge->source_handle);
+      if (!output) {
         nn_errorf(error, cap, "Unknown visualization output handle %s",
                   edge->source_handle);
         return false;
       }
-      if (output_type && !strcmp(output_type, "loss")) {
+      if (output->type && !strcmp(output->type, "loss")) {
         nn_error_set(error, cap,
                      "Visualization loss outputs can only map to a declared "
                      "loss output");
@@ -234,27 +227,26 @@ static bool validate_plan(const NNCatalog *catalog, const NNPackage *owner,
     bool target_ok = false;
     if (to->body)
       target_ok = !strcmp(edge->target_handle, "in");
-    else if (to->package->kind && !strcmp(to->package->kind, "join")) {
-      size_t order = 0;
-      target_ok = nn_join_handle_order(edge->target_handle, &order);
-    } else
-      target_ok = !strcmp(edge->target_handle, "in");
+    else
+      target_ok = nn_catalog_package_input_handle_valid(to->package,
+                                                       edge->target_handle);
     if (!target_ok) {
       nn_errorf(error, cap, "Invalid visualization input handle %s",
                 edge->target_handle);
       return false;
     }
-    if (to->package->kind && (!strcmp(to->package->kind, "input") ||
-                              !strcmp(to->package->kind, "output") ||
-                              !strcmp(to->package->kind, "loss-output"))) {
+    if (nn_catalog_package_is_kind(to->package, "input") ||
+        nn_catalog_package_is_kind(to->package, "output") ||
+        nn_catalog_package_is_kind(to->package, "loss-output")) {
       nn_error_set(
           error, cap,
           "Visualization recipes cannot connect through boundary terminals");
       return false;
     }
-    if (source != SIZE_MAX && plan->nodes[source].package->kind &&
-        (!strcmp(plan->nodes[source].package->kind, "output") ||
-         !strcmp(plan->nodes[source].package->kind, "loss-output"))) {
+    if (source != SIZE_MAX &&
+        (nn_catalog_package_is_kind(plan->nodes[source].package, "output") ||
+         nn_catalog_package_is_kind(plan->nodes[source].package,
+                                    "loss-output"))) {
       nn_error_set(error, cap,
                    "Visualization terminal nodes cannot be edge sources");
       return false;
@@ -271,11 +263,9 @@ static bool validate_plan(const NNCatalog *catalog, const NNPackage *owner,
   for (size_t i = 0; i < plan->output_count; i++) {
     NN3DPlanOutput *o = &plan->outputs[i];
     size_t n = plan_node_index(plan, o->node);
-    bool declared = false;
-    for (size_t j = 0; j < owner->output_count; j++)
-      if (!strcmp(owner->outputs[j].id, o->id))
-        declared = true;
-    if (n == SIZE_MAX || !declared) {
+    const NNOutputDef *owner_output =
+        nn_catalog_package_output(owner, o->id);
+    if (n == SIZE_MAX || !owner_output) {
       nn_error_set(error, cap, "Visualization output mapping is unknown");
       return false;
     }
@@ -285,27 +275,20 @@ static bool validate_plan(const NNCatalog *catalog, const NNPackage *owner,
         return false;
       }
     NN3DPlanNode *target = &plan->nodes[n];
-    bool found = false;
-    const char *mapped_type = NULL;
-    for (size_t j = 0; j < target->package->output_count; j++)
-      if (!strcmp(target->package->outputs[j].id, o->handle)) {
-        found = true;
-        mapped_type = target->package->outputs[j].type;
-      }
-    if (!found) {
+    const NNOutputDef *mapped_output =
+        nn_catalog_package_output(target->package, o->handle);
+    if (!mapped_output) {
       nn_errorf(error, cap, "Unknown mapped visualization handle %s",
                 o->handle);
       return false;
     }
-    for (size_t j = 0; j < owner->output_count; j++)
-      if (!strcmp(owner->outputs[j].id, o->id) &&
-          strcmp(owner->outputs[j].type ? owner->outputs[j].type : "",
-                 mapped_type ? mapped_type : "")) {
+    if (strcmp(owner_output->type ? owner_output->type : "",
+               mapped_output->type ? mapped_output->type : "")) {
         nn_errorf(error, cap,
                   "Visualization output %s maps to an incompatible type",
                   o->id);
         return false;
-      }
+    }
   }
   /* Any acyclic recipe has a topological ordering within at most node_count
    * passes. */
@@ -340,8 +323,10 @@ static bool validate_subflow_boundaries(const NNNode **nodes,
   size_t inputs = 0, terminals = 0;
   for (size_t i = 0; i < count; i++) {
     const NNPackage *package = packages[i];
-    const char *kind = package->kind ? package->kind : "";
-    if (!strcmp(kind, "input")) {
+    bool is_input = nn_catalog_package_is_kind(package, "input");
+    bool is_output = nn_catalog_package_is_kind(package, "output");
+    bool is_loss_output = nn_catalog_package_is_kind(package, "loss-output");
+    if (is_input) {
       inputs++;
       if (nodes[i]->boundary_handle_id && *nodes[i]->boundary_handle_id) {
         nn_errorf(error, cap, "Input %s cannot map a subflow output",
@@ -350,7 +335,7 @@ static bool validate_subflow_boundaries(const NNNode **nodes,
       }
       continue;
     }
-    if (strcmp(kind, "output") && strcmp(kind, "loss-output")) {
+    if (!is_output && !is_loss_output) {
       if (nodes[i]->boundary_handle_id && *nodes[i]->boundary_handle_id) {
         nn_errorf(error, cap,
                   "Node %s has a boundary mapping but is not a terminal",
@@ -365,17 +350,14 @@ static bool validate_subflow_boundaries(const NNNode **nodes,
                 nodes[i]->id);
       return false;
     }
-    size_t output = SIZE_MAX;
-    for (size_t j = 0; j < owner->output_count; j++)
-      if (!strcmp(owner->outputs[j].id, nodes[i]->boundary_handle_id))
-        output = j;
-    if (output == SIZE_MAX) {
+    const NNOutputDef *mapped_output =
+        nn_catalog_package_output(owner, nodes[i]->boundary_handle_id);
+    if (!mapped_output) {
       nn_errorf(error, cap, "Terminal %s maps an unknown output", nodes[i]->id);
       return false;
     }
-    const char *expected =
-        !strcmp(owner->outputs[output].type, "loss") ? "loss-output" : "output";
-    if (strcmp(kind, expected)) {
+    bool expects_loss = !strcmp(mapped_output->type, "loss");
+    if (is_loss_output != expects_loss) {
       nn_errorf(error, cap, "Terminal %s has the wrong output type",
                 nodes[i]->id);
       return false;
@@ -444,13 +426,6 @@ static bool append_text(char **text, size_t *length, const char *value) {
   *text = grown;
   return true;
 }
-static const NNParameterDef *parameter_definition(const NNPackage *package,
-                                                  const char *key) {
-  for (size_t i = 0; i < package->parameter_count; i++)
-    if (!strcmp(package->parameters[i].key, key))
-      return &package->parameters[i];
-  return NULL;
-}
 static char *format_parameters(const NNParameter *parameters, size_t count,
                                const NNPackage *package) {
   char *text = calloc(1, 1);
@@ -460,7 +435,7 @@ static char *format_parameters(const NNParameter *parameters, size_t count,
     return NULL;
   for (size_t i = 0; i < count; i++) {
     const NNParameterDef *definition =
-        parameter_definition(package, parameters[i].key);
+        nn_catalog_package_parameter(package, parameters[i].key);
     if (!definition || !definition->position)
       continue;
     const NNValue *value = &parameters[i].value;
@@ -719,7 +694,8 @@ static bool layout_scope(NN3DScene *scene, const NNModel *model,
     const NNNode *owner_node = nn_model_find_node(model, scope);
     const NNPackage *owner_package =
         owner_node ? package_for(catalog, owner_node) : NULL;
-    if (!owner_node || !is_subflow(owner_package)) {
+    if (!owner_node ||
+        !nn_catalog_package_is_kind(owner_package, "subflow")) {
       nn_errorf(error, cap, "Orphan or malformed node scope %s", scope);
       goto fail;
     }
@@ -734,16 +710,16 @@ static bool layout_scope(NN3DScene *scene, const NNModel *model,
       const NNNode *owner_node = nn_model_find_node(model, candidate->scope_id);
       const NNPackage *owner_package =
           owner_node ? package_for(catalog, owner_node) : NULL;
-      if (!owner_node || !is_subflow(owner_package)) {
+      if (!owner_node ||
+          !nn_catalog_package_is_kind(owner_package, "subflow")) {
         nn_errorf(error, cap, "Orphan or malformed node scope %s",
                   candidate->scope_id);
         goto fail;
       }
     }
     for (size_t i = 0; i < count; i++)
-      if ((!strcmp(packages[i]->kind ? packages[i]->kind : "", "output") ||
-           !strcmp(packages[i]->kind ? packages[i]->kind : "",
-                   "loss-output")) &&
+      if ((nn_catalog_package_is_kind(packages[i], "output") ||
+           nn_catalog_package_is_kind(packages[i], "loss-output")) &&
           nodes[i]->boundary_handle_id) {
         nn_errorf(error, cap, "Root terminal %s cannot have a subflow mapping",
                   nodes[i]->id);
@@ -778,7 +754,7 @@ static bool layout_scope(NN3DScene *scene, const NNModel *model,
     }
   }
   for (size_t i = 0; i < count; i++) {
-    if (is_subflow(packages[i]))
+    if (nn_catalog_package_is_kind(packages[i], "subflow"))
       continue;
     if (!add_model_node(scene, nodes[i], packages[i], paths[i], group,
                         x_offset + (double)rank[i] * 190.0,
@@ -790,7 +766,7 @@ static bool layout_scope(NN3DScene *scene, const NNModel *model,
     indices[i] = node_index(scene, paths[i]);
   }
   for (size_t i = 0; i < count; i++)
-    if (is_subflow(packages[i])) {
+    if (nn_catalog_package_is_kind(packages[i], "subflow")) {
       if (depth >= SCENE_DEPTH_LIMIT) {
         nn_error_set(error, cap, "3D subflow depth limit exceeded");
         goto fail;
@@ -896,12 +872,14 @@ static bool layout_scope(NN3DScene *scene, const NNModel *model,
                owner_out = SIZE_MAX, inner_out = SIZE_MAX;
         if (r == SIZE_MAX)
           continue;
-        for (size_t h = 0; h < packages[i]->output_count && h < 2; h++) {
-          if (!strcmp(packages[i]->outputs[h].id, plan.outputs[o].id))
-            owner_out = h;
-          if (!strcmp(packages[i]->outputs[h].id, plan.outputs[o].handle))
-            inner_out = h;
-        }
+        const NNOutputDef *owner_output = nn_catalog_package_output(
+            packages[i], plan.outputs[o].id);
+        const NNOutputDef *inner_output = nn_catalog_package_output(
+            packages[i], plan.outputs[o].handle);
+        if (owner_output)
+          owner_out = (size_t)(owner_output - packages[i]->outputs);
+        if (inner_output)
+          inner_out = (size_t)(inner_output - packages[i]->outputs);
         if (owner_out != SIZE_MAX)
           maps[i].outputs[owner_out] =
               plan.nodes[r].body
@@ -922,18 +900,15 @@ static bool layout_scope(NN3DScene *scene, const NNModel *model,
         size_t source = plan_node_index(&plan, edge->source);
         if (source == SIZE_MAX)
           continue;
-        size_t out = SIZE_MAX;
-        for (size_t h = 0;
-             h < plan.nodes[source].package->output_count && h < 2; h++)
-          if (!strcmp(plan.nodes[source].package->outputs[h].id,
-                      edge->source_handle))
-            out = h;
+        const NNOutputDef *output = nn_catalog_package_output(
+            plan.nodes[source].package, edge->source_handle);
+        size_t out = output
+                         ? (size_t)(output - plan.nodes[source].package->outputs)
+                         : SIZE_MAX;
         size_t from = plan.nodes[source].body
                           ? recipe_outputs[source][out == SIZE_MAX ? 0 : out]
                           : recipe_indices[source];
-        bool loss =
-            out != SIZE_MAX && plan.nodes[source].package->outputs[out].type &&
-            !strcmp(plan.nodes[source].package->outputs[out].type, "loss");
+        bool loss = output && output->type && !strcmp(output->type, "loss");
         if (from != SIZE_MAX && recipe_entries[target] != SIZE_MAX &&
             !add_scene_edge(scene, from, recipe_entries[target],
                             edge->source_handle, edge->target_handle, loss))
@@ -1000,28 +975,27 @@ static bool layout_scope(NN3DScene *scene, const NNModel *model,
                 edge->source_id, edge->target_id, scope ? scope : "root");
       goto fail;
     }
-    bool loss = false;
-    for (size_t h = 0; h < packages[source]->output_count; h++)
-      if (!strcmp(packages[source]->outputs[h].id, edge->source_handle_id))
-        loss = packages[source]->outputs[h].type &&
-               !strcmp(packages[source]->outputs[h].type, "loss");
+    const NNOutputDef *source_output = nn_catalog_package_output(
+        packages[source], edge->source_handle_id);
+    bool loss = source_output && source_output->type &&
+                !strcmp(source_output->type, "loss");
     size_t source_node = indices[source];
-    if (is_subflow(packages[source])) {
-      size_t output = SIZE_MAX;
-      for (size_t h = 0; h < packages[source]->output_count && h < 2; h++)
-        if (!strcmp(packages[source]->outputs[h].id, edge->source_handle_id))
-          output = h;
+    if (nn_catalog_package_is_kind(packages[source], "subflow")) {
+      size_t output = source_output
+                          ? (size_t)(source_output - packages[source]->outputs)
+                          : SIZE_MAX;
       source_node =
           output == SIZE_MAX ? SIZE_MAX : maps[source].outputs[output];
     }
     if (source_node == SIZE_MAX ||
-        (!is_subflow(packages[target]) && indices[target] == SIZE_MAX)) {
+        (!nn_catalog_package_is_kind(packages[target], "subflow") &&
+         indices[target] == SIZE_MAX)) {
       nn_errorf(error, cap,
                 "3D edge %s -> %s cannot map its source or target handle",
                 edge->source_id, edge->target_id);
       goto fail;
     }
-    if (is_subflow(packages[target])) {
+    if (nn_catalog_package_is_kind(packages[target], "subflow")) {
       for (size_t t = 0; t < maps[target].input_count; t++)
         if (source_node != SIZE_MAX &&
             !add_scene_edge(scene, source_node, maps[target].inputs[t],
@@ -1041,21 +1015,24 @@ static bool layout_scope(NN3DScene *scene, const NNModel *model,
     boundaries->outputs[0] = boundaries->outputs[1] = SIZE_MAX;
     boundaries->output_count = 0;
     for (size_t i = 0; i < count; i++) {
-      const char *kind = packages[i]->kind ? packages[i]->kind : "";
-      if (!strcmp(kind, "input"))
+      if (nn_catalog_package_is_kind(packages[i], "input"))
         boundaries->input = indices[i];
-      if (!strcmp(kind, "output") || !strcmp(kind, "loss-output")) {
+      if (nn_catalog_package_is_kind(packages[i], "output") ||
+          nn_catalog_package_is_kind(packages[i], "loss-output")) {
         const NNNode *owner_node =
             scope && *scope ? nn_model_find_node(model, scope) : NULL;
         const NNPackage *owner_package =
             owner_node ? package_for(catalog, owner_node) : NULL;
         if (owner_package && nodes[i]->boundary_handle_id) {
-          for (size_t h = 0; h < owner_package->output_count && h < 2; h++)
-            if (!strcmp(owner_package->outputs[h].id,
-                        nodes[i]->boundary_handle_id)) {
+          const NNOutputDef *output = nn_catalog_package_output(
+              owner_package, nodes[i]->boundary_handle_id);
+          if (output) {
+            size_t h = (size_t)(output - owner_package->outputs);
+            if (h < 2) {
               boundaries->outputs[h] = indices[i];
               boundaries->output_count = owner_package->output_count;
             }
+          }
         }
       }
     }

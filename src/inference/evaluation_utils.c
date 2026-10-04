@@ -18,13 +18,6 @@ Result *nn_inference_report_result(Evaluation *evaluation, const NNNode *node)
     return &evaluation->report->items[index];
 }
 
-const char *nn_inference_package_kind(Evaluation *evaluation, const NNNode *node)
-{
-    const NNPackage *package = nn_catalog_find(evaluation->catalog,
-                                               node->package_id, node->package_version);
-    return package ? package->kind : NULL;
-}
-
 void nn_inference_scope_set_status(Evaluation *evaluation, const char *scope,
                              NNInferenceStatus status, const char *message)
 {

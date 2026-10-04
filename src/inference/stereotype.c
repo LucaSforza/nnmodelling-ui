@@ -1,5 +1,6 @@
 #define _POSIX_C_SOURCE 200809L
 #include "inference_internal.h"
+#include "catalog/catalog.h"
 #include "utils/utils.h"
 
 #include <lauxlib.h>
@@ -142,12 +143,8 @@ static bool read_parameter_table(lua_State *state, int table,
     lua_pushnil(state);
     while (lua_next(state, table)) {
         const char *key = lua_tostring(state, -2);
-        const NNParameterDef *definition = NULL;
-        for (size_t i = 0; i < package->parameter_count; ++i)
-            if (!strcmp(package->parameters[i].key, key)) {
-                definition = &package->parameters[i];
-                break;
-            }
+        const NNParameterDef *definition =
+            nn_catalog_package_parameter(package, key);
         items[at].key = nn_text_copy(key);
         if (!items[at].key) context->evaluation->allocation_failed = true;
         if (!definition || !items[at].key ||
@@ -231,9 +228,11 @@ int nn_inference_stereotype(lua_State *state)
         return 1;
     }
     const NNPackage *package = nn_catalog_resolve(context->evaluation->catalog, id, version);
-    if (!package || !package->kind || !strcmp(package->kind, "subflow") ||
-        !strcmp(package->kind, "input") || !strcmp(package->kind, "output") ||
-        !strcmp(package->kind, "loss-output") || !package->output_count || package->output_count > 2) {
+    if (!package || nn_catalog_package_is_kind(package, "subflow") ||
+        nn_catalog_package_is_kind(package, "input") ||
+        nn_catalog_package_is_kind(package, "output") ||
+        nn_catalog_package_is_kind(package, "loss-output") ||
+        !package->output_count || package->output_count > 2) {
         lua_newtable(state);
         lua_pushliteral(state, "error"); lua_setfield(state, -2, "status");
         lua_pushliteral(state, "stereotype reference does not identify an inferable package");
@@ -273,7 +272,9 @@ int nn_inference_stereotype(lua_State *state)
     }
     ordered_inputs = ordered_inputs && input_fields == input_count;
     if (!ordered_inputs || input_count > 1024 ||
-        (!strcmp(package->kind, "join") ? input_count < 2 : input_count != 1)) {
+        (nn_catalog_package_is_kind(package, "join")
+             ? input_count < 2
+             : input_count != 1)) {
         lua_newtable(state);
         lua_pushliteral(state, "error"); lua_setfield(state, -2, "status");
         lua_pushliteral(state, "stereotype input count does not match package kind");

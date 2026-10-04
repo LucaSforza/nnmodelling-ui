@@ -66,7 +66,8 @@ the same application owner; Qt schedules nonblocking IPC dispatch on its thread.
 Resource authoring follows resource-authoring.md. Accepted 2026-10-01 typed
 output/loss topology, terminal spawning and handle-sensitive recursive analysis
 follow contracts/typed-outputs.md and uml/metamodel.md. Catalog normalizes
-definitions; C persists terminal mappings; Qt only presents the typed boundary.
+definitions and owns shared package metadata queries; C persists terminal
+mappings; Qt only presents the typed boundary.
 `src/automation/` supplies the optional Linux local command service and C
 dispatcher; `src/nnmodelctl/` is the C11 companion CLI. The GUI starts IPC only
 when requested with --socket. Native visual forms generate boundary JSON but

@@ -19,11 +19,6 @@ void nn_app_invalidate_analysis(NNApplication *app)
     app->analysis = NULL;
 }
 
-bool nn_app_kind_is(const NNPackage *package, const char *kind)
-{
-    return package && package->kind && !strcmp(package->kind, kind);
-}
-
 const NNPackage *nn_app_find_package(const NNApplication *app, const NNNode *node)
 {
     return app && app->project && node

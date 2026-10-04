@@ -34,6 +34,7 @@ set(NN_MODEL_SOURCES
     src/model/parameters.c src/model/values.c src/model/model_utils.c)
 set(NN_CATALOG_SOURCES
     src/catalog/catalog.c src/catalog/catalog_utils.c src/catalog/definition.c
+    src/catalog/package.c
     src/catalog/manifest.c src/catalog/dependencies.c src/catalog/parameters.c)
 set(NN_PROJECT_SOURCES
     src/project/project.c src/project/open.c src/project/graph_json.c
@@ -98,7 +99,7 @@ if(BUILD_TESTING)
     endif()
     # This existing fixture supplies its own catalog, isolating persistence.
     add_executable(project_test tests/project_test.c ${NN_PROJECT_SOURCES}
-        ${NN_MODEL_SOURCES} src/catalog/parameters.c)
+        ${NN_MODEL_SOURCES} src/catalog/package.c src/catalog/parameters.c)
     target_include_directories(project_test PRIVATE src)
     target_link_libraries(project_test PRIVATE nn_json nn_utils m)
     add_test(NAME project COMMAND project_test)

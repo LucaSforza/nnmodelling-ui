@@ -1,5 +1,6 @@
 #define _POSIX_C_SOURCE 200809L
 #include "inference_internal.h"
+#include "catalog/catalog.h"
 #include "utils/utils.h"
 
 #include <lauxlib.h>
@@ -75,8 +76,10 @@ static void set_services(lua_State *state, LuaContext *context)
     lua_pushlightuserdata(state, context);
     lua_pushcclosure(state, resolve_input, 1);
     lua_setfield(state, -2, "resolve_input");
-    const char *kind = nn_inference_package_kind(context->evaluation, context->node);
-    if (kind && !strcmp(kind, "subflow")) {
+    const NNPackage *package = nn_catalog_find(
+        context->evaluation->catalog, context->node->package_id,
+        context->node->package_version);
+    if (nn_catalog_package_is_kind(package, "subflow")) {
         lua_pushlightuserdata(state, context);
         lua_pushcclosure(state, inference_subflow, 1);
         lua_setfield(state, -2, "infer_subflow");
@@ -258,9 +261,11 @@ NNInferenceStatus nn_inference_execute_rule(Evaluation *evaluation, const NNNode
         ExtractResult extracted = { .outputs = output,
                                     .output_count = package->output_count,
                                     .package = package,
-                                    .terminal = package->kind &&
-                                        (!strcmp(package->kind, "output") ||
-                                         !strcmp(package->kind, "loss-output")),
+                                    .terminal =
+                                        nn_catalog_package_is_kind(package,
+                                                                   "output") ||
+                                        nn_catalog_package_is_kind(package,
+                                                                   "loss-output"),
                                     .message = message,
                                     .status = NN_INFERENCE_RUNTIME_FAULT };
         lua_pushlightuserdata(state, &nn_inference_extract_result_registry_key);
@@ -303,8 +308,12 @@ NNInferenceStatus nn_inference_execute_rule(Evaluation *evaluation, const NNNode
 static int inference_subflow(lua_State *state)
 {
     LuaContext *context = lua_touserdata(state, lua_upvalueindex(1));
-    const char *kind = context ? nn_inference_package_kind(context->evaluation, context->node) : NULL;
-    if (!context || !kind || strcmp(kind, "subflow"))
+    const NNPackage *package = context
+        ? nn_catalog_find(context->evaluation->catalog,
+                          context->node->package_id,
+                          context->node->package_version)
+        : NULL;
+    if (!context || !nn_catalog_package_is_kind(package, "subflow"))
         return luaL_error(state, "infer_subflow is only available to subflow packages");
     if (++context->evaluation->invocations > 256 || context->depth >= 32)
         return luaL_error(state, "subflow inference limit exceeded");

@@ -50,6 +50,11 @@ int main(void) {
     package = nn_catalog_find(catalog, "core.horizontal-repeat", "0.1.0");
     assert(package && package->dependency_count == 1);
     assert(package->parameters[1].kind && !strcmp(package->parameters[1].kind, "join"));
+    assert(nn_catalog_package_is_kind(package, "subflow"));
+    assert(!nn_catalog_package_is_kind(package, "join"));
+    assert(nn_catalog_package_parameter(package, "join") ==
+           &package->parameters[1]);
+    assert(!nn_catalog_package_parameter(package, "missing"));
     assert(nn_catalog_resolve(catalog, "core.concat", "^0.1.0") ==
            nn_catalog_find(catalog, "core.concat", "0.1.0"));
     {
@@ -86,6 +91,8 @@ int main(void) {
     assert(package && package->output_count == 1);
     assert(!strcmp(package->outputs[0].id, "out"));
     assert(!strcmp(package->outputs[0].type, "output"));
+    assert(nn_catalog_package_output(package, "out") == &package->outputs[0]);
+    assert(!nn_catalog_package_output(package, "missing"));
     package = nn_catalog_find(catalog, "core.mse-loss", "0.1.0");
     assert(package && package->output_count == 1);
     assert(!strcmp(package->outputs[0].id, "loss"));
@@ -96,6 +103,18 @@ int main(void) {
     assert(package && package->parameter_count == 1);
     assert(!strcmp(package->parameters[0].key, "times"));
     assert(package->parameters[0].position && !strcmp(package->parameters[0].position, "top"));
+    {
+        const NNPackage input = {.kind = "input"};
+        const NNPackage join = {.kind = "join"};
+        const NNPackage layer = {.kind = "layer"};
+        assert(!nn_catalog_package_input_handle_valid(&input, "in"));
+        assert(nn_catalog_package_input_handle_valid(&join, "in-1"));
+        assert(!nn_catalog_package_input_handle_valid(&join, "in-0"));
+        assert(!nn_catalog_package_input_handle_valid(&join, "in"));
+        assert(nn_catalog_package_input_handle_valid(&layer, "in"));
+        assert(!nn_catalog_package_input_handle_valid(&layer, "in-1"));
+        assert(!nn_catalog_package_input_handle_valid(&layer, NULL));
+    }
     nn_catalog_free(catalog);
 
     assert(mkdtemp(temp));

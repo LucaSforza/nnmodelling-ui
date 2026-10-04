@@ -1,4 +1,5 @@
 #include "project_internal.h"
+#include "catalog/catalog.h"
 #include "utils/utils.h"
 
 #include <stdlib.h>
@@ -12,12 +13,8 @@ static bool validate_stereotype_references(NNProject *project, const NNNode *nod
                                                 node->package_version);
     if (!package) return false;
     for (size_t i = 0; i < node->parameter_count; ++i) {
-        const NNParameterDef *definition = NULL;
-        for (size_t j = 0; j < package->parameter_count; ++j)
-            if (!strcmp(package->parameters[j].key, node->parameters[i].key)) {
-                definition = &package->parameters[j];
-                break;
-            }
+        const NNParameterDef *definition = nn_catalog_package_parameter(
+            package, node->parameters[i].key);
         if (!definition || strcmp(definition->type, "stereotype")) continue;
         NNPackage one = { .parameters = definition, .parameter_count = 1 };
         NNParameter *effective = NULL;
@@ -110,33 +107,25 @@ bool nn_project_edge_topology_valid(const NNModel *model, const NNCatalog *catal
         ? nn_catalog_find(catalog, source->package_id, source->package_version) : NULL;
     const NNPackage *target_package = target
         ? nn_catalog_find(catalog, target->package_id, target->package_version) : NULL;
-    const char *type = NULL;
-    if (source_package)
-        for (size_t i = 0; i < source_package->output_count; ++i)
-            if (!strcmp(source_package->outputs[i].id, edge->source_handle_id))
-                type = source_package->outputs[i].type;
-    if (!source || !target || !source_package || !target_package || !type) {
+    const NNOutputDef *output = nn_catalog_package_output(source_package,
+                                                          edge->source_handle_id);
+    if (!source || !target || !source_package || !target_package || !output ||
+        !output->type) {
         nn_error_set(error, capacity, "edge references an invalid output handle or package");
         return false;
     }
-    bool input_valid;
-    if (target_package->kind && !strcmp(target_package->kind, "input"))
-        input_valid = false;
-    else if (target_package->kind && !strcmp(target_package->kind, "join")) {
-        size_t order;
-        input_valid = nn_join_handle_order(edge->target_handle_id, &order);
-    } else input_valid = !strcmp(edge->target_handle_id, "in");
-    if (!input_valid) {
+    if (!nn_catalog_package_input_handle_valid(target_package,
+                                               edge->target_handle_id)) {
         nn_error_set(error, capacity, "edge references an invalid input handle");
         return false;
     }
-    if (target_package->kind && !strcmp(target_package->kind, "output") &&
-        strcmp(type, "output")) {
+    if (nn_catalog_package_is_kind(target_package, "output") &&
+        strcmp(output->type, "output")) {
         nn_error_set(error, capacity, "output type is incompatible with output terminal");
         return false;
     }
-    if (target_package->kind && !strcmp(target_package->kind, "loss-output") &&
-        strcmp(type, "loss")) {
+    if (nn_catalog_package_is_kind(target_package, "loss-output") &&
+        strcmp(output->type, "loss")) {
         nn_error_set(error, capacity, "output type is incompatible with loss terminal");
         return false;
     }
