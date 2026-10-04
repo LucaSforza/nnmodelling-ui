@@ -134,3 +134,16 @@ shown as a non-navigable Root problem with null node identity; it never erases
 successful local tensors. CommandAdapter queries the same application report.
 No SDS or third-party API types: global utils owns bounded errors/path joining;
 yyjson owns escaping/serialization.
+
+## Expanded explorer ownership (2026-10-04)
+
+```mermaid
+flowchart LR
+  Project[C Project/model/catalog] --> Expansion[C Lua composition / occurrence scene]
+  Expansion --> Layout[C 3D layout and groups]
+  Layout --> Camera[C camera / projection / depth ordering / picking]
+  Camera --> Tab[Qt Network 3D tab: input translation and painting]
+```
+
+Scene is owned disposable presentation data. No write-back, persistence or
+parallel graph authority. Source IDs and instance paths identify occurrences.

@@ -203,3 +203,9 @@ files and all graph edits, so success creates a history barrier. Dataset selecti
 also creates a barrier in this initial graph-history implementation. Neither barrier
 pretends to undo filesystem/resource operations. Failure preserves history.
 History lives in memory only; schema v2 and package semantics stay unchanged.
+
+## Network 3D tab (accepted 2026-10-04)
+
+[3D contract](visualization-3d.md) governs whole-network expanded read-only
+exploration, flight, Fit/Home, picking and transient camera. Existing scope-local
+2D gestures/layout remain unchanged; Qt only paints C-projected scene primitives.

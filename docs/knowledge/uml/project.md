@@ -173,3 +173,7 @@ after validation; no global package map becomes project authority. JSON DOM is
 temporary parse/write state. Only project module owns filesystem mutations.
 Borrowed `nn_project_id/name/version` getters expose manifest identity to the
 read-only automation snapshot; no mutable project struct crosses the ABI.
+
+Accepted 2026-10-04: package manifest may declare independent visualization Lua
+entrypoint only for subflow kind per visualization-3d.md. It is catalog-owned
+resource data. Expanded scene/camera never enter schema-v2 persistence.

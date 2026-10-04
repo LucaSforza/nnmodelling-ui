@@ -363,3 +363,19 @@ sequenceDiagram
     App->>App: update dirty revision, invalidate analysis
     Qt->>Qt: refresh items, scope tree, inspector, diagnostics and routes
 ```
+
+## Activate Network 3D (2026-10-04)
+
+```mermaid
+sequenceDiagram
+  User->>Qt: activate Network 3D
+  Qt->>C: build scene from current project
+  C->>Lua: evaluate subflow visualization plans under bounds
+  Lua-->>C: declarative composition
+  C->>C: validate, recursively expand, layout occurrences/groups
+  C-->>Qt: owned scene or explicit failure
+  User->>Qt: fly / look / Fit / Home / pick
+  Qt->>C: camera input / frame / hit query
+  C-->>Qt: sorted projected primitives / occurrence identity
+  Qt->>Qt: paint and display selection
+```

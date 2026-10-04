@@ -60,3 +60,7 @@ current documentation and agent guidance; preserve clearly historical paths.
 The existing [architecture diagram](../architecture/overview.md) and
 [editor/graphics UML](../uml/editor.md) describe these boundaries; update those
 diagrams rather than creating another overlapping UML document.
+
+Accepted 2026-10-04: `visualization/` owns C11 expanded scene/composition,
+layout and camera/projection/picking per visualization-3d.md. Qt adapter stays
+in gui/qt. No graphics-library dependency enters core.

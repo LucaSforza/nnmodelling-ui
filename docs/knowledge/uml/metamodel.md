@@ -219,3 +219,20 @@ Incomplete with a non-navigable null-node Root problem, never synthetic IDs or
 discarded successful tensors. The CLI complete flag conjuncts root/per-node
 success. Report-construction allocation failure is an explicit whole-report
 failure, not partial successful state.
+
+## Presentation occurrences (2026-10-04)
+
+```mermaid
+classDiagram
+  NNModel --> ExpandedScene : read-only derivation
+  ExpandedScene *-- Occurrence
+  ExpandedScene *-- OccurrenceGroup
+  Occurrence : sourceNodeId
+  Occurrence : instancePath
+  OccurrenceGroup : ownerNodeId
+  OccurrenceGroup : parentGroup
+  Stereotype --> VisualizationLua : optional kind=subflow only
+```
+
+Occurrences are not NNModel nodes. Generic Lua plans describe body instances,
+synthetic operators, edges and owner output mapping per visualization-3d.md.

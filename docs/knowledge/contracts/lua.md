@@ -70,3 +70,7 @@ boolean or nil/error for invalid tensors. It performs no broadcasting or
 numerical tensor comparison and never mutates either argument.
 No numerical embedding/cast or model mutation is introduced. Core package
 rules remain unchanged; the host must supply these declared primitives.
+
+Accepted 2026-10-04: generic infer_stereotype reference service and separate
+subflow visualization recipe runtime follow [3D contract](visualization-3d.md).
+Inference never executes visualization entrypoints.

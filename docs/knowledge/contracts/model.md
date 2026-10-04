@@ -169,3 +169,10 @@ starting graph. History allocation succeeds before mutating active graph; failed
 commands/groups preserve graph and history. Lifecycle/save/resource operations
 reject an active group. Maximum 100 completed edits; oldest snapshots are released.
 See editor.md for UI behavior, save revisions and resource barriers.
+
+## Stereotype objects (accepted 2026-10-04)
+
+[3D contract](visualization-3d.md) supersedes the earlier unsupported object
+parameter limitation: owned NNValue objects preserve stereotype references,
+parameters, history and schema-v2 JSON. C validates active package identity,
+version constraint, expected kind and referenced parameters.
