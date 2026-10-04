@@ -55,12 +55,68 @@ private slots:
     void retainedLuaValidationFormAndNonblockingRejection();
     void visualResourceAuthoringForms();
     void typedOutputAuthoringBoundariesAndInspector();
+    void stereotypeReferenceCanBeEditedAsValidatedJson();
     void automationRejectsInvalidScopeAndCapturesCurrentScope();
     void arrangeMenuAndFitUseDirectedGridLayout();
     void graphHistoryTracksEditsAndScopeFallback();
     void scopeTreeFollowsContainmentAndMenus();
     void socketOptionRequiresPath();
 };
+
+static void answerDialog(QMessageBox::StandardButton answer);
+
+void WindowTest::stereotypeReferenceCanBeEditedAsValidatedJson() {
+    QTemporaryDir temporary;
+    QVERIFY(temporary.isValid());
+    NNApplication *app = nn_app_new(NN_SOURCE_DIR "/stereotype-packages/core");
+    QVERIFY(app);
+    char error[512] = {};
+    const QByteArray parent = temporary.path().toUtf8();
+    QVERIFY2(nn_app_create(app, parent.constData(), "reference-edit", "Reference edit", false,
+                           error, sizeof(error)), error);
+    QVERIFY2(nn_app_add_node(app, "repeat", "core.horizontal-repeat", "0.1.0", "", 100, 100,
+                             error, sizeof(error)), error);
+
+    MainWindow window(app);
+    window.resize(1360, 850);
+    window.show();
+    QCoreApplication::processEvents();
+    auto *scene = window.findChild<GraphScene *>();
+    QVERIFY(scene && scene->nodeItem(QStringLiteral("repeat")));
+    scene->nodeItem(QStringLiteral("repeat"))->setSelected(true);
+    QCoreApplication::processEvents();
+    auto *editor = window.findChild<QLineEdit *>("stereotypeParameter_join");
+    QVERIFY(editor);
+    QVERIFY(editor->text().contains(QStringLiteral("core.concat")));
+    QVERIFY(editor->text().contains(QStringLiteral("-1")));
+
+    editor->setFocus();
+    editor->selectAll();
+    QTest::keyClicks(editor, QStringLiteral("{\"id\":\"core.concat\",\"version\":\"^0.1.0\",\"parameters\":{\"dim\":0}}"));
+    QTest::keyClick(editor, Qt::Key_Return);
+    auto joinValue = [app] {
+        char *text = nn_app_parameter_text(app, "repeat", "join");
+        const QString value = text ? QString::fromUtf8(text) : QString();
+        nn_app_free_text(text);
+        return value;
+    };
+    QTRY_VERIFY(joinValue().contains(QStringLiteral("\"dim\":0")));
+    QCoreApplication::processEvents();
+    editor = window.findChild<QLineEdit *>("stereotypeParameter_join");
+    QVERIFY(editor);
+
+    answerDialog(QMessageBox::Ok);
+    editor->setFocus();
+    editor->selectAll();
+    const QString invalidReference = QStringLiteral("{\"id\":\"core.concat\",\"version\":\"^0.1.0\",\"parameters\":{\"dim\":\"bad\"}}");
+    QTest::keyClicks(editor, invalidReference);
+    QCOMPARE(editor->text(), invalidReference);
+    QTest::keyClick(editor, Qt::Key_Return);
+    QVERIFY(joinValue().contains(QStringLiteral("\"dim\":0")));
+    QVERIFY(nn_project_dirty(nn_app_project(app)));
+    answerDialog(QMessageBox::Discard);
+    window.close();
+}
 
 void WindowTest::arrangeMenuAndFitUseDirectedGridLayout() {
     QTemporaryDir temporary;

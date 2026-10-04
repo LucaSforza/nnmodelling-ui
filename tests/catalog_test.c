@@ -49,6 +49,32 @@ int main(void) {
     assert(nn_catalog_count(catalog) == 26);
     package = nn_catalog_find(catalog, "core.horizontal-repeat", "0.1.0");
     assert(package && package->dependency_count == 1);
+    assert(package->parameters[1].kind && !strcmp(package->parameters[1].kind, "join"));
+    assert(nn_catalog_resolve(catalog, "core.concat", "^0.1.0") ==
+           nn_catalog_find(catalog, "core.concat", "0.1.0"));
+    {
+        NNParameter *effective = NULL;
+        size_t count = 0;
+        assert(nn_catalog_parameters(catalog, package, NULL, 0, &effective, &count,
+                                    error, sizeof(error)));
+        assert(count == 2 && effective[1].value.type == NN_VALUE_OBJECT);
+        assert(nn_catalog_resolve(catalog,
+            effective[1].value.as.object.items[0].value.as.string,
+            effective[1].value.as.object.items[1].value.as.string));
+        nn_catalog_parameters_free(effective, count);
+
+        NNParameter bad_ref_params[] = {{.key = "join", .value = {
+            .type = NN_VALUE_OBJECT,
+            .as.object = {.items = (NNParameter[]){
+                {.key = "id", .value = {.type = NN_VALUE_STRING, .as.string = "core.relu"}},
+                {.key = "version", .value = {.type = NN_VALUE_STRING, .as.string = "^0.1.0"}},
+                {.key = "parameters", .value = {.type = NN_VALUE_OBJECT}},
+            }, .count = 3},
+        }}};
+        assert(!nn_catalog_parameters(catalog, package, bad_ref_params, 1,
+                                      &effective, &count, error, sizeof(error)));
+        assert(strstr(error, "wrong kind"));
+    }
     assert(strcmp(package->dependencies[0].id, "core.concat") == 0);
     assert(strcmp(package->inference_file, "inference.lua") == 0);
     package = nn_catalog_find(catalog, "core.cast", "0.1.0");

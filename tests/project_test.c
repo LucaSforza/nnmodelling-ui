@@ -57,6 +57,18 @@ const NNPackage *nn_catalog_find(const NNCatalog *catalog, const char *id, const
     return &layer;
 }
 
+const NNPackage *nn_catalog_resolve(const NNCatalog *catalog, const char *id,
+                                   const char *version_constraint)
+{
+    if (!version_constraint) return NULL;
+    const NNPackage *package = nn_catalog_find(catalog, id, "0.1.0");
+    if (!package) return NULL;
+    if (!strcmp(version_constraint, package->version) ||
+        (!strcmp(version_constraint, "^0.1.0") &&
+         !strcmp(package->version, "0.1.0"))) return package;
+    return NULL;
+}
+
 static void write_file(const char *path, const char *content)
 {
     FILE *file = fopen(path, "wb");

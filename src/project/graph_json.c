@@ -3,20 +3,49 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <limits.h>
 
-bool nn_project_parse_value(yyjson_val *source, NNValue *target)
+static bool validate_stereotype_references(NNProject *project, const NNNode *node,
+                                           char *error, size_t capacity)
 {
+    const NNPackage *package = nn_catalog_find(project->catalog, node->package_id,
+                                                node->package_version);
+    if (!package) return false;
+    for (size_t i = 0; i < node->parameter_count; ++i) {
+        const NNParameterDef *definition = NULL;
+        for (size_t j = 0; j < package->parameter_count; ++j)
+            if (!strcmp(package->parameters[j].key, node->parameters[i].key)) {
+                definition = &package->parameters[j];
+                break;
+            }
+        if (!definition || strcmp(definition->type, "stereotype")) continue;
+        NNPackage one = { .parameters = definition, .parameter_count = 1 };
+        NNParameter *effective = NULL;
+        size_t count = 0;
+        bool okay = nn_catalog_parameters(project->catalog, &one,
+            &node->parameters[i], 1, &effective, &count, error, capacity);
+        nn_catalog_parameters_free(effective, count);
+        if (!okay) return false;
+    }
+    return true;
+}
+
+static bool parse_value(yyjson_val *source, NNValue *target, unsigned depth)
+{
+    if (depth > 64) return false;
     memset(target, 0, sizeof(*target));
     if (yyjson_is_bool(source)) {
         target->type = NN_VALUE_BOOL;
         target->as.boolean = yyjson_get_bool(source);
     } else if (yyjson_is_int(source)) {
+        if (yyjson_is_uint(source) && yyjson_get_uint(source) > LLONG_MAX) return false;
         target->type = NN_VALUE_INT;
         target->as.integer = yyjson_get_sint(source);
     } else if (yyjson_is_real(source)) {
         target->type = NN_VALUE_REAL;
         target->as.real = yyjson_get_real(source);
     } else if (yyjson_is_str(source)) {
+        if (strlen(yyjson_get_str(source)) != yyjson_get_len(source)) return false;
         target->type = NN_VALUE_STRING;
         target->as.string = nn_text_copy(yyjson_get_str(source));
         if (!target->as.string) return false;
@@ -29,12 +58,47 @@ bool nn_project_parse_value(yyjson_val *source, NNValue *target)
         if (!target->as.array.items) return false;
         target->as.array.count = count;
         for (size_t i = 0; i < target->as.array.count; ++i)
-            if (!nn_project_parse_value(yyjson_arr_get(source, i), &target->as.array.items[i])) {
+            if (!parse_value(yyjson_arr_get(source, i), &target->as.array.items[i], depth + 1)) {
                 nn_value_dispose(target);
                 return false;
             }
+    } else if (yyjson_is_obj(source)) {
+        size_t count = yyjson_obj_size(source);
+        if (count > 1024) return false;
+        target->type = NN_VALUE_OBJECT;
+        target->as.object.items = calloc(count ? count : 1, sizeof(NNParameter));
+        if (!target->as.object.items) return false;
+        yyjson_obj_iter iter = yyjson_obj_iter_with(source);
+        yyjson_val *key;
+        while ((key = yyjson_obj_iter_next(&iter))) {
+            size_t index = target->as.object.count;
+            const char *text = yyjson_get_str(key);
+            if (!text || !text[0] || strlen(text) != yyjson_get_len(key)) {
+                nn_value_dispose(target); return false;
+            }
+            for (size_t i = 0; i < index; ++i)
+                if (!strcmp(target->as.object.items[i].key, text)) {
+                    nn_value_dispose(target);
+                    return false;
+                }
+            target->as.object.items[index].key = nn_text_copy(text);
+            if (!target->as.object.items[index].key ||
+                !parse_value(yyjson_obj_iter_get_val(key),
+                             &target->as.object.items[index].value, depth + 1)) {
+                target->as.object.count = index + 1;
+                nn_value_dispose(target);
+                return false;
+            }
+            target->as.object.count = index + 1;
+        }
     } else return false;
     return true;
+}
+
+bool nn_project_parse_value(yyjson_val *source, NNValue *target)
+{
+    if (!source || !target) return false;
+    return parse_value(source, target, 0);
 }
 
 bool nn_project_edge_topology_valid(const NNModel *model, const NNCatalog *catalog,
@@ -133,6 +197,9 @@ bool nn_project_parse_graph(NNProject *project, yyjson_val *root,
             nn_value_dispose(&parsed);
             if (!set) return false;
         }
+        if (!validate_stereotype_references(project,
+                nn_model_find_node(project->model, id), error, capacity))
+            return false;
     }
     for (size_t i = 0; i < yyjson_arr_size(edges); ++i) {
         yyjson_val *edge = yyjson_arr_get(edges, i);

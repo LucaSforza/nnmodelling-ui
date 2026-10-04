@@ -568,6 +568,64 @@ int main(void)
     assert(two->outputs[1].dimension_count == 2 &&
            !strcmp(two->outputs[1].dimensions[1], "2"));
     nn_inference_free(report);
+    assert(nn_project_create_stereotype(diagnostic_project, "local.default-join", "0.1.0",
+        "{\"name\":\"Default join\",\"kind\":\"join\","
+        "\"view\":{\"color\":\"#444444\",\"width\":200,\"height\":100},"
+        "\"parameters\":{\"dim\":{\"type\":\"integer\",\"default\":-1}}}",
+        "return function(context, parameters) "
+        "if parameters.dim ~= -1 then return {status='error', message='default missing'} end "
+        "return {status='success', output=context.inputs[1]} end",
+        "{}", error, sizeof(error)));
+    assert(nn_project_create_stereotype(diagnostic_project, "local.infer-stereotype", "0.1.0",
+        "{\"name\":\"Stereotype host\",\"kind\":\"layer\","
+        "\"view\":{\"color\":\"#444444\",\"width\":200,\"height\":100},"
+        "\"parameters\":{}}",
+        "return function(context, parameters, services) return services.infer_stereotype("
+        "{id='local.default-join', version='^0.1.0', parameters={}}, "
+        "{context.inputs[1], context.inputs[1]}) end",
+        "{}", error, sizeof(error)));
+    assert(nn_model_add_node(nn_project_model(diagnostic_project), "stereotype-host",
+        "Stereotype host", "local.infer-stereotype", "0.1.0", "", 0, 0,
+        error, sizeof(error)));
+    assert(nn_model_connect(nn_project_model(diagnostic_project), "stereotype-host-edge",
+        "two-output", "prediction", "stereotype-host", "in", error, sizeof(error)));
+    report = nn_infer_project(diagnostic_project);
+    assert(report);
+    const NNInferenceResult *stereotype_host = find_result(report, "stereotype-host");
+    assert(stereotype_host && stereotype_host->status == NN_INFERENCE_SUCCESS);
+    assert(stereotype_host->dimension_count == 2 &&
+           !strcmp(stereotype_host->dimensions[1], "3"));
+    nn_inference_free(report);
+
+    assert(nn_project_create_stereotype(diagnostic_project, "local.bad-join", "0.1.0",
+        "{\"name\":\"Broken join\",\"kind\":\"join\","
+        "\"view\":{\"color\":\"#444444\",\"width\":200,\"height\":100},"
+        "\"parameters\":{}}",
+        "return function() error('nested join failure') end",
+        "{}", error, sizeof(error)));
+    assert(nn_project_create_stereotype(diagnostic_project, "local.bad-stereotype-host", "0.1.0",
+        "{\"name\":\"Broken stereotype host\",\"kind\":\"layer\","
+        "\"view\":{\"color\":\"#444444\",\"width\":200,\"height\":100},"
+        "\"parameters\":{}}",
+        "return function(context, parameters, services) "
+        "local ref={id='local.bad-join', version='^0.1.0', parameters={}} "
+        "local inputs={context.inputs[1], context.inputs[1]} "
+        "pcall(services.infer_stereotype, ref, inputs) "
+        "pcall(services.infer_stereotype, ref, inputs) "
+        "return {status='success', output=context.inputs[1]} end",
+        "{}", error, sizeof(error)));
+    assert(nn_model_add_node(nn_project_model(diagnostic_project), "bad-stereotype-host",
+        "Broken stereotype host", "local.bad-stereotype-host", "0.1.0", "", 0, 0,
+        error, sizeof(error)));
+    assert(nn_model_connect(nn_project_model(diagnostic_project), "bad-stereotype-host-edge",
+        "two-output", "prediction", "bad-stereotype-host", "in", error, sizeof(error)));
+    report = nn_infer_project(diagnostic_project);
+    assert(report);
+    const NNInferenceResult *bad_stereotype = find_result(report, "bad-stereotype-host");
+    assert(bad_stereotype && bad_stereotype->status == NN_INFERENCE_RUNTIME_FAULT);
+    assert(bad_stereotype->message && strstr(bad_stereotype->message, "nested join failure"));
+    assert(bad_stereotype->source_file && bad_stereotype->source_line > 0);
+    nn_inference_free(report);
     assert(nn_project_create_stereotype(diagnostic_project, "local.pass", "0.1.0",
         "{\"name\":\"Pass\",\"kind\":\"layer\","
         "\"outputs\":[{\"id\":\"passed-loss\",\"type\":\"loss\"}],"

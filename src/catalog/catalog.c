@@ -19,6 +19,7 @@ static void package_dispose(Package *p) {
   free((char *)p->pub.kind);
   free((char *)p->pub.color);
   free((char *)p->pub.inference_file);
+  free((char *)p->pub.visualization_file);
   for (i = 0; p->outputs && i < p->pub.output_count; ++i) {
     free((char *)p->outputs[i].id);
     free((char *)p->outputs[i].type);
@@ -27,6 +28,7 @@ static void package_dispose(Package *p) {
   for (i = 0; p->parameters && i < p->pub.parameter_count; ++i) {
     free((char *)p->parameters[i].key);
     free((char *)p->parameters[i].type);
+    free((char *)p->parameters[i].kind);
     free((char *)p->parameters[i].position);
     if (p->parameters[i].has_default &&
         (p->parameters[i].default_value.type == NN_PARAMETER_STRING ||
@@ -62,8 +64,8 @@ static bool load_package(NNCatalog *cat, const char *root, const char *rel,
                          const char *expected_id, const char *expected_version,
                          char *err, size_t cap) {
   char dir[PATH_MAX], manifest_path[PATH_MAX], def_path[PATH_MAX],
-      inference_path[PATH_MAX];
-  char manifest_rel[PATH_MAX], def_rel[PATH_MAX], inf_rel[PATH_MAX];
+      inference_path[PATH_MAX], visualization_path[PATH_MAX];
+  char manifest_rel[PATH_MAX], def_rel[PATH_MAX], inf_rel[PATH_MAX], vis_rel[PATH_MAX];
   char *buf = NULL;
   size_t len;
   yyjson_doc *doc = NULL;
@@ -111,6 +113,24 @@ static bool load_package(NNCatalog *cat, const char *root, const char *rel,
       nn_errorf(err, cap, "invalid package entrypoint path: %s", rel);
       goto done;
     }
+    if (item.pub.visualization_file &&
+        (snprintf(vis_rel, sizeof(vis_rel), "%s/%s", rel,
+                  item.pub.visualization_file) >= (int)sizeof(vis_rel) ||
+         !nn_catalog_checked_path(root, vis_rel, false, visualization_path) ||
+         !nn_catalog_under_path(root, visualization_path))) {
+      ok = false;
+      nn_errorf(err, cap, "invalid visualization entrypoint path: %s", rel);
+      goto done;
+    }
+    if (item.pub.visualization_file) {
+      struct stat info;
+      if (lstat(visualization_path, &info) || !S_ISREG(info.st_mode) ||
+          info.st_size < 0 || (size_t)info.st_size > 1024u * 1024u) {
+        ok = false;
+        nn_errorf(err, cap, "invalid visualization Lua file: %s", rel);
+        goto done;
+      }
+    }
   }
   {
     size_t dlen;
@@ -126,6 +146,11 @@ static bool load_package(NNCatalog *cat, const char *root, const char *rel,
     }
     yyjson_doc_free(ddoc);
     free(definition);
+  }
+  if (item.pub.visualization_file && strcmp(item.pub.kind, "subflow")) {
+    ok = false;
+    nn_errorf(err, cap, "visualization entrypoint requires kind=subflow: %s", rel);
+    goto done;
   }
   if (cat->count >= CATALOG_ITEM_LIMIT) {
     ok = false;
@@ -246,4 +271,21 @@ const NNPackage *nn_catalog_find(const NNCatalog *catalog, const char *id,
         !strcmp(catalog->items[i].pub.version, version))
       return &catalog->items[i].pub;
   return NULL;
+}
+
+const NNPackage *nn_catalog_resolve(const NNCatalog *catalog, const char *id,
+                                   const char *version_constraint) {
+  const NNPackage *match = NULL;
+  if (!catalog || !id || !version_constraint)
+    return NULL;
+  for (size_t i = 0; i < catalog->count; ++i) {
+    const NNPackage *candidate = &catalog->items[i].pub;
+    if (strcmp(candidate->id, id) ||
+        !nn_catalog_version_satisfies(candidate->version, version_constraint))
+      continue;
+    if (match)
+      return NULL;
+    match = candidate;
+  }
+  return match;
 }

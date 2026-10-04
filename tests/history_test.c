@@ -38,6 +38,21 @@ static void test_model_copy_and_swap(void)
                      .as.array = {.items = (NNValue *)leaves, .count = 2}};
     assert(nn_model_set_parameter(model, "a", "nested", &array,
                                   error, sizeof(error)));
+    NNParameter reference_parameters[] = {
+        {.key = "dim", .value = {.type = NN_VALUE_INT, .as.integer = -1}},
+    };
+    NNParameter reference_fields[] = {
+        {.key = "id", .value = {.type = NN_VALUE_STRING, .as.string = "core.concat"}},
+        {.key = "version", .value = {.type = NN_VALUE_STRING, .as.string = "^0.1.0"}},
+        {.key = "parameters", .value = {
+            .type = NN_VALUE_OBJECT,
+            .as.object = {.items = reference_parameters, .count = 1},
+        }},
+    };
+    NNValue reference = {.type = NN_VALUE_OBJECT,
+        .as.object = {.items = reference_fields, .count = 3}};
+    assert(nn_model_set_parameter(model, "a", "join", &reference,
+                                  error, sizeof(error)));
     assert(nn_model_set_boundary_handle(model, "a", "out", error, sizeof(error)));
     NNModel *copy = nn_model_copy(model);
     assert(copy && nn_model_equal(model, copy));
@@ -148,6 +163,31 @@ static void test_commands_groups_and_revisions(NNApplication *app, const char *r
     assert(!nn_model_find_node(nn_app_model(app), "sub-boundary-out"));
     assert(nn_app_redo(app, error, 512));
     assert(nn_model_node_count(nn_app_model(app)) == with_subflow);
+
+    assert(nn_app_add_node(app, "horizontal", "core.horizontal-repeat", "0.1.0", "",
+                           500, 160, error, 512));
+    const NNNode *horizontal = nn_model_find_node(nn_app_model(app), "horizontal");
+    const NNValue *join = NULL;
+    for (size_t i = 0; horizontal && i < horizontal->parameter_count; ++i)
+        if (!strcmp(horizontal->parameters[i].key, "join"))
+            join = &horizontal->parameters[i].value;
+    assert(join && join->type == NN_VALUE_OBJECT && join->as.object.count == 3);
+    const char *joined_text = nn_app_parameter_text(app, "horizontal", "join");
+    assert(joined_text && strstr(joined_text, "core.concat") && strstr(joined_text, "parameters"));
+    nn_app_free_text((char *)joined_text);
+    assert(nn_app_undo(app, error, 512));
+    assert(!nn_model_find_node(nn_app_model(app), "horizontal"));
+    assert(nn_app_redo(app, error, 512));
+    assert(nn_app_save(app, error, 512));
+    char *saved_project = path_join(root, "history");
+    assert(nn_app_open(app, saved_project, error, 512));
+    free(saved_project);
+    horizontal = nn_model_find_node(nn_app_model(app), "horizontal");
+    join = NULL;
+    for (size_t i = 0; horizontal && i < horizontal->parameter_count; ++i)
+        if (!strcmp(horizontal->parameters[i].key, "join"))
+            join = &horizontal->parameters[i].value;
+    assert(join && join->type == NN_VALUE_OBJECT && join->as.object.count == 3);
 
     /* The oldest of 101 edits falls out of the bounded undo history. */
     for (int i = 1; i <= 101; ++i)

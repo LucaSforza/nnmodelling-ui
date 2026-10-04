@@ -9,6 +9,10 @@
       "language": "lua",
       "file": "inference.lua"
     },
+    "visualization": {
+      "language": "lua",
+      "file": "visualization.lua"
+    },
     "pytorch": {
       "language": "python",
       "file": "pytorch.py"

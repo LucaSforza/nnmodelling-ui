@@ -3,7 +3,7 @@
 
 #include <stdlib.h>
 #include <string.h>
-static bool version_satisfies(const char *version, const char *constraint) {
+bool nn_catalog_version_satisfies(const char *version, const char *constraint) {
   unsigned long a, b, c, x, y, z;
   const char *wanted = constraint;
   bool caret = *wanted == '^';
@@ -39,7 +39,7 @@ bool nn_catalog_validate_dependencies(NNCatalog *cat, char *err, size_t cap) {
       size_t k, matches = 0;
       for (k = 0; k < cat->count; ++k)
         if (!strcmp(cat->items[k].pub.id, dep->id) &&
-            version_satisfies(cat->items[k].pub.version,
+            nn_catalog_version_satisfies(cat->items[k].pub.version,
                               dep->version_constraint))
           ++matches;
       if (matches != 1) {

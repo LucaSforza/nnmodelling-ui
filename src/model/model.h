@@ -18,10 +18,12 @@ typedef enum {
     NN_VALUE_INT,
     NN_VALUE_REAL,
     NN_VALUE_STRING,
-    NN_VALUE_ARRAY
+    NN_VALUE_ARRAY,
+    NN_VALUE_OBJECT
 } NNValueType;
 
 typedef struct NNValue NNValue;
+typedef struct NNParameter NNParameter;
 struct NNValue {
     NNValueType type;
     union {
@@ -30,13 +32,14 @@ struct NNValue {
         double real;
         char *string;
         struct { NNValue *items; size_t count; } array;
+        struct { NNParameter *items; size_t count; } object;
     } as;
 };
 
-typedef struct {
+struct NNParameter {
     char *key;
     NNValue value;
-} NNParameter;
+};
 
 /* Snapshot fields and referenced strings/values are borrowed until mutation. */
 typedef struct {

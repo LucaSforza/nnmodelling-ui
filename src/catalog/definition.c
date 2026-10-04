@@ -117,6 +117,13 @@ bool nn_catalog_parse_definition(Package *p, yyjson_val *root) {
            strcmp(d->type, "dtype") && strcmp(d->type, "json") &&
            strcmp(d->type, "stereotype")))
         return false;
+      {
+        yyjson_val *kind = nn_catalog_get(val, "kind");
+        const char *kind_text = nn_catalog_strval(kind);
+        if (kind && (!kind_text || strcmp(d->type, "stereotype") || !*kind_text))
+          return false;
+        if (kind && !(d->kind = nn_text_copy(kind_text))) return false;
+      }
       for (size_t previous = 0; previous < i; ++previous)
         if (!strcmp(p->parameters[previous].key, d->key))
           return false;

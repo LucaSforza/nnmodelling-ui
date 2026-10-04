@@ -1,5 +1,7 @@
 #include "MainWindow.hpp"
 #include "GraphScene.hpp"
+#include "Network3DView.hpp"
+#include <QTabWidget>
 #include "MainWindowUtils.hpp"
 #include "application/application.h"
 #include "catalog/catalog.h"
@@ -25,6 +27,8 @@ void MainWindow::refreshAll() {
     if (!scene_) return;
     refreshing_ = true;
     scene_->refresh();
+    if (networkTabs_ && networkTabs_->currentWidget() == network3DView_ && network3DView_)
+        network3DView_->rebuild(application_ ? nn_app_project(application_.get()) : nullptr);
     QString scope = scene_->scope();
     scopeTree_->clear();
     auto *rootItem = new QTreeWidgetItem(scopeTree_, {tr("Root")});

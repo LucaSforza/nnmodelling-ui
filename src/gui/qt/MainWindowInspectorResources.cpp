@@ -158,9 +158,14 @@ void MainWindow::refreshInspector() {
                 });
                 editor = combo;
             } else if (type == QStringLiteral("stereotype")) {
-                auto *unsupported = new QLabel(tr("Unsupported native value"), inspector_);
-                unsupported->setToolTip(value);
-                editor = unsupported;
+                auto *line = new QLineEdit(value, inspector_);
+                line->setObjectName(QStringLiteral("stereotypeParameter_%1").arg(key));
+                line->setPlaceholderText(tr("JSON reference with id, version and parameters"));
+                line->setToolTip(tr("Edit this typed package reference as a JSON object. The C application validates its package and parameters."));
+                connect(line, &QLineEdit::editingFinished, this, [this, key, nodeId, line] {
+                    editNodeParameter(nodeId, key, line->text());
+                });
+                editor = line;
             } else if (type == QStringLiteral("boolean") || type == QStringLiteral("bool")) {
                 auto *check = new QCheckBox(inspector_);
                 check->setChecked(value == QStringLiteral("true"));
