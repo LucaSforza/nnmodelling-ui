@@ -12,7 +12,7 @@ belong to nodes, not graph nodes. `ParameterIstance` is corrected to
 
 Consolidated 2026-10-02: typed outputs and analysis result types, formerly
 duplicated in typed-outputs.md/diagnostics.md, are part of this metamodel.
-Their operation sequences live in sequences.md; no older single-output design
+Their operation sequences live in sequences/; no older single-output design
 is retained as a current alternative.
 
 ## Diagram

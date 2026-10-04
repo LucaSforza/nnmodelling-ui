@@ -2,7 +2,7 @@
 
 Consolidated 2026-10-02: this is the single current editor/graphics/analysis
 ownership diagram. The former graphics.md and diagnostics.md duplicated these
-owners; their current details are retained here and in sequences.md. Source
+owners; their current details are retained here and in sequences/. Source
 organization follows contracts/source-layout.md and architecture/overview.md.
 
 ```mermaid
@@ -71,7 +71,8 @@ next C mutation; Qt copies stable IDs when retaining references. Parameter
 widgets follow schema, but C remains final validator. ID-based refresh restores
 selection where entities survive. Failed operations preserve committed state.
 Problem navigation, cause grouping and C report ownership follow
-contracts/diagnostics.md and the analysis sequence in sequences.md.
+contracts/diagnostics.md and the analysis/navigation sequence in
+[sequences/analysis-navigation.md](sequences/analysis-navigation.md).
 Typed output forms, spawned subflow terminals, mapped boundaries and circles
 follow contracts/typed-outputs.md and metamodel.md (2026-10-01).
 Accepted 2026-10-03: a new subflow seeds exactly one Input along with its mapped

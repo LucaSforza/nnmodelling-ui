@@ -44,7 +44,8 @@ Personally read these files completely before project commands:
 - docs/knowledge/uml/project.md
 - docs/knowledge/uml/metamodel.md
 - docs/knowledge/uml/editor.md
-- docs/knowledge/uml/sequences.md
+- docs/knowledge/uml/sequences/README.md
+- docs/knowledge/uml/sequences/graph-editing.md
 
 Before authoring Lua, additionally read docs/knowledge/contracts/lua.md and the
 actual relevant package definitions/rules. When delegated, also personally read

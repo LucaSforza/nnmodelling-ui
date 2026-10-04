@@ -47,10 +47,11 @@ packages, validates parameters and handles, delegates graph invariants to the
 model and marks successful changes dirty. Snapshots are borrowed until mutation.
 Analysis remains read-only and may be refreshed after a semantic mutation.
 Accepted 2026-09-30: application owns the lazy analysis cache and UI/CLI consume
-the same structured problems per contracts/diagnostics.md, uml/editor.md and
-uml/sequences.md. src/utils/utils.c/h centralizes allocation-free error
-formatting and owned text copying;
-path joining uses checked malloc; JSON text construction uses existing yyjson.
+the same structured problems per contracts/diagnostics.md and uml/editor.md;
+see [analysis and navigation](../uml/sequences/analysis-navigation.md#analysis-and-problem-navigation).
+`src/utils/utils.c/h` centralizes allocation-free error formatting and owned
+text copying; path joining uses checked malloc; JSON text construction uses
+existing yyjson.
 SDS was reconsidered and is not a dependency (diagnostics.md).
 
 Completed 2026-09-30: the SDL platform, custom rasterization, generic input
