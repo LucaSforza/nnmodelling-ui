@@ -10,6 +10,9 @@ Read [architecture](architecture/overview.md), then relevant contracts and UML
 before changing code. Update contract and UML before changing accepted
 semantics or ownership. [UI rewrite plan](../plans/ui-rewrite.md) tracks work;
 [bootstrap plan](../plans/bootstrap.md) records completed groundwork.
+Before committing Knowledge Base changes, run `just check-mermaid` to parse all
+Mermaid blocks. Sequence-message semicolons split statements, so use commas or
+the Mermaid entity `#59;` when a literal semicolon is required.
 
 | Area | Documents |
 | --- | --- |

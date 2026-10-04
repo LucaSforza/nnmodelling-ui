@@ -29,6 +29,16 @@ Connection ordering follows target-handle order. A requested automation
 screenshot is captured after requested arrangement, widget refresh, and layout
 have completed.
 
+## Editing and validation
+
+Run `just check-mermaid` after changing diagrams. It parses every Mermaid block
+under `docs/knowledge/` with the version-pinned Mermaid parser. This checks
+syntax, not layout or the exact renderer version used by GitHub. First run needs
+Node.js 22.12+ and npm; the recipe installs locked dependencies if missing.
+Preview the rendered result on GitHub or in Mermaid Live Editor when checking
+visual layout. In sequence diagrams, semicolons separate statements; write a
+comma or use `#59;` when a literal semicolon is needed in a message or note.
+
 ## Contracts
 
 Project and graph behavior follows [model](../../contracts/model.md),

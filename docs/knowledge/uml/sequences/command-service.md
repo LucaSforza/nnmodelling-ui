@@ -23,7 +23,7 @@ sequenceDiagram
     Service->>Socket: write response and close client
     Socket-->>CLI: newline-terminated JSON
     CLI-->>Agent: print result and exit status
-    Note over Timer,Service: Polling runs on Qt thread; request handling stays nonblocking
+    Note over Timer,Service: Polling runs on Qt thread, request handling stays nonblocking
 ```
 
 ## Route a request

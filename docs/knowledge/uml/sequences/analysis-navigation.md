@@ -34,7 +34,7 @@ sequenceDiagram
     Model-->>App: copied node and scope identifiers
     App-->>Main: resolved node and scope
     Main->>Scene: switch scope, refresh, select, and center node
-    Note over Scene,Analysis: Analysis reads graph; report pointers are not retained across mutation
+    Note over Scene,Analysis: Analysis reads graph, report pointers are not retained across mutation
 ```
 
 ## Preview and hover

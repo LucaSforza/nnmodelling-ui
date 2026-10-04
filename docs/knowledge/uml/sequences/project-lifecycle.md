@@ -65,12 +65,12 @@ sequenceDiagram
         Project->>Model: parse graph and validate package references
         Project-->>App: complete staged project or error
         App->>App: swap active project only after full validation
-        App-->>Main: success or error; old project retained on failure
+        App-->>Main: success or error, old project retained on failure
         Main->>Main: clear selection and return to root scope on success
         Main->>Main: refresh panels and fit graph on success
         Main-->>User: report open error on failure
     end
-    Note over Main,App: Discard skips saving; Cancel and save failure stop before nn_app_open
+    Note over Main,App: Discard skips saving, Cancel and save failure stop before nn_app_open
 ```
 
 ## Create a project
@@ -97,7 +97,7 @@ sequenceDiagram
         App->>Project: create resources and validate staged project
         Project-->>App: complete project or error
         App->>App: replace active project only after successful creation
-        App-->>Main: success or error; prior project retained on failure
+        App-->>Main: success or error, prior project retained on failure
         Main->>Main: clear selection, refresh panels, and fit graph on success
         Main-->>User: show creation error on failure
     end

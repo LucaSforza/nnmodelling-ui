@@ -63,7 +63,7 @@ sequenceDiagram
         Scene-->>Main: modelChanged
         Main->>Scene: queued refresh and lazy analysis query
     else invalid connection
-        App-->>Scene: error; committed graph unchanged
+        App-->>Scene: error, committed graph unchanged
         Scene-->>Main: report operation error
         Main-->>User: show operation error
     end
@@ -141,11 +141,11 @@ sequenceDiagram
     Model-->>App: copied port IDs and occupancy
     App-->>Scene: port snapshot
     Scene->>Scene: combine occupied ports with retained free-slot count
-    Note over Scene: At least two free slots; occupied ports remain visible
+    Note over Scene: At least two free slots, occupied ports remain visible
     User->>Join: click plus or minus
     Join->>Scene: change presentation-only free-slot count
     Scene->>Scene: queue refresh and redraw ordered handles
-    Note over Scene,Model: Slot controls create no edge; connection uses nn_app_connect
+    Note over Scene,Model: Slot controls create no edge, connection uses nn_app_connect
 ```
 
 ## Arrange current scope
@@ -173,7 +173,7 @@ sequenceDiagram
     Main->>App: nn_app_end_edit(commit=allMovesSucceeded)
     App-->>Main: one committed history edit or rollback error
     Main->>Main: refreshAll and fitGraph after committed layout
-    Note over Scene,Model: Arrange persists positions; any failed move rolls back group
+    Note over Scene,Model: Arrange persists positions, any failed move rolls back group
 ```
 
 ## Fit current scope
@@ -189,7 +189,7 @@ sequenceDiagram
     User->>View: choose Fit
     View->>Scene: recompute routes from current geometry
     View->>View: frame scene content with margin
-    Note over View,Scene: Camera adjustment only; persisted node coordinates stay unchanged
+    Note over View,Scene: Camera adjustment only, persisted node coordinates stay unchanged
 ```
 
 ## Single-command history
@@ -209,7 +209,7 @@ sequenceDiagram
     App->>Model: apply mutation
     Model-->>App: success or error
     App->>History: retain one revision only when model changed
-    Note over App,History: Multi-node drag, Delete, and Arrange use grouped edits; see next sequence
+    Note over App,History: Multi-node drag, Delete, and Arrange use grouped edits, see next sequence
 ```
 
 ## Grouped edit history
@@ -229,7 +229,7 @@ sequenceDiagram
         App->>Model: mutate active graph
     end
     Scene->>App: nn_app_end_edit(commit=allCommandsSucceeded)
-    App->>History: store one snapshot on commit; restore start on failure
+    App->>History: store one snapshot on commit, restore start on failure
 ```
 
 ## Undo and redo

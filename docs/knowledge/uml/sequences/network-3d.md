@@ -28,7 +28,7 @@ sequenceDiagram
     View->>Viz: nn_3d_camera_home() and nn_3d_frame(...) when scene built
     Viz-->>View: depth-sorted projected primitives
     View->>View: paint current frame or show empty/error state
-    Note over View,Project: Null project skips nn_3d_build; build failure leaves no stale scene displayed
+    Note over View,Project: Null project skips nn_3d_build, build failure leaves no stale scene displayed
     Note over Viz,Lua: Lua composition is optional per package and bounded by the 3D contract
 ```
 
@@ -50,7 +50,7 @@ sequenceDiagram
         View->>View: paint frame with QPainter
     end
     Note over User,View: Controls: Fit/Home, right-drag, arrows, WASD, Q/E, and mouse wheel
-    Note over View,Viz: Camera and frame are presentation state; graph remains unchanged
+    Note over View,Viz: Camera and frame are presentation state, graph remains unchanged
 ```
 
 ## Select a 3D occurrence
@@ -69,5 +69,5 @@ sequenceDiagram
     View->>Viz: nn_3d_node_at(index) after a hit
     Viz-->>View: source ID, occurrence path, and parameters
     View->>View: copy C strings and display selection details
-    Note over View,Viz: Picking queries disposable scene identity; it does not mutate project graph
+    Note over View,Viz: Picking queries disposable scene identity, it does not mutate project graph
 ```
