@@ -2,6 +2,7 @@
 
 #include "GraphScene.hpp"
 #include "GraphView.hpp"
+#include "Network3DView.hpp"
 #include "NodeItem.hpp"
 #include "MainWindowUtils.hpp"
 #include "application/application.h"
@@ -39,6 +40,7 @@
 #include <QColor>
 #include <QTreeView>
 #include <QTreeWidgetItemIterator>
+#include <QTabWidget>
 #include <QWidgetAction>
 
 #include <cmath>
@@ -131,6 +133,8 @@ MainWindow::~MainWindow() {
     // Destroy scene items before the application they reference.
     delete view_;
     view_ = nullptr;
+    delete network3DView_;
+    network3DView_ = nullptr;
     delete scene_;
     scene_ = nullptr;
 }
@@ -330,12 +334,20 @@ void MainWindow::buildUi() {
     leftLayout->addWidget(addButton);
 
     scene_ = new GraphScene(application_.get(), this);
-    view_ = new GraphView(scene_, workspace);
+    networkTabs_ = new QTabWidget(workspace);
+    networkTabs_->setObjectName(QStringLiteral("networkTabs"));
+    view_ = new GraphView(scene_, networkTabs_);
     view_->setObjectName(QStringLiteral("graph"));
     connect(fitButtonAction, &QAction::triggered, view_, &GraphView::fitGraph);
     connect(zoomInButtonAction, &QAction::triggered, view_, &GraphView::zoomIn);
     connect(zoomOutButtonAction, &QAction::triggered, view_, &GraphView::zoomOut);
     view_->setMinimumWidth(360);
+    networkTabs_->addTab(view_, tr("Network 2D"));
+    networkTabs_->setTabWhatsThis(0, tr("Edit the current graph in the 2D editor."));
+    network3DView_ = new Network3DView(networkTabs_);
+    network3DView_->setObjectName(QStringLiteral("network3DTab"));
+    networkTabs_->addTab(network3DView_, tr("Network 3D"));
+    networkTabs_->setTabWhatsThis(1, tr("Read-only expanded occurrence explorer."));
     auto *right = new QSplitter(Qt::Vertical, workspace);
     right->setMinimumWidth(255);
     auto *inspectorPane = new QWidget(right);
@@ -397,13 +409,17 @@ void MainWindow::buildUi() {
     right->addWidget(diagnosticPane);
     right->setSizes({280, 210, 190});
     workspace->addWidget(left);
-    workspace->addWidget(view_);
+    workspace->addWidget(networkTabs_);
     workspace->addWidget(right);
     workspace->setStretchFactor(0, 0);
     workspace->setStretchFactor(1, 1);
     workspace->setStretchFactor(2, 0);
     workspace->setSizes({235, 820, 305});
     setCentralWidget(workspace);
+    connect(networkTabs_, &QTabWidget::currentChanged, this, [this](int index) {
+        if (index == 1 && network3DView_)
+            network3DView_->rebuild(application_ ? nn_app_project(application_.get()) : nullptr);
+    });
 
     const auto chooseScope = [this](QTreeWidgetItem *item) {
         if (refreshing_ || !item || !scene_ || !(item->flags() & Qt::ItemIsSelectable)) return;

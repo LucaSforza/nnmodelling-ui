@@ -2,7 +2,7 @@
 
 Consolidated 2026-10-02: this is the single current editor/graphics/analysis
 ownership diagram. The former graphics.md and diagnostics.md duplicated these
-owners; their current details are retained here and in sequences.md. Source
+owners; their current details are retained here and in sequences/. Source
 organization follows contracts/source-layout.md and architecture/overview.md.
 
 ```mermaid
@@ -71,7 +71,8 @@ next C mutation; Qt copies stable IDs when retaining references. Parameter
 widgets follow schema, but C remains final validator. ID-based refresh restores
 selection where entities survive. Failed operations preserve committed state.
 Problem navigation, cause grouping and C report ownership follow
-contracts/diagnostics.md and the analysis sequence in sequences.md.
+contracts/diagnostics.md and the analysis/navigation sequence in
+[sequences/analysis-navigation.md](sequences/analysis-navigation.md).
 Typed output forms, spawned subflow terminals, mapped boundaries and circles
 follow contracts/typed-outputs.md and metamodel.md (2026-10-01).
 Accepted 2026-10-03: a new subflow seeds exactly one Input along with its mapped
@@ -134,3 +135,18 @@ shown as a non-navigable Root problem with null node identity; it never erases
 successful local tensors. CommandAdapter queries the same application report.
 No SDS or third-party API types: global utils owns bounded errors/path joining;
 yyjson owns escaping/serialization.
+
+## Expanded explorer ownership (2026-10-04)
+
+```mermaid
+flowchart LR
+  Project[C Project/model/catalog] --> Expansion[C Lua composition / occurrence scene]
+  Expansion --> Layout[C 3D layout and groups]
+  Layout --> Camera[C camera / projection / depth ordering / picking]
+  Camera --> Tab[Qt Network 3D tab: input translation and painting]
+```
+
+Scene is owned disposable presentation data. No write-back, persistence or
+parallel graph authority. Source IDs and instance paths identify occurrences.
+Qt translates mouse look, arrow-key turning, flight, Fit and Home into the same
+C camera API; projected geometry and picking remain in C.

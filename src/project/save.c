@@ -31,6 +31,18 @@ static yyjson_mut_val *write_value(yyjson_mut_doc *doc, const NNValue *value)
         }
         return array;
     }
+    case NN_VALUE_OBJECT: {
+        if (value->as.object.count && !value->as.object.items) return NULL;
+        yyjson_mut_val *object = yyjson_mut_obj(doc);
+        if (!object) return NULL;
+        for (size_t i = 0; i < value->as.object.count; ++i) {
+            const NNParameter *item = &value->as.object.items[i];
+            yyjson_mut_val *serialized = write_value(doc, &item->value);
+            if (!item->key || !item->key[0] || !serialized ||
+                !yyjson_mut_obj_add(object, yyjson_mut_strcpy(doc, item->key), serialized)) return NULL;
+        }
+        return object;
+    }
     default: return NULL;
     }
 }

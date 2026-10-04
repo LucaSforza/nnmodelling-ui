@@ -32,5 +32,6 @@ bool nn_catalog_number(yyjson_val *v, double *out);
 bool nn_catalog_parse_definition(Package *p, yyjson_val *root);
 bool nn_catalog_parse_manifest(Package *p, yyjson_val *root, const char *directory);
 bool nn_catalog_validate_dependencies(NNCatalog *cat, char *err, size_t cap);
+bool nn_catalog_version_satisfies(const char *version, const char *constraint);
 
 #endif

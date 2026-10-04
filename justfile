@@ -41,3 +41,8 @@ swarm-setup:
 
 test-swarm:
     node --test tests/swarm_mailbox_test.mjs tests/swarm_activity_test.mjs
+
+# Parse every Mermaid block in the Knowledge Base with the pinned official parser.
+check-mermaid:
+    @if [ ! -d tools/mermaid-check/node_modules/mermaid ]; then npm ci --prefix tools/mermaid-check --no-audit --no-fund; fi
+    node tools/mermaid-check/check.mjs

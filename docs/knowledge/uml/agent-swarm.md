@@ -70,10 +70,10 @@ sequenceDiagram
     else Deadline expires
         Mailbox-->>Principal: reason=timeout
         Principal->>Mailbox: status(outstanding IDs), one diagnostic snapshot
-        Mailbox->>Runtime: Read child metadata/tools; active sessions if API exposed
+        Mailbox->>Runtime: Read child metadata/tools, active sessions if API exposed
         Mailbox-->>Principal: Activity/outcome/tools, no transcript or reasoning
     end
-    Mailbox->>Mailbox: Remove listener/timer; abort observation requests only
+    Mailbox->>Mailbox: Remove listener/timer, abort observation requests only
     A-->>Runtime: Final implementation result
     Runtime-->>Principal: Native background completion
     Principal->>Principal: Review, integrate, run relevant checks
@@ -111,14 +111,14 @@ sequenceDiagram
         Runtime->>Builder: Socket, project, allowed mutations, KB and acceptance criteria
         Builder->>Mailbox: members() / actionable send(parent) when needed
     end
-    Builder->>Builder: Read KB; verify CLI and assigned socket
+    Builder->>Builder: Read KB, verify CLI and assigned socket
     Builder->>CLI: project.snapshot
     CLI->>App: Read authoritative project state
     App-->>Builder: Identity, dirty flag, graph and resources via CLI
     Builder->>CLI: Authorized project/resource/node/edge operations
     CLI->>App: Validate and commit each operation
     App-->>Builder: Success or explicit error via CLI
-    Builder->>CLI: analysis.diagnostics; arrange/save/capture as requested
+    Builder->>CLI: analysis.diagnostics, then arrange/save/capture as requested
     CLI->>App: Analyze and persist through existing application authority
     App-->>Builder: Diagnostics, save/capture results via CLI
     alt Primary session

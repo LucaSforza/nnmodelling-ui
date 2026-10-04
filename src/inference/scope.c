@@ -1,5 +1,6 @@
 #define _POSIX_C_SOURCE 200809L
 #include "inference_internal.h"
+#include "catalog/catalog.h"
 #include "utils/utils.h"
 
 #include <stdlib.h>
@@ -32,10 +33,18 @@ NNInferenceStatus nn_inference_evaluate_scope(Evaluation *evaluation, const char
         const NNNode *node = nn_model_node_at(model, i);
         if (strcmp(node->scope_id ? node->scope_id : "", scope ? scope : "")) continue;
         ++scope_nodes;
-        const char *kind = nn_inference_package_kind(evaluation, node);
-        if (kind && !strcmp(kind, "input")) { ++inputs_n; input_index = i; }
-        if (kind && !strcmp(kind, "output")) { ++outputs_n; output_index = i; }
-        if (kind && !strcmp(kind, "loss-output")) ++losses_n;
+        const NNPackage *package = nn_catalog_find(
+            evaluation->catalog, node->package_id, node->package_version);
+        if (nn_catalog_package_is_kind(package, "input")) {
+            ++inputs_n;
+            input_index = i;
+        }
+        if (nn_catalog_package_is_kind(package, "output")) {
+            ++outputs_n;
+            output_index = i;
+        }
+        if (nn_catalog_package_is_kind(package, "loss-output"))
+            ++losses_n;
     }
     bool nested_scope = scope && *scope;
     const NNNode *owner = nested_scope ? nn_model_find_node(model, scope) : NULL;
@@ -48,24 +57,30 @@ NNInferenceStatus nn_inference_evaluate_scope(Evaluation *evaluation, const char
             owner_package->output_count > 2) invalid_mapping = true;
         for (size_t i = 0; i < count && !invalid_mapping; ++i) {
             const NNNode *terminal = nn_model_node_at(model, i);
-            const char *kind = nn_inference_package_kind(evaluation, terminal);
             if (strcmp(terminal->scope_id ? terminal->scope_id : "", scope)) continue;
+            const NNPackage *terminal_package = nn_catalog_find(
+                evaluation->catalog, terminal->package_id,
+                terminal->package_version);
+            bool output_terminal =
+                nn_catalog_package_is_kind(terminal_package, "output");
+            bool loss_terminal =
+                nn_catalog_package_is_kind(terminal_package, "loss-output");
+            bool terminal_kind = output_terminal || loss_terminal;
             if (terminal->boundary_handle_id &&
-                (!kind || (strcmp(kind, "output") && strcmp(kind, "loss-output")))) {
+                !terminal_kind) {
                 invalid_mapping = true;
                 break;
             }
-            if (!kind || (strcmp(kind, "output") && strcmp(kind, "loss-output"))) continue;
+            if (!terminal_kind) continue;
             if (!terminal->boundary_handle_id) continue;
-            size_t handle = owner_package->output_count;
-            for (size_t h = 0; h < owner_package->output_count; ++h)
-                if (!strcmp(terminal->boundary_handle_id, owner_package->outputs[h].id)) {
-                    handle = h; break;
-                }
-            if (handle == owner_package->output_count) { invalid_mapping = true; break; }
-            const char *expected_kind = !strcmp(owner_package->outputs[handle].type, "loss")
-                ? "loss-output" : "output";
-            if (strcmp(kind, expected_kind) || mapped_index[handle] != count) {
+            const NNOutputDef *mapped_output = nn_catalog_package_output(
+                owner_package, terminal->boundary_handle_id);
+            if (!mapped_output) { invalid_mapping = true; break; }
+            size_t handle = (size_t)(mapped_output - owner_package->outputs);
+            bool expected_loss =
+                !strcmp(owner_package->outputs[handle].type, "loss");
+            if (loss_terminal != expected_loss ||
+                mapped_index[handle] != count) {
                 invalid_mapping = true; break;
             }
             mapped_index[handle] = i;
@@ -149,10 +164,15 @@ NNInferenceStatus nn_inference_evaluate_scope(Evaluation *evaluation, const char
             const NNEdge *edge = nn_model_edge_at(model, e);
             if (strcmp(edge->target_id, node->id) || strcmp(edge->scope_id ? edge->scope_id : "", scope ? scope : "")) continue;
             size_t order = e;
-            if (package && !strcmp(package->kind, "join") && !nn_join_handle_order(edge->target_handle_id, &order)) { malformed = true; break; }
+            if (nn_catalog_package_is_kind(package, "join") &&
+                !nn_join_handle_order(edge->target_handle_id, &order)) {
+                malformed = true;
+                break;
+            }
             incoming[used++] = (Incoming){ .edge = edge, .order = order };
         }
-        if (package && !strcmp(package->kind, "join") && !malformed && used > 1) {
+        if (nn_catalog_package_is_kind(package, "join") && !malformed &&
+            used > 1) {
             qsort(incoming, used, sizeof(*incoming), incoming_compare);
             for (size_t i = 1; i < used; ++i) if (incoming[i-1].order == incoming[i].order) malformed = true;
         }
@@ -170,7 +190,8 @@ NNInferenceStatus nn_inference_evaluate_scope(Evaluation *evaluation, const char
         if (malformed) { status = NN_INFERENCE_SEMANTIC_ERROR; message = nn_text_copy("join target handle must be in-<positive integer>"); }
         else if (missing) { status = NN_INFERENCE_UNRESOLVED; message = nn_text_copy("an upstream tensor is unresolved"); }
         else if (!package) { status = NN_INFERENCE_RUNTIME_FAULT; message = nn_text_copy("package is absent from active catalog"); }
-        else if (incoming_count == 0 && (!package->kind || strcmp(package->kind, "input"))) {
+        else if (incoming_count == 0 &&
+                 !nn_catalog_package_is_kind(package, "input")) {
             status = NN_INFERENCE_UNRESOLVED;
             message = nn_text_copy("node has no upstream tensor");
         }
@@ -218,8 +239,9 @@ NNInferenceStatus nn_inference_evaluate_scope(Evaluation *evaluation, const char
             failure_message = nn_text_copy(message ? message : "nested semantic error");
         }
         if (status == NN_INFERENCE_SUCCESS) {
-            bool terminal = package && package->kind &&
-                (!strcmp(package->kind, "output") || !strcmp(package->kind, "loss-output"));
+            bool terminal =
+                nn_catalog_package_is_kind(package, "output") ||
+                nn_catalog_package_is_kind(package, "loss-output");
             if ((terminal && nested_scope &&
                  !nn_inference_node_output_add_mapping(&outputs[index], node, package, &output[0])) ||
                 (!terminal && !nn_inference_node_output_add(&outputs[index], package, output))) {

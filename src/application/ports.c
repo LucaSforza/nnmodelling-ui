@@ -1,5 +1,6 @@
 #include "application_internal.h"
 #include "application/application.h"
+#include "catalog/catalog.h"
 #include "utils/utils.h"
 #include "inference/inference.h"
 #include "yyjson.h"
@@ -12,23 +13,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-bool nn_app_valid_output_handle(const NNPackage *package, const char *handle)
-{
-    if (!package || !handle) return false;
-    for (size_t i = 0; i < package->output_count; ++i)
-        if (!strcmp(package->outputs[i].id, handle)) return true;
-    return false;
-}
-
-bool nn_app_valid_input_handle(const NNPackage *package, const char *handle)
-{
-    if (nn_app_kind_is(package, "input")) return false;
-    if (nn_app_kind_is(package, "join")) {
-        size_t suffix = 0;
-        return nn_join_handle_order(handle, &suffix);
-    }
-    return handle && !strcmp(handle, "in");
-}
 typedef struct { const char *id; size_t number; bool numeric, owned; } JoinHandle;
 
 static int compare_join_handle(const void *left, const void *right)
@@ -98,8 +82,8 @@ size_t nn_app_port_count(const NNApplication *app, const char *node_id, bool out
     const NNPackage *package = nn_app_find_package(app, node);
     if (!package) return 0;
     if (output) return package->output_count;
-    if (nn_app_kind_is(package, "input")) return 0;
-    if (nn_app_kind_is(package, "join")) {
+    if (nn_catalog_package_is_kind(package, "input")) return 0;
+    if (nn_catalog_package_is_kind(package, "join")) {
         size_t count = 0;
         JoinHandle *inputs = join_inputs(model, node_id, &count);
         join_handles_free(inputs, count);
@@ -120,8 +104,8 @@ bool nn_app_port_id(const NNApplication *app, const char *node_id, bool output,
         int written = snprintf(buffer, capacity, "%s", package->outputs[index].id);
         return written >= 0 && (size_t)written < capacity;
     }
-    if (nn_app_kind_is(package, "input")) return false;
-    if (!nn_app_kind_is(package, "join")) {
+    if (nn_catalog_package_is_kind(package, "input")) return false;
+    if (!nn_catalog_package_is_kind(package, "join")) {
         if (index != 0) return false;
         return snprintf(buffer, capacity, "in") < (int)capacity;
     }
@@ -137,7 +121,7 @@ bool nn_app_node_is_subflow(const NNApplication *app, const char *node_id)
 {
     const NNModel *model = nn_app_model(app);
     const NNNode *node = model ? nn_model_find_node(model, node_id) : NULL;
-    return nn_app_kind_is(nn_app_find_package(app, node), "subflow");
+    return nn_catalog_package_is_kind(nn_app_find_package(app, node), "subflow");
 }
 
 const char *nn_app_output_type(const NNApplication *app, const char *node_id,
@@ -146,8 +130,6 @@ const char *nn_app_output_type(const NNApplication *app, const char *node_id,
     const NNModel *model = nn_app_model(app);
     const NNNode *node = model ? nn_model_find_node(model, node_id) : NULL;
     const NNPackage *package = nn_app_find_package(app, node);
-    if (!package || !handle_id) return NULL;
-    for (size_t i = 0; i < package->output_count; ++i)
-        if (!strcmp(package->outputs[i].id, handle_id)) return package->outputs[i].type;
-    return NULL;
+    const NNOutputDef *output = nn_catalog_package_output(package, handle_id);
+    return output ? output->type : NULL;
 }

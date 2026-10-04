@@ -20,6 +20,17 @@ malformed join handle IDs are rejected. This convention uses package kind,
 never concrete package IDs. Output/loss-output terminals have no outgoing ports.
 Nodes additionally own optional data.boundaryHandle for nested terminal mapping.
 
+Catalog owns read-only package metadata queries shared by consumers:
+`nn_catalog_package_is_kind(package, kind)` compares the normalized kind;
+`nn_catalog_package_parameter(package, key)` and
+`nn_catalog_package_output(package, handle)` return borrowed matching definition
+entries or `NULL`; `nn_catalog_package_input_handle_valid(package, handle)`
+checks the kind-derived input convention (`input`: none, `join`: valid ordered
+join handle, other kinds: exactly `in`). Returned definition pointers remain
+valid for catalog lifetime. These package queries do not inspect nodes, graph
+occupancy, edge type compatibility, or subflow boundary mappings; those remain
+with their graph/application consumers.
+
 Persistent model state is distinct from editor selection/camera/drag state and
 from per-frame draw commands. A typed model is authoritative; JSON parser
 objects are temporary. Current release implements project persistence with
@@ -121,6 +132,13 @@ empty join; no allocation proportional to a potentially large suffix.
 `nn_app_node_is_subflow` reads package kind. All string arguments are borrowed
 for the call; model copies committed data. IDs stay stable strings.
 
+Kind, parameter, and output metadata lookups use catalog's
+`nn_catalog_package_*` queries across application, project loading, inference,
+and visualization. Kind-derived input-handle validity is shared by application,
+project loading, and visualization. Application still owns graph-aware command
+validation; project loading still validates persisted edges; inference and
+visualization retain their distinct graph-level boundary/report behavior.
+
 Scope display follows editor contract. New non-root scopes require a subflow
 owner; existing imported scope strings are preserved. Nonempty subflow deletion
 is rejected rather than silently orphaning children. Coordinate rules below
@@ -169,3 +187,10 @@ starting graph. History allocation succeeds before mutating active graph; failed
 commands/groups preserve graph and history. Lifecycle/save/resource operations
 reject an active group. Maximum 100 completed edits; oldest snapshots are released.
 See editor.md for UI behavior, save revisions and resource barriers.
+
+## Stereotype objects (accepted 2026-10-04)
+
+[3D contract](visualization-3d.md) supersedes the earlier unsupported object
+parameter limitation: owned NNValue objects preserve stereotype references,
+parameters, history and schema-v2 JSON. C validates active package identity,
+version constraint, expected kind and referenced parameters.

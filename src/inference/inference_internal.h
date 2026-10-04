@@ -56,6 +56,19 @@ typedef struct {
     Tensor inherited_scratch;
     Tensor output_scratch[2];
     char *message_scratch;
+    NNParameter *stereotype_values;
+    size_t stereotype_value_count;
+    NNParameter *stereotype_parameters;
+    size_t stereotype_parameter_count;
+    Tensor *stereotype_inputs;
+    size_t stereotype_input_count;
+    Tensor stereotype_outputs[2];
+    char *stereotype_message;
+    char *stereotype_source_file;
+    char *stereotype_cause_node_id;
+    size_t stereotype_source_line;
+    NNInferenceStatus stereotype_status;
+    bool stereotype_failed;
 } LuaContext;
 typedef struct {
     LuaContext *context;
@@ -75,6 +88,8 @@ bool nn_inference_tensor_from_lua(lua_State *state, int index, Tensor *tensor, b
 void nn_inference_tensor_detach_lua_temporaries(lua_State *state, Tensor *tensor);
 int nn_inference_extract_rule_result(lua_State *state);
 int nn_inference_invoke_rule(lua_State *state);
+int nn_inference_stereotype(lua_State *state);
+void nn_inference_stereotype_cleanup(LuaContext *context);
 bool nn_inference_protected_lua_initialize(lua_State *state);
 extern char nn_inference_invoke_rule_registry_key;
 extern char nn_inference_extract_result_registry_key;
@@ -83,7 +98,6 @@ NNInferenceStatus nn_inference_evaluate_scope(Evaluation *evaluation, const char
     char **cause_node_id);
 size_t nn_inference_find_node_index(const NNModel *model, const char *id);
 Result *nn_inference_report_result(Evaluation *evaluation, const NNNode *node);
-const char *nn_inference_package_kind(Evaluation *evaluation, const NNNode *node);
 void nn_inference_scope_set_status(Evaluation *evaluation, const char *scope,
     NNInferenceStatus status, const char *message);
 NNInferenceStatus nn_inference_execute_rule(Evaluation *evaluation, const NNNode *node,

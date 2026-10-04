@@ -1,5 +1,6 @@
 #include "application_internal.h"
 #include "application/application.h"
+#include "catalog/catalog.h"
 #include "utils/utils.h"
 #include "inference/inference.h"
 #include "yyjson.h"
@@ -60,14 +61,14 @@ bool nn_app_add_node(NNApplication *app, const char *id, const char *package_id,
                                                 package_id, version);
     if (!package) return nn_app_history_fail(app, error, cap, "package is not active in this project");
     const NNCatalog *catalog = nn_project_catalog(app->project);
-    const NNPackage *input_package = nn_app_kind_is(package, "subflow")
+    const NNPackage *input_package = nn_catalog_package_is_kind(package, "subflow")
         ? nn_catalog_find(catalog, "core.input", "0.1.0") : NULL;
-    if (nn_app_kind_is(package, "subflow") && !input_package)
+    if (nn_catalog_package_is_kind(package, "subflow") && !input_package)
         return nn_app_history_fail(app, error, cap, "required core.input package is unavailable");
     NNModel *model = nn_project_model(app->project);
     if (*scope) {
         const NNNode *owner = nn_model_find_node(model, scope);
-        if (!owner || !nn_app_kind_is(nn_app_find_package(app, owner), "subflow"))
+        if (!owner || !nn_catalog_package_is_kind(nn_app_find_package(app, owner), "subflow"))
             return nn_app_history_fail(app, error, cap, "scope must name an existing subflow");
     }
     if (!nn_app_history_prepare(app, error, cap)) return false;
@@ -79,9 +80,6 @@ bool nn_app_add_node(NNApplication *app, const char *id, const char *package_id,
     }
     for (size_t i = 0; i < package->parameter_count; ++i) {
         const NNParameterDef *definition = &package->parameters[i];
-        /* Preserve the existing editor behavior for object-valued defaults. */
-        if (!strcmp(definition->type, "stereotype") && definition->has_default &&
-            definition->default_value.type == NN_PARAMETER_JSON) continue;
         if (!nn_app_add_default(app, model, id, package, definition, error, cap)) {
             char ignored[64];
             (void)nn_model_remove_node(model, id, ignored, sizeof(ignored));
@@ -89,7 +87,7 @@ bool nn_app_add_node(NNApplication *app, const char *id, const char *package_id,
             return false;
         }
     }
-    if (nn_app_kind_is(package, "subflow")) {
+    if (nn_catalog_package_is_kind(package, "subflow")) {
         char spawned_ids[3][256] = {{0}};
         size_t spawned = 0;
         char failure[256] = "";
@@ -164,7 +162,7 @@ bool nn_app_remove_node(NNApplication *app, const char *id, char *error, size_t 
     NNModel *model = nn_project_model(app->project);
     const NNNode *node = nn_model_find_node(model, id);
     if (!node) return nn_app_history_fail(app, error, cap, "node not found");
-    if (nn_app_kind_is(nn_app_find_package(app, node), "subflow")) {
+    if (nn_catalog_package_is_kind(nn_app_find_package(app, node), "subflow")) {
         for (size_t i = 0; i < nn_model_node_count(model); ++i) {
             const NNNode *child = nn_model_node_at(model, i);
             if (!strcmp(child->scope_id, id))
@@ -217,15 +215,15 @@ bool nn_app_connect(NNApplication *app, const char *id, const char *source,
     const NNPackage *source_package = nn_app_find_package(app, source_node);
     const NNPackage *target_package = nn_app_find_package(app, target_node);
     if (!source_package || !target_package) return nn_app_history_fail(app, error, cap, "edge package is unresolved");
-    if (!nn_app_valid_output_handle(source_package, source_handle))
+    if (!nn_catalog_package_output(source_package, source_handle))
         return nn_app_history_fail(app, error, cap, "invalid output handle");
-    if (!nn_app_valid_input_handle(target_package, target_handle))
+    if (!nn_catalog_package_input_handle_valid(target_package, target_handle))
         return nn_app_history_fail(app, error, cap, "invalid input handle");
     const char *type = nn_app_output_type(app, source, source_handle);
-    if ((nn_app_kind_is(target_package, "output") && (!type || strcmp(type, "output"))) ||
-        (nn_app_kind_is(target_package, "loss-output") && (!type || strcmp(type, "loss"))))
+    if ((nn_catalog_package_is_kind(target_package, "output") && (!type || strcmp(type, "output"))) ||
+        (nn_catalog_package_is_kind(target_package, "loss-output") && (!type || strcmp(type, "loss"))))
         return nn_app_history_fail(app, error, cap, "output type is incompatible with terminal");
-    if (nn_app_kind_is(target_package, "join")) {
+    if (nn_catalog_package_is_kind(target_package, "join")) {
         size_t requested;
         (void)nn_join_handle_order(target_handle, &requested);
         for (size_t i = 0; i < nn_model_edge_count(model); ++i) {
@@ -264,18 +262,17 @@ bool nn_app_set_boundary_handle(NNApplication *app, const char *node_id,
     NNModel *model = nn_project_model(app->project);
     const NNNode *node = nn_model_find_node(model, node_id);
     const NNPackage *terminal = nn_app_find_package(app, node);
-    if (!node || (!nn_app_kind_is(terminal, "output") && !nn_app_kind_is(terminal, "loss-output")))
+    if (!node || (!nn_catalog_package_is_kind(terminal, "output") && !nn_catalog_package_is_kind(terminal, "loss-output")))
         return nn_app_history_fail(app, error, cap, "boundary mapping requires an output terminal");
     const NNNode *owner = *node->scope_id ? nn_model_find_node(model, node->scope_id) : NULL;
     const NNPackage *owner_package = nn_app_find_package(app, owner);
-    if (!owner || !nn_app_kind_is(owner_package, "subflow"))
+    if (!owner || !nn_catalog_package_is_kind(owner_package, "subflow"))
         return nn_app_history_fail(app, error, cap, "root terminals cannot have boundary mappings");
-    const NNOutputDef *mapping = NULL;
-    for (size_t i = 0; i < owner_package->output_count; ++i)
-        if (!strcmp(owner_package->outputs[i].id, handle_id)) mapping = &owner_package->outputs[i];
+    const NNOutputDef *mapping =
+        nn_catalog_package_output(owner_package, handle_id);
     if (!mapping) return nn_app_history_fail(app, error, cap, "unknown subflow output handle");
     const char *expected_kind = !strcmp(mapping->type, "loss") ? "loss-output" : "output";
-    if (!nn_app_kind_is(terminal, expected_kind))
+    if (!nn_catalog_package_is_kind(terminal, expected_kind))
         return nn_app_history_fail(app, error, cap, "boundary handle type does not match terminal");
     if (node->boundary_handle_id && !strcmp(node->boundary_handle_id, handle_id)) {
         nn_error_set(error, cap, "");

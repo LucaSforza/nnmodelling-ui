@@ -1,5 +1,6 @@
 #define _POSIX_C_SOURCE 200809L
 #include "inference_internal.h"
+#include "catalog/catalog.h"
 #include "utils/utils.h"
 
 #include <lauxlib.h>
@@ -75,12 +76,17 @@ static void set_services(lua_State *state, LuaContext *context)
     lua_pushlightuserdata(state, context);
     lua_pushcclosure(state, resolve_input, 1);
     lua_setfield(state, -2, "resolve_input");
-    const char *kind = nn_inference_package_kind(context->evaluation, context->node);
-    if (kind && !strcmp(kind, "subflow")) {
+    const NNPackage *package = nn_catalog_find(
+        context->evaluation->catalog, context->node->package_id,
+        context->node->package_version);
+    if (nn_catalog_package_is_kind(package, "subflow")) {
         lua_pushlightuserdata(state, context);
         lua_pushcclosure(state, inference_subflow, 1);
         lua_setfield(state, -2, "infer_subflow");
     }
+    lua_pushlightuserdata(state, context);
+    lua_pushcclosure(state, nn_inference_stereotype, 1);
+    lua_setfield(state, -2, "infer_stereotype");
     lua_setglobal(state, "services");
 }
 
@@ -121,6 +127,16 @@ static bool push_value(lua_State *state, const NNValue *value)
             lua_seti(state, -2, (lua_Integer)i + 1);
         }
         return true;
+    case NN_VALUE_OBJECT:
+        if (value->as.object.count > 1024 ||
+            (value->as.object.count && !value->as.object.items)) return false;
+        lua_createtable(state, 0, (int)value->as.object.count);
+        for (size_t i = 0; i < value->as.object.count; ++i) {
+            const NNParameter *item = &value->as.object.items[i];
+            if (!item->key || !push_value(state, &item->value)) return false;
+            lua_setfield(state, -2, item->key);
+        }
+        return true;
     default: return false;
     }
 }
@@ -135,6 +151,7 @@ static bool set_parameters(lua_State *state, const NNNode *node)
     }
     return true;
 }
+
 
 static char *read_rule(const NNPackage *package, size_t *length, bool *allocation_failed)
 {
@@ -211,6 +228,23 @@ NNInferenceStatus nn_inference_execute_rule(Evaluation *evaluation, const NNNode
         *cause_node_id = nn_text_copy(context.cause_node_id);
         if (!*cause_node_id) evaluation->allocation_failed = true;
     }
+    bool stereotype_failed = context.stereotype_failed;
+    NNInferenceStatus stereotype_status = context.stereotype_status;
+    if (stereotype_failed) {
+        if (context.stereotype_message) {
+            *message = nn_text_copy(context.stereotype_message);
+            if (!*message) evaluation->allocation_failed = true;
+        }
+        if (context.stereotype_source_file) {
+            *source_file = nn_text_copy(context.stereotype_source_file);
+            if (!*source_file) evaluation->allocation_failed = true;
+        }
+        *source_line = context.stereotype_source_line;
+        if (!*cause_node_id && context.stereotype_cause_node_id) {
+            *cause_node_id = nn_text_copy(context.stereotype_cause_node_id);
+            if (!*cause_node_id) evaluation->allocation_failed = true;
+        }
+    }
     free(context.cause_node_id);
     nn_inference_lua_temp_detach(state, context.inherited_scratch.dtype);
     nn_inference_lua_temp_detach(state, context.inherited_scratch.dimensions);
@@ -220,15 +254,18 @@ NNInferenceStatus nn_inference_execute_rule(Evaluation *evaluation, const NNNode
     nn_inference_tensor_dispose(&context.output_scratch[0]);
     nn_inference_tensor_dispose(&context.output_scratch[1]);
     free(context.message_scratch);
-    NNInferenceStatus result = compilation_error ? NN_INFERENCE_COMPILATION_ERROR
-                                                  : NN_INFERENCE_RUNTIME_FAULT;
-    if (status == LUA_OK && lua_istable(state, -1)) {
+    nn_inference_stereotype_cleanup(&context);
+    NNInferenceStatus result = stereotype_failed ? stereotype_status
+        : compilation_error ? NN_INFERENCE_COMPILATION_ERROR : NN_INFERENCE_RUNTIME_FAULT;
+    if (!stereotype_failed && status == LUA_OK && lua_istable(state, -1)) {
         ExtractResult extracted = { .outputs = output,
                                     .output_count = package->output_count,
                                     .package = package,
-                                    .terminal = package->kind &&
-                                        (!strcmp(package->kind, "output") ||
-                                         !strcmp(package->kind, "loss-output")),
+                                    .terminal =
+                                        nn_catalog_package_is_kind(package,
+                                                                   "output") ||
+                                        nn_catalog_package_is_kind(package,
+                                                                   "loss-output"),
                                     .message = message,
                                     .status = NN_INFERENCE_RUNTIME_FAULT };
         lua_pushlightuserdata(state, &nn_inference_extract_result_registry_key);
@@ -257,7 +294,7 @@ NNInferenceStatus nn_inference_execute_rule(Evaluation *evaluation, const NNNode
                 nn_inference_tensor_dispose(&output[i]);
             }
         }
-    } else if (status != LUA_OK && !compilation_error) {
+    } else if (status != LUA_OK && !compilation_error && !stereotype_failed) {
         const char *error = lua_type(state, -1) == LUA_TSTRING
             ? lua_tostring(state, -1) : NULL;
         *message = nn_text_copy(error ? error : "Lua inference failed");
@@ -271,8 +308,12 @@ NNInferenceStatus nn_inference_execute_rule(Evaluation *evaluation, const NNNode
 static int inference_subflow(lua_State *state)
 {
     LuaContext *context = lua_touserdata(state, lua_upvalueindex(1));
-    const char *kind = context ? nn_inference_package_kind(context->evaluation, context->node) : NULL;
-    if (!context || !kind || strcmp(kind, "subflow"))
+    const NNPackage *package = context
+        ? nn_catalog_find(context->evaluation->catalog,
+                          context->node->package_id,
+                          context->node->package_version)
+        : NULL;
+    if (!context || !nn_catalog_package_is_kind(package, "subflow"))
         return luaL_error(state, "infer_subflow is only available to subflow packages");
     if (++context->evaluation->invocations > 256 || context->depth >= 32)
         return luaL_error(state, "subflow inference limit exceeded");

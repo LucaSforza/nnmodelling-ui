@@ -12,7 +12,7 @@ All application implementation lives under `src/`, one directory per module:
 | Directory | Responsibility / independent translation units |
 | --- | --- |
 | `model/` | graph lifecycle/snapshots, nodes, edges/DAG, typed values/parameters |
-| `catalog/` | catalog lifecycle/loading, manifest, definition, dependencies |
+| `catalog/` | lifecycle/loading, manifest, normalized definitions and shared package queries, dependencies |
 | `project/` | lifecycle/open, graph JSON, atomic save, datasets, resource transactions, templates, filesystem helpers |
 | `inference/` | report/results, scope evaluation, rule execution, Lua sandbox/budget, Lua tensor operations, owned tensors |
 | `application/` | lifecycle/cache, graph commands, parameter validation/text/defaults, ports/boundaries, resource commands |
@@ -60,3 +60,7 @@ current documentation and agent guidance; preserve clearly historical paths.
 The existing [architecture diagram](../architecture/overview.md) and
 [editor/graphics UML](../uml/editor.md) describe these boundaries; update those
 diagrams rather than creating another overlapping UML document.
+
+Accepted 2026-10-04: `visualization/` owns C11 expanded scene/composition,
+layout and camera/projection/picking per visualization-3d.md. Qt adapter stays
+in gui/qt. No graphics-library dependency enters core.

@@ -280,7 +280,8 @@ authoring, project round trips and graph failures are covered by automated
 core/GUI/CLI tests. Evidence/logs remain local temporary artifacts, not assets.
 
 Current graphics/report UML was merged into editor.md, typed output/result UML
-into metamodel.md, and analysis/navigation into sequences.md. Removed the three
-overlapping current UML files rather than retain parallel versions. Explicitly
-historical legacy.md and original analysis/uml assets remain preserved; user
-approved this distinction and consolidation. No backend/training behavior added.
+into metamodel.md, and analysis/navigation into the [interaction sequence
+index](../uml/sequences/README.md). Removed the three overlapping current UML
+files rather than retain parallel versions. Explicitly historical legacy.md and
+original analysis/uml assets remain preserved; user approved this distinction
+and consolidation. No backend/training behavior added.

@@ -68,5 +68,15 @@ bool nn_catalog_parse_manifest(Package *p, yyjson_val *root,
   s = nn_catalog_strval(nn_catalog_get(inf, "file"));
   if (!s || !nn_catalog_safe_rel(s) || !(p->pub.inference_file = nn_text_copy(s)))
     return false;
+  yyjson_val *visualization = nn_catalog_get(entry, "visualization");
+  if (visualization) {
+    if (!yyjson_is_obj(visualization) ||
+        strcmp(nn_catalog_strval(nn_catalog_get(visualization, "language"))
+                   ? nn_catalog_strval(nn_catalog_get(visualization, "language")) : "", "lua") ||
+        !(s = nn_catalog_strval(nn_catalog_get(visualization, "file"))) ||
+        !nn_catalog_safe_rel(s) ||
+        !(p->pub.visualization_file = nn_text_copy(s)))
+      return false;
+  }
   return true;
 }

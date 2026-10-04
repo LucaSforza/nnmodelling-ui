@@ -63,9 +63,9 @@ void MainWindow::arrangeCurrentScope(FlowDirection direction) {
         const QRectF bounds = item ? item->boundingRect() : QRectF(0, 0, 190, 96);
         const NNPackage *package = catalog
             ? nn_catalog_find(catalog, node->package_id, node->package_version) : nullptr;
-        const bool terminal = package && package->kind &&
-            (std::strcmp(package->kind, "output") == 0 ||
-             std::strcmp(package->kind, "loss-output") == 0);
+        const bool terminal =
+            nn_catalog_package_is_kind(package, "output") ||
+            nn_catalog_package_is_kind(package, "loss-output");
         bool useOutputs = false;
         for (PortItem *port : item ? item->ports() : QList<PortItem *>{})
             useOutputs = useOutputs || port->isOutput();

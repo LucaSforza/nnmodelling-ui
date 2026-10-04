@@ -11,6 +11,12 @@ void nn_value_dispose(NNValue *value) {
         for (size_t i = 0; value->as.array.items && i < value->as.array.count; ++i)
             nn_value_dispose(&value->as.array.items[i]);
         free(value->as.array.items);
+    } else if (value->type == NN_VALUE_OBJECT) {
+        for (size_t i = 0; value->as.object.items && i < value->as.object.count; ++i) {
+            free(value->as.object.items[i].key);
+            nn_value_dispose(&value->as.object.items[i].value);
+        }
+        free(value->as.object.items);
     }
     memset(value, 0, sizeof(*value));
 }
@@ -41,8 +47,35 @@ bool nn_value_copy(NNValue *destination, const NNValue *source) {
             copy.as.array.count = source->as.array.count;
         }
         break;
+    case NN_VALUE_OBJECT:
+        if (source->as.object.count > 1024 ||
+            (source->as.object.count && !source->as.object.items) ||
+            source->as.object.count > (size_t)-1 / sizeof(NNParameter)) return false;
+        if (source->as.object.count) {
+            copy.as.object.items = calloc(source->as.object.count, sizeof(NNParameter));
+            if (!copy.as.object.items) return false;
+            for (size_t i = 0; i < source->as.object.count; ++i) {
+                const NNParameter *item = &source->as.object.items[i];
+                if (!item->key || !item->key[0]) goto object_copy_failed;
+                for (size_t j = 0; j < i; ++j)
+                    if (!strcmp(item->key, source->as.object.items[j].key))
+                        goto object_copy_failed;
+                copy.as.object.items[i].key = nn_text_copy(item->key);
+                if (!copy.as.object.items[i].key ||
+                    !nn_value_copy(&copy.as.object.items[i].value, &item->value)) {
+                    copy.as.object.count = i + 1;
+                    goto object_copy_failed;
+                }
+                copy.as.object.count = i + 1;
+            }
+        }
+        break;
     default: return false;
     }
     *destination = copy;
     return true;
+
+object_copy_failed:
+    nn_value_dispose(&copy);
+    return false;
 }

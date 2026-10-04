@@ -1,4 +1,5 @@
 #include "inference_internal.h"
+#include "catalog/catalog.h"
 #include "utils/utils.h"
 
 #include <stdlib.h>
@@ -69,7 +70,7 @@ bool nn_inference_node_output_add_mapping(NodeOutputs *outputs, const NNNode *no
     OutputTensor *item = calloc(1, sizeof(*item));
     if (!item) return false;
     item->handle_id = nn_text_copy(node->boundary_handle_id);
-    item->type = nn_text_copy(package->kind && !strcmp(package->kind, "loss-output")
+    item->type = nn_text_copy(nn_catalog_package_is_kind(package, "loss-output")
                                   ? "loss" : "output");
     if (!item->handle_id || !item->type || !nn_inference_tensor_copy(&item->tensor, tensor)) {
         free(item->handle_id); free(item->type); nn_inference_tensor_dispose(&item->tensor);

@@ -2,11 +2,15 @@
 #include "application/application.h"
 #include "automation/automation.h"
 #include "inference/inference.h"
+#include "model/model.h"
+#include "project/project.h"
+#include "visualization/visualization.h"
 #include "yyjson.h"
 
 #include <assert.h>
 #include <dirent.h>
 #include <ftw.h>
+#include <math.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -183,12 +187,148 @@ static void assert_typed_tensors(const NNInferenceReport *report)
     }
 }
 
+static void assert_complete_frame(const NN3DFrame *frame, size_t expected_count,
+                                 size_t scene_nodes)
+{
+    assert(frame && frame->items && frame->count == expected_count);
+    for (size_t i = 0; i < frame->count; ++i) {
+        const NN3DPrimitive *item = &frame->items[i];
+        assert(item->kind >= NN_3D_FACE && item->kind <= NN_3D_LABEL);
+        assert(isfinite(item->depth));
+        for (size_t corner = 0; corner < 4; ++corner)
+            assert(isfinite(item->x[corner]) && isfinite(item->y[corner]));
+        if (item->kind == NN_3D_LABEL) assert(item->text && item->text[0]);
+        if (item->node != SIZE_MAX) assert(item->node < scene_nodes);
+    }
+}
+
 static int remove_temp_path(const char *path, const struct stat *info,
                             int type, struct FTW *state)
 {
     (void)info;
     (void)state;
     return type == FTW_DP ? rmdir(path) : unlink(path);
+}
+
+static void sweep_visualization(void)
+{
+    char temporary[] = "/tmp/nn-3d-allocation-XXXXXX";
+    char *parent = mkdtemp(temporary);
+    assert(parent);
+    NNApplication *app = nn_app_new("stereotype-packages/core");
+    assert(app);
+    char error[512] = "";
+    assert(nn_app_create(app, parent, "repeat-sweep", "Repeat sweep", false,
+                         error, sizeof(error)));
+    assert(nn_app_add_node(app, "root-input", "core.input", "0.1.0", "",
+                           0, 0, error, sizeof(error)));
+    assert(nn_app_add_node(app, "repeat", "core.repeat", "0.1.0", "",
+                           200, 0, error, sizeof(error)));
+    char *default_times = nn_app_parameter_text(app, "repeat", "times");
+    assert(default_times && !strcmp(default_times, "1"));
+    nn_app_free_text(default_times);
+    assert(nn_app_set_parameter_text(app, "repeat", "times", "2",
+                                     error, sizeof(error)));
+
+    const NNModel *model = nn_app_model(app);
+    const NNNode *inner_input = find_scoped_package(model, "repeat", "core.input");
+    const NNNode *terminal = find_mapped_terminal(model, "repeat", "out");
+    assert(inner_input && terminal);
+    char inner_input_id[256], terminal_id[256];
+    assert(strlen(inner_input->id) < sizeof(inner_input_id));
+    assert(strlen(terminal->id) < sizeof(terminal_id));
+    strcpy(inner_input_id, inner_input->id);
+    strcpy(terminal_id, terminal->id);
+
+    assert(nn_app_add_node(app, "repeat-relu", "core.relu", "0.1.0", "repeat",
+                           0, 120, error, sizeof(error)));
+    assert(nn_app_connect(app, "root-to-repeat", "root-input", "out", "repeat", "in",
+                          error, sizeof(error)));
+    assert(nn_app_connect(app, "repeat-to-relu", inner_input_id, "out", "repeat-relu", "in",
+                          error, sizeof(error)));
+    assert(nn_app_connect(app, "relu-to-repeat-output", "repeat-relu", "out", terminal_id, "in",
+                          error, sizeof(error)));
+    nn_project_set_dirty((NNProject *)nn_app_project(app), true);
+    NNModel *before = nn_model_copy(nn_app_model(app));
+    assert(before);
+    const bool dirty = nn_project_dirty(nn_app_project(app));
+
+    count_begin();
+    NN3DScene *baseline = nn_3d_build(nn_app_project(app), error, sizeof(error));
+    const size_t allocations = count_end();
+    assert(baseline && allocations > 0);
+    const size_t nodes = nn_3d_node_count(baseline);
+    const size_t edges = nn_3d_edge_count(baseline);
+    const size_t groups = nn_3d_group_count(baseline);
+    assert(nodes && edges && groups);
+    size_t repeated_bodies = 0;
+    for (size_t i = 0; i < nodes; ++i) {
+        const NN3DNode *node = nn_3d_node_at(baseline, i);
+        assert(node && node->path && node->source_id && node->package_id);
+        if (!strcmp(node->source_id, "repeat-relu")) ++repeated_bodies;
+    }
+    assert(repeated_bodies == 2);
+
+    size_t rejected = 0, complete = 0;
+    for (size_t i = 1; i <= allocations; ++i) {
+        error[0] = '\0';
+        fail_begin(i);
+        NN3DScene *scene = nn_3d_build(nn_app_project(app), error, sizeof(error));
+        (void)count_end();
+        assert(failure_observed);
+        if (!scene) {
+            ++rejected;
+            if (!error[0])
+                fprintf(stderr, "3D scene failed without an error at fail index %zu/%zu\n",
+                        i, allocations);
+            assert(error[0]);
+        } else {
+            ++complete;
+            assert(nn_3d_node_count(scene) == nodes);
+            assert(nn_3d_edge_count(scene) == edges);
+            assert(nn_3d_group_count(scene) == groups);
+            nn_3d_free(scene);
+        }
+        assert(nn_model_equal(before, nn_app_model(app)));
+        assert(nn_project_dirty(nn_app_project(app)) == dirty);
+    }
+    printf("3D scene allocation fail-index sweep: %zu calls, %zu rejected, %zu complete\n",
+           allocations, rejected, complete);
+
+    NN3DCamera camera = {0};
+    nn_3d_camera_fit(baseline, &camera, 4.0 / 3.0);
+    NN3DFrame baseline_frame = {0};
+    count_begin();
+    const bool framed = nn_3d_frame(baseline, &camera, 640, 480, &baseline_frame);
+    const size_t frame_allocations = count_end();
+    assert(framed && baseline_frame.items && baseline_frame.count && frame_allocations);
+    assert_complete_frame(&baseline_frame, baseline_frame.count, nodes);
+    size_t rejected_frames = 0, complete_frames = 0;
+    for (size_t i = 1; i <= frame_allocations; ++i) {
+        NN3DFrame frame = {0};
+        fail_begin(i);
+        const bool okay = nn_3d_frame(baseline, &camera, 640, 480, &frame);
+        (void)count_end();
+        assert(failure_observed);
+        if (!okay) {
+            ++rejected_frames;
+            assert(!frame.items && frame.count == 0);
+        } else {
+            ++complete_frames;
+            assert_complete_frame(&frame, baseline_frame.count, nodes);
+        }
+        nn_3d_frame_dispose(&frame);
+        assert(nn_model_equal(before, nn_app_model(app)));
+        assert(nn_project_dirty(nn_app_project(app)) == dirty);
+    }
+    printf("3D frame allocation fail-index sweep: %zu calls, %zu rejected, %zu complete\n",
+           frame_allocations, rejected_frames, complete_frames);
+
+    nn_3d_frame_dispose(&baseline_frame);
+    nn_3d_free(baseline);
+    nn_model_free(before);
+    nn_app_free(app);
+    assert(nftw(parent, remove_temp_path, 32, FTW_DEPTH | FTW_PHYS) == 0);
 }
 
 static void sweep_multi_output_analysis(void)
@@ -581,5 +721,6 @@ int main(void)
 
     nn_app_free(app);
     sweep_multi_output_analysis();
+    sweep_visualization();
     return 0;
 }

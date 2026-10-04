@@ -17,6 +17,8 @@ class NNApplication;
 struct NNAutomation;
 class GraphScene;
 class GraphView;
+class Network3DView;
+class QTabWidget;
 enum class FlowDirection;
 
 class MainWindow final : public QMainWindow {
@@ -60,6 +62,8 @@ private:
     std::unique_ptr<NNApplication, void (*)(NNApplication *)> application_;
     GraphScene *scene_ = nullptr;
     GraphView *view_ = nullptr;
+    Network3DView *network3DView_ = nullptr;
+    QTabWidget *networkTabs_ = nullptr;
     QWidget *paletteTree_ = nullptr;
     QLineEdit *paletteSearch_ = nullptr;
     QTreeWidget *inspector_ = nullptr;

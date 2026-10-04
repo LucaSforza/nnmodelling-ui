@@ -99,3 +99,8 @@ and dimensions; no VAE package-ID switches in C.
 Accepted: above behavior and CLI integration per automation contract. Deferred:
 resource editing/deletion, object values and training. Typed output/subflow
 authoring follows typed-outputs.md.
+
+Accepted 2026-10-04: [3D contract](visualization-3d.md) supersedes Horizontal
+Repeat object/join limitations. Its generic inference service and separate
+subflow-only visualization Lua entrypoint are accepted; numerical execution
+and training remain deferred.

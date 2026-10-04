@@ -1,4 +1,5 @@
 #include "inference_internal.h"
+#include "catalog/catalog.h"
 #include "utils/utils.h"
 
 #include <stdlib.h>
@@ -26,10 +27,14 @@ NNInferenceReport *nn_infer_project(const NNProject *project)
         const NNNode *node = nn_model_node_at(model, i);
         if (node->scope_id && *node->scope_id) continue;
         if (node->boundary_handle_id) invalid_root_mapping = true;
-        const char *kind = nn_inference_package_kind(&evaluation, node);
-        if (kind && !strcmp(kind, "input")) ++root_inputs;
-        else if (kind && !strcmp(kind, "output")) ++root_outputs;
-        else if (kind && !strcmp(kind, "loss-output")) ++root_losses;
+        const NNPackage *package = nn_catalog_find(
+            evaluation.catalog, node->package_id, node->package_version);
+        if (nn_catalog_package_is_kind(package, "input"))
+            ++root_inputs;
+        else if (nn_catalog_package_is_kind(package, "output"))
+            ++root_outputs;
+        else if (nn_catalog_package_is_kind(package, "loss-output"))
+            ++root_losses;
     }
     if (invalid_root_mapping || root_outputs > 1 || root_losses > 1) {
         report->root_status = NN_INFERENCE_SEMANTIC_ERROR;
@@ -58,8 +63,11 @@ NNInferenceReport *nn_infer_project(const NNProject *project)
                                     NULL, NULL, 0, NULL)) report->failed = true;
         } else {
             const NNNode *owner = nn_model_find_node(model, scope);
-            const char *owner_kind = owner ? nn_inference_package_kind(&evaluation, owner) : NULL;
-            if (owner_kind && !strcmp(owner_kind, "subflow")) {
+            const NNPackage *owner_package = owner
+                ? nn_catalog_find(evaluation.catalog, owner->package_id,
+                                  owner->package_version)
+                : NULL;
+            if (nn_catalog_package_is_kind(owner_package, "subflow")) {
                 /* Valid children skipped because their owner never delegated. */
                 for (size_t child = 0; child < count; ++child) {
                     const NNNode *nested = nn_model_node_at(model, child);

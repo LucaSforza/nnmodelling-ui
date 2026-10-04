@@ -2,7 +2,7 @@
 
 UML maintenance 2026-10-02: the original diagnostics diagram referenced below
 has been consolidated into ../knowledge/uml/editor.md (ownership), metamodel.md
-(report types) and sequences.md (analysis/navigation); the contract is unchanged.
+(report types) and ../knowledge/uml/sequences/analysis-navigation.md; the contract is unchanged.
 
 Accepted 2026-09-30. User subsequently requested Luna implementation workers;
 principal retains KB/UML, coordination and final review. SDS adoption withdrawn.

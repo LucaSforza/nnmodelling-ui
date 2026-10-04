@@ -12,7 +12,7 @@ belong to nodes, not graph nodes. `ParameterIstance` is corrected to
 
 Consolidated 2026-10-02: typed outputs and analysis result types, formerly
 duplicated in typed-outputs.md/diagnostics.md, are part of this metamodel.
-Their operation sequences live in sequences.md; no older single-output design
+Their operation sequences live in sequences/; no older single-output design
 is retained as a current alternative.
 
 ## Diagram
@@ -73,6 +73,10 @@ classDiagram
       +NodeKind kind
       +ParameterDefinition[] parameters
       +Handle[] handles
+      +isKind(kind) bool
+      +parameter(key) ParameterDefinition?
+      +output(handle) OutputDefinition?
+      +acceptsInputHandle(handle) bool
       +infer(Tensor[],Parameters) InferenceResult
     }
     class OutputDefinition {
@@ -190,6 +194,11 @@ subflow node ID for children; Qt scope navigation never changes containment.
 
 Use explicit structs and IDs; `NodeKind` discriminates only topology, while
 package ID selects definition data, never a switch over concrete packages.
+Catalog owns read-only package queries for kind comparison, parameter/output
+definition lookup, and kind-derived input-handle validity. Returned definition
+entries are borrowed for catalog lifetime. Graph occupancy, output-type
+compatibility, subflow mapping, and inference status stay in their owning
+consumers; package queries do not absorb graph validation.
 In Qt, kind=join selects the junction bar and generic +/- empty-input-slot
 controls; graph edges retain occupied in-N handles, while extra empty slots are
 editor state. No package-ID special case or fork-output semantic change.
@@ -219,3 +228,20 @@ Incomplete with a non-navigable null-node Root problem, never synthetic IDs or
 discarded successful tensors. The CLI complete flag conjuncts root/per-node
 success. Report-construction allocation failure is an explicit whole-report
 failure, not partial successful state.
+
+## Presentation occurrences (2026-10-04)
+
+```mermaid
+classDiagram
+  NNModel --> ExpandedScene : read-only derivation
+  ExpandedScene *-- Occurrence
+  ExpandedScene *-- OccurrenceGroup
+  Occurrence : sourceNodeId
+  Occurrence : instancePath
+  OccurrenceGroup : ownerNodeId
+  OccurrenceGroup : parentGroup
+  Stereotype --> VisualizationLua : optional kind=subflow only
+```
+
+Occurrences are not NNModel nodes. Generic Lua plans describe body instances,
+synthetic operators, edges and owner output mapping per visualization-3d.md.
