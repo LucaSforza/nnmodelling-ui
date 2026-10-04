@@ -28,7 +28,9 @@ and package; synthetic recipe operators identify their subflow owner. No shape
 is copied from the last inference invocation and falsely labeled per occurrence.
 Distance-dependent C label visibility avoids overlapping text in overview while
 all operator geometry remains visible. Whole-network Fit and Home/start restore navigability. Mouse look/flight and
-keyboard movement explore 3D; controls and current selection remain discoverable.
+keyboard movement explore 3D; arrow keys also turn the camera. Controls and
+current selection remain discoverable. Flight speed is practical relative to
+operator spacing, with Shift acceleration.
 
 ## Generic Lua composition
 

@@ -147,3 +147,5 @@ flowchart LR
 
 Scene is owned disposable presentation data. No write-back, persistence or
 parallel graph authority. Source IDs and instance paths identify occurrences.
+Qt translates mouse look, arrow-key turning, flight, Fit and Home into the same
+C camera API; projected geometry and picking remain in C.
