@@ -177,3 +177,9 @@ read-only automation snapshot; no mutable project struct crosses the ABI.
 Accepted 2026-10-04: package manifest may declare independent visualization Lua
 entrypoint only for subflow kind per visualization-3d.md. It is catalog-owned
 resource data. Expanded scene/camera never enter schema-v2 persistence.
+
+C catalog shares `nn_catalog_resolve` (unique exact/caret active reference),
+`nn_catalog_parameters` (owned defaulted validated NNParameter list) and
+`nn_catalog_parameters_free` between inference, application and visualization.
+Catalog may use public NNValue types; no module includes another module's
+private header. JSON object keys are owned NNParameter entries.

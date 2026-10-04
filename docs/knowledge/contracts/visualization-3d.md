@@ -26,7 +26,8 @@ nested group membership without hiding interior operators. Each repeated body
 has its own labeled group. Selection shows full occurrence path, source node ID
 and package; synthetic recipe operators identify their subflow owner. No shape
 is copied from the last inference invocation and falsely labeled per occurrence.
-Whole-network Fit and Home/start restore navigability. Mouse look/flight and
+Distance-dependent C label visibility avoids overlapping text in overview while
+all operator geometry remains visible. Whole-network Fit and Home/start restore navigability. Mouse look/flight and
 keyboard movement explore 3D; controls and current selection remain discoverable.
 
 ## Generic Lua composition
@@ -105,14 +106,17 @@ rejected. This enables preserved Horizontal Repeat Lua, including Concat.
 
 ## LLM fixture and acceptance
 
-Replace examples/tiny-decoder-llm's opaque causal-attention node/package with
+Replace examples/tiny-decoder-llm's opaque causal-attention node with
 Horizontal Repeat of eight explicit attention heads. Each body projects Q/K/V
 512->64, transposes K, joins Q/K with MatMul, scales by 1/sqrt(64), applies causal
 mask then Softmax, joins probabilities/V with MatMul; concatenate eight heads
 on last axis then project 512->512 outside repeat. Retain six serial decoder
 blocks, residuals, FFN, logits and scalar loss. Small project-owned shape rules
 may implement operations missing from core, never opaque whole attention.
-README documents metadata-only behavior and expected shapes.
+README documents metadata-only behavior and expected shapes. The unused original
+attention resource may remain declared because resource deletion is deferred;
+no graph node uses the opaque attention package. Model authoring and final
+inspection use the actual Qt application through computer use.
 
 Verify core C-only build, full existing tests, sanitizer checks, new generic
 composition/object/reference/camera tests and git diff --check. Fixture analysis
@@ -120,3 +124,9 @@ must complete with logits float32[B,128,32000], loss scalar; 3D must expose all
 6*8 head occurrences and distinct source paths. Fresh real Qt/noVNC QA must
 inspect Fit, Home, flight/look, picking, visible grouped heads, 2D/3D switching,
 no mutation and error reporting. Record actual evidence and limitations in KB.
+
+C catalog shares `nn_catalog_resolve` (unique exact/caret active reference),
+`nn_catalog_parameters` (owned defaulted validated NNParameter list) and
+`nn_catalog_parameters_free` between inference, application and visualization.
+Catalog may use public NNValue types; no module includes another module's
+private header. JSON object keys are owned NNParameter entries.
