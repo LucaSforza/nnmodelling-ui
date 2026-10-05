@@ -3,6 +3,8 @@
   "id": "llm.tokens",
   "version": "1.0.0",
   "entrypoints": {
-    "definition": "dataset.json"
-  }
+    "definition": "dataset.json",
+    "python": { "language": "python", "file": "dataset.py" }
+  },
+  "inferenceAssets": ["datasets/llm.tokens-1.0.0/vocabulary.json"]
 }

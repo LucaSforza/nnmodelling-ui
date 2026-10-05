@@ -3,6 +3,7 @@
   "id": "mnist-reconstruction",
   "version": "0.1.0",
   "entrypoints": {
-    "definition": "dataset.json"
+    "definition": "dataset.json",
+    "python": { "language": "python", "file": "dataset.py" }
   }
 }

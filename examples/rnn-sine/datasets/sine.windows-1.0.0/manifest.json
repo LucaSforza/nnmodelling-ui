@@ -3,6 +3,7 @@
   "id": "sine.windows",
   "version": "1.0.0",
   "entrypoints": {
-    "definition": "dataset.json"
+    "definition": "dataset.json",
+    "python": { "language": "python", "file": "dataset.py" }
   }
 }

@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "llm.causal-mask",
+  "version": "1.0.0",
+  "dependencies": {},
+  "entrypoints": {
+    "definition": "definition.json",
+    "inference": {
+      "language": "lua",
+      "file": "inference.lua"
+    },
+    "pytorch": {
+      "language": "python",
+      "file": "pytorch.py"
+    }
+  }
+}

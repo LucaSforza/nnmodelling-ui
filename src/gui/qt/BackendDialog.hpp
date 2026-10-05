@@ -10,6 +10,9 @@ class QLabel;
 class QTreeWidget;
 class QPlainTextEdit;
 class QNetworkAccessManager;
+class QComboBox;
+class QCheckBox;
+class TrainingCurveWidget;
 class NNApplication;
 
 class BackendDialog final : public QDialog {
@@ -40,9 +43,15 @@ private:
     QLineEdit *batchSize_ = nullptr;
     QLineEdit *learningRate_ = nullptr;
     QLineEdit *seed_ = nullptr;
+    QLineEdit *publishEverySteps_ = nullptr;
     QLabel *status_ = nullptr;
+    QLabel *finalTestLoss_ = nullptr;
     QTreeWidget *jobs_ = nullptr;
     QPlainTextEdit *metrics_ = nullptr;
+    TrainingCurveWidget *curve_ = nullptr;
+    QCheckBox *trainingCurveVisible_ = nullptr;
+    QCheckBox *validationCurveVisible_ = nullptr;
+    QComboBox *curveScale_ = nullptr;
     QString selectedJob_;
     QString jobsEndpointInFlight_;
     bool jobsRequestInFlight_ = false;

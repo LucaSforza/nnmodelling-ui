@@ -4,6 +4,9 @@
 #include "project/project.h"
 
 #include <QDir>
+#include <QCheckBox>
+#include <QComboBox>
+#include <QDoubleValidator>
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
@@ -11,6 +14,7 @@
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QInputDialog>
+#include <QIntValidator>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -25,12 +29,15 @@
 #include <QRegularExpression>
 #include <QSaveFile>
 #include <QScrollBar>
+#include <QSplitter>
 #include <QSignalBlocker>
 #include <QSet>
 #include <QTemporaryFile>
 #include <QTimer>
 #include <QTreeWidget>
 #include <QVBoxLayout>
+
+#include "TrainingCurveWidget.hpp"
 
 #include <cmath>
 
@@ -132,18 +139,51 @@ QString formatJob(const QJsonObject &job)
     lines << QObject::tr("Status: %1").arg(job.value(QStringLiteral("status")).toString());
     if (!job.value(QStringLiteral("error")).isNull() && !job.value(QStringLiteral("error")).toString().isEmpty())
         lines << QObject::tr("Error: %1").arg(job.value(QStringLiteral("error")).toString());
-    lines << QObject::tr("Epoch metrics:");
-    const QJsonArray epochs = metrics.value(QStringLiteral("epochs")).toArray();
-    for (const QJsonValue &value : epochs) {
+    const QJsonArray steps = metrics.value(QStringLiteral("steps")).toArray();
+    const bool hasSteps = !steps.isEmpty();
+    lines << (hasSteps ? QObject::tr("Published step metrics:") : QObject::tr("Epoch metrics (legacy):"));
+    const QJsonArray points = hasSteps ? steps : metrics.value(QStringLiteral("epochs")).toArray();
+    const int first = qMax(0, points.size() - 5000);
+    if (first > 0) lines << QObject::tr("Showing the latest %1 of %2 metric points.").arg(points.size() - first).arg(points.size());
+    for (int index = first; index < points.size(); ++index) {
+        const QJsonValue value = points.at(index);
         const QJsonObject row = value.toObject();
-        lines << QObject::tr("Epoch %1 — train %2, validation %3")
-            .arg(row.value(QStringLiteral("epoch")).toInt())
+        const QString location = hasSteps
+            ? QObject::tr("Step %1 (epoch %2)").arg(row.value(QStringLiteral("step")).toVariant().toString())
+                .arg(row.value(QStringLiteral("epoch")).toVariant().toString())
+            : QObject::tr("Epoch %1").arg(row.value(QStringLiteral("epoch")).toVariant().toString());
+        lines << QObject::tr("%1 — training %2, validation %3")
+            .arg(location)
             .arg(row.value(QStringLiteral("training_loss")).toVariant().toString(),
                  row.value(QStringLiteral("validation_loss")).toVariant().toString());
     }
     const QJsonValue testLoss = metrics.value(QStringLiteral("test_loss"));
     lines << QObject::tr("Final test loss: %1").arg(testLoss.isNull() ? QObject::tr("pending") : testLoss.toVariant().toString());
     return lines.join(QLatin1Char('\n'));
+}
+
+void updateLog(QPlainTextEdit *log, const QString &text)
+{
+    if (log->toPlainText() == text) return;
+    QScrollBar *scroll = log->verticalScrollBar();
+    const bool followBottom = scroll->value() >= scroll->maximum();
+    const int position = scroll->value();
+    log->setPlainText(text);
+    scroll->setValue(followBottom ? scroll->maximum() : qMin(position, scroll->maximum()));
+}
+
+QString lossLabel(const QJsonValue &value)
+{
+    if (value.isNull() || value.isUndefined()) return QObject::tr("pending");
+    if (!value.isDouble() || !std::isfinite(value.toDouble())) return QObject::tr("invalid");
+    return QString::number(value.toDouble(), 'g', 8);
+}
+
+QString jobHistoryLabel(const QString &id, const QString &createdAt)
+{
+    const QString compactTime = createdAt.left(16).replace(QLatin1Char('T'), QLatin1Char(' '));
+    const QString shortId = id.size() > 12 ? id.right(8) : id;
+    return QObject::tr("%1 · %2").arg(compactTime, shortId);
 }
 
 QString backendError(const QByteArray &body, int status, const QString &fallback)
@@ -163,60 +203,133 @@ BackendDialog::BackendDialog(NNApplication *application, std::function<bool()> s
       openProject_(std::move(openProject)), network_(new QNetworkAccessManager(this))
 {
     setWindowTitle(tr("Training backend"));
-    resize(740, 620);
+    resize(1120, 850);
+    setMinimumSize(920, 680);
     auto *layout = new QVBoxLayout(this);
-    auto *connection = new QFormLayout;
+    auto *connection = new QHBoxLayout;
+    connection->addWidget(new QLabel(tr("Endpoint"), this));
     endpoint_ = new QLineEdit(QStringLiteral("http://127.0.0.1:8765"), this);
     endpoint_->setObjectName(QStringLiteral("backendEndpoint"));
+    endpoint_->setMinimumWidth(210);
+    connection->addWidget(endpoint_, 2);
+    connection->addWidget(new QLabel(tr("Bearer token"), this));
     token_ = new QLineEdit(this);
     token_->setObjectName(QStringLiteral("backendToken"));
     token_->setEchoMode(QLineEdit::Password);
-    connection->addRow(tr("Endpoint"), endpoint_);
-    connection->addRow(tr("Bearer token"), token_);
-    layout->addLayout(connection);
-    auto *connectionButtons = new QHBoxLayout;
+    connection->addWidget(token_, 1);
     auto *connectButton = new QPushButton(tr("Connect / check health"), this);
     connectButton->setObjectName(QStringLiteral("backendConnect"));
     auto *refreshButton = new QPushButton(tr("Refresh jobs"), this);
     refreshButton->setObjectName(QStringLiteral("backendRefresh"));
-    connectionButtons->addWidget(connectButton);
-    connectionButtons->addWidget(refreshButton);
-    connectionButtons->addStretch(1);
-    layout->addLayout(connectionButtons);
+    connection->addWidget(connectButton);
+    connection->addWidget(refreshButton);
+    layout->addLayout(connection);
     status_ = new QLabel(tr("Not connected"), this);
     status_->setObjectName(QStringLiteral("backendStatus"));
     status_->setWordWrap(true);
     layout->addWidget(status_);
 
-    auto *training = new QFormLayout;
+    auto *training = new QHBoxLayout;
+    training->addWidget(new QLabel(tr("Epochs"), this));
     epochs_ = new QLineEdit(QStringLiteral("10"), this);
+    epochs_->setValidator(new QIntValidator(1, 10000, epochs_));
+    epochs_->setMaximumWidth(72);
     batchSize_ = new QLineEdit(QStringLiteral("32"), this);
+    batchSize_->setValidator(new QIntValidator(1, 4096, batchSize_));
+    batchSize_->setMaximumWidth(72);
     learningRate_ = new QLineEdit(QStringLiteral("0.001"), this);
     seed_ = new QLineEdit(QStringLiteral("0"), this);
+    seed_->setMaximumWidth(92);
+    publishEverySteps_ = new QLineEdit(QStringLiteral("10"), this);
+    publishEverySteps_->setObjectName(QStringLiteral("trainingPublishEverySteps"));
+    publishEverySteps_->setValidator(new QIntValidator(1, 100000, publishEverySteps_));
+    publishEverySteps_->setMaximumWidth(86);
     epochs_->setObjectName(QStringLiteral("trainingEpochs"));
     batchSize_->setObjectName(QStringLiteral("trainingBatchSize"));
     learningRate_->setObjectName(QStringLiteral("trainingLearningRate"));
     seed_->setObjectName(QStringLiteral("trainingSeed"));
-    training->addRow(tr("Epochs"), epochs_);
-    training->addRow(tr("Batch size"), batchSize_);
-    training->addRow(tr("Learning rate"), learningRate_);
-    training->addRow(tr("Seed"), seed_);
-    layout->addLayout(training);
+    training->addWidget(epochs_);
+    training->addWidget(new QLabel(tr("Batch"), this));
+    training->addWidget(batchSize_);
+    training->addWidget(new QLabel(tr("Learning rate"), this));
+    learningRate_->setMaximumWidth(110);
+    learningRate_->setValidator(new QDoubleValidator(0.0, 1.0, 12, learningRate_));
+    training->addWidget(learningRate_);
+    training->addWidget(new QLabel(tr("Seed"), this));
+    training->addWidget(seed_);
+    training->addWidget(new QLabel(tr("Publish every N steps"), this));
+    training->addWidget(publishEverySteps_);
     auto *submitButton = new QPushButton(tr("Save project and submit"), this);
     submitButton->setObjectName(QStringLiteral("backendSubmit"));
-    layout->addWidget(submitButton);
+    training->addWidget(submitButton);
+    training->addStretch(1);
+    layout->addLayout(training);
 
+    auto *workspace = new QSplitter(Qt::Horizontal, this);
+    auto *historyPanel = new QWidget(workspace);
+    historyPanel->setMinimumWidth(250);
+    auto *historyLayout = new QVBoxLayout(historyPanel);
+    historyLayout->setContentsMargins(0, 0, 6, 0);
+    auto *historyTitle = new QLabel(tr("Job history"), historyPanel);
+    historyTitle->setStyleSheet(QStringLiteral("font-weight: 600;"));
+    historyLayout->addWidget(historyTitle);
     jobs_ = new QTreeWidget(this);
     jobs_->setObjectName(QStringLiteral("backendJobs"));
-    jobs_->setColumnCount(3);
-    jobs_->setHeaderLabels({tr("Job"), tr("Status"), tr("Created")});
-    jobs_->header()->setStretchLastSection(true);
-    layout->addWidget(jobs_, 1);
-    metrics_ = new QPlainTextEdit(this);
+    jobs_->setColumnCount(2);
+    jobs_->setHeaderLabels({tr("Job · created"), tr("Status")});
+    jobs_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    jobs_->header()->setStretchLastSection(false);
+    jobs_->header()->setSectionResizeMode(0, QHeaderView::Stretch);
+    jobs_->header()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
+    historyLayout->addWidget(jobs_, 1);
+    auto *rightPanel = new QWidget(workspace);
+    auto *rightLayout = new QVBoxLayout(rightPanel);
+    rightLayout->setContentsMargins(6, 0, 0, 0);
+    auto *curveControls = new QHBoxLayout;
+    auto *curveTitle = new QLabel(tr("Learning curves"), rightPanel);
+    curveTitle->setStyleSheet(QStringLiteral("font-weight: 600;"));
+    curveControls->addWidget(curveTitle);
+    curveControls->addSpacing(10);
+    trainingCurveVisible_ = new QCheckBox(tr("Training loss"), rightPanel);
+    trainingCurveVisible_->setObjectName(QStringLiteral("curveTrainingVisible"));
+    trainingCurveVisible_->setChecked(true);
+    validationCurveVisible_ = new QCheckBox(tr("Validation loss"), rightPanel);
+    validationCurveVisible_->setObjectName(QStringLiteral("curveValidationVisible"));
+    validationCurveVisible_->setChecked(true);
+    trainingCurveVisible_->setStyleSheet(QStringLiteral("color: #2677b8; font-weight: 600;"));
+    validationCurveVisible_->setStyleSheet(QStringLiteral("color: #d75252; font-weight: 600;"));
+    curveControls->addWidget(trainingCurveVisible_);
+    curveControls->addWidget(validationCurveVisible_);
+    curveControls->addSpacing(12);
+    curveControls->addWidget(new QLabel(tr("Scale"), rightPanel));
+    curveScale_ = new QComboBox(rightPanel);
+    curveScale_->setObjectName(QStringLiteral("curveScale"));
+    curveScale_->addItem(tr("Linear"), false);
+    curveScale_->addItem(tr("Log"), true);
+    curveControls->addWidget(curveScale_);
+    curveControls->addStretch(1);
+    finalTestLoss_ = new QLabel(tr("Final test loss: pending"), rightPanel);
+    finalTestLoss_->setObjectName(QStringLiteral("finalTestLoss"));
+    curveControls->addWidget(finalTestLoss_);
+    rightLayout->addLayout(curveControls);
+
+    curve_ = new TrainingCurveWidget(rightPanel);
+    rightLayout->addWidget(curve_, 3);
+    auto *logTitle = new QLabel(tr("Training and worker log"), rightPanel);
+    logTitle->setStyleSheet(QStringLiteral("font-weight: 600;"));
+    rightLayout->addWidget(logTitle);
+    metrics_ = new QPlainTextEdit(rightPanel);
     metrics_->setObjectName(QStringLiteral("backendMetrics"));
     metrics_->setReadOnly(true);
-    metrics_->setMaximumHeight(130);
-    layout->addWidget(metrics_);
+    metrics_->setMinimumHeight(115);
+    rightLayout->addWidget(metrics_, 1);
+    workspace->addWidget(historyPanel);
+    workspace->addWidget(rightPanel);
+    workspace->setStretchFactor(0, 0);
+    workspace->setStretchFactor(1, 1);
+    workspace->setSizes({290, 780});
+    layout->addWidget(workspace, 1);
+
     auto *actions = new QHBoxLayout;
     for (const auto &entry : {qMakePair(tr("Download weights"), QStringLiteral("weights")),
                                qMakePair(tr("Download wheel"), QStringLiteral("wheel")),
@@ -233,15 +346,24 @@ BackendDialog::BackendDialog(NNApplication *application, std::function<bool()> s
         });
     }
     auto *closeButton = new QPushButton(tr("Close"), this);
+    closeButton->setObjectName(QStringLiteral("backendClose"));
     actions->addWidget(closeButton);
     layout->addLayout(actions);
     connect(closeButton, &QPushButton::clicked, this, &QDialog::accept);
     connect(connectButton, &QPushButton::clicked, this, &BackendDialog::connectBackend);
     connect(refreshButton, &QPushButton::clicked, this, &BackendDialog::refreshJobs);
     connect(submitButton, &QPushButton::clicked, this, &BackendDialog::submitJob);
+    connect(trainingCurveVisible_, &QCheckBox::toggled, curve_, &TrainingCurveWidget::setTrainingVisible);
+    connect(validationCurveVisible_, &QCheckBox::toggled, curve_, &TrainingCurveWidget::setValidationVisible);
+    connect(curveScale_, &QComboBox::currentIndexChanged, this, [this](int index) {
+        curve_->setLogarithmic(curveScale_->itemData(index).toBool());
+    });
     connect(jobs_, &QTreeWidget::currentItemChanged, this, [this](QTreeWidgetItem *current) {
         if (!current) return;
         selectedJob_ = current->data(0, Qt::UserRole).toString();
+        curve_->setMetrics({});
+        finalTestLoss_->setText(tr("Final test loss: pending"));
+        updateLog(metrics_, tr("Loading selected job…"));
         showJob(selectedJob_);
     });
     auto *poll = new QTimer(this);
@@ -307,10 +429,16 @@ void BackendDialog::request(const QString &path, const QByteArray &method, const
             setMessage(tr("Backend returned invalid JSON: %1").arg(parseError.errorString()), true);
             return;
         }
-        setMessage(tr("Backend request completed."));
         const QJsonObject object = document.object();
         if (path == QStringLiteral("/health")) {
-            setMessage(tr("Connected: %1").arg(QString::fromUtf8(bytes.left(2048))));
+            const QJsonObject container = object.value(QStringLiteral("container")).toObject();
+            const QString runtime = container.value(QStringLiteral("runtime")).toString(tr("container runtime"));
+            if (container.value(QStringLiteral("available")).toBool()) {
+                setMessage(tr("Connected — %1 is ready for training.").arg(runtime));
+            } else {
+                const QString detail = container.value(QStringLiteral("error")).toString(tr("runtime is unavailable"));
+                setMessage(tr("Backend connected, but training is unavailable (%1): %2").arg(runtime, detail), true);
+            }
             refreshJobs();
         } else if (path == QStringLiteral("/v1/jobs")) {
             const QString oldSelection = selectedJob_;
@@ -319,30 +447,30 @@ void BackendDialog::request(const QString &path, const QByteArray &method, const
             for (const QJsonValue &entry : object.value(QStringLiteral("jobs")).toArray()) {
                 const QJsonObject job = entry.toObject();
                 const QString id = job.value(QStringLiteral("id")).toString();
-                auto *item = new QTreeWidgetItem(jobs_, {id, job.value(QStringLiteral("status")).toString(),
-                                                          job.value(QStringLiteral("created_at")).toString()});
+                const QString createdAt = job.value(QStringLiteral("created_at")).toString();
+                auto *item = new QTreeWidgetItem(jobs_, {jobHistoryLabel(id, createdAt),
+                                                          job.value(QStringLiteral("status")).toString()});
                 item->setData(0, Qt::UserRole, id);
+                item->setToolTip(0, tr("Job ID: %1\nCreated: %2").arg(id, createdAt));
                 if (id == oldSelection) jobs_->setCurrentItem(item);
             }
             if (!selectedJob_.isEmpty()) showJob(selectedJob_);
         } else if (path.contains(QStringLiteral("/cancel"))) {
+            setMessage(tr("Cancellation request completed."));
             showJob(selectedJob_);
             refreshJobs();
         } else if (path.endsWith(QStringLiteral("/snapshot"))) {
             // Handled by restoreSnapshot through a one-shot callback below.
         } else if (method == QByteArrayLiteral("POST") && object.contains(QStringLiteral("id"))) {
             selectedJob_ = object.value(QStringLiteral("id")).toString();
+            setMessage(tr("Job submitted: %1").arg(selectedJob_));
             refreshJobs();
             showJob(selectedJob_);
         } else if (path == QStringLiteral("/v1/jobs/%1").arg(selectedJob_)) {
-            const QString text = formatJob(object);
-            if (metrics_->toPlainText() != text) {
-                QScrollBar *scroll = metrics_->verticalScrollBar();
-                const bool followBottom = scroll->value() >= scroll->maximum();
-                const int position = scroll->value();
-                metrics_->setPlainText(text);
-                scroll->setValue(followBottom ? scroll->maximum() : qMin(position, scroll->maximum()));
-            }
+            const QJsonObject metrics = object.value(QStringLiteral("metrics")).toObject();
+            curve_->setMetrics(metrics);
+            finalTestLoss_->setText(tr("Final test loss: %1").arg(lossLabel(metrics.value(QStringLiteral("test_loss")))));
+            updateLog(metrics_, formatJob(object));
         }
     });
 }
@@ -359,15 +487,17 @@ void BackendDialog::refreshJobs()
 
 void BackendDialog::submitJob()
 {
-    bool epochsOk = false, batchOk = false, seedOk = false, lrOk = false;
+    bool epochsOk = false, batchOk = false, seedOk = false, lrOk = false, publishOk = false;
     const int epochs = epochs_->text().toInt(&epochsOk);
     const int batch = batchSize_->text().toInt(&batchOk);
     const qint64 seed = seed_->text().toLongLong(&seedOk);
     const double learningRate = learningRate_->text().toDouble(&lrOk);
+    const int publishEverySteps = publishEverySteps_->text().toInt(&publishOk);
     if (!epochsOk || epochs < 1 || epochs > 10000 || !batchOk || batch < 1 || batch > 4096 ||
         !seedOk || seed < -2147483648LL || seed > 4294967295LL || !lrOk ||
-        !std::isfinite(learningRate) || learningRate <= 0.0 || learningRate > 1.0) {
-        setMessage(tr("Training settings require positive epochs, batch size, learning rate and a valid seed."), true);
+        !std::isfinite(learningRate) || learningRate <= 0.0 || learningRate > 1.0 ||
+        !publishOk || publishEverySteps < 1 || publishEverySteps > 100000) {
+        setMessage(tr("Training settings require valid epochs, batch size, learning rate, seed and publication cadence."), true);
         return;
     }
     if (!application_ || !nn_app_project(application_) || !saveProject_ || !saveProject_()) {
@@ -435,7 +565,8 @@ void BackendDialog::submitJob()
         {QStringLiteral("files"), files},
         {QStringLiteral("training"), QJsonObject{{QStringLiteral("epochs"), epochs},
             {QStringLiteral("batch_size"), batch}, {QStringLiteral("learning_rate"), learningRate},
-            {QStringLiteral("seed"), static_cast<double>(seed)}}}
+            {QStringLiteral("seed"), static_cast<double>(seed)},
+            {QStringLiteral("publish_every_steps"), publishEverySteps}}}
     };
     setMessage(tr("Submitting saved project snapshot…"));
     const QByteArray body = QJsonDocument(payload).toJson(QJsonDocument::Compact);

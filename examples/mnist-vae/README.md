@@ -1,23 +1,39 @@
-# MNIST variational autoencoder (design only)
+# MNIST variational autoencoder
 
-Open this directory or use **New MNIST VAE**. Encoder and decoder are nested
-`core.subflow-proxy` nodes: double-click either card, return with Parent/Scope.
-Their Input boundary inherits the parent tensor; it does not reload the dataset.
+Open this project in NNModelling to inspect the encoder and decoder subflows.
+Each subflow receives its parent tensor through an inherited Input and returns
+its mapped `out` boundary; neither subflow reloads the dataset.
 
-Encoder: 784 -> 128 -> ReLU -> two 32-feature heads, mean and log variance.
-The Gaussian join packs them as `[B,2,32]` (mean first). Reparameterization
-models `z = mu + exp(0.5 * log_variance) * epsilon`, `epsilon ~ N(0,I)`.
-Decoder: 32 -> 128 -> ReLU -> 784 -> Sigmoid, yielding reconstruction `[B,784]`.
-KL is a typed loss per-sample `[B]` branch against the standard normal prior:
-`-0.5 * sum(1 + log_variance - mu^2 - exp(log_variance))`.
-An explicit project-owned **VAE total loss** join combines scalar reconstruction
-MSE with mean per-sample KL, producing a scalar loss. The root has one brown
-reconstruction Output and one red Loss Output; loss edges are red, tensor edges
-black. Encoder/decoder terminal `boundaryHandle: "out"` maps the default output.
+The root graph flattens each grayscale 28×28 image to `[B,784]`, encodes it
+through `784 -> 128 -> ReLU`, and produces separate 32-feature mean and
+log-variance heads. The ordered project-owned `vae.diagonal-gaussian` join
+packs these as `[B,2,32]`. `vae.reparameterize` samples
+`z = mean + exp(0.5 * log_variance) * epsilon` while training, and uses the
+posterior mean during evaluation. The decoder maps `[B,32]` through
+`32 -> 128 -> ReLU -> 784 -> Sigmoid`, returning reconstructed pixels `[B,784]`.
 
-All VAE-specific stereotypes are project-owned, not global/core packages.
-Lua performs shape/dtype analysis only: it does not sample, reconstruct images,
-load MNIST, train weights or execute a numerical objective. Dataset metadata
-declares image input and flattened-image target named `target`, matching core
-MSE's external target reference. A future backend
-may execute the documented objective; no such backend exists here.
+The checked-in dataset contains 64 training, 16 validation, and 16 test images
+from the official MNIST IDX files. The training and validation indices are
+disjoint deterministic subsets of the official training split; test images
+come from the official test split. `datasets/mnist/data.json` records the
+published source checksums, download hashes, seed, and selected indices. The
+adapter supplies normalized grayscale images `[B,1,28,28]` as the `image`
+input. Each target is the same image flattened to `[B,784]`, so reconstruction
+MSE compares every output pixel with its source.
+The `vae.kl-divergence` branch computes one standard-normal KL value per sample:
+
+```text
+-0.5 * sum(1 + log_variance - mean² - exp(log_variance))
+```
+
+`core.mse-loss` returns scalar batch-mean reconstruction MSE. The explicit
+`vae.total-loss` join adds the mean of the per-sample KL vector, preserving a
+scalar objective for the root Loss Output. Every project-owned VAE stereotype
+now has both Lua shape analysis and a Python `build(parameters, context,
+services)` implementation; Python modules do not change the saved graph or
+core package assets.
+
+For a small CPU smoke job in the Training dashboard, use 1 epoch, batch size 32,
+learning rate 0.001, seed 0, and publish every 10 optimizer steps. No container
+training result or artifact is claimed here until the run is verified in the
+local backend.

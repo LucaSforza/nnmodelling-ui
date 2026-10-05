@@ -111,7 +111,7 @@ class JobStore:
                 "started_at": None,
                 "finished_at": None,
                 "error": None,
-                "metrics": {"epochs": [], "test_loss": None},
+                "metrics": {"epochs": [], "test_loss": None, "steps": []},
             }
             self._write(record)
             for path in snapshot.rglob("*"):
@@ -221,6 +221,8 @@ class JobStore:
         metrics = _read_metrics(metrics_path)
         if metrics is None:
             return None, "worker completed without valid metrics.json"
+        if not metrics["epochs"] or not _finite_number(metrics["test_loss"]):
+            return None, "worker completed without an epoch summary and finite test loss"
         weights = output / "weights.safetensors"
         wheels = [path for path in output.glob("*.whl") if _safe_output_file(path, output)]
         if not _safe_output_file(weights, output) or len(wheels) != 1:
@@ -255,12 +257,14 @@ def _safe_output_file(path: Path, output: Path) -> bool:
 
 def _read_metrics(path: Path) -> dict[str, Any] | None:
     try:
-        if not _safe_output_file(path, path.parent) or path.stat().st_size > 4 * 1024 * 1024:
+        if not _safe_output_file(path, path.parent) or path.stat().st_size > config.MAX_METRICS_BYTES:
             return None
         value = json.loads(path.read_text(encoding="utf-8"))
         epochs = value["epochs"]
         test_loss = value["test_loss"]
         if not isinstance(epochs, list) or (test_loss is not None and not _finite_number(test_loss)):
+            return None
+        if not isinstance(value, dict) or set(value) not in ({"epochs", "test_loss"}, {"epochs", "test_loss", "steps"}):
             return None
         last_epoch = 0
         for item in epochs:
@@ -272,7 +276,26 @@ def _read_metrics(path: Path) -> dict[str, Any] | None:
             if not _finite_number(item["training_loss"]) or not _finite_number(item["validation_loss"]):
                 return None
             last_epoch = number
-        return {"epochs": epochs, "test_loss": test_loss}
+        result = {"epochs": epochs, "test_loss": test_loss}
+        if "steps" in value:
+            steps = value["steps"]
+            if not isinstance(steps, list):
+                return None
+            last_step = 0
+            last_step_epoch = 0
+            for item in steps:
+                if not isinstance(item, dict) or set(item) != {"step", "epoch", "training_loss", "validation_loss"}:
+                    return None
+                step, epoch = item["step"], item["epoch"]
+                if (isinstance(step, bool) or not isinstance(step, int) or step <= last_step
+                        or isinstance(epoch, bool) or not isinstance(epoch, int) or epoch < 1
+                        or epoch < last_step_epoch or epoch > last_step_epoch + 1):
+                    return None
+                if not _finite_number(item["training_loss"]) or not _finite_number(item["validation_loss"]):
+                    return None
+                last_step, last_step_epoch = step, epoch
+            result["steps"] = steps
+        return result
     except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError):
         return None
 

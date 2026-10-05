@@ -102,13 +102,28 @@ def payload() -> dict:
     project = json.loads((EXAMPLE / "model.json").read_text(encoding="utf-8"))
     files = {}
     for path in (EXAMPLE / "datasets/tiny-regression").rglob("*"):
-        if path.is_file():
+        if path.is_file() and "__pycache__" not in path.parts:
             relative = path.relative_to(EXAMPLE).as_posix()
             files[relative] = base64.b64encode(path.read_bytes()).decode("ascii")
     return {
         "project": project,
         "files": files,
         "training": {"epochs": 2, "batch_size": 2, "learning_rate": 0.05, "seed": 7},
+    }
+
+
+def payload_for(example: str) -> dict:
+    directory = REPOSITORY / "examples" / example
+    project = json.loads((directory / "model.json").read_text(encoding="utf-8"))
+    files = {
+        path.relative_to(directory).as_posix(): base64.b64encode(path.read_bytes()).decode("ascii")
+        for path in directory.rglob("*")
+        if path.is_file() and path.name != "model.json" and "__pycache__" not in path.parts
+    }
+    return {
+        "project": project,
+        "files": files,
+        "training": {"epochs": 1, "batch_size": 2, "learning_rate": 0.01, "seed": 7},
     }
 
 
@@ -129,13 +144,45 @@ def test_submit_snapshot_and_list_keep_original_resource_bytes(tmp_path, monkeyp
         assert response.status_code == 202
         job = response.json()
         assert job["status"] == "queued"
-        assert job["metrics"] == {"epochs": [], "test_loss": None}
+        assert job["metrics"] == {"epochs": [], "test_loss": None, "steps": []}
+        saved_training = json.loads((store.job_dir(job["id"]) / "snapshot/training.json").read_text())
+        assert saved_training["publish_every_steps"] == 10
         assert runner.submitted == [job["id"]]
         assert http.get("/v1/jobs").json() == {"jobs": [job]}
         assert http.get(f"/v1/jobs/{job['id']}/snapshot").json() == {
             "project": submitted["project"], "files": submitted["files"]
         }
         assert store.job_dir(job["id"]).joinpath("snapshot").stat().st_mode & 0o222 == 0
+
+
+def test_nested_input_boundary_does_not_require_dataset_binding(tmp_path, monkeypatch):
+    http, _store, runner = client(tmp_path, monkeypatch)
+    submitted = payload_for("rnn-sine")
+    nested = next(node for node in submitted["project"]["nodes"] if node["id"] == "rnn-input")
+    nested["data"]["params"].pop("binding")
+    root_input = next(node for node in submitted["project"]["nodes"] if node["id"] == "sequence")
+    root_input["data"]["params"].pop("binding")
+    with http:
+        invalid = http.post("/v1/jobs", json=submitted)
+        assert invalid.status_code == 422
+        assert runner.submitted == []
+        root_input["data"]["params"]["binding"] = "sequence"
+        response = http.post("/v1/jobs", json=submitted)
+        assert response.status_code == 202, response.content.decode()
+        assert runner.submitted == [response.json()["id"]]
+
+
+def test_publish_every_steps_is_optional_and_strictly_bounded(tmp_path, monkeypatch):
+    http, _, runner = client(tmp_path, monkeypatch)
+    with http:
+        valid = payload()
+        valid["training"]["publish_every_steps"] = 1
+        assert http.post("/v1/jobs", json=valid).status_code == 202
+        for invalid_value in (0, 100001, True, 1.0, "2"):
+            invalid = payload()
+            invalid["training"]["publish_every_steps"] = invalid_value
+            assert http.post("/v1/jobs", json=invalid).status_code == 422
+        assert len(runner.submitted) == 1
 
 
 def test_rejects_unsafe_and_colliding_paths_and_invalid_graph(tmp_path, monkeypatch):

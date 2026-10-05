@@ -113,6 +113,7 @@ class _Catalog:
                     value = params.get(name, spec.get("default") if isinstance(spec, dict) else None)
                     if isinstance(spec, dict) and spec.get("type") == "stereotype" and isinstance(value, dict):
                         todo.append((value.get("id"), value.get("version")))
+        self.activated = frozenset(activated)
         self.model = model
 
     def _add(self, directory: Path, expected_id: str | None, expected_version: str | None) -> None:
@@ -175,6 +176,8 @@ class _SubflowRunner(torch.nn.Module):
         graph = self._graph_ref()
         if graph is None:
             raise RuntimeError("subflow graph is no longer available")
+        if self.training != graph.training:
+            self.train(graph.training)
         graph._runtime_invocations += 1
         if graph._runtime_invocations > graph._module_limit:
             raise ValueError("subflow execution exceeds 256 invocations")
@@ -266,54 +269,67 @@ class GraphModule(torch.nn.Module):
         return module
 
     def _build_modules(self) -> None:
-        ordered_nodes = sorted(self.nodes.items(), key=lambda pair: self._scope_depths[pair[1].get("data", {}).get("scope", "")], reverse=True)
-        for node_id, node in ordered_nodes:
-            directory, manifest, definition = self._definition(node)
-            entry = manifest.get("entrypoints", {}).get("pytorch")
-            kind = definition.get("kind")
-            if not entry or entry.get("language") != "python":
-                if kind in {"input", "output", "loss-output"}:
-                    continue
-                raise ValueError(f"package {manifest['id']!r} has no Python pytorch entrypoint")
-            path = _project_path(directory, entry["file"])
-            if not path.is_file():
-                raise ValueError(f"missing Python entrypoint: {path}")
-            module = self._load_build(node_id, directory, path)
-            ref = self._reference(manifest, definition, directory)
-            scope = node.get("data", {}).get("scope", "")
-
-            def build_subflow(scope=scope, node_id=node_id, definition=definition):
-                child_scope = node_id
-                if child_scope not in self._scopes and scope:
-                    child_scope = scope
-                if child_scope not in self._scopes:
-                    raise ValueError(f"subflow {node_id!r} has no nested graph scope")
-                self._subflow_builds += 1
-                if self._subflow_builds > self._module_limit:
-                    raise ValueError("subflow module construction exceeds 256 instances")
-                child_modules = {
-                    child_id: copy.deepcopy(self._node_module_objects[child_id])
-                    for child_id in self._scopes[child_scope]
-                    if child_id in self._node_module_objects
-                }
-                return _SubflowRunner(self, child_scope, child_modules, self._scope_depths[child_scope])
-
-            services = _Services(ref, build_subflow)
-            services._resolve = self._resolve_reference
-            services._build_stereotype = self._build_stereotype
-            context = {"input": definition.get("inputs", {}), "output": (definition.get("outputs") or [{}])[0]}
-            params = self._effective_parameters(node.get("data", {}).get("params", {}), definition)
-            self._validate_parameters(manifest["id"], params, definition)
-            if kind == "subflow" and isinstance(params.get("times"), int) and params["times"] > self._module_limit:
-                raise ValueError("subflow repeat count exceeds 256")
-            built = module.build(params, context, services)
-            if not isinstance(built, torch.nn.Module):
-                raise TypeError(f"build() for {manifest['id']!r} must return torch.nn.Module")
+        for node_id in self._scopes[""]:
+            built = self._build_node_module(node_id)
+            if built is None:
+                continue
             self._node_module_objects[node_id] = built
-            if not scope:
-                key = f"n{len(self.node_modules)}"
-                self.node_modules[key] = built
-                self._node_modules[node_id] = key
+            key = f"n{len(self.node_modules)}"
+            self.node_modules[key] = built
+            self._node_modules[node_id] = key
+
+    def _build_node_module(self, node_id: str) -> torch.nn.Module | None:
+        node = self.nodes[node_id]
+        directory, manifest, definition = self._definition(node)
+        entry = manifest.get("entrypoints", {}).get("pytorch")
+        kind = definition.get("kind")
+        if not entry or entry.get("language") != "python":
+            if kind in {"input", "output", "loss-output"}:
+                return None
+            raise ValueError(f"package {manifest['id']!r} has no Python pytorch entrypoint")
+        path = _project_path(directory, entry["file"])
+        if not path.is_file():
+            raise ValueError(f"missing Python entrypoint: {path}")
+        module = self._load_build(node_id, directory, path)
+        ref = self._reference(manifest, definition, directory)
+        scope = node.get("data", {}).get("scope", "")
+
+        def build_subflow():
+            child_scope = node_id if node_id in self._scopes else scope
+            if child_scope not in self._scopes or not child_scope:
+                raise ValueError(f"subflow {node_id!r} has no nested graph scope")
+            self._subflow_builds += 1
+            if self._subflow_builds > self._module_limit:
+                raise ValueError("subflow module construction exceeds 256 instances")
+            child_modules = {
+                child_id: built
+                for child_id in self._scopes[child_scope]
+                if (built := self._build_node_module(child_id)) is not None
+            }
+            return _SubflowRunner(self, child_scope, child_modules, self._scope_depths[child_scope])
+
+        services = _Services(ref, build_subflow)
+        services._resolve = self._resolve_reference
+        services._build_stereotype = self._build_stereotype
+        incoming_count = sum(
+            1
+            for edge in self.edges
+            if edge.get("target") == node_id
+            and self.nodes[edge["source"]].get("data", {}).get("scope", "") == scope
+        )
+        context = {
+            "input": definition.get("inputs", {}),
+            "output": (definition.get("outputs") or [{}])[0],
+            "inputs": incoming_count + len(definition.get("objective", {}).get("externalInputs", [])),
+        }
+        params = self._effective_parameters(node.get("data", {}).get("params", {}), definition)
+        self._validate_parameters(manifest["id"], params, definition)
+        if kind == "subflow" and isinstance(params.get("times"), int) and params["times"] > self._module_limit:
+            raise ValueError("subflow repeat count exceeds 256")
+        built = module.build(params, context, services)
+        if not isinstance(built, torch.nn.Module):
+            raise TypeError(f"build() for {manifest['id']!r} must return torch.nn.Module")
+        return built
 
     @staticmethod
     def _validate_parameters(package_id: str, params: dict[str, Any], definition: dict[str, Any]) -> None:
@@ -366,7 +382,11 @@ class GraphModule(torch.nn.Module):
         services = _Services(ref, lambda: (_ for _ in ()).throw(ValueError("referenced join cannot build a subflow")))
         services._resolve = self._resolve_reference
         services._build_stereotype = self._build_stereotype
-        built = module.build(params, {"input": {}, "output": (definition.get("outputs") or [{}])[0]}, services)
+        built = module.build(
+            params,
+            {"input": definition.get("inputs", {}), "output": (definition.get("outputs") or [{}])[0]},
+            services,
+        )
         if not isinstance(built, torch.nn.Module):
             raise TypeError(f"build() for {manifest['id']!r} must return torch.nn.Module")
         return built

@@ -1,6 +1,6 @@
 {
   "name": "Finestre di sinusoide",
-  "description": "Solo metadata, nessun dato popolato: 32 campioni consecutivi per prevedere il successivo.",
+  "description": "Deterministic two-sine series split before extracting 64/16/16 non-overlapping 32-step windows.",
   "batch": {
     "inputs": {
       "sequence": {

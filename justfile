@@ -26,7 +26,7 @@ test-cli: build
     ctest --test-dir build/qt --output-on-failure -R cli_ui
 
 backend-sync:
-    uv sync --all-packages --group dev
+    uv sync --all-packages --group dev --group examples
 
 backend-image:
     "${NNMODELLING_CONTAINER_RUNTIME:-docker}" build -f backend/Dockerfile -t "${NNMODELLING_WORKER_IMAGE:-nnmodelling-worker:local}" .
@@ -39,6 +39,9 @@ test-backend:
 
 test-runtime:
     uv run --group dev pytest -q tests/test_runtime.py
+
+test-examples:
+    uv run --group dev --group examples python -m pytest -q tests/test_examples.py tests/test_example_datasets.py tests/test_example_stereotypes.py
 
 runtime-wheel:
     uv build --package nnmodelling-runtime --out-dir dist
@@ -59,3 +62,15 @@ swarm-setup:
 
 test-swarm:
     node --test tests/swarm_mailbox_test.mjs tests/swarm_activity_test.mjs
+
+mermaid-check:
+    node tools/mermaid-check/mermaid-check.mjs --check
+
+mermaid-write:
+    node tools/mermaid-check/mermaid-check.mjs --write
+
+mermaid-sync:
+    npm --prefix tools/mermaid-check ci
+
+test-mermaid-check:
+    node --test tests/mermaid_check_test.mjs

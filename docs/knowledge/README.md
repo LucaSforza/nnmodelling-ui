@@ -20,7 +20,7 @@ semantics or ownership. [UI rewrite plan](../plans/ui-rewrite.md) tracks work;
 | Decisions | [Native client and Lua](decisions/native-client.md) |
 | UML | [Legacy reference](uml/legacy.md), [metamodel and typed outputs](uml/metamodel.md), [project/resources](uml/project.md), [editor/graphics and analysis ownership](uml/editor.md), [automation](uml/automation.md), [sequences](uml/sequences.md) |
 | Reference | [Legacy mapping](reference/legacy-mapping.md) |
-| Verification | [Testing strategy](testing/strategy.md), [release QA](testing/qa.md), [computer-use LLM trial](testing/ui-llm-authoring-2026-10-03.md) |
+| Verification | [Testing strategy](testing/strategy.md), [release QA](testing/qa.md), [computer-use LLM trial](testing/ui-llm-authoring-2026-10-03.md), [training dashboard and examples](testing/training-dashboard-progress.md) |
 | Development tooling | [OpenCode/Codex agent contract](contracts/agent-swarm.md), [agent sequence](uml/agent-swarm.md) |
 | Resources, VAE and LLM commands | [Authoring and subflows](contracts/resource-authoring.md), [local CLI protocol](contracts/automation.md), [command use cases](uml/automation.md) |
 | Expanded 3D explorer | [Composition, occurrences and camera](contracts/visualization-3d.md), [ownership UML](uml/editor.md) |
@@ -38,8 +38,13 @@ and [automation](contracts/automation.md).
 
 UML consolidation (2026-10-02): current graphics/report ownership is in editor.md,
 typed outputs/results in metamodel.md, and mutation/analysis/navigation sequences
-in sequences.md. Redundant graphics.md, diagnostics.md and typed-outputs.md UML
+in the [sequence catalog](uml/sequences/README.md), with sequences.md retained as
+a compatible index. Accepted 2026-10-05: sequence files group actual lifecycle,
+editor/analysis, resource/IPC, backend/runtime, 3D and development-agent flows
+by subsystem boundary and name their source owners. Redundant graphics.md,
+diagnostics.md and typed-outputs.md UML
 were merged rather than kept as parallel versions. Legacy UML stays explicitly
 historical; automation and development swarm describe different protocols and
 are not duplicates. Extend these current diagrams rather than creating a new
-document for each incremental feature.
+document for each incremental feature; the sequence catalog is the shared home
+for runtime interactions.

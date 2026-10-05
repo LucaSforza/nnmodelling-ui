@@ -11,6 +11,7 @@ dependencies = [
 
 [dependency-groups]
 dev = ["httpx>=0.27", "pytest>=8"]
+examples = ["Pillow>=11,<13"]
 
 [build-system]
 requires = ["hatchling>=1.24"]

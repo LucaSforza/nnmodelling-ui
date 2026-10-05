@@ -1,50 +1,24 @@
 # Tiny Decoder LLM
 
-Created from a blank project through the native Qt GUI using Codex computer
-use, including the project-owned dataset and causal-attention stereotype.
+A compact, executable decoder-only language model built from a blank native
+project. It keeps the decoder `Repeat` and its four-head `HorizontalRepeat`
+editable while expressing attention as ordinary graph nodes.
 
-The dataset describes token IDs and next-token targets, both `int64[B,128]`.
-Vocabulary size is 32000; model width is 512. The root graph is:
+The model uses a 65-token vocabulary, context length 128, model width 64, two
+decoder blocks, four attention heads of width 16, and a 256-wide feed-forward
+layer. Each attention head projects Q, K, and V separately, transposes K,
+computes `Q × Kᵀ / √16`, masks future positions, applies softmax, and multiplies
+by V. The four head outputs concatenate to width 64. A project-owned token
+cross-entropy module accepts logits `[B,T,V]` and targets `[B,T]` and reduces
+them to a scalar mean loss.
 
-```mermaid
-flowchart TD
-    Tokens[Input: tokens] --> Embedding[Embedding: 32000 × 512]
-    Embedding --> Position[Positional Encoding: context 128]
-    Position --> Stack[Repeat: 6 decoder blocks]
-    Stack --> Norm[LayerNorm: 512]
-    Norm --> Head[Linear: 512 → 32000]
-    Head --> Output[Output: logits]
-    Head --> CE[Cross Entropy]
-    CE --> Loss[Loss Output: scalar]
-```
+The project-owned causal-mask, scaling, token-loss, and legacy causal-attention
+resources each include PyTorch entrypoints and standalone `pyproject.toml`
+metadata. The graph's explicit attention uses the generic core MatMul join; its
+build context receives the number of connected input edges, so each QK and
+attention-value multiplication constructs the correct two-input executor.
 
-Enter Repeat to inspect the pre-normalized decoder block:
-
-```mermaid
-flowchart TD
-    Input[Inherited Input] --> N1[LayerNorm: 512]
-    N1 --> Attention[Causal Self Attention: 8 heads × 64]
-    Input --> A1[Add: attention residual]
-    Attention --> A1
-    A1 --> N2[LayerNorm: 512]
-    N2 --> Expand[Linear: 512 → 2048]
-    Expand --> Activation[ReLU]
-    Activation --> Project[Linear: 2048 → 512]
-    A1 --> A2[Add: feed-forward residual]
-    Project --> A2
-    A2 --> Output[Mapped Output: out]
-```
-
-Expected tensors: embedding, attention, residuals, normalization and block
-output `float32[B,128,512]`; expanded FFN `float32[B,128,2048]`; logits
-`float32[B,128,32000]`; loss `float32[]`.
-
-This is an editable architecture and shape-analysis example. The custom
-attention rule checks its expected rank, dtype and width and retains shape;
-its definition describes causal masking, Q/K/V projections and eight heads.
-It does not execute attention. Dataset files contain metadata, not token samples.
-There are no trained weights or numerical backend. The preserved Cross Entropy
-rule checks floating logits/rank but does not fully validate target compatibility.
-
-The computer-use findings and fixes are recorded in
-`docs/knowledge/testing/ui-llm-authoring-2026-10-03.md`.
+The dataset is responsible for mapping raw text to token IDs and producing
+next-token targets. Its manifest carries the vocabulary as an inference asset;
+training samples stay separate from exported model resources. The graph is
+untrained until a backend training job writes weights.

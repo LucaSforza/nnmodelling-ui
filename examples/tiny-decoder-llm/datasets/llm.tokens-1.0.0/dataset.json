@@ -19,6 +19,6 @@
       }
     }
   },
-  "description": "Token IDs and next-token targets; vocabulary 32000; context 128. Metadata only.",
+  "description": "Bounded verified Tiny Shakespeare excerpt, sorted 65-character vocabulary, and 128-character next-token windows.",
   "name": "Autoregressive token sequences"
 }

@@ -3,27 +3,27 @@
 Accepted 2026-09-29: Qt 6 Widgets replaces the SDL3 graphical frontend.
 
 ```mermaid
-flowchart TD
-    GUI[src/gui/qt - Qt Widgets / Graphics View - C++] --> API[src/application - pure C ABI]
-    CLI[src/nnmodelctl - C11 CLI] --> IPC[src/automation - local protocol/transport]
-    IPC --> API
-    API --> Project[src/project - C persistence/resources]
-    API --> Model[src/model - C typed graph]
-    API --> Catalog[src/catalog - C package catalog]
-    API --> Inference[src/inference - C Lua inference host]
-    Project --> Model
-    Inference --> Model
-    Inference --> Lua[Vendored C Lua runtime]
-    API --> Utils[src/utils - global mechanical helpers]
-    Project --> Utils
-    Model --> Utils
-    Catalog --> Utils
-    Inference --> Utils
-    IPC --> Utils
-    GUI --> HTTP[Qt Network asynchronous backend client]
-    HTTP --> Backend[backend - local FastAPI and persistent jobs]
-    Backend --> Container[Isolated training containers]
-    Container --> Python[python/nnmodelling-runtime - PyTorch DAG and dataset SDK]
+  flowchart TD
+      GUI[src/gui/qt - Qt Widgets / Graphics View - C++] --> API[src/application - pure C ABI]
+      CLI[src/nnmodelctl - C11 CLI] --> IPC[src/automation - local protocol/transport]
+      IPC --> API
+      API --> Project[src/project - C persistence/resources]
+      API --> Model[src/model - C typed graph]
+      API --> Catalog[src/catalog - C package catalog]
+      API --> Inference[src/inference - C Lua inference host]
+      Project --> Model
+      Inference --> Model
+      Inference --> Lua[Vendored C Lua runtime]
+      API --> Utils[src/utils - global mechanical helpers]
+      Project --> Utils
+      Model --> Utils
+      Catalog --> Utils
+      Inference --> Utils
+      IPC --> Utils
+      GUI --> HTTP[Qt Network asynchronous backend client]
+      HTTP --> Backend[backend - local FastAPI and persistent jobs]
+      Backend --> Container[Isolated training containers]
+      Container --> Python[python/nnmodelling-runtime - PyTorch DAG and dataset SDK]
 ```
 
 Accepted 2026-10-02: `src/model/`, `catalog/`, `project/`, `inference/`,

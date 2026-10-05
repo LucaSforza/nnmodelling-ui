@@ -141,16 +141,9 @@ def build_wheel(
             repo_core = Path(__file__).resolve().parents[4] / "stereotype-packages" / "core"
             core_source = root / "stereotype-packages" / "core" if (root / "stereotype-packages" / "core").is_dir() else repo_core
         catalog = _Catalog(root, core_source)
-        referenced = {node.get("data", {}).get("package", {}).get("id") for node in model.get("nodes", [])}
-        required = set(referenced)
-        todo = list(referenced)
-        while todo:
-            package_id = todo.pop()
-            directory, manifest, _ = catalog.resolve(package_id)
-            for dependency_id in manifest.get("dependencies", {}):
-                if dependency_id not in required:
-                    required.add(dependency_id)
-                    todo.append(dependency_id)
+        # The catalog also activates parameter/default stereotype references,
+        # such as a join constructed inside HorizontalRepeat.
+        required = catalog.activated
         for package_id in required:
             if package_id not in catalog.records:
                 continue

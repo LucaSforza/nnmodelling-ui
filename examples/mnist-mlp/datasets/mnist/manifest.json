@@ -2,5 +2,8 @@
   "schemaVersion":1,
   "id":"mnist",
   "version":"0.1.0",
-  "entrypoints":{"definition":"dataset.json"}
+  "entrypoints":{
+    "definition":"dataset.json",
+    "python":{"language":"python","file":"dataset.py"}
+  }
 }

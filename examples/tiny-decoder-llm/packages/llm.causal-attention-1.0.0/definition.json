@@ -1,5 +1,5 @@
 {
-  "description": "8 heads, d_model=512. Q/K/V projections, QK^T/sqrt(64), causal mask, softmax, V and output projection. Shape metadata only.",
+  "description": "Four-head causal self-attention with model width 64 and head width 16.",
   "kind": "layer",
   "name": "Causal Self Attention",
   "parameters": {},
@@ -7,5 +7,11 @@
     "color": "#6b8fc4",
     "height": 110,
     "width": 190
-  }
+  },
+  "outputs": [
+    {
+      "id": "out",
+      "type": "output"
+    }
+  ]
 }

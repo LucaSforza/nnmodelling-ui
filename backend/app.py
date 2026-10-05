@@ -25,6 +25,7 @@ class TrainingConfig(BaseModel):
     batch_size: StrictInt = Field(ge=1, le=4096)
     learning_rate: StrictFloat = Field(gt=0, le=1, allow_inf_nan=False)
     seed: StrictInt = Field(ge=-(2**31), lt=2**32)
+    publish_every_steps: StrictInt = Field(default=10, ge=1, le=100000)
 
 
 class JobRequest(BaseModel):
@@ -40,9 +41,17 @@ class EpochMetric(BaseModel):
     validation_loss: float
 
 
+class StepMetric(BaseModel):
+    step: int
+    epoch: int
+    training_loss: float
+    validation_loss: float
+
+
 class Metrics(BaseModel):
     epochs: list[EpochMetric]
     test_loss: float | None
+    steps: list[StepMetric] = Field(default_factory=list)
 
 
 class JobResponse(BaseModel):

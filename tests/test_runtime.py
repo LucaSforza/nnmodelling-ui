@@ -252,13 +252,63 @@ def build(parameters,context,services): return Concat(parameters["dim"])
         {"id": "c", "source": "nested-in", "target": "scale"},
         {"id": "d", "source": "scale", "sourceHandle": "out", "target": "nested-out"},
     ]
-    root, core = _project(tmp_path, core_packages, nodes, edges)
+    root, core = _project(tmp_path, core_packages, nodes, edges, dataset=True)
     graph = GraphModule(root, core)
     assert len(list(graph.parameters())) == 1
     output = graph(torch.tensor([2.0]))["prediction"]
     assert output.tolist() == pytest.approx([6.0, 6.0])
     output.sum().backward()
     assert graph.node_modules[graph._node_modules["horizontal"]].p0.grad.tolist() == pytest.approx([2.0, 2.0])
+
+    from safetensors.torch import save_file
+    import zipfile
+    weights = tmp_path / "weights.safetensors"
+    save_file({name: value.detach().cpu().contiguous() for name, value in graph.state_dict().items()}, weights)
+    wheel = build_wheel(root, core, weights, tmp_path / "wheel", "reference-join")
+    with zipfile.ZipFile(wheel) as archive:
+        assert "nnmodel_reference_join/_snapshot/core/concat/manifest.json" in archive.namelist()
+
+
+def test_horizontal_repeat_eval_mode_reaches_unregistered_subflow_template(tmp_path):
+    dropout = '''import torch
+from torch import nn
+from stereotype_runtime.pytorch import BuildContext, NoServices
+class Drop(nn.Module):
+ def __init__(self): super().__init__(); self.weight=nn.Parameter(torch.ones(())); self.dropout=nn.Dropout(p=0.75)
+ def forward(self,x): return self.dropout(x)*self.weight
+def build(parameters,context,services): return Drop()
+'''
+    root, _ = _project(
+        tmp_path,
+        [_input_package(), _output_package()],
+        [
+            _node("x", "core.input", params={"binding": "x"}),
+            _node("horizontal", "core.horizontal-repeat", params={"times": 2}),
+            _node("pred", "core.output"),
+            _node("inner", "core.input", scope="horizontal"),
+            _node("drop", "test.dropout", scope="horizontal"),
+            _node("inner-out", "core.output", scope="horizontal", boundary="out"),
+        ],
+        [
+            {"id": "a", "source": "x", "target": "horizontal"},
+            {"id": "b", "source": "horizontal", "target": "pred"},
+            {"id": "c", "source": "inner", "target": "drop"},
+            {"id": "d", "source": "drop", "target": "inner-out"},
+        ],
+    )
+    package_root = root / "packages"
+    _package(package_root, "test.dropout", "layer", dropout)
+    model = json.loads((root / "model.json").read_text(encoding="utf-8"))
+    model["manifest"]["customPackages"] = [{"id": "test.dropout", "version": "1.0.0", "path": "packages/dropout"}]
+    for node in model["nodes"]:
+        if node["data"]["package"]["id"].startswith("core."):
+            node["data"]["package"]["version"] = "0.1.0"
+    _write_json(root / "model.json", model)
+
+    repository_core = Path(__file__).resolve().parents[1] / "stereotype-packages" / "core"
+    graph = GraphModule(root, repository_core).eval()
+    result = graph(torch.ones((8, 1)))["prediction"]
+    torch.testing.assert_close(result, torch.ones((8, 2)))
 
 
 def test_subflow_maps_prediction_and_loss_outputs_with_target_closure(tmp_path):
@@ -318,6 +368,51 @@ def test_bundled_mnist_graph_executes_prediction_and_training_objective():
     assert trained["loss"].ndim == 0
     trained["loss"].backward()
     assert any(parameter.grad is not None for parameter in graph.parameters())
+
+
+def test_build_context_input_arity_counts_edges_and_external_inputs(tmp_path):
+    inspect_arity = '''from torch import nn
+from stereotype_runtime.pytorch import BuildContext, NoServices
+class Arity(nn.Module):
+ def __init__(self, value): super().__init__(); self.value=value
+ def forward(self, *inputs): return inputs[0] * self.value
+def build(parameters, context, services):
+ assert context["inputs"] == parameters["expected"]
+ return Arity(parameters["value"])
+'''
+    objective = {"externalInputs": [{"name": "target", "source": "batch.targets.target"}]}
+    packages = [
+        _input_package(), _output_package(), _loss_output_package(),
+        ("test.arity", "layer", inspect_arity, {"expected": {"type": "integer"}, "value": {"type": "number", "default": 1}}, [{"id": "out", "type": "output"}]),
+        ("test.loss", "loss", '''from torch import nn
+from stereotype_runtime.pytorch import BuildContext, NoServices
+class Loss(nn.Module):
+ def forward(self, prediction, target): return ((prediction-target)**2).mean()
+def build(parameters, context, services): return Loss()
+''', None, [{"id": "loss", "type": "loss"}], objective),
+    ]
+    nodes = [
+        _node("x", "core.input", params={"binding": "x"}),
+        _node("branch-a", "test.arity", params={"expected": 1}),
+        _node("branch-b", "test.arity", params={"expected": 1}),
+        _node("join", "test.arity", params={"expected": 2, "value": 2}),
+        _node("prediction", "core.output"), _node("loss", "test.loss"),
+        _node("loss-output", "core.loss-output"),
+    ]
+    edges = [
+        {"id": "a", "source": "x", "target": "branch-a"},
+        {"id": "b", "source": "x", "target": "branch-b"},
+        {"id": "c", "source": "branch-a", "target": "join", "targetHandle": "in-1"},
+        {"id": "d", "source": "branch-b", "target": "join", "targetHandle": "in-2"},
+        {"id": "e", "source": "join", "target": "prediction"},
+        {"id": "f", "source": "join", "target": "loss"},
+        {"id": "g", "source": "loss", "sourceHandle": "loss", "target": "loss-output"},
+    ]
+    root, core = _project(tmp_path, packages, nodes, edges)
+    graph = GraphModule(root, core)
+    result = graph(torch.tensor([2.0]), {"target": torch.tensor([4.0])}, include_loss=True)
+    assert result["prediction"].item() == pytest.approx(4.0)
+    assert result["loss"].item() == pytest.approx(0.0)
 
 
 def test_dataset_adapter_and_standalone_wheels_support_weight_override_and_isolation(tmp_path):

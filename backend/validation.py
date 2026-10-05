@@ -166,7 +166,7 @@ def validate_project(project: Any, files: dict[str, bytes], core_packages: dict[
     declared_targets = selected_dataset["batch"]["targets"]
     for node_id, kind in kinds.items():
         data = node_map[node_id].get("data", {})
-        if kind == "input":
+        if kind == "input" and not scopes[node_id]:
             parameters = data.get("params", {}) if isinstance(data, dict) else {}
             binding = parameters.get("binding") if isinstance(parameters, dict) else None
             if not isinstance(binding, str) or binding not in declared_inputs:
@@ -349,12 +349,14 @@ def _cycle_reachable(start: str, adjacency: dict[str, list[str]]) -> bool:
 
 
 def validate_training(value: Any) -> dict[str, Any]:
-    if not isinstance(value, dict) or set(value) != {"epochs", "batch_size", "learning_rate", "seed"}:
-        raise HTTPException(422, "training requires epochs, batch_size, learning_rate, and seed.")
+    required = {"epochs", "batch_size", "learning_rate", "seed"}
+    if not isinstance(value, dict) or frozenset(value) not in {frozenset(required), frozenset(required | {"publish_every_steps"})}:
+        raise HTTPException(422, "training requires epochs, batch_size, learning_rate, seed, and optional publish_every_steps.")
     epochs = value["epochs"]
     batch = value["batch_size"]
     seed = value["seed"]
     rate = value["learning_rate"]
+    publish_every_steps = value.get("publish_every_steps", 10)
     if isinstance(epochs, bool) or not isinstance(epochs, int) or not 1 <= epochs <= 10000:
         raise HTTPException(422, "epochs must be an integer from 1 to 10000.")
     if isinstance(batch, bool) or not isinstance(batch, int) or not 1 <= batch <= 4096:
@@ -366,7 +368,10 @@ def validate_training(value: Any) -> dict[str, Any]:
     import math
     if not math.isfinite(float(rate)):
         raise HTTPException(422, "learning_rate must be finite and in (0, 1].")
-    return {"epochs": epochs, "batch_size": batch, "learning_rate": float(rate), "seed": seed}
+    if isinstance(publish_every_steps, bool) or not isinstance(publish_every_steps, int) or not 1 <= publish_every_steps <= 100000:
+        raise HTTPException(422, "publish_every_steps must be an integer from 1 to 100000.")
+    return {"epochs": epochs, "batch_size": batch, "learning_rate": float(rate), "seed": seed,
+            "publish_every_steps": publish_every_steps}
 
 
 def resolve_core_packages(project: dict[str, Any], files: dict[str, bytes] | None = None) -> dict[str, Path]:
