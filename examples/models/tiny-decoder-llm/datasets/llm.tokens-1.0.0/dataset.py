@@ -14,10 +14,18 @@ class Dataset(DatasetAdapter[str, str]):
 
     def __init__(self, dataset_dir: str | Path):
         super().__init__(dataset_dir)
-        payload = json.loads((self.directory / "vocabulary.json").read_text(encoding="utf-8"))
+        payload = json.loads(
+            (self.directory / "vocabulary.json").read_text(encoding="utf-8")
+        )
         characters = payload.get("characters")
-        if not isinstance(characters, list) or len(characters) != 65 or any(not isinstance(char, str) or len(char) != 1 for char in characters):
-            raise ValueError("Tiny Shakespeare vocabulary must contain 65 single characters")
+        if (
+            not isinstance(characters, list)
+            or len(characters) != 65
+            or any(not isinstance(char, str) or len(char) != 1 for char in characters)
+        ):
+            raise ValueError(
+                "Tiny Shakespeare vocabulary must contain 65 single characters"
+            )
         if characters != sorted(set(characters)):
             raise ValueError("Tiny Shakespeare vocabulary must be sorted and unique")
         self._characters = characters
@@ -29,11 +37,15 @@ class Dataset(DatasetAdapter[str, str]):
         if not value:
             raise ValueError("LLM input text cannot be empty")
         if len(value) > self.context_length:
-            raise ValueError(f"LLM input is too long; maximum is {self.context_length} characters")
+            raise ValueError(
+                f"LLM input is too long; maximum is {self.context_length} characters"
+            )
         try:
             tokens = [self._token_ids[char] for char in value]
         except KeyError as error:
-            raise ValueError(f"LLM input contains a character outside the bundled vocabulary: {error.args[0]!r}") from error
+            raise ValueError(
+                f"LLM input contains a character outside the bundled vocabulary: {error.args[0]!r}"
+            ) from error
         return torch.tensor([tokens], dtype=torch.int64)
 
     def untokenize(self, tensor: torch.Tensor) -> str:
@@ -47,7 +59,9 @@ class Dataset(DatasetAdapter[str, str]):
         elif values.ndim == 2 and values.shape[0] == 1:
             values = values[0]
         else:
-            raise ValueError("LLM prediction must contain one batch of token logits or IDs")
+            raise ValueError(
+                "LLM prediction must contain one batch of token logits or IDs"
+            )
         ids = values.to(torch.int64).tolist()
         if any(index < 0 or index >= len(self._characters) for index in ids):
             raise ValueError("LLM prediction contains an unknown token ID")
@@ -67,8 +81,12 @@ class Dataset(DatasetAdapter[str, str]):
         ids = torch.tensor([self._token_ids[char] for char in text], dtype=torch.int64)
         windows = [ids[start : start + self.context_length + 1] for start in starts]
         if any(window.numel() != self.context_length + 1 for window in windows):
-            raise ValueError(f"LLM split {split!r} contains an incomplete context window")
+            raise ValueError(
+                f"LLM split {split!r} contains an incomplete context window"
+            )
         all_windows = torch.stack(windows)
         for start in range(0, len(windows), batch_size):
             batch = all_windows[start : start + batch_size]
-            yield Batch(inputs={"tokens": batch[:, :-1]}, targets={"target": batch[:, 1:]})
+            yield Batch(
+                inputs={"tokens": batch[:, :-1]}, targets={"target": batch[:, 1:]}
+            )

@@ -4,8 +4,8 @@
       "id": "output",
       "type": "custom",
       "position": {
-        "x": 680,
-        "y": 180
+        "x": 280,
+        "y": 1620
       },
       "data": {
         "name": "Output",
@@ -21,8 +21,8 @@
       "id": "loss-output",
       "type": "custom",
       "position": {
-        "x": 680,
-        "y": 340
+        "x": 20,
+        "y": 1620
       },
       "data": {
         "name": "Loss Output",
@@ -38,8 +38,8 @@
       "id": "tokens",
       "type": "custom",
       "position": {
-        "x": 0,
-        "y": 0
+        "x": 140,
+        "y": 80
       },
       "data": {
         "name": "Input: tokens",
@@ -57,11 +57,11 @@
       "id": "embedding",
       "type": "custom",
       "position": {
-        "x": 180,
-        "y": 0
+        "x": 100,
+        "y": 240
       },
       "data": {
-        "name": "Token Embedding: 65 \u00d7 64",
+        "name": "Token Embedding: 65 × 64",
         "scope": "",
         "package": {
           "id": "core.embedding",
@@ -79,8 +79,8 @@
       "id": "position",
       "type": "custom",
       "position": {
-        "x": 360,
-        "y": 0
+        "x": 100,
+        "y": 480
       },
       "data": {
         "name": "Positional Encoding: context 128",
@@ -99,8 +99,8 @@
       "id": "blocks",
       "type": "custom",
       "position": {
-        "x": 540,
-        "y": 0
+        "x": 100,
+        "y": 720
       },
       "data": {
         "name": "Repeat: 2 decoder blocks",
@@ -118,8 +118,8 @@
       "id": "final-norm",
       "type": "custom",
       "position": {
-        "x": 720,
-        "y": 0
+        "x": 100,
+        "y": 960
       },
       "data": {
         "name": "LayerNorm: 64",
@@ -130,7 +130,7 @@
         },
         "params": {
           "normalized_shape": 64,
-          "eps": 1e-05,
+          "eps": 0.00001,
           "elementwise_affine": true
         }
       }
@@ -139,11 +139,11 @@
       "id": "logits",
       "type": "custom",
       "position": {
-        "x": 900,
-        "y": 0
+        "x": 100,
+        "y": 1160
       },
       "data": {
-        "name": "Linear: 64 \u2192 65",
+        "name": "Linear: 64 → 65",
         "scope": "",
         "package": {
           "id": "core.linear",
@@ -161,8 +161,8 @@
       "id": "token-loss",
       "type": "custom",
       "position": {
-        "x": 1080,
-        "y": 180
+        "x": -20,
+        "y": 1400
       },
       "data": {
         "name": "Token Cross Entropy",
@@ -178,8 +178,8 @@
       "id": "block-input",
       "type": "custom",
       "position": {
-        "x": 0,
-        "y": 0
+        "x": 120,
+        "y": 80
       },
       "data": {
         "name": "Input",
@@ -197,8 +197,8 @@
       "id": "attn-norm",
       "type": "custom",
       "position": {
-        "x": 0,
-        "y": 0
+        "x": 300,
+        "y": 240
       },
       "data": {
         "name": "LayerNorm: 64",
@@ -209,7 +209,7 @@
         },
         "params": {
           "normalized_shape": 64,
-          "eps": 1e-05,
+          "eps": 0.00001,
           "elementwise_affine": true
         }
       }
@@ -218,11 +218,11 @@
       "id": "heads",
       "type": "custom",
       "position": {
-        "x": 0,
-        "y": 0
+        "x": 300,
+        "y": 500
       },
       "data": {
-        "name": "HorizontalRepeat: 4 heads \u00d7 16",
+        "name": "HorizontalRepeat: 4 heads × 16",
         "scope": "blocks",
         "package": {
           "id": "core.horizontal-repeat",
@@ -244,8 +244,8 @@
       "id": "residual-attn",
       "type": "custom",
       "position": {
-        "x": 0,
-        "y": 0
+        "x": 60,
+        "y": 720
       },
       "data": {
         "name": "Add: attention residual",
@@ -261,8 +261,8 @@
       "id": "ff-norm",
       "type": "custom",
       "position": {
-        "x": 0,
-        "y": 0
+        "x": 360,
+        "y": 1000
       },
       "data": {
         "name": "LayerNorm: 64",
@@ -273,7 +273,7 @@
         },
         "params": {
           "normalized_shape": 64,
-          "eps": 1e-05,
+          "eps": 0.00001,
           "elementwise_affine": true
         }
       }
@@ -282,11 +282,11 @@
       "id": "ff-expand",
       "type": "custom",
       "position": {
-        "x": 0,
-        "y": 0
+        "x": 360,
+        "y": 1240
       },
       "data": {
-        "name": "Linear: 64 \u2192 256",
+        "name": "Linear: 64 → 256",
         "scope": "blocks",
         "package": {
           "id": "core.linear",
@@ -304,8 +304,8 @@
       "id": "ff-activation",
       "type": "custom",
       "position": {
-        "x": 0,
-        "y": 0
+        "x": 360,
+        "y": 1500
       },
       "data": {
         "name": "ReLU",
@@ -323,11 +323,11 @@
       "id": "ff-contract",
       "type": "custom",
       "position": {
-        "x": 0,
-        "y": 0
+        "x": 360,
+        "y": 1680
       },
       "data": {
-        "name": "Linear: 256 \u2192 64",
+        "name": "Linear: 256 → 64",
         "scope": "blocks",
         "package": {
           "id": "core.linear",
@@ -345,8 +345,8 @@
       "id": "residual-ff",
       "type": "custom",
       "position": {
-        "x": 0,
-        "y": 0
+        "x": 60,
+        "y": 1940
       },
       "data": {
         "name": "Add: feed-forward residual",
@@ -362,8 +362,8 @@
       "id": "block-output",
       "type": "custom",
       "position": {
-        "x": 0,
-        "y": 0
+        "x": 120,
+        "y": 2200
       },
       "data": {
         "name": "Output: out",
@@ -380,8 +380,8 @@
       "id": "head-input",
       "type": "custom",
       "position": {
-        "x": 0,
-        "y": 0
+        "x": 120,
+        "y": 80
       },
       "data": {
         "name": "Input",
@@ -399,11 +399,11 @@
       "id": "query",
       "type": "custom",
       "position": {
-        "x": 0,
-        "y": 0
+        "x": 80,
+        "y": 280
       },
       "data": {
-        "name": "Query: 64 \u2192 16",
+        "name": "Query: 64 → 16",
         "scope": "heads",
         "package": {
           "id": "core.linear",
@@ -421,11 +421,11 @@
       "id": "key",
       "type": "custom",
       "position": {
-        "x": 0,
-        "y": 0
+        "x": -200,
+        "y": 280
       },
       "data": {
-        "name": "Key: 64 \u2192 16",
+        "name": "Key: 64 → 16",
         "scope": "heads",
         "package": {
           "id": "core.linear",
@@ -443,11 +443,11 @@
       "id": "value",
       "type": "custom",
       "position": {
-        "x": 0,
-        "y": 0
+        "x": 340,
+        "y": 280
       },
       "data": {
-        "name": "Value: 64 \u2192 16",
+        "name": "Value: 64 → 16",
         "scope": "heads",
         "package": {
           "id": "core.linear",
@@ -465,11 +465,11 @@
       "id": "key-transpose",
       "type": "custom",
       "position": {
-        "x": 0,
-        "y": 0
+        "x": -200,
+        "y": 560
       },
       "data": {
-        "name": "Transpose: T \u00d7 T",
+        "name": "Transpose: T × T",
         "scope": "heads",
         "package": {
           "id": "core.transpose",
@@ -485,11 +485,11 @@
       "id": "scores",
       "type": "custom",
       "position": {
-        "x": 0,
-        "y": 0
+        "x": -80,
+        "y": 840
       },
       "data": {
-        "name": "MatMul: Q \u00d7 K\u1d40",
+        "name": "MatMul: Q × Kᵀ",
         "scope": "heads",
         "package": {
           "id": "core.matmul",
@@ -502,11 +502,11 @@
       "id": "scale",
       "type": "custom",
       "position": {
-        "x": 0,
-        "y": 0
+        "x": -60,
+        "y": 1120
       },
       "data": {
-        "name": "Scale: 1 / \u221a16",
+        "name": "Scale: 1 / √16",
         "scope": "heads",
         "package": {
           "id": "core.scale",
@@ -521,8 +521,8 @@
       "id": "causal-mask",
       "type": "custom",
       "position": {
-        "x": 0,
-        "y": 0
+        "x": -60,
+        "y": 1340
       },
       "data": {
         "name": "Causal Mask: context 128",
@@ -540,8 +540,8 @@
       "id": "softmax",
       "type": "custom",
       "position": {
-        "x": 0,
-        "y": 0
+        "x": -60,
+        "y": 1540
       },
       "data": {
         "name": "Softmax: attention weights",
@@ -559,11 +559,11 @@
       "id": "weighted-value",
       "type": "custom",
       "position": {
-        "x": 0,
-        "y": 0
+        "x": 120,
+        "y": 1760
       },
       "data": {
-        "name": "MatMul: attention \u00d7 V",
+        "name": "MatMul: attention × V",
         "scope": "heads",
         "package": {
           "id": "core.matmul",
@@ -576,8 +576,8 @@
       "id": "head-output",
       "type": "custom",
       "position": {
-        "x": 0,
-        "y": 0
+        "x": 180,
+        "y": 2020
       },
       "data": {
         "name": "Output: out",
