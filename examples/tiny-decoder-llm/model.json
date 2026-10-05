@@ -233,23 +233,6 @@
       }
     },
     {
-      "id": "node-157113a3-191c-411d-8077-1eefbbe8d21c",
-      "type": "custom",
-      "position": {
-        "x": 160,
-        "y": 400
-      },
-      "data": {
-        "name": "Causal Self Attention",
-        "scope": "node-467fa101-ec5a-4e0a-82e5-56594d350337",
-        "package": {
-          "id": "llm.causal-attention",
-          "version": "1.0.0"
-        },
-        "params": {}
-      }
-    },
-    {
       "id": "node-e3559593-d442-4fa9-b6eb-5242548fcea8",
       "type": "custom",
       "position": {
@@ -366,6 +349,188 @@
         },
         "params": {}
       }
+    },
+    {
+      "id": "node-5b22b45c-ca09-4f4c-a1e8-fc9a3191bd44",
+      "type": "custom",
+      "position": {
+        "x": 200,
+        "y": 360
+      },
+      "data": {
+        "name": "MultiHeadAttention",
+        "scope": "node-467fa101-ec5a-4e0a-82e5-56594d350337",
+        "package": {
+          "id": "core.horizontal-repeat",
+          "version": "0.1.0"
+        },
+        "params": {
+          "times": 4,
+          "join": {
+            "id": "core.concat",
+            "parameters": {
+              "dim": -1
+            },
+            "version": "0.1.0"
+          }
+        }
+      }
+    },
+    {
+      "id": "node-5b22b45c-ca09-4f4c-a1e8-fc9a3191bd44-input",
+      "type": "custom",
+      "position": {
+        "x": -40,
+        "y": -220
+      },
+      "data": {
+        "name": "Input",
+        "scope": "node-5b22b45c-ca09-4f4c-a1e8-fc9a3191bd44",
+        "package": {
+          "id": "core.input",
+          "version": "0.1.0"
+        },
+        "params": {
+          "binding": "tokens"
+        }
+      }
+    },
+    {
+      "id": "node-5b22b45c-ca09-4f4c-a1e8-fc9a3191bd44-boundary-out",
+      "type": "custom",
+      "position": {
+        "x": -40,
+        "y": 820
+      },
+      "data": {
+        "name": "out",
+        "scope": "node-5b22b45c-ca09-4f4c-a1e8-fc9a3191bd44",
+        "package": {
+          "id": "core.output",
+          "version": "0.1.0"
+        },
+        "params": {},
+        "boundaryHandle": "out"
+      }
+    },
+    {
+      "id": "node-037d2c79-4bd6-4a37-a1e0-6bf70def3962",
+      "type": "custom",
+      "position": {
+        "x": -320,
+        "y": 60
+      },
+      "data": {
+        "name": "Query",
+        "scope": "node-5b22b45c-ca09-4f4c-a1e8-fc9a3191bd44",
+        "package": {
+          "id": "core.linear",
+          "version": "0.1.0"
+        },
+        "params": {
+          "in_features": 512,
+          "out_features": 128,
+          "bias": true,
+          "dtype": "float32"
+        }
+      }
+    },
+    {
+      "id": "node-e513d893-b630-4707-ac0c-555263a959fe",
+      "type": "custom",
+      "position": {
+        "x": -20,
+        "y": 60
+      },
+      "data": {
+        "name": "Key",
+        "scope": "node-5b22b45c-ca09-4f4c-a1e8-fc9a3191bd44",
+        "package": {
+          "id": "core.linear",
+          "version": "0.1.0"
+        },
+        "params": {
+          "in_features": 512,
+          "out_features": 128,
+          "bias": true,
+          "dtype": "float32"
+        }
+      }
+    },
+    {
+      "id": "node-9f095bf8-eb5e-4c0e-a2c7-fced4cfba039",
+      "type": "custom",
+      "position": {
+        "x": 300,
+        "y": 60
+      },
+      "data": {
+        "name": "Value",
+        "scope": "node-5b22b45c-ca09-4f4c-a1e8-fc9a3191bd44",
+        "package": {
+          "id": "core.linear",
+          "version": "0.1.0"
+        },
+        "params": {
+          "in_features": 512,
+          "out_features": 128,
+          "bias": true,
+          "dtype": "float32"
+        }
+      }
+    },
+    {
+      "id": "node-1e93fea2-1d9a-458f-87c6-3bf13865a417",
+      "type": "custom",
+      "position": {
+        "x": 120,
+        "y": 300
+      },
+      "data": {
+        "name": "MatMul",
+        "scope": "node-5b22b45c-ca09-4f4c-a1e8-fc9a3191bd44",
+        "package": {
+          "id": "core.matmul",
+          "version": "0.1.0"
+        },
+        "params": {}
+      }
+    },
+    {
+      "id": "node-dbdb2ccc-7a47-48fa-a6c2-9f31db009dfc",
+      "type": "custom",
+      "position": {
+        "x": 120,
+        "y": 520
+      },
+      "data": {
+        "name": "Softmax",
+        "scope": "node-5b22b45c-ca09-4f4c-a1e8-fc9a3191bd44",
+        "package": {
+          "id": "core.softmax",
+          "version": "0.1.0"
+        },
+        "params": {
+          "dim": -1
+        }
+      }
+    },
+    {
+      "id": "node-3f7ad15a-a1bd-48d5-8af6-0a6d17ce57ac",
+      "type": "custom",
+      "position": {
+        "x": -160,
+        "y": 620
+      },
+      "data": {
+        "name": "MatMul",
+        "scope": "node-5b22b45c-ca09-4f4c-a1e8-fc9a3191bd44",
+        "package": {
+          "id": "core.matmul",
+          "version": "0.1.0"
+        },
+        "params": {}
+      }
     }
   ],
   "edges": [
@@ -433,25 +598,11 @@
       "targetHandle": "in"
     },
     {
-      "id": "337d8757-0344-4bde-bbea-dc9f1d1ec175",
-      "source": "node-84386f78-e355-46d1-8245-f0d9ef9adaa7",
-      "sourceHandle": "out",
-      "target": "node-157113a3-191c-411d-8077-1eefbbe8d21c",
-      "targetHandle": "in"
-    },
-    {
       "id": "1c2b26f6-ff49-49c5-98a3-f78eff4c9570",
       "source": "node-67c788a3-7378-4218-9139-ad9231d74d74",
       "sourceHandle": "out",
       "target": "node-e3559593-d442-4fa9-b6eb-5242548fcea8",
       "targetHandle": "in-1"
-    },
-    {
-      "id": "3c172f1c-cb21-433b-a7e4-3f59baff3862",
-      "source": "node-157113a3-191c-411d-8077-1eefbbe8d21c",
-      "sourceHandle": "out",
-      "target": "node-e3559593-d442-4fa9-b6eb-5242548fcea8",
-      "targetHandle": "in-2"
     },
     {
       "id": "51e8a825-9634-4b09-b078-d9236bfdb65a",
@@ -500,6 +651,83 @@
       "source": "node-15509341-ecd5-4591-a057-dd4c10a823ed",
       "sourceHandle": "out",
       "target": "node-467fa101-ec5a-4e0a-82e5-56594d350337-boundary-out",
+      "targetHandle": "in"
+    },
+    {
+      "id": "d3e5c169-3f2e-4d6f-956e-b997a1be4511",
+      "source": "node-84386f78-e355-46d1-8245-f0d9ef9adaa7",
+      "sourceHandle": "out",
+      "target": "node-5b22b45c-ca09-4f4c-a1e8-fc9a3191bd44",
+      "targetHandle": "in"
+    },
+    {
+      "id": "eb3a6821-188a-4c4c-a4bc-f7ebe51b35fb",
+      "source": "node-5b22b45c-ca09-4f4c-a1e8-fc9a3191bd44",
+      "sourceHandle": "out",
+      "target": "node-e3559593-d442-4fa9-b6eb-5242548fcea8",
+      "targetHandle": "in-2"
+    },
+    {
+      "id": "a35e7917-c0b7-40de-a235-b94380a32cb2",
+      "source": "node-5b22b45c-ca09-4f4c-a1e8-fc9a3191bd44-input",
+      "sourceHandle": "out",
+      "target": "node-037d2c79-4bd6-4a37-a1e0-6bf70def3962",
+      "targetHandle": "in"
+    },
+    {
+      "id": "35a1c854-488f-4ac6-8f0f-6f10e63b7e8f",
+      "source": "node-5b22b45c-ca09-4f4c-a1e8-fc9a3191bd44-input",
+      "sourceHandle": "out",
+      "target": "node-e513d893-b630-4707-ac0c-555263a959fe",
+      "targetHandle": "in"
+    },
+    {
+      "id": "0890145a-f6ac-4291-9088-178870a761ac",
+      "source": "node-5b22b45c-ca09-4f4c-a1e8-fc9a3191bd44-input",
+      "sourceHandle": "out",
+      "target": "node-9f095bf8-eb5e-4c0e-a2c7-fced4cfba039",
+      "targetHandle": "in"
+    },
+    {
+      "id": "c243979a-d945-4f72-8437-c2fc6c3b19b5",
+      "source": "node-e513d893-b630-4707-ac0c-555263a959fe",
+      "sourceHandle": "out",
+      "target": "node-1e93fea2-1d9a-458f-87c6-3bf13865a417",
+      "targetHandle": "in-1"
+    },
+    {
+      "id": "7deba941-5448-4ff9-ae83-60885c787381",
+      "source": "node-9f095bf8-eb5e-4c0e-a2c7-fced4cfba039",
+      "sourceHandle": "out",
+      "target": "node-1e93fea2-1d9a-458f-87c6-3bf13865a417",
+      "targetHandle": "in-2"
+    },
+    {
+      "id": "729d2127-a7df-4bca-b2ef-16651e6e7a76",
+      "source": "node-1e93fea2-1d9a-458f-87c6-3bf13865a417",
+      "sourceHandle": "out",
+      "target": "node-dbdb2ccc-7a47-48fa-a6c2-9f31db009dfc",
+      "targetHandle": "in"
+    },
+    {
+      "id": "88b57315-d712-432d-a046-73f8d3b7e1fe",
+      "source": "node-dbdb2ccc-7a47-48fa-a6c2-9f31db009dfc",
+      "sourceHandle": "out",
+      "target": "node-3f7ad15a-a1bd-48d5-8af6-0a6d17ce57ac",
+      "targetHandle": "in-2"
+    },
+    {
+      "id": "5e456e88-a625-49a1-92b8-467e8fd401c1",
+      "source": "node-037d2c79-4bd6-4a37-a1e0-6bf70def3962",
+      "sourceHandle": "out",
+      "target": "node-3f7ad15a-a1bd-48d5-8af6-0a6d17ce57ac",
+      "targetHandle": "in-1"
+    },
+    {
+      "id": "a39bcece-0a08-42b6-86c5-2153f9d65b02",
+      "source": "node-3f7ad15a-a1bd-48d5-8af6-0a6d17ce57ac",
+      "sourceHandle": "out",
+      "target": "node-5b22b45c-ca09-4f4c-a1e8-fc9a3191bd44-boundary-out",
       "targetHandle": "in"
     }
   ],
