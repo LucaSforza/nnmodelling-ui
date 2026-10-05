@@ -1,0 +1,1 @@
+"""Local NNModelling training service."""

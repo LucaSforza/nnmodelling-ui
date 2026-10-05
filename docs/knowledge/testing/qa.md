@@ -46,7 +46,8 @@ not establish that visible application works.
     and `[B,64]`, final logits to `[B,10]`; show typed result. Break a Linear
     dimension and verify node-specific semantic error; missing Input binding
     must be unresolved rather than success. Lua fault must be distinct from
-    semantic error. Confirm no Python/backend/training process runs.
+    semantic error. Ordinary graph editing must not launch Python/training.
+    Explicit backend job submission follows backend.md and its separate gates.
 
 ## Evidence and exit
 

@@ -1,14 +1,12 @@
-# Deferred interfaces
+# External interfaces
 
 ## Backend connection
 
-Current repository has no backend implementation, backend client, HTTP server,
-or training service. Future backend adapter will consume a validated immutable
-project/package snapshot from application API. It cannot own or mutate active
-graph; responses become application diagnostics or job state, not a second
-model. Endpoint, authentication, protocol, jobs and dataset transfer are OPEN.
-No project file stores credentials. Existing PyTorch package files are copied
-only for compatibility with a future resolved bundle.
+Accepted 2026-10-05: [backend](backend.md) defines local FastAPI/OpenAPI server,
+container jobs, immutable snapshots, generic PyTorch execution, dataset adapters
+and wheel export. Qt consumes job state through asynchronous HTTP; C application
+remains active graph authority. No project file stores credentials. Multi-user
+remote hosting and distributed scheduling remain deferred.
 
 ## Local automation
 
@@ -27,5 +25,7 @@ Natural: screenshot reflects completed layout, including requested arrange.
 
 Node creation, connection, parameter editing, layout, project lifecycle,
 screenshot and resource creation are supported. Authoring uses the accepted
-[resource transaction](resource-authoring.md). Resource deletion, training,
-monitoring and wheel download remain deferred.
+[resource transaction](resource-authoring.md). Resource deletion remains deferred.
+Training, monitoring and wheel download use HTTP backend, not local CLI protocol.
+
+Accepted 2026-10-05: [backend contract](backend.md) and [backend UML](../uml/backend.md) supersede earlier backend/training deferrals. Native C11 graph authority and Lua shape analysis remain unchanged.

@@ -2,6 +2,10 @@
 /cmake-build-*/
 /compile_commands.json
 /.computer-use/
+/.venv/
+/.pytest_cache/
+__pycache__/
+*.py[cod]
 *.o
 *.a
 *.so

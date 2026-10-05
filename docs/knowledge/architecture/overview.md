@@ -20,6 +20,10 @@ flowchart TD
     Catalog --> Utils
     Inference --> Utils
     IPC --> Utils
+    GUI --> HTTP[Qt Network asynchronous backend client]
+    HTTP --> Backend[backend - local FastAPI and persistent jobs]
+    Backend --> Container[Isolated training containers]
+    Container --> Python[python/nnmodelling-runtime - PyTorch DAG and dataset SDK]
 ```
 
 Accepted 2026-10-02: `src/model/`, `catalog/`, `project/`, `inference/`,
@@ -60,7 +64,7 @@ Removed sources: `src/platform.h`, `src/platform_sdl3.c`, `src/editor.h`,
 `src/editor.c`, `src/main.c` and `tests/platform_smoke.c`. The sole graphical
 entry point is `src/gui/qt/main.cpp`; no SDL fallback or C drawing API remains.
 Preserved stereotype packages, historical UML and unrelated vendored assets
-are unchanged. Backend and training remain deferred. C11 local automation serves
+are unchanged. Local backend and training follow contracts/backend.md. C11 local automation serves
 the same application owner; Qt schedules nonblocking IPC dispatch on its thread.
 Resource authoring follows resource-authoring.md. Accepted 2026-10-01 typed
 output/loss topology, terminal spawning and handle-sensitive recursive analysis
@@ -80,3 +84,5 @@ It owns generic subflow Lua composition, expanded occurrence identity, layout,
 camera, projection and picking. Qt paints its projected primitives in a 3D tab.
 See [3D contract](../contracts/visualization-3d.md). No model or file-format change
 for 3D presentation; object stereotype parameters now follow that contract.
+
+Accepted 2026-10-05: [backend contract](../contracts/backend.md) and [backend UML](../uml/backend.md) supersede earlier backend/training deferrals. Native C11 graph authority and Lua shape analysis remain unchanged.

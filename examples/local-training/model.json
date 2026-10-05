@@ -1,0 +1,28 @@
+{
+  "manifest": {
+    "schemaVersion": 2,
+    "id": "local-linear-regression",
+    "version": "0.1.0",
+    "name": "Local Linear Regression",
+    "description": "A tiny deterministic container-training example.",
+    "customPackages": [],
+    "customDatasets": [
+      { "id": "example.tiny-regression", "version": "1.0.0", "path": "datasets/tiny-regression" }
+    ],
+    "activeDataset": { "id": "example.tiny-regression", "version": "1.0.0" }
+  },
+  "layoutDirection": "horizontal",
+  "nodes": [
+    { "id": "input-x", "type": "custom", "position": { "x": 0, "y": 0 }, "data": { "name": "x", "scope": "", "package": { "id": "core.input", "version": "0.1.0" }, "params": { "binding": "x" } } },
+    { "id": "linear", "type": "custom", "position": { "x": 240, "y": 0 }, "data": { "name": "y = ax + b", "scope": "", "package": { "id": "core.linear", "version": "0.1.0" }, "params": { "in_features": 1, "out_features": 1, "bias": true, "dtype": "float32" } } },
+    { "id": "prediction", "type": "custom", "position": { "x": 480, "y": 0 }, "data": { "name": "Prediction", "scope": "", "package": { "id": "core.output", "version": "0.1.0" }, "params": {} } },
+    { "id": "mse", "type": "custom", "position": { "x": 480, "y": 200 }, "data": { "name": "Mean squared error", "scope": "", "package": { "id": "core.mse-loss", "version": "0.1.0" }, "params": {} } },
+    { "id": "objective", "type": "custom", "position": { "x": 720, "y": 200 }, "data": { "name": "Training objective", "scope": "", "package": { "id": "core.loss-output", "version": "0.1.0" }, "params": {} } }
+  ],
+  "edges": [
+    { "id": "input-linear", "source": "input-x", "sourceHandle": "out", "target": "linear", "targetHandle": "in" },
+    { "id": "linear-output", "source": "linear", "sourceHandle": "out", "target": "prediction", "targetHandle": "in" },
+    { "id": "linear-loss", "source": "linear", "sourceHandle": "out", "target": "mse", "targetHandle": "in" },
+    { "id": "loss-output", "source": "mse", "sourceHandle": "loss", "target": "objective", "targetHandle": "in" }
+  ]
+}

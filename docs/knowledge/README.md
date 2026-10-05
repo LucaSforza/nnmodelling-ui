@@ -2,9 +2,9 @@
 
 This tree is normative for the native client. Legacy NNModelling is evidence;
 its browser and backend mechanisms do not define this implementation. An `OPEN`
-item is a question, not an implementation license. Current scope is UI/client
-only. Local command automation is accepted for this milestone; backend connection
-and numerical training/execution remain deferred boundaries.
+item is a question, not an implementation license. Accepted scope now includes local FastAPI backend and container training per
+[backend contract](contracts/backend.md), superseding earlier deferrals. Local
+command automation and C11 native client remain accepted.
 
 Read [architecture](architecture/overview.md), then relevant contracts and UML
 before changing code. Update contract and UML before changing accepted
@@ -13,6 +13,7 @@ semantics or ownership. [UI rewrite plan](../plans/ui-rewrite.md) tracks work;
 
 | Area | Documents |
 | --- | --- |
+| Backend and Python SDK | [Local API, containers, adapters and wheel](contracts/backend.md), [execution UML](uml/backend.md) |
 | Architecture | [Overview and module ownership](architecture/overview.md) |
 | Source organization | [Module layout and private helpers](contracts/source-layout.md), [architecture diagram](architecture/overview.md) |
 | Contracts | [UI release](contracts/ui-release.md), [model and packages](contracts/model.md), [graphics and editor](contracts/editor.md), [Lua runtime](contracts/lua.md), [future interfaces](contracts/future-interfaces.md) |
@@ -31,7 +32,7 @@ and UML before implementing a changed requirement. Otherwise accepted current
 contracts and UML take precedence over legacy documentation and implementation.
 Conflicts require a documented decision. Current release builds full native
 project and graph editor, including project-owned datasets and stereotype
-dependencies. Training and backend execution remain deferred. Resource authoring
+dependencies. Local backend and training are accepted per contracts/backend.md. Resource authoring
 and local `nnmodelctl` are accepted in [resource authoring](contracts/resource-authoring.md)
 and [automation](contracts/automation.md).
 

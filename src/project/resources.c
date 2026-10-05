@@ -32,9 +32,9 @@ static char *resource_manifest(const char *id, const char *version,
         if (deps_doc) yyjson_doc_free(deps_doc);
         return NULL;
     }
-    yyjson_mut_val *root = yyjson_mut_obj(doc), *entry = yyjson_mut_obj(doc), *inf = yyjson_mut_obj(doc);
+    yyjson_mut_val *root = yyjson_mut_obj(doc), *entry = yyjson_mut_obj(doc), *inf = yyjson_mut_obj(doc), *python = yyjson_mut_obj(doc);
     yyjson_mut_val *deps = yyjson_val_mut_copy(doc, yyjson_doc_get_root(deps_doc));
-    bool okay = root && entry && inf && deps &&
+    bool okay = root && entry && inf && python && deps &&
         yyjson_mut_obj_add_int(doc, root, "schemaVersion", 1) &&
         yyjson_mut_obj_add_strcpy(doc, root, "id", id) &&
         yyjson_mut_obj_add_strcpy(doc, root, "version", version) &&
@@ -43,7 +43,10 @@ static char *resource_manifest(const char *id, const char *version,
         yyjson_mut_obj_add_strcpy(doc, entry, "definition", definition) &&
         yyjson_mut_obj_add_val(doc, entry, "inference", inf) &&
         yyjson_mut_obj_add_strcpy(doc, inf, "language", "lua") &&
-        yyjson_mut_obj_add_strcpy(doc, inf, "file", lua);
+        yyjson_mut_obj_add_strcpy(doc, inf, "file", lua) &&
+        yyjson_mut_obj_add_val(doc, entry, "pytorch", python) &&
+        yyjson_mut_obj_add_strcpy(doc, python, "language", "python") &&
+        yyjson_mut_obj_add_strcpy(doc, python, "file", "pytorch.py");
     char *json = NULL;
     size_t length = 0;
     if (okay) { yyjson_mut_doc_set_root(doc, root); json = yyjson_mut_write_opts(doc, YYJSON_WRITE_PRETTY_TWO_SPACES, NULL, &length, NULL); }
@@ -56,12 +59,15 @@ static char *dataset_manifest(const char *id, const char *version)
 {
     yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
     if (!doc) return NULL;
-    yyjson_mut_val *root = yyjson_mut_obj(doc), *entry = yyjson_mut_obj(doc);
-    bool okay = root && entry && yyjson_mut_obj_add_int(doc, root, "schemaVersion", 1) &&
+    yyjson_mut_val *root = yyjson_mut_obj(doc), *entry = yyjson_mut_obj(doc), *python = yyjson_mut_obj(doc);
+    bool okay = root && entry && python && yyjson_mut_obj_add_int(doc, root, "schemaVersion", 1) &&
         yyjson_mut_obj_add_strcpy(doc, root, "id", id) &&
         yyjson_mut_obj_add_strcpy(doc, root, "version", version) &&
         yyjson_mut_obj_add_val(doc, root, "entrypoints", entry) &&
-        yyjson_mut_obj_add_strcpy(doc, entry, "definition", "dataset.json");
+        yyjson_mut_obj_add_strcpy(doc, entry, "definition", "dataset.json") &&
+        yyjson_mut_obj_add_val(doc, entry, "python", python) &&
+        yyjson_mut_obj_add_strcpy(doc, python, "language", "python") &&
+        yyjson_mut_obj_add_strcpy(doc, python, "file", "dataset.py");
     char *json = NULL; size_t length = 0;
     if (okay) { yyjson_mut_doc_set_root(doc, root); json = yyjson_mut_write_opts(doc, YYJSON_WRITE_PRETTY_TWO_SPACES, NULL, &length, NULL); }
     if (json) { char *grown = realloc(json, length + 2); if (!grown) { free(json); json = NULL; } else { grown[length++] = '\n'; grown[length] = 0; json = grown; } }
@@ -82,6 +88,30 @@ static char *pretty_json(const char *source)
     if (!grown) { free(text); return NULL; }
     grown[length++] = '\n'; grown[length] = '\0';
     return grown;
+}
+
+static char *python_pyproject(const char *id, const char *version)
+{
+    const int needed = snprintf(NULL, 0,
+        "[project]\nname = \"nnmodelling-%s\"\nversion = \"%s\"\ndependencies = [\"nnmodelling-runtime>=0.1.0\"]\n",
+        id, version);
+    if (needed < 0) return NULL;
+    char *text = malloc((size_t)needed + 1);
+    if (!text) return NULL;
+    if (snprintf(text, (size_t)needed + 1,
+        "[project]\nname = \"nnmodelling-%s\"\nversion = \"%s\"\ndependencies = [\"nnmodelling-runtime>=0.1.0\"]\n",
+        id, version) != needed) { free(text); return NULL; }
+    return text;
+}
+
+static const char *dataset_scaffold(void)
+{
+    return "from collections.abc import Iterator\nfrom typing import Generic, TypeVar\n\nfrom torch import Tensor\nfrom nnmodelling_runtime import Batch, DatasetAdapter\n\nInputT = TypeVar(\"InputT\")\nOutputT = TypeVar(\"OutputT\")\n\n\nclass Dataset(DatasetAdapter[InputT, OutputT], Generic[InputT, OutputT]):\n    def tokenize(self, value: InputT) -> Tensor | dict[str, Tensor]:\n        raise NotImplementedError(\"Implement dataset input tokenization.\")\n\n    def untokenize(self, tensor: Tensor) -> OutputT:\n        raise NotImplementedError(\"Implement prediction decoding.\")\n\n    def load(self, split: str, batch_size: int) -> Iterator[Batch]:\n        raise NotImplementedError(\"Load and batch the requested dataset split.\")\n";
+}
+
+static const char *pytorch_scaffold(void)
+{
+    return "def build(parameters, context, services):\n    raise NotImplementedError(\"Implement the PyTorch stereotype build function.\")\n";
 }
 
 static bool make_resource_directory(const char *root, const char *category,
@@ -133,8 +163,11 @@ bool nn_project_create_stereotype(NNProject *p, const char *id, const char *vers
     }
     if (!manifest || !definition || !make_resource_directory(p->directory, "packages", name, &rel, &dir, &category_created)) { free(manifest); free(definition); free(rel); free(dir); nn_errorf(error, cap, "cannot create package resource directory"); return false; }
     char *mp = nn_path_join(dir, "manifest.json"), *dp = nn_path_join(dir, "definition.json"), *lp = nn_path_join(dir, "inference.lua");
-    bool okay = mp && dp && lp && write_new_text(mp, manifest) && write_new_text(dp, definition) && write_new_text(lp, lua);
-    free(manifest); free(definition); free(mp); free(dp); free(lp);
+    char *py = nn_path_join(dir, "pyproject.toml"), *pt = nn_path_join(dir, "pytorch.py");
+    char *pyproject = python_pyproject(id, version);
+    bool okay = mp && dp && lp && py && pt && write_new_text(mp, manifest) && write_new_text(dp, definition) &&
+        pyproject && write_new_text(lp, lua) && write_new_text(py, pyproject) && write_new_text(pt, pytorch_scaffold());
+    free(manifest); free(definition); free(mp); free(dp); free(lp); free(py); free(pt); free(pyproject);
     NNResourceRef *refs = NULL; NNCatalog *candidate = NULL;
     if (okay) {
         refs = calloc(p->package_count + 1, sizeof(*refs)); okay = refs != NULL;
@@ -186,8 +219,11 @@ bool nn_project_create_dataset(NNProject *p, const char *id, const char *version
     }
     if (!manifest || !definition || !make_resource_directory(p->directory, "datasets", name, &rel, &dir, &category_created)) { free(manifest); free(definition); free(rel); free(dir); nn_errorf(error, cap, "cannot create dataset resource directory"); return false; }
     char *mp = nn_path_join(dir, "manifest.json"), *dp = nn_path_join(dir, "dataset.json");
-    bool okay = mp && dp && write_new_text(mp, manifest) && write_new_text(dp, definition);
-    free(manifest); free(definition); free(mp); free(dp);
+    char *py = nn_path_join(dir, "pyproject.toml"), *ds = nn_path_join(dir, "dataset.py");
+    char *pyproject = python_pyproject(id, version);
+    bool okay = mp && dp && py && ds && write_new_text(mp, manifest) && write_new_text(dp, definition) &&
+        pyproject && write_new_text(py, pyproject) && write_new_text(ds, dataset_scaffold());
+    free(manifest); free(definition); free(mp); free(dp); free(py); free(ds); free(pyproject);
     NNDataset candidate = { .id = nn_text_copy(id), .version = nn_text_copy(version), .path = nn_text_copy(rel) };
     if (okay) okay = candidate.id && candidate.version && candidate.path && nn_project_load_dataset(p, &candidate, error, cap);
     NNDataset *grown = okay ? malloc((p->dataset_count + 1) * sizeof(*grown)) : NULL;

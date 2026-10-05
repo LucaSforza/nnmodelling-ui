@@ -186,3 +186,5 @@ tensors, terminal-only restrictions, single-input collectors, transactional
 spawn and mapping persistence, exact root/nested boundaries, CLI parity,
 circle/port/edge graphics and retained forms. Run just test, just test-ui,
 sanitizers and git diff --check; inspect actual screenshots.
+
+Accepted 2026-10-05: [backend contract](backend.md) and [backend UML](../uml/backend.md) supersede earlier backend/training deferrals. Native C11 graph authority and Lua shape analysis remain unchanged.

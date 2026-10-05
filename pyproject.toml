@@ -1,0 +1,32 @@
+[project]
+name = "nnmodelling-backend"
+version = "0.1.0"
+description = "Local FastAPI and isolated worker service for NNModelling"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115,<0.116",
+    "nnmodelling-runtime>=0.1.0",
+    "uvicorn>=0.30",
+]
+
+[dependency-groups]
+dev = ["httpx>=0.27", "pytest>=8"]
+
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["backend"]
+
+[tool.uv.workspace]
+members = ["python/nnmodelling-runtime"]
+
+[tool.uv.sources]
+nnmodelling-runtime = { workspace = true }
+torch = { index = "pytorch-cpu" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true

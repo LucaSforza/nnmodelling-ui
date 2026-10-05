@@ -75,4 +75,4 @@ Timeout alone is not a stuck-agent diagnosis. Do not repeatedly poll status or
 acknowledge wake events; process the actual native message/result and coordinate
 only when useful. Wait cancellation stops observation, never the child agents.
 
-Current scope is client UI only. Local `nnmodelctl` is accepted by `docs/knowledge/contracts/automation.md`; backend and training remain future boundaries. Preserve exact core package assets and historical UML. Run relevant tests and `git diff --check` before completion; report open questions and missing tooling accurately.
+The current release includes the accepted local FastAPI backend and container training in `docs/knowledge/contracts/backend.md` and `docs/knowledge/uml/backend.md`, alongside the C11 native client and local `nnmodelctl` in `docs/knowledge/contracts/automation.md`. Preserve exact core package assets and historical UML. Run relevant tests and `git diff --check` before completion; report open questions and missing tooling accurately.

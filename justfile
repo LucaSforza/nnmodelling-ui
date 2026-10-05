@@ -25,6 +25,24 @@ test-ui: build
 test-cli: build
     ctest --test-dir build/qt --output-on-failure -R cli_ui
 
+backend-sync:
+    uv sync --all-packages --group dev
+
+backend-image:
+    "${NNMODELLING_CONTAINER_RUNTIME:-docker}" build -f backend/Dockerfile -t "${NNMODELLING_WORKER_IMAGE:-nnmodelling-worker:local}" .
+
+backend-run:
+    uv run --package nnmodelling-backend --no-sync uvicorn backend.app:app --host "${NNMODELLING_BACKEND_HOST:-127.0.0.1}" --port "${NNMODELLING_BACKEND_PORT:-8765}"
+
+test-backend:
+    uv run --package nnmodelling-backend --group dev pytest -q tests/test_backend.py tests/backend
+
+test-runtime:
+    uv run --group dev pytest -q tests/test_runtime.py
+
+runtime-wheel:
+    uv build --package nnmodelling-runtime --out-dir dist
+
 # Clang is the default because the local GCC sanitizer runtimes may be absent.
 test-sanitize:
     cmake -S . -B build/sanitizers -DNN_BUILD_GUI=OFF -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_COMPILER="${NN_SANITIZER_CC:-clang}" -DCMAKE_C_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer -g" -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined"

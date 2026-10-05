@@ -176,3 +176,5 @@ See editor.md for UI behavior, save revisions and resource barriers.
 parameter limitation: owned NNValue objects preserve stereotype references,
 parameters, history and schema-v2 JSON. C validates active package identity,
 version constraint, expected kind and referenced parameters.
+
+Accepted 2026-10-05: [backend contract](backend.md) and [backend UML](../uml/backend.md) supersede earlier backend/training deferrals. Native C11 graph authority and Lua shape analysis remain unchanged.

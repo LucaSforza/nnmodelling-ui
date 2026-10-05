@@ -34,9 +34,13 @@ trial with CLI or direct project-file edits.
 
 Use `fff` MCP tools for every file search. Preserve user changes. Do not expose
 secrets. Keep implementation small and idiomatic C. Use `justfile` for build
-recipes, put test sources under `tests/`, keep model/application code C11, and restrict C++/Qt to src/gui/qt. Run relevant tests and `git diff --check`; report missing
-Qt/tooling instead of claiming success.
-The current project is UI/client only; backend and training remain deferred.
+recipes, put test sources under `tests/`, keep model/application code C11,
+Python service and SDK code under `backend/` and `python/nnmodelling-runtime/`,
+and restrict C++/Qt to `src/gui/qt/`. Run relevant tests and `git diff --check`;
+report missing Qt/tooling instead of claiming success.
+The current project includes the accepted local FastAPI backend and container
+training in `docs/knowledge/contracts/backend.md` and
+`docs/knowledge/uml/backend.md`, alongside the native client.
 Local command service is accepted by `docs/knowledge/contracts/automation.md`.
 Legacy files under `stereotype-packages/` and
 `analysis/uml/nn.vpp` are preserved references, not code to port mechanically.

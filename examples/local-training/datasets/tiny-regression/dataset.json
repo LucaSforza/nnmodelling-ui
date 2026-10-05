@@ -1,0 +1,8 @@
+{
+  "name": "Tiny linear regression",
+  "description": "Explicit four-sample training split for the local container-training example.",
+  "batch": {
+    "inputs": { "x": { "dtype": "float32", "shape": ["B", 1] } },
+    "targets": { "target": { "dtype": "float32", "shape": ["B", 1] } }
+  }
+}

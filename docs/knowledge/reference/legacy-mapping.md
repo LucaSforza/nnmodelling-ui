@@ -3,6 +3,10 @@
 Reference commit: `2828ac31bc0e2de04f258afd88461db425de040a` of
 [LucaSforza/NNModelling](https://github.com/LucaSforza/NNModelling).
 Classification concerns this client rewrite, not deletion from legacy.
+This table records the original rewrite classification. Accepted 2026-10-05
+[backend contract](../contracts/backend.md) supersedes its backend deferrals:
+new local FastAPI/container execution uses preserved Python entrypoints without
+porting the historical backend implementation mechanically.
 
 | Legacy concept | Class | Reason and native direction |
 | --- | --- | --- |

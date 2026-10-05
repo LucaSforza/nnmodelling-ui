@@ -21,6 +21,11 @@ All application implementation lives under `src/`, one directory per module:
 | `utils/` | global allocation-free errors, owned text/path joining, join-handle parsing |
 | `gui/qt/` | Qt frontend only: existing canvas classes; window composition, project actions, inspector/resources, diagnostics, authoring dialogs, UI automation |
 
+Accepted 2026-10-05: Python service sources live in `backend/`, reusable Python
+execution/SDK in `python/nnmodelling-runtime/`, managed by root uv workspace.
+This extends application layout without moving Python into C11 core; HTTP
+presentation remains Qt-only. Python tests also live under `tests/`.
+
 Public headers stay named after their module and live inside its directory.
 Cross-module includes are explicit (`application/application.h`, etc.) relative
 to the exported `src` include root. No flat compatibility forwarding headers or
@@ -64,3 +69,5 @@ diagrams rather than creating another overlapping UML document.
 Accepted 2026-10-04: `visualization/` owns C11 expanded scene/composition,
 layout and camera/projection/picking per visualization-3d.md. Qt adapter stays
 in gui/qt. No graphics-library dependency enters core.
+
+Accepted 2026-10-05: [backend contract](backend.md) and [backend UML](../uml/backend.md) supersede earlier backend/training deferrals. Native C11 graph authority and Lua shape analysis remain unchanged.

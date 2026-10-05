@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "id": "example.tiny-regression",
+  "version": "1.0.0",
+  "entrypoints": {
+    "definition": "dataset.json",
+    "python": { "language": "python", "file": "dataset.py" }
+  }
+}

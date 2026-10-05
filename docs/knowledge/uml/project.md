@@ -135,6 +135,13 @@ Dataset resource schema 1 stores `manifest.json` with exact ID/version and
 dimensions are positive integers or symbolic batch string `B`. The bundled
 MNIST example under `examples/mnist-mlp/` demonstrates this boundary.
 
+Accepted 2026-10-05: authored resources additionally carry uv project metadata
+and Python stubs per [backend contract](../contracts/backend.md). Dataset
+manifest declares Python `Dataset` adapter; stereotype manifest declares
+PyTorch builder. Client still never executes Python. Job snapshot owns exact
+copies of project/resources/data; exported Model owns a private adapter and
+graph runtime, and excludes training data. See [backend UML](backend.md).
+
 ## Constraints
 
 Formal: `activePackages(P) = corePackages ∪ refs(P.manifest.customPackages)`;

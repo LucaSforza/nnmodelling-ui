@@ -4,6 +4,7 @@
 #include "GraphView.hpp"
 #include "NodeItem.hpp"
 #include "MainWindowUtils.hpp"
+#include "BackendDialog.hpp"
 #include "application/application.h"
 #include "automation/automation.h"
 #include "project/project.h"
@@ -252,6 +253,11 @@ void MainWindow::buildUi() {
     auto *modelMenu = addMenu(tr("&Model"));
     addAction(modelMenu, tr("Create stereotype…"), {}, [this] { createStereotype(); });
     addAction(modelMenu, tr("Create dataset…"), {}, [this] { createDataset(); });
+    QAction *backendPanelAction = addAction(modelMenu, tr("Training backend…"), {}, [this] {
+        BackendDialog dialog(application_.get(), [this] { return saveProject(); },
+            [this](const QString &directory) { return openProject(directory); }, this);
+        dialog.exec();
+    }, "backendPanelAction");
 
     auto *viewMenu = addMenu(tr("&View"));
     addAction(viewMenu, tr("Fit graph"), QKeySequence(QStringLiteral("Ctrl+0")), [this] {
@@ -288,6 +294,10 @@ void MainWindow::buildUi() {
     scopeMenu->addAction(scopeTreeAction);
     scopeSelector_->setMenu(scopeMenu);
     toolbar->addWidget(scopeSelector_);
+    auto *trainingAction = toolbar->addAction(tr("Training"));
+    trainingAction->setObjectName(QStringLiteral("trainingBackendToolbarAction"));
+    trainingAction->setToolTip(tr("Open the training backend"));
+    connect(trainingAction, &QAction::triggered, backendPanelAction, &QAction::trigger);
     auto *fitButtonAction = toolbar->addAction(tr("Fit"));
     fitButtonAction->setObjectName(QStringLiteral("fitGraph"));
     auto *zoomInButtonAction = toolbar->addAction(tr("+"));

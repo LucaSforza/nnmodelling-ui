@@ -1,5 +1,11 @@
 # Verification strategy
 
+Local backend (accepted 2026-10-05): [backend contract](../contracts/backend.md)
+adds Python API/worker/runtime/wheel tests, Qt HTTP tests, resource uv scaffolds
+and actual container training gate. A direct worker test is diagnostic evidence;
+only actual container job proves deployment path. Keep service running locally
+when requested and document startup/shutdown in backend management skill.
+
 Core gate: `just test` configures a C-only build without Qt/C++ and runs Lua,
 model, catalog, project, application, resource, automation and inference tests. Existing project test
 uses its catalog fixture. Application tests use real packages and verify C-only

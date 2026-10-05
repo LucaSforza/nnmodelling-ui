@@ -1,7 +1,8 @@
 # Native editor release contract
 
-Status: accepted from 2026-09-28 request. Complete UI/client rewrite target;
-training/backend execution remains external future work.
+Status: native rewrite accepted from 2026-09-28 request. Accepted 2026-10-05:
+[backend contract](backend.md) extends UI with HTTP jobs, loss monitoring,
+snapshot restore and downloads; Python training runs in backend containers.
 
 ## Project lifecycle and workspace
 
@@ -43,7 +44,8 @@ in [project UML](../uml/project.md).
 
 Graph view and inspector remain usable with unresolved tensors or Lua semantic
 errors. Diagnostics identify node and category. Native client does not execute
-`pytorch.py` or `dataset.py`, train model, download weights, or predict digits.
+`pytorch.py` or `dataset.py` or train models itself. Explicit backend connection
+adds job monitoring, snapshot restore and wheel/weight downloads per backend.md.
 MNIST MLP example is an editable classifier *design* for 28×28 grayscale
 inputs and ten digit logits, not trained model or live classifier.
 
@@ -70,5 +72,5 @@ Accepted 2026-09-30: diagnostics.md replaces per-node success rows with Model
 problems. Shape/dtype remain in the inspector; Lua compilation, model errors,
 Incomplete and internal unavailability have distinct presentation and CLI parity.
 
-These conditions define current release stop point. Additional backend,
-training remain separate future milestones.
+These conditions define native editor milestone. Local backend milestone adds
+acceptance conditions in backend.md; ordinary editing starts no backend job.

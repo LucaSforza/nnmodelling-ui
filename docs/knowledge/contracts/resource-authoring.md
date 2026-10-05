@@ -4,7 +4,8 @@ Accepted 2026-09-30 from user request. Supersedes migration-only limits for
 resource creation, positioned parameters and single-tensor subflow analysis.
 Accepted 2026-10-01: typed-outputs.md supersedes single-output limits, boundary
 topology and example terminal semantics.
-Backend, numerical execution and training remain deferred.
+Accepted 2026-10-05: backend.md defines numerical execution, training and Python
+resource scaffolds; C retains native resource and graph ownership.
 
 ## Persistence and presentation
 
@@ -104,3 +105,5 @@ Accepted 2026-10-04: [3D contract](visualization-3d.md) supersedes Horizontal
 Repeat object/join limitations. Its generic inference service and separate
 subflow-only visualization Lua entrypoint are accepted; numerical execution
 and training remain deferred.
+
+Accepted 2026-10-05: [backend contract](backend.md) and [backend UML](../uml/backend.md) supersede earlier backend/training deferrals. Native C11 graph authority and Lua shape analysis remain unchanged.

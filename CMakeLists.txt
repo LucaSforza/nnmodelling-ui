@@ -111,7 +111,7 @@ if(NN_BUILD_GUI)
     set(CMAKE_CXX_STANDARD 17)
     set(CMAKE_CXX_STANDARD_REQUIRED ON)
     set(CMAKE_CXX_EXTENSIONS OFF)
-    find_package(Qt6 REQUIRED COMPONENTS Widgets)
+    find_package(Qt6 REQUIRED COMPONENTS Widgets Network)
     set(QT_CANVAS_SOURCES
         src/gui/qt/GraphScene.cpp src/gui/qt/GraphScene.hpp
         src/gui/qt/GraphView.cpp src/gui/qt/GraphView.hpp
@@ -123,6 +123,7 @@ if(NN_BUILD_GUI)
         src/gui/qt/SubflowItem.cpp src/gui/qt/SubflowItem.hpp)
     set(QT_WINDOW_SOURCES
         src/gui/qt/MainWindow.cpp src/gui/qt/MainWindow.hpp
+        src/gui/qt/BackendDialog.cpp src/gui/qt/BackendDialog.hpp
         src/gui/qt/MainWindowProject.cpp src/gui/qt/MainWindowAutomation.cpp
         src/gui/qt/MainWindowStereotypeAuthoring.cpp src/gui/qt/MainWindowDatasetAuthoring.cpp
         src/gui/qt/MainWindowRefresh.cpp src/gui/qt/MainWindowInspectorResources.cpp
@@ -135,20 +136,32 @@ if(NN_BUILD_GUI)
     add_executable(nnmodelling-ui src/gui/qt/main.cpp ${QT_WINDOW_SOURCES})
     set_target_properties(nnmodelling-ui PROPERTIES AUTOMOC ON)
     target_compile_definitions(nnmodelling-ui PRIVATE NN_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
-    target_link_libraries(nnmodelling-ui PRIVATE nnmodelling_canvas)
+    target_link_libraries(nnmodelling-ui PRIVATE nnmodelling_canvas Qt6::Network)
     if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         target_compile_options(nnmodelling_canvas PRIVATE -Wall -Wextra -Werror -pedantic)
         target_compile_options(nnmodelling-ui PRIVATE -Wall -Wextra -Werror -pedantic)
     endif()
     if(BUILD_TESTING)
         find_package(Qt6 REQUIRED COMPONENTS Test)
+        add_executable(qt_backend_test tests/qt_backend_test.cpp
+            src/gui/qt/BackendDialog.cpp src/gui/qt/BackendDialog.hpp)
+        set_target_properties(qt_backend_test PROPERTIES AUTOMOC ON)
+        target_include_directories(qt_backend_test PRIVATE src/gui/qt)
+        target_link_libraries(qt_backend_test PRIVATE nnmodelling_core Qt6::Widgets Qt6::Network Qt6::Test)
+        target_compile_definitions(qt_backend_test PRIVATE NN_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+        if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+            target_compile_options(qt_backend_test PRIVATE -Wall -Wextra -Werror -pedantic)
+        endif()
+        add_test(NAME qt_backend COMMAND qt_backend_test)
+        set_tests_properties(qt_backend PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+            ENVIRONMENT "QT_QPA_PLATFORM=offscreen" LABELS gui TIMEOUT 45)
         add_executable(qt_canvas_test tests/qt_canvas_test.cpp)
         set_target_properties(qt_canvas_test PROPERTIES AUTOMOC ON)
         target_link_libraries(qt_canvas_test PRIVATE nnmodelling_canvas Qt6::Test)
         target_compile_definitions(qt_canvas_test PRIVATE NN_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
         add_executable(qt_window_test tests/qt_window_test.cpp ${QT_WINDOW_SOURCES})
         set_target_properties(qt_window_test PROPERTIES AUTOMOC ON)
-        target_link_libraries(qt_window_test PRIVATE nnmodelling_canvas Qt6::Test)
+        target_link_libraries(qt_window_test PRIVATE nnmodelling_canvas Qt6::Test Qt6::Network)
         target_compile_definitions(qt_window_test PRIVATE NN_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
         add_executable(qt_routing_test tests/qt_routing_test.cpp)
         set_target_properties(qt_routing_test PROPERTIES AUTOMOC ON)

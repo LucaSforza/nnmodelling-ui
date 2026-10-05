@@ -28,3 +28,7 @@ font rendering. Neither asset defines domain semantics.
 Source: [Lua official download](https://www.lua.org/download.html),
 [Lua embedding/build guidance](https://www.lua.org/manual/5.5/readme.html),
 [Lua license](https://www.lua.org/license.html).
+
+Accepted 2026-10-05 user request supersedes keeping backend outside repository:
+local Python/FastAPI and container execution live beside native client per
+[backend contract](../contracts/backend.md). C11 graph/Lua ownership remains.

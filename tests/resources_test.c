@@ -78,6 +78,17 @@ int main(void)
     assert(nn_model_find_node(nn_app_model(app), "unsaved"));
 
     assert(nn_app_create_stereotype(app, "local.affine", "0.1.0", definition, rule, "{\"core.linear\":\"0.1.0\"}", error, sizeof(error)));
+    char scaffold_path[4096];
+    path(scaffold_path, sizeof(scaffold_path), directory, "packages/local.affine-0.1.0/pyproject.toml");
+    char *scaffold = read_text(scaffold_path);
+    assert(strstr(scaffold, "nnmodelling-runtime>=0.1.0")); free(scaffold);
+    path(scaffold_path, sizeof(scaffold_path), directory, "packages/local.affine-0.1.0/pytorch.py");
+    scaffold = read_text(scaffold_path);
+    assert(strstr(scaffold, "def build(parameters, context, services)"));
+    assert(strstr(scaffold, "NotImplementedError")); free(scaffold);
+    path(scaffold_path, sizeof(scaffold_path), directory, "packages/local.affine-0.1.0/manifest.json");
+    scaffold = read_text(scaffold_path);
+    assert(strstr(scaffold, "\"pytorch\"")); assert(strstr(scaffold, "pytorch.py")); free(scaffold);
     assert(!nn_project_dirty(nn_app_project(app)));
     assert(nn_app_add_node(app, "local", "local.affine", "0.1.0", "", 1, 2, error, sizeof(error)));
     const NNPackage *package = nn_catalog_find(nn_project_catalog(nn_app_project(app)), "local.affine", "0.1.0");
@@ -102,6 +113,17 @@ int main(void)
     assert(!nn_app_create_dataset(app, "duplicates", "0.1.0",
         "{\"name\":\"Bad\",\"batch\":{\"inputs\":{\"x\":{\"dtype\":\"float32\",\"shape\":[1]},\"x\":{\"dtype\":\"float32\",\"shape\":[2]}},\"targets\":{}}}", false, error, sizeof(error)));
     assert(nn_app_create_dataset(app, "local.images", "0.1.0", dataset, true, error, sizeof(error)));
+    path(scaffold_path, sizeof(scaffold_path), directory, "datasets/local.images-0.1.0/pyproject.toml");
+    scaffold = read_text(scaffold_path);
+    assert(strstr(scaffold, "nnmodelling-runtime>=0.1.0")); free(scaffold);
+    path(scaffold_path, sizeof(scaffold_path), directory, "datasets/local.images-0.1.0/dataset.py");
+    scaffold = read_text(scaffold_path);
+    assert(strstr(scaffold, "class Dataset(")); assert(strstr(scaffold, "def tokenize("));
+    assert(strstr(scaffold, "def untokenize(")); assert(strstr(scaffold, "def load("));
+    assert(strstr(scaffold, "NotImplementedError")); free(scaffold);
+    path(scaffold_path, sizeof(scaffold_path), directory, "datasets/local.images-0.1.0/manifest.json");
+    scaffold = read_text(scaffold_path);
+    assert(strstr(scaffold, "\"python\"")); assert(strstr(scaffold, "dataset.py")); free(scaffold);
     assert(!nn_project_dirty(nn_app_project(app)));
     assert(nn_project_active_dataset(nn_app_project(app)));
     assert(nn_app_add_node(app, "input", "core.input", "0.1.0", "", 0, 0, error, sizeof(error)));
