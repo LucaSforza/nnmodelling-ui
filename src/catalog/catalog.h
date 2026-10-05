@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include "model/model.h"
 
 typedef struct NNCatalog NNCatalog;
 
@@ -40,6 +41,7 @@ typedef struct {
     const char *const *choices;
     size_t choice_count;
     const char *position;
+    const char *kind;
 } NNParameterDef;
 
 typedef struct {
@@ -74,6 +76,14 @@ typedef struct NNPackage {
 NNCatalog *nn_catalog_load(const char *core_root, const char *project_root,
                            const NNResourceRef *custom, size_t custom_count,
                            char *err, size_t cap);
+const NNPackage *nn_catalog_resolve(const NNCatalog *catalog, const char *id,
+                                    const char *constraint);
+bool nn_catalog_validate_value(const NNCatalog *catalog, const NNParameterDef *definition,
+                               const NNValue *value, char *error, size_t capacity);
+const NNPackage *nn_catalog_reference(const NNCatalog *catalog, const NNValue *reference,
+                                     const char *kind, NNParameter **parameters, size_t *count,
+                                     char *error, size_t capacity);
+void nn_catalog_parameters_free(NNParameter *parameters, size_t count);
 void nn_catalog_free(NNCatalog *catalog);
 size_t nn_catalog_count(const NNCatalog *catalog);
 const NNPackage *nn_catalog_at(const NNCatalog *catalog, size_t index);

@@ -20,6 +20,19 @@ static bool version_satisfies(const char *version, const char *constraint) {
     return b > y || (b == y && c >= z);
   return b == y && c >= z;
 }
+const NNPackage *nn_catalog_resolve(const NNCatalog *catalog, const char *id,
+                                    const char *constraint) {
+  const NNPackage *found = NULL;
+  if (!id || !constraint) return NULL;
+  for (size_t i = 0; i < nn_catalog_count(catalog); ++i) {
+    const NNPackage *package = nn_catalog_at(catalog, i);
+    if (!strcmp(package->id, id) && version_satisfies(package->version, constraint)) {
+      if (found) return NULL;
+      found = package;
+    }
+  }
+  return found;
+}
 bool nn_catalog_validate_dependencies(NNCatalog *cat, char *err, size_t cap) {
   size_t i, j;
   unsigned char *marks = calloc(cat->count ? cat->count : 1, 1);

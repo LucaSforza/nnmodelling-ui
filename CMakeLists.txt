@@ -31,10 +31,10 @@ endif()
 
 set(NN_MODEL_SOURCES
     src/model/model.c src/model/nodes.c src/model/edges.c
-    src/model/parameters.c src/model/values.c src/model/model_utils.c)
+    src/model/parameters.c src/model/value_json.c src/model/values.c src/model/model_utils.c)
 set(NN_CATALOG_SOURCES
     src/catalog/catalog.c src/catalog/catalog_utils.c src/catalog/definition.c
-    src/catalog/manifest.c src/catalog/dependencies.c)
+    src/catalog/manifest.c src/catalog/dependencies.c src/catalog/references.c)
 set(NN_PROJECT_SOURCES
     src/project/project.c src/project/open.c src/project/graph_json.c
     src/project/save.c src/project/datasets.c src/project/templates.c
@@ -67,7 +67,7 @@ if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 
 if(BUILD_TESTING)
-    foreach(name IN ITEMS model catalog inference application resources automation history)
+    foreach(name IN ITEMS model catalog inference application resources automation history stereotype_reference)
         add_executable(${name}_test tests/${name}_test.c)
         target_link_libraries(${name}_test PRIVATE nnmodelling_core)
         add_test(NAME ${name} COMMAND ${name}_test)
@@ -99,7 +99,7 @@ if(BUILD_TESTING)
     add_test(NAME lua COMMAND lua_smoke)
     set_tests_properties(lua PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}" LABELS core)
     # Existing tests use assert for their checks, including in Release builds.
-    foreach(name IN ITEMS model_test catalog_test inference_test application_test resources_test automation_test history_test project_test lua_smoke utils_test)
+    foreach(name IN ITEMS model_test catalog_test inference_test application_test resources_test automation_test history_test project_test lua_smoke utils_test stereotype_reference_test)
         if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
             target_compile_options(${name} PRIVATE -Wall -Wextra -Werror -pedantic -UNDEBUG)
         endif()

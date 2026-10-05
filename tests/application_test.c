@@ -130,10 +130,10 @@ int main(void)
     }
     add(app, "horizontal", "core.horizontal-repeat", "", error);
     const NNNode *horizontal = nn_model_find_node(nn_app_model(app), "horizontal");
-    assert(horizontal && horizontal->parameter_count == 1);
+    assert(horizontal && horizontal->parameter_count == 2);
     assert(!nn_app_set_parameter_text(app, "horizontal", "join", "{}",
                                       error, sizeof(error)));
-    assert(strstr(error, "object-valued stereotype parameters"));
+    assert(strstr(error, "stereotype reference"));
     assert(nn_app_remove_node(app, "horizontal-boundary-out", error, sizeof(error)));
     assert(nn_app_remove_node(app, "horizontal-input", error, sizeof(error)));
     assert(nn_app_remove_node(app, "horizontal", error, sizeof(error)));

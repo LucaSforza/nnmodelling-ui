@@ -7,9 +7,15 @@ return function(context, parameters, services)
     return { status = "error", message = rank_error }
   end
 
+  -- Negative host indices avoid mixing package axes with Lua table indices.
+  local axis = parameters.dim < 0 and parameters.dim or parameters.dim - rank
+  if parameters.dim >= rank then
+    return { status = "error", message = "Concat dimension is out of range" }
+  end
+
   local first_size, dimension_error = tensor.dimension(
     first,
-    parameters.dim
+    axis
   )
 
   if dimension_error then
@@ -56,8 +62,8 @@ return function(context, parameters, services)
     end
 
     for current = 0, rank - 1 do
-      local expected = tensor.dimension(first, current)
-      local actual = tensor.dimension(input, current)
+      local expected = tensor.dimension(first, current - rank)
+      local actual = tensor.dimension(input, current - rank)
       local selected = current == parameters.dim
         or current == rank + parameters.dim
 
@@ -83,7 +89,7 @@ return function(context, parameters, services)
 
   local output, output_error = tensor.with_dimension(
     first,
-    parameters.dim,
+    axis,
     concatenated_size
   )
 

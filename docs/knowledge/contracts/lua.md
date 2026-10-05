@@ -74,3 +74,8 @@ rules remain unchanged; the host must supply these declared primitives.
 Accepted 2026-10-04: generic infer_stereotype reference service and separate
 subflow visualization recipe runtime follow [3D contract](visualization-3d.md).
 Inference never executes visualization entrypoints.
+
+Accepted 2026-10-05: Concat exposes zero-based nonnegative axes and negative
+axes from the end. Its rule normalizes axes to negative indices before calling
+the existing tensor host (whose positive dimension indices are one-based).
+This preserves unrelated rules and symbolic batch dimensions.

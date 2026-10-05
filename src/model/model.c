@@ -120,6 +120,13 @@ static bool equal_value(const NNValue *left, const NNValue *right)
         for (size_t i = 0; i < left->as.array.count; ++i)
             if (!equal_value(&left->as.array.items[i], &right->as.array.items[i])) return false;
         return true;
+    case NN_VALUE_OBJECT:
+        if (left->as.object.count != right->as.object.count) return false;
+        for (size_t i = 0; i < left->as.object.count; ++i) {
+            const NNParameter *a = &left->as.object.items[i], *b = &right->as.object.items[i];
+            if (!equal_text(a->key, b->key) || !equal_value(&a->value, &b->value)) return false;
+        }
+        return true;
     default: return false;
     }
 }

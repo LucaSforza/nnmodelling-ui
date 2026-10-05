@@ -50,6 +50,7 @@ class WindowTest : public QObject {
     Q_OBJECT
 private slots:
     void lifecycleAndInspector();
+    void stereotypeReferenceForm();
     void modelProblemDiagnosticsAndNavigation();
     void currentScopeRetainsOutsideCauseContext();
     void retainedLuaValidationFormAndNonblockingRejection();
@@ -61,6 +62,89 @@ private slots:
     void scopeTreeFollowsContainmentAndMenus();
     void socketOptionRequiresPath();
 };
+
+void WindowTest::stereotypeReferenceForm() {
+    QTemporaryDir temporary;
+    NNApplication *app = nn_app_new(NN_SOURCE_DIR "/stereotype-packages/core");
+    QVERIFY(app);
+    char error[512] = {};
+    QVERIFY2(nn_app_create(app, temporary.path().toUtf8().constData(), "reference-form",
+                          "Reference form", false, error, sizeof(error)), error);
+    QVERIFY2(nn_app_add_node(app, "parallel", "core.horizontal-repeat", "0.1.0", "",
+                            0, 0, error, sizeof(error)), error);
+    QVERIFY2(nn_app_create_stereotype(app, "form.join", "1.0.0",
+        R"({"name":"Form join","kind":"join","view":{"color":"#4779c4","width":180,"height":100},"parameters":{"enabled":{"type":"boolean","default":true},"factor":{"type":"number","default":1.0,"minimum":0},"mode":{"type":"string","default":"sum","choices":["sum","mean"]}}})",
+        "return function(c,p,s) return {status='success',output=c.inputs[1]} end",
+        "{}", error, sizeof(error)), error);
+    MainWindow window(app);
+    window.show();
+    auto *scene = window.findChild<GraphScene *>();
+    QVERIFY(scene);
+    scene->nodeItem("parallel")->setSelected(true);
+    QCoreApplication::processEvents();
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    auto *selector = window.findChild<QComboBox *>("stereotypeReference_join");
+    auto *dimension = window.findChild<QLineEdit *>("stereotypeParameter_join_dim");
+    QVERIFY(selector && dimension);
+    QCOMPARE(dimension->text(), QStringLiteral("-1"));
+    QVERIFY(dimension->validator());
+    QVERIFY(!window.findChild<QLineEdit *>("stereotypeParameters_join"));
+    dimension->setText("0");
+    QVERIFY(QMetaObject::invokeMethod(dimension, "editingFinished", Qt::DirectConnection));
+    QCoreApplication::processEvents();
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    char *reference = nn_app_parameter_text(app, "parallel", "join");
+    QVERIFY(reference);
+    QCOMPARE(QJsonDocument::fromJson(reference).object().value("parameters").toObject().value("dim").toInt(), 0);
+    nn_app_free_text(reference);
+    selector = window.findChild<QComboBox *>("stereotypeReference_join");
+    int add = -1;
+    for (int i = 1; i < selector->count(); ++i) {
+        const QJsonObject item = selector->itemData(i).toJsonObject();
+        QVERIFY(item.value("id").toString() != QStringLiteral("core.relu"));
+        if (item.value("id").toString() == QStringLiteral("core.add")) add = i;
+    }
+    QVERIFY(add > 0);
+    selector->setCurrentIndex(add);
+    QCoreApplication::processEvents();
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    QVERIFY(!window.findChild<QLineEdit *>("stereotypeParameter_join_dim"));
+    QVERIFY2(nn_app_undo(app, error, sizeof(error)), error);
+    scene->refresh();
+    scene->nodeItem("parallel")->setSelected(false);
+    scene->nodeItem("parallel")->setSelected(true);
+    QCoreApplication::processEvents();
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    dimension = window.findChild<QLineEdit *>("stereotypeParameter_join_dim");
+    QVERIFY(dimension);
+    QCOMPARE(dimension->text(), QStringLiteral("0"));
+    selector = window.findChild<QComboBox *>("stereotypeReference_join");
+    int custom = -1;
+    for (int i = 1; i < selector->count(); ++i)
+        if (selector->itemData(i).toJsonObject().value("id").toString() == QStringLiteral("form.join")) custom = i;
+    QVERIFY(custom > 0);
+    selector->setCurrentIndex(custom);
+    QCoreApplication::processEvents();
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    auto *enabled = window.findChild<QCheckBox *>("stereotypeParameter_join_enabled");
+    auto *factor = window.findChild<QLineEdit *>("stereotypeParameter_join_factor");
+    auto *mode = window.findChild<QComboBox *>("stereotypeParameter_join_mode");
+    QVERIFY(enabled && factor && mode);
+    QVERIFY(enabled->isChecked());
+    QCOMPARE(mode->count(), 2);
+    factor->setText("2.5");
+    QVERIFY(QMetaObject::invokeMethod(factor, "editingFinished", Qt::DirectConnection));
+    enabled->setChecked(false);
+    mode->setCurrentText("mean");
+    reference = nn_app_parameter_text(app, "parallel", "join");
+    const QJsonObject values = QJsonDocument::fromJson(reference).object().value("parameters").toObject();
+    nn_app_free_text(reference);
+    QCOMPARE(values.value("factor").toDouble(), 2.5);
+    QCOMPARE(values.value("enabled").toBool(), false);
+    QCOMPARE(values.value("mode").toString(), QStringLiteral("mean"));
+    QVERIFY2(nn_app_save(app, error, sizeof(error)), error);
+    window.close();
+}
 
 void WindowTest::arrangeMenuAndFitUseDirectedGridLayout() {
     QTemporaryDir temporary;

@@ -10,6 +10,12 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QLineEdit>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonArray>
+#include <QDoubleValidator>
+#include <QRegularExpressionValidator>
+#include <QLocale>
 #include <QLabel>
 #include <QMessageBox>
 #include <QPushButton>
@@ -19,6 +25,7 @@
 #include <QTreeWidgetItem>
 #include <QStringList>
 #include <map>
+#include <algorithm>
 #include <cstring>
 #include <string>
 
@@ -158,9 +165,133 @@ void MainWindow::refreshInspector() {
                 });
                 editor = combo;
             } else if (type == QStringLiteral("stereotype")) {
-                auto *unsupported = new QLabel(tr("Unsupported native value"), inspector_);
-                unsupported->setToolTip(value);
-                editor = unsupported;
+                auto *combo = new QComboBox(inspector_);
+                combo->setObjectName(QStringLiteral("stereotypeReference_%1").arg(key));
+                QJsonObject reference = QJsonDocument::fromJson(value.toUtf8()).object();
+                const QString currentId = reference.value(QStringLiteral("id")).toString();
+                const QString currentVersion = reference.value(QStringLiteral("version")).toString();
+                combo->addItem(tr("(choose package)"), QJsonObject());
+                const NNCatalog *catalog = nn_project_catalog(project);
+                int currentIndex = 0;
+                for (size_t j = 0; j < nn_catalog_count(catalog); ++j) {
+                    const NNPackage *candidate = nn_catalog_at(catalog, j);
+                    if (!candidate->kind || std::strcmp(candidate->kind, "subflow") == 0 ||
+                        (definition.kind && std::strcmp(candidate->kind, definition.kind) != 0)) continue;
+                    QJsonObject defaults;
+                    for (size_t p = 0; p < candidate->parameter_count; ++p) {
+                        const NNParameterDef &def = candidate->parameters[p];
+                        QJsonValue fallback;
+                        if (def.has_default) {
+                            switch (def.default_value.type) {
+                            case NN_PARAMETER_BOOLEAN: fallback = def.default_value.as.boolean; break;
+                            case NN_PARAMETER_INTEGER: fallback = double(def.default_value.as.integer); break;
+                            case NN_PARAMETER_NUMBER: fallback = def.default_value.as.number; break;
+                            case NN_PARAMETER_STRING: fallback = QString::fromUtf8(def.default_value.as.string); break;
+                            case NN_PARAMETER_JSON: {
+                                const QJsonDocument json = QJsonDocument::fromJson(def.default_value.as.string);
+                                fallback = json.isArray() ? QJsonValue(json.array()) : QJsonValue(json.object());
+                                break;
+                            }
+                            default: break;
+                            }
+                        } else if (std::strcmp(def.type, "integer") == 0)
+                            fallback = def.has_minimum ? std::max(1.0, def.minimum) : 1.0;
+                        else if (std::strcmp(def.type, "number") == 0)
+                            fallback = def.has_minimum ? def.minimum : 0.0;
+                        else if (std::strcmp(def.type, "boolean") == 0) fallback = false;
+                        else if (def.choice_count) fallback = QString::fromUtf8(def.choices[0]);
+                        else if (std::strcmp(def.type, "string") == 0) fallback = QString();
+                        defaults.insert(QString::fromUtf8(def.key), fallback);
+                    }
+                    QJsonObject next{{QStringLiteral("id"), QString::fromUtf8(candidate->id)},
+                                     {QStringLiteral("version"), QString::fromUtf8(candidate->version)},
+                                     {QStringLiteral("parameters"), defaults}};
+                    combo->addItem(QStringLiteral("%1 (%2@%3)").arg(QString::fromUtf8(candidate->name),
+                        QString::fromUtf8(candidate->id), QString::fromUtf8(candidate->version)), next);
+                    if (currentId == QString::fromUtf8(candidate->id) &&
+                        nn_catalog_resolve(catalog, candidate->id, currentVersion.toUtf8().constData()) == candidate)
+                        currentIndex = combo->count() - 1;
+                }
+                combo->setCurrentIndex(currentIndex);
+                connect(combo, &QComboBox::currentIndexChanged, this, [this, combo, key, nodeId](int index) {
+                    if (index > 0) editNodeParameter(nodeId, key, QString::fromUtf8(
+                        QJsonDocument(combo->itemData(index).toJsonObject()).toJson(QJsonDocument::Compact)));
+                });
+                const NNPackage *referenced = currentIndex > 0
+                    ? nn_catalog_resolve(catalog, currentId.toUtf8().constData(),
+                                         currentVersion.toUtf8().constData()) : nullptr;
+                const QJsonObject committed = reference.value(QStringLiteral("parameters")).toObject();
+                const QJsonObject defaults = combo->currentData().toJsonObject()
+                    .value(QStringLiteral("parameters")).toObject();
+                for (size_t p = 0; referenced && p < referenced->parameter_count; ++p) {
+                    const NNParameterDef &def = referenced->parameters[p];
+                    const QString parameterKey = QString::fromUtf8(def.key);
+                    const QJsonValue current = committed.contains(parameterKey)
+                        ? committed.value(parameterKey) : defaults.value(parameterKey);
+                    auto *fieldRow = new QTreeWidgetItem(row, {parameterKey, QString()});
+                    // Read siblings at submission: several fields may commit before queued refresh.
+                    auto submit = [this, nodeId, key, parameterKey](const QJsonValue &next) {
+                        const QByteArray id = nodeId.toUtf8(), parameter = key.toUtf8();
+                        char *text = nn_app_parameter_text(application_.get(), id.constData(), parameter.constData());
+                        QJsonObject updated = QJsonDocument::fromJson(text ? QByteArray(text) : QByteArray()).object();
+                        nn_app_free_text(text);
+                        QJsonObject values = updated.value(QStringLiteral("parameters")).toObject();
+                        values.insert(parameterKey, next);
+                        updated.insert(QStringLiteral("parameters"), values);
+                        editNodeParameter(nodeId, key, QString::fromUtf8(
+                            QJsonDocument(updated).toJson(QJsonDocument::Compact)));
+                    };
+                    QWidget *field = nullptr;
+                    if (def.choice_count) {
+                        auto *choices = new QComboBox(inspector_);
+                        for (size_t c = 0; c < def.choice_count; ++c)
+                            choices->addItem(QString::fromUtf8(def.choices[c]));
+                        choices->setCurrentText(current.toString());
+                        connect(choices, &QComboBox::currentTextChanged, this,
+                                [submit](const QString &next) { submit(next); });
+                        field = choices;
+                    } else if (std::strcmp(def.type, "boolean") == 0) {
+                        auto *check = new QCheckBox(inspector_);
+                        check->setChecked(current.toBool());
+                        connect(check, &QCheckBox::toggled, this,
+                                [submit](bool checked) { submit(checked); });
+                        field = check;
+                    } else {
+                        const QString parameterType = QString::fromUtf8(def.type);
+                        QString text = current.isString() ? current.toString()
+                            : QString::fromUtf8(QJsonDocument(QJsonArray{current})
+                                .toJson(QJsonDocument::Compact));
+                        if (!current.isString()) text = text.mid(1, text.size() - 2);
+                        auto *line = new QLineEdit(text, inspector_);
+                        if (parameterType == QStringLiteral("integer"))
+                            line->setValidator(new QRegularExpressionValidator(
+                                QRegularExpression(QStringLiteral("-?[0-9]+")), line));
+                        else if (parameterType == QStringLiteral("number")) {
+                            auto *validator = new QDoubleValidator(line);
+                            validator->setLocale(QLocale::c());
+                            line->setValidator(validator);
+                        }
+                        if (def.has_minimum) line->setToolTip(tr("Minimum: %1").arg(def.minimum));
+                        connect(line, &QLineEdit::editingFinished, this, [this, line, parameterType, submit] {
+                            if (parameterType == QStringLiteral("string") || parameterType == QStringLiteral("dtype")) {
+                                submit(line->text());
+                                return;
+                            }
+                            QJsonParseError parseError;
+                            const QJsonDocument parsed = QJsonDocument::fromJson(
+                                QByteArray("[") + line->text().toUtf8() + QByteArray("]"), &parseError);
+                            if (parseError.error != QJsonParseError::NoError || !parsed.isArray() || parsed.array().size() != 1) {
+                                QMessageBox::warning(this, tr("Parameter rejected"), tr("Invalid parameter value"));
+                                return;
+                            }
+                            submit(parsed.array().at(0));
+                        });
+                        field = line;
+                    }
+                    field->setObjectName(QStringLiteral("stereotypeParameter_%1_%2").arg(key, parameterKey));
+                    inspector_->setItemWidget(fieldRow, 1, field);
+                }
+                editor = combo;
             } else if (type == QStringLiteral("boolean") || type == QStringLiteral("bool")) {
                 auto *check = new QCheckBox(inspector_);
                 check->setChecked(value == QStringLiteral("true"));

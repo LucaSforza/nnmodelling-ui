@@ -131,6 +131,11 @@ bool nn_catalog_parse_definition(Package *p, yyjson_val *root) {
             return false;
         }
       }
+      if (nn_catalog_get(val, "kind")) {
+        const char *kind = nn_catalog_strval(nn_catalog_get(val, "kind"));
+        if (!kind || !*kind || strcmp(d->type, "stereotype") ||
+            !(d->kind = nn_text_copy(kind))) return false;
+      }
       if (nn_catalog_get(val, "minimum")) {
         if (!nn_catalog_number(nn_catalog_get(val, "minimum"), &d->minimum) ||
             (strcmp(d->type, "integer") && strcmp(d->type, "number")))

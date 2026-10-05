@@ -128,7 +128,7 @@ inspect Fit, Home, flight/look, picking, visible grouped heads, 2D/3D switching,
 no mutation and error reporting. Record actual evidence and limitations in KB.
 
 C catalog shares `nn_catalog_resolve` (unique exact/caret active reference),
-`nn_catalog_parameters` (owned defaulted validated NNParameter list) and
+`nn_catalog_reference` (resolved package plus owned defaulted validated NNParameter list) and
 `nn_catalog_parameters_free` between inference, application and visualization.
 Catalog may use public NNValue types; no module includes another module's
 private header. JSON object keys are owned NNParameter entries.

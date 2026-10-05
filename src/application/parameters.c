@@ -3,6 +3,7 @@
 #include "utils/utils.h"
 #include "inference/inference.h"
 #include "yyjson.h"
+#include "model/value_json.h"
 
 #include <math.h>
 #include <stdint.h>
@@ -25,99 +26,12 @@ static bool parameter_definition(const NNPackage *package, const char *key,
     return false;
 }
 
-static bool valid_json_value(const NNValue *value, unsigned depth)
-{
-    if (!value || depth > 64) return false;
-    switch (value->type) {
-    case NN_VALUE_BOOL:
-    case NN_VALUE_INT: return true;
-    case NN_VALUE_REAL: return isfinite(value->as.real);
-    case NN_VALUE_STRING: return value->as.string != NULL;
-    case NN_VALUE_ARRAY:
-        if (value->as.array.count > 1024 ||
-            (value->as.array.count && !value->as.array.items)) return false;
-        for (size_t i = 0; i < value->as.array.count; ++i)
-            if (!valid_json_value(&value->as.array.items[i], depth + 1)) return false;
-        return true;
-    default: return false;
-    }
-}
-
-static bool valid_value(const NNParameterDef *definition, const NNValue *value,
-                        char *error, size_t capacity)
-{
-    if (!definition || !value) return nn_fail(error, capacity, "invalid parameter");
-    if (!strcmp(definition->type, "boolean")) {
-        if (value->type != NN_VALUE_BOOL) return nn_fail(error, capacity, "parameter requires a boolean");
-    } else if (!strcmp(definition->type, "integer")) {
-        if (value->type != NN_VALUE_INT) return nn_fail(error, capacity, "parameter requires an integer");
-        if (definition->has_minimum && (double)value->as.integer < definition->minimum)
-            return nn_fail(error, capacity, "integer is below minimum");
-    } else if (!strcmp(definition->type, "number")) {
-        if (value->type != NN_VALUE_REAL || !isfinite(value->as.real))
-            return nn_fail(error, capacity, "parameter requires a finite number");
-        if (definition->has_minimum && value->as.real < definition->minimum)
-            return nn_fail(error, capacity, "number is below minimum");
-    } else if (!strcmp(definition->type, "string") ||
-               !strcmp(definition->type, "dtype")) {
-        if (value->type != NN_VALUE_STRING || !value->as.string)
-            return nn_fail(error, capacity, "parameter requires a string");
-        if (definition->choice_count) {
-            bool found = false;
-            for (size_t i = 0; i < definition->choice_count; ++i)
-                if (!strcmp(value->as.string, definition->choices[i])) found = true;
-            if (!found) return nn_fail(error, capacity, "value is not an allowed choice");
-        }
-    } else if (!strcmp(definition->type, "json")) {
-        if (value->type != NN_VALUE_ARRAY || !valid_json_value(value, 0))
-            return nn_fail(error, capacity, "parameter requires a JSON array");
-    } else if (!strcmp(definition->type, "stereotype")) {
-        return nn_fail(error, capacity, "object-valued stereotype parameters are not supported by native model");
-    } else return nn_fail(error, capacity, "unsupported parameter type");
-    nn_error_set(error, capacity, "");
-    return true;
-}
-
 bool nn_app_parse_json_value(const yyjson_val *source, NNValue *value, unsigned depth)
 {
-    if (depth > 64) return false;
-    memset(value, 0, sizeof(*value));
-    if (yyjson_is_bool(source)) {
-        value->type = NN_VALUE_BOOL;
-        value->as.boolean = yyjson_get_bool(source);
-    } else if (yyjson_is_int(source)) {
-        if (yyjson_is_uint(source) && yyjson_get_uint(source) > LLONG_MAX) return false;
-        value->type = NN_VALUE_INT;
-        value->as.integer = (long long)yyjson_get_sint(source);
-    } else if (yyjson_is_num(source)) {
-        value->type = NN_VALUE_REAL;
-        value->as.real = yyjson_get_num(source);
-        if (!isfinite(value->as.real)) return false;
-    } else if (yyjson_is_str(source)) {
-        value->type = NN_VALUE_STRING;
-        value->as.string = nn_text_copy(yyjson_get_str(source));
-        return value->as.string != NULL;
-    } else if (yyjson_is_arr(source)) {
-        size_t count = yyjson_arr_size(source);
-        if (count > 1024 || count > SIZE_MAX / sizeof(NNValue)) return false;
-        value->type = NN_VALUE_ARRAY;
-        value->as.array.items = calloc(count ? count : 1, sizeof(NNValue));
-        if (!value->as.array.items) return false;
-        yyjson_arr_iter iter = yyjson_arr_iter_with(source);
-        yyjson_val *item;
-        while ((item = yyjson_arr_iter_next(&iter))) {
-            size_t index = value->as.array.count;
-            if (!nn_app_parse_json_value(item, &value->as.array.items[index], depth + 1)) {
-                nn_value_dispose(value);
-                return false;
-            }
-            ++value->as.array.count;
-        }
-    } else return false;
-    return true;
+    return depth <= 64 && nn_value_from_json((yyjson_val *)source, value);
 }
 
-static bool parse_parameter_text(const NNParameterDef *definition, const char *text,
+static bool parse_parameter_text(const NNCatalog *catalog, const NNParameterDef *definition, const char *text,
                                  NNValue *value, char *error, size_t capacity)
 {
     memset(value, 0, sizeof(*value));
@@ -144,20 +58,24 @@ static bool parse_parameter_text(const NNParameterDef *definition, const char *t
                !strcmp(definition->type, "dtype")) {
         value->type = NN_VALUE_STRING;
         value->as.string = (char *)text;
-    } else if (!strcmp(definition->type, "json")) {
+    } else if (!strcmp(definition->type, "json") || !strcmp(definition->type, "stereotype")) {
         yyjson_doc *document = yyjson_read_opts((char *)(uintptr_t)text, strlen(text), 0,
                                                  NULL, NULL);
-        if (!document) return nn_fail(error, capacity, "invalid JSON array");
+        if (!document) return nn_fail(error, capacity, "invalid parameter JSON");
         const yyjson_val *root = yyjson_doc_get_root(document);
-        bool okay = yyjson_is_arr(root) && nn_app_parse_json_value(root, value, 0);
+        bool okay = ((!strcmp(definition->type, "json") && yyjson_is_arr(root)) ||
+                         (!strcmp(definition->type, "stereotype") && yyjson_is_obj(root))) &&
+                        nn_app_parse_json_value(root, value, 0);
         yyjson_doc_free(document);
         if (!okay) {
             nn_value_dispose(value);
-            return nn_fail(error, capacity, "parameter requires a JSON array of primitive values");
+            return nn_fail(error, capacity, !strcmp(definition->type, "stereotype")
+                           ? "stereotype reference requires a JSON object"
+                           : "parameter requires a JSON array");
         }
     } else return nn_fail(error, capacity, "unsupported parameter type");
-    if (!valid_value(definition, value, error, capacity)) {
-        if (value->type == NN_VALUE_ARRAY) nn_value_dispose(value);
+    if (!nn_catalog_validate_value(catalog, definition, value, error, capacity)) {
+        if (value->type == NN_VALUE_ARRAY || value->type == NN_VALUE_OBJECT) nn_value_dispose(value);
         return false;
     }
     return true;
@@ -191,7 +109,9 @@ static bool default_value(const NNApplication *app, const NNPackage *package,
                                                      strlen(text), 0, NULL, NULL);
             if (!document) return false;
             const yyjson_val *root = yyjson_doc_get_root(document);
-            bool okay = yyjson_is_arr(root) && nn_app_parse_json_value(root, value, 0);
+            bool okay = ((!strcmp(definition->type, "json") && yyjson_is_arr(root)) ||
+                         (!strcmp(definition->type, "stereotype") && yyjson_is_obj(root))) &&
+                        nn_app_parse_json_value(root, value, 0);
             yyjson_doc_free(document);
             return okay;
         }
@@ -230,13 +150,13 @@ bool nn_app_add_default(NNApplication *app, NNModel *model, const char *node_id,
     NNValue value = {0};
     if (!default_value(app, package, definition, &value))
         return nn_fail(error, capacity, "cannot construct parameter default");
-    if (!valid_value(definition, &value, error, capacity)) {
-        if (definition->has_default && value.type == NN_VALUE_ARRAY) nn_value_dispose(&value);
+    if (!nn_catalog_validate_value(nn_project_catalog(app->project), definition, &value, error, capacity)) {
+        if (definition->has_default && (value.type == NN_VALUE_ARRAY || value.type == NN_VALUE_OBJECT)) nn_value_dispose(&value);
         return false;
     }
     bool okay = nn_model_set_parameter(model, node_id, definition->key,
                                        &value, error, capacity);
-    if (definition->has_default && value.type == NN_VALUE_ARRAY) nn_value_dispose(&value);
+    if (definition->has_default && (value.type == NN_VALUE_ARRAY || value.type == NN_VALUE_OBJECT)) nn_value_dispose(&value);
     return okay;
 }
 bool nn_app_set_parameter(NNApplication *app, const char *node_id, const char *key,
@@ -249,7 +169,7 @@ bool nn_app_set_parameter(NNApplication *app, const char *node_id, const char *k
     const NNParameterDef *definition = NULL;
     if (!parameter_definition(package, key, &definition))
         return nn_app_history_fail(app, error, cap, "unknown parameter");
-    if (!valid_value(definition, value, error, cap)) {
+    if (!nn_catalog_validate_value(nn_project_catalog(app->project), definition, value, error, cap)) {
         if (app->history.group_active) app->history.group_failed = true;
         return false;
     }
@@ -272,15 +192,13 @@ bool nn_app_set_parameter_text(NNApplication *app, const char *node, const char 
     if (!entry) return nn_app_history_fail(app, error, cap, "node not found");
     if (!parameter_definition(nn_app_find_package(app, entry), key, &definition))
         return nn_app_history_fail(app, error, cap, "unknown parameter");
-    if (!strcmp(definition->type, "stereotype"))
-        return nn_app_history_fail(app, error, cap, "object-valued stereotype parameters are not supported by native model");
     NNValue value = {0};
-    if (!parse_parameter_text(definition, text, &value, error, cap)) {
+    if (!parse_parameter_text(nn_project_catalog(app->project), definition, text, &value, error, cap)) {
         if (app->history.group_active) app->history.group_failed = true;
         return false;
     }
     bool okay = nn_app_set_parameter(app, node, key, &value, error, cap);
-    if (value.type == NN_VALUE_ARRAY) nn_value_dispose(&value);
+    if (value.type == NN_VALUE_ARRAY || value.type == NN_VALUE_OBJECT) nn_value_dispose(&value);
     return okay;
 }
 
@@ -305,6 +223,16 @@ static yyjson_mut_val *parameter_json_value(yyjson_mut_doc *doc, const NNValue *
             if (!item || !yyjson_mut_arr_append(array, item)) return NULL;
         }
         return array;
+    }
+    case NN_VALUE_OBJECT: {
+        yyjson_mut_val *object = yyjson_mut_obj(doc);
+        if (!object) return NULL;
+        for (size_t i = 0; i < value->as.object.count; ++i) {
+            const NNParameter *entry = &value->as.object.items[i];
+            yyjson_mut_val *item = parameter_json_value(doc, &entry->value);
+            if (!item || !yyjson_mut_obj_add_val(doc, object, entry->key, item)) return NULL;
+        }
+        return object;
     }
     default: return NULL;
     }

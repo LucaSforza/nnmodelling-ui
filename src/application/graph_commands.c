@@ -79,9 +79,6 @@ bool nn_app_add_node(NNApplication *app, const char *id, const char *package_id,
     }
     for (size_t i = 0; i < package->parameter_count; ++i) {
         const NNParameterDef *definition = &package->parameters[i];
-        /* Preserve the existing editor behavior for object-valued defaults. */
-        if (!strcmp(definition->type, "stereotype") && definition->has_default &&
-            definition->default_value.type == NN_PARAMETER_JSON) continue;
         if (!nn_app_add_default(app, model, id, package, definition, error, cap)) {
             char ignored[64];
             (void)nn_model_remove_node(model, id, ignored, sizeof(ignored));

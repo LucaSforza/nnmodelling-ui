@@ -17,6 +17,16 @@ static yyjson_mut_val *snapshot_value(yyjson_mut_doc *doc, const NNValue *value)
         }
         return array;
     }
+    case NN_VALUE_OBJECT: {
+        yyjson_mut_val *object = yyjson_mut_obj(doc);
+        if (!object) return NULL;
+        for (size_t i = 0; i < value->as.object.count; ++i) {
+            const NNParameter *entry = &value->as.object.items[i];
+            yyjson_mut_val *item = snapshot_value(doc, &entry->value);
+            if (!item || !yyjson_mut_obj_add_val(doc, object, entry->key, item)) return NULL;
+        }
+        return object;
+    }
     default: return yyjson_mut_null(doc);
     }
 }

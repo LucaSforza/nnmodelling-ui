@@ -67,7 +67,8 @@ classDiagram
 
 C application owns active project and validates commands. Qt owns widget state,
 selection, scope navigation and gestures. Snapshots are borrowed only until the
-next C mutation; Qt copies stable IDs when retaining references. Parameter
+next C mutation; Qt copies stable IDs when retaining references. Stereotype reference widgets filter active packages by declared kind and submit
+owned object JSON through C validation. Parameter
 widgets follow schema, but C remains final validator. ID-based refresh restores
 selection where entities survive. Failed operations preserve committed state.
 Problem navigation, cause grouping and C report ownership follow

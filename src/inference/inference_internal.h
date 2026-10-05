@@ -56,6 +56,11 @@ typedef struct {
     Tensor inherited_scratch;
     Tensor output_scratch[2];
     char *message_scratch;
+    NNValue reference_scratch;
+    NNParameter *reference_parameters;
+    size_t reference_parameter_count;
+    Tensor *reference_inputs;
+    size_t reference_input_count;
 } LuaContext;
 typedef struct {
     LuaContext *context;

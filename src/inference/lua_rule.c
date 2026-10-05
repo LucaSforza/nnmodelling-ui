@@ -10,6 +10,7 @@
 #include <sys/stat.h>
 
 static int inference_subflow(lua_State *state);
+static int inference_stereotype(lua_State *state);
 static bool set_parameters(lua_State *state, const NNNode *node);
 
 static int resolve_input(lua_State *state)
@@ -81,6 +82,9 @@ static void set_services(lua_State *state, LuaContext *context)
         lua_pushcclosure(state, inference_subflow, 1);
         lua_setfield(state, -2, "infer_subflow");
     }
+    lua_pushlightuserdata(state, context);
+    lua_pushcclosure(state, inference_stereotype, 1);
+    lua_setfield(state, -2, "infer_stereotype");
     lua_setglobal(state, "services");
 }
 
@@ -119,6 +123,13 @@ static bool push_value(lua_State *state, const NNValue *value)
         for (size_t i = 0; i < value->as.array.count; ++i) {
             if (!push_value(state, &value->as.array.items[i])) return false;
             lua_seti(state, -2, (lua_Integer)i + 1);
+        }
+        return true;
+    case NN_VALUE_OBJECT:
+        lua_createtable(state, 0, (int)value->as.object.count);
+        for (size_t i = 0; i < value->as.object.count; ++i) {
+            if (!push_value(state, &value->as.object.items[i].value)) return false;
+            lua_setfield(state, -2, value->as.object.items[i].key);
         }
         return true;
     default: return false;
@@ -220,6 +231,13 @@ NNInferenceStatus nn_inference_execute_rule(Evaluation *evaluation, const NNNode
     nn_inference_tensor_dispose(&context.output_scratch[0]);
     nn_inference_tensor_dispose(&context.output_scratch[1]);
     free(context.message_scratch);
+    nn_value_dispose(&context.reference_scratch);
+    nn_catalog_parameters_free(context.reference_parameters, context.reference_parameter_count);
+    for (size_t i = 0; i < context.reference_input_count; ++i) {
+        nn_inference_tensor_detach_lua_temporaries(state, &context.reference_inputs[i]);
+        nn_inference_tensor_dispose(&context.reference_inputs[i]);
+    }
+    free(context.reference_inputs);
     NNInferenceStatus result = compilation_error ? NN_INFERENCE_COMPILATION_ERROR
                                                   : NN_INFERENCE_RUNTIME_FAULT;
     if (status == LUA_OK && lua_istable(state, -1)) {
@@ -335,5 +353,135 @@ static int inference_subflow(lua_State *state)
     context->message_scratch = NULL;
     nn_inference_tensor_dispose(&context->output_scratch[0]);
     nn_inference_tensor_dispose(&context->output_scratch[1]);
+    return 1;
+}
+/* Scratch ownership stays on LuaContext so protected-call failures release it. */
+static bool value_from_lua(lua_State *state, int index, NNValue *value, unsigned depth)
+{
+    if (depth > 64) return false;
+    index = lua_absindex(state, index);
+    if (lua_isboolean(state, index)) {
+        value->type = NN_VALUE_BOOL; value->as.boolean = lua_toboolean(state, index);
+    } else if (lua_isinteger(state, index)) {
+        value->type = NN_VALUE_INT; value->as.integer = lua_tointeger(state, index);
+    } else if (lua_type(state, index) == LUA_TNUMBER) {
+        value->type = NN_VALUE_REAL; value->as.real = lua_tonumber(state, index);
+    } else if (lua_type(state, index) == LUA_TSTRING) {
+        value->type = NN_VALUE_STRING; value->as.string = nn_text_copy(lua_tostring(state, index));
+        return value->as.string != NULL;
+    } else if (lua_istable(state, index)) {
+        size_t length = lua_rawlen(state, index);
+        if (length > 1024) return false;
+        if (length) {
+            value->type = NN_VALUE_ARRAY;
+            value->as.array.items = calloc(length, sizeof(NNValue));
+            if (!value->as.array.items) return false;
+            value->as.array.count = length;
+            for (size_t i = 0; i < length; ++i) {
+                lua_rawgeti(state, index, (lua_Integer)i + 1);
+                bool okay = value_from_lua(state, -1, &value->as.array.items[i], depth + 1);
+                lua_pop(state, 1);
+                if (!okay) return false;
+            }
+        } else {
+            value->type = NN_VALUE_OBJECT;
+            lua_pushnil(state);
+            while (lua_next(state, index)) {
+                if (lua_type(state, -2) != LUA_TSTRING || value->as.object.count >= 1024) {
+                    lua_pop(state, 2); return false;
+                }
+                size_t count = value->as.object.count;
+                NNParameter *grown = realloc(value->as.object.items, (count + 1) * sizeof(*grown));
+                if (!grown) { lua_pop(state, 2); return false; }
+                value->as.object.items = grown;
+                NNParameter *entry = &grown[count];
+                memset(entry, 0, sizeof(*entry));
+                ++value->as.object.count;
+                entry->key = nn_text_copy(lua_tostring(state, -2));
+                bool okay = entry->key && value_from_lua(state, -1, &entry->value, depth + 1);
+                lua_pop(state, 1);
+                if (!okay) { lua_pop(state, 1); return false; }
+            }
+        }
+    } else return false;
+    return true;
+}
+
+static int inference_stereotype(lua_State *state)
+{
+    LuaContext *context = lua_touserdata(state, lua_upvalueindex(1));
+    if (!context || context->depth >= 32 || ++context->evaluation->invocations > 256)
+        return luaL_error(state, "stereotype inference limit exceeded");
+    nn_value_dispose(&context->reference_scratch);
+    nn_catalog_parameters_free(context->reference_parameters, context->reference_parameter_count);
+    context->reference_parameters = NULL;
+    context->reference_parameter_count = 0;
+    for (size_t i = 0; i < context->reference_input_count; ++i) {
+        nn_inference_tensor_detach_lua_temporaries(state, &context->reference_inputs[i]);
+        nn_inference_tensor_dispose(&context->reference_inputs[i]);
+    }
+    free(context->reference_inputs);
+    context->reference_inputs = NULL;
+    context->reference_input_count = 0;
+    nn_inference_tensor_dispose(&context->output_scratch[0]);
+    nn_inference_tensor_dispose(&context->output_scratch[1]);
+    free(context->message_scratch); context->message_scratch = NULL;
+    if (!value_from_lua(state, 1, &context->reference_scratch, 0))
+        return luaL_error(state, "invalid stereotype reference");
+    char error[512] = "";
+    const NNPackage *package = nn_catalog_reference(context->evaluation->catalog,
+        &context->reference_scratch, NULL, &context->reference_parameters,
+        &context->reference_parameter_count, error, sizeof(error));
+    if (!package) return luaL_error(state, "%s", error);
+    if (!lua_istable(state, 2) || lua_rawlen(state, 2) > 1024)
+        return luaL_error(state, "infer_stereotype expects ordered tensors");
+    size_t count = lua_rawlen(state, 2);
+    context->reference_inputs = calloc(count ? count : 1, sizeof(Tensor));
+    if (!context->reference_inputs) {
+        context->evaluation->allocation_failed = true;
+        return luaL_error(state, "out of memory preparing referenced inputs");
+    }
+    context->reference_input_count = count;
+    for (size_t i = 0; i < count; ++i) {
+        lua_rawgeti(state, 2, (lua_Integer)i + 1);
+        bool okay = nn_inference_tensor_from_lua(state, -1, &context->reference_inputs[i], true);
+        lua_pop(state, 1);
+        if (!okay) return luaL_error(state, "invalid referenced input tensor");
+    }
+    NNNode synthetic = { .id = context->node->id, .package_id = package->id,
+        .package_version = package->version, .parameters = context->reference_parameters,
+        .parameter_count = context->reference_parameter_count };
+    char *source_file = NULL, *cause = NULL;
+    size_t source_line = 0;
+    NNInferenceStatus status = nn_inference_execute_rule(context->evaluation, &synthetic,
+        package, context->depth + 1, NULL, context->reference_inputs, count,
+        context->output_scratch, &context->message_scratch, &source_file, &source_line, &cause);
+    free(source_file); free(cause);
+    if (status == NN_INFERENCE_RUNTIME_FAULT || status == NN_INFERENCE_COMPILATION_ERROR) {
+        lua_pushstring(state, context->message_scratch ? context->message_scratch : "referenced inference fault");
+        return lua_error(state);
+    }
+    lua_newtable(state);
+    lua_pushstring(state, status == NN_INFERENCE_SUCCESS ? "success" :
+                          status == NN_INFERENCE_SEMANTIC_ERROR ? "error" : "unresolved");
+    lua_setfield(state, -2, "status");
+    if (status == NN_INFERENCE_SUCCESS) {
+        if (package->output_count == 1) {
+            nn_inference_tensor_push(state, context->output_scratch[0].dtype,
+                (const char *const *)context->output_scratch[0].dimensions, context->output_scratch[0].count);
+            lua_setfield(state, -2, "output");
+        } else {
+            lua_newtable(state);
+            for (size_t i = 0; i < package->output_count; ++i) {
+                nn_inference_tensor_push(state, context->output_scratch[i].dtype,
+                    (const char *const *)context->output_scratch[i].dimensions, context->output_scratch[i].count);
+                lua_setfield(state, -2, package->outputs[i].id);
+            }
+            lua_setfield(state, -2, "outputs");
+        }
+    } else {
+        lua_pushstring(state, context->message_scratch ? context->message_scratch : "referenced inference unresolved");
+        lua_setfield(state, -2, "message");
+    }
     return 1;
 }

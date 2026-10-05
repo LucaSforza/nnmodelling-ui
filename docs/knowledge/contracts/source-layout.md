@@ -11,11 +11,11 @@ All application implementation lives under `src/`, one directory per module:
 
 | Directory | Responsibility / independent translation units |
 | --- | --- |
-| `model/` | graph lifecycle/snapshots, nodes, edges/DAG, typed values/parameters |
-| `catalog/` | catalog lifecycle/loading, manifest, definition, dependencies |
+| `model/` | graph lifecycle/snapshots, nodes, edges/DAG, typed values/parameters, bounded JSON value conversion |
+| `catalog/` | catalog lifecycle/loading, manifest, definition, dependencies, parameter/reference validation |
 | `project/` | lifecycle/open, graph JSON, atomic save, datasets, resource transactions, templates, filesystem helpers |
 | `inference/` | report/results, scope evaluation, rule execution, Lua sandbox/budget, Lua tensor operations, owned tensors |
-| `application/` | lifecycle/cache, graph commands, parameter validation/text/defaults, ports/boundaries, resource commands |
+| `application/` | lifecycle/cache, graph commands, parameter text/defaults and catalog validation, ports/boundaries, resource commands |
 | `automation/` | protocol/dispatch, project snapshot, diagnostics JSON, nonblocking Unix transport |
 | `nnmodelctl/` | CLI arguments/request construction, bounded Unix exchange, entry point |
 | `utils/` | global allocation-free errors, owned text/path joining, join-handle parsing |

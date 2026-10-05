@@ -204,6 +204,21 @@ also creates a barrier in this initial graph-history implementation. Neither bar
 pretends to undo filesystem/resource operations. Failure preserves history.
 History lives in memory only; schema v2 and package semantics stay unchanged.
 
+## Stereotype reference inspector (accepted 2026-10-05)
+
+Stereotype parameters expose an active-catalog package selector filtered by the
+parameter's optional kind, plus schema-derived fields for its parameters. The selector
+shows exact ID/version; choosing a new package seeds its defaults. Existing
+references retain their parameters until explicitly edited. Boolean fields use
+checkboxes, choices use selectors,
+integers and finite numbers use validated text fields, strings use text fields.
+Each field submits one updated reference using current committed sibling values.
+JSON-array parameters retain their existing array editor; no whole-reference
+JSON entry is required. Missing imported references remain visibly unset and can be repaired. Submit the object through
+normal C parameter validation; rejection preserves graph/history and fields.
+No package-ID switches or string-encoded object storage. Core owns reference
+resolution, validation, defaults and bounded inference; Qt owns controls only.
+
 ## Network 3D tab (accepted 2026-10-04)
 
 [3D contract](visualization-3d.md) governs whole-network expanded read-only

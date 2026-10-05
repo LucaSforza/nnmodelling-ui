@@ -1,4 +1,5 @@
 #include "project_internal.h"
+#include "model/value_json.h"
 #include "utils/utils.h"
 
 #include <stdlib.h>
@@ -6,35 +7,7 @@
 
 bool nn_project_parse_value(yyjson_val *source, NNValue *target)
 {
-    memset(target, 0, sizeof(*target));
-    if (yyjson_is_bool(source)) {
-        target->type = NN_VALUE_BOOL;
-        target->as.boolean = yyjson_get_bool(source);
-    } else if (yyjson_is_int(source)) {
-        target->type = NN_VALUE_INT;
-        target->as.integer = yyjson_get_sint(source);
-    } else if (yyjson_is_real(source)) {
-        target->type = NN_VALUE_REAL;
-        target->as.real = yyjson_get_real(source);
-    } else if (yyjson_is_str(source)) {
-        target->type = NN_VALUE_STRING;
-        target->as.string = nn_text_copy(yyjson_get_str(source));
-        if (!target->as.string) return false;
-    } else if (yyjson_is_arr(source)) {
-        target->type = NN_VALUE_ARRAY;
-        size_t count = yyjson_arr_size(source);
-        if (count > 1024) return false;
-        target->as.array.items = calloc(count ? count : 1,
-                                        sizeof(NNValue));
-        if (!target->as.array.items) return false;
-        target->as.array.count = count;
-        for (size_t i = 0; i < target->as.array.count; ++i)
-            if (!nn_project_parse_value(yyjson_arr_get(source, i), &target->as.array.items[i])) {
-                nn_value_dispose(target);
-                return false;
-            }
-    } else return false;
-    return true;
+    return nn_value_from_json(source, target);
 }
 
 bool nn_project_edge_topology_valid(const NNModel *model, const NNCatalog *catalog,

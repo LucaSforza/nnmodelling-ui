@@ -28,6 +28,7 @@ static void package_dispose(Package *p) {
     free((char *)p->parameters[i].key);
     free((char *)p->parameters[i].type);
     free((char *)p->parameters[i].position);
+    free((char *)p->parameters[i].kind);
     if (p->parameters[i].has_default &&
         (p->parameters[i].default_value.type == NN_PARAMETER_STRING ||
          p->parameters[i].default_value.type == NN_PARAMETER_JSON))
