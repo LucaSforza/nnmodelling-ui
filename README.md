@@ -40,12 +40,14 @@ Executable: `build/qt/nnmodelling-ui [project-directory]`. Without an argument,
 choose Open, New project or New MNIST MLP. Save uses existing atomic C
 persistence. Dirty project closure offers save, discard or cancel.
 
-**New MNIST VAE** copies a design with encoder and decoder Subflow Proxy scopes,
-project-owned Gaussian/reparameterization/KL/Sigmoid/total-loss stereotypes and dataset
-metadata. It is not trained and does not execute sampling or load MNIST.
+**New mini LLM** creates and opens an editable copy of Tiny Decoder LLM, with
+token dataset, decoder blocks and explicit attention graph. Model starts untrained.
 Saved JSON uses two-space indentation. Top/bottom stereotype parameters render
 as card rows and value badges. **New stereotype** and **New dataset** open visual
 forms; their Create action saves the project and immediately activates resources.
+**Dataset** opens the project dataset manager: create, edit metadata/tensor slots,
+or select the active dataset. Editing preserves exact identity, adapter code and
+data files; saving also saves current graph edits. **New dataset** remains a shortcut.
 
 Direct library build without GUI or tests:
 

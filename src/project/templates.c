@@ -160,7 +160,7 @@ NNProject *nn_project_create(const char *parent, const char *id, const char *nam
     return project;
 }
 
-bool nn_project_create_vae(const char *parent, const char *id, const char *name,
+static bool create_template(const char *template_path, const char *parent, const char *id, const char *name,
                            const char *core_root, NNProject **result,
                            char *error, size_t cap)
 {
@@ -168,12 +168,12 @@ bool nn_project_create_vae(const char *parent, const char *id, const char *name,
     *result = NULL;
     if (!parent || !nn_project_valid_id(id) || !name || !*name || !core_root) { nn_errorf(error, cap, "invalid project identity"); return false; }
     struct stat st; if (lstat(parent, &st) || !S_ISDIR(st.st_mode)) { nn_errorf(error, cap, "project parent unavailable or symlinked"); return false; }
-    char *root = repo_root_from_core(core_root), *template = root ? nn_path_join(root, "examples/models/mnist-vae") : NULL;
+    char *root = repo_root_from_core(core_root), *template = root ? nn_path_join(root, template_path) : NULL;
     char *destination = nn_path_join(parent, id);
     bool destination_owned = template && destination && mkdir(destination, 0755) == 0;
     bool okay = destination_owned && copy_tree_contents(template, destination);
     free(root); free(template);
-    if (!okay) { if (destination_owned) nn_project_remove_tree(destination); free(destination); nn_errorf(error, cap, "cannot copy MNIST VAE template"); return false; }
+    if (!okay) { if (destination_owned) nn_project_remove_tree(destination); free(destination); nn_errorf(error, cap, "cannot copy project template"); return false; }
     NNProject *project = nn_project_open(destination, core_root, error, cap);
     free(destination);
     if (!project) { char *failed = nn_path_join(parent, id); if (failed) { nn_project_remove_tree(failed); free(failed); } return false; }
@@ -182,4 +182,20 @@ bool nn_project_create_vae(const char *parent, const char *id, const char *name,
     free(project->name); free(project->id); project->name = new_name; project->id = new_id; project->dirty = true;
     if (!nn_project_save(project, error, cap)) { nn_project_close(project); char *failed = nn_path_join(parent, id); if (failed) { nn_project_remove_tree(failed); free(failed); } return false; }
     *result = project; return true;
+}
+
+bool nn_project_create_vae(const char *parent, const char *id, const char *name,
+                           const char *core_root, NNProject **result,
+                           char *error, size_t cap)
+{
+    return create_template("examples/models/mnist-vae", parent, id, name,
+                           core_root, result, error, cap);
+}
+
+bool nn_project_create_llm(const char *parent, const char *id, const char *name,
+                           const char *core_root, NNProject **result,
+                           char *error, size_t cap)
+{
+    return create_template("examples/models/tiny-decoder-llm", parent, id, name,
+                           core_root, result, error, cap);
 }

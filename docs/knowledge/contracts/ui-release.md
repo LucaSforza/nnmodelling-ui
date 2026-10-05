@@ -15,6 +15,11 @@ unchanged. `Save` writes atomically and clears dirty state only on success.
 open with visible error. An explicit `Discard` path may close dirty project
 without saving. `New MNIST MLP` creates a copied editable project from bundled
 template with its own dataset metadata and model graph. No backend is contacted.
+Accepted 2026-10-05: startup chooser and File template menu replace the VAE
+shortcut with `New mini LLM` / `mini LLM…`. This creates and opens an editable
+copy of `examples/models/tiny-decoder-llm`, including packages and token dataset,
+with default ID `mini-llm` and name `mini LLM`. Source template stays unchanged.
+Creation failure preserves the active project and removes only the new copy.
 
 Native path chooser may be an in-window path field. Users can also pass a
 project directory as startup argument. Project folder, custom package and

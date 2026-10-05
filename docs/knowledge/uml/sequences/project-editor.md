@@ -53,10 +53,10 @@ IDs. Relevant owners are `nn_app_open` and project staging in
     participant App as NNApplication
     participant Project as NNProject
     participant Catalog as Resource catalogs
-    User->>Qt: create blank/template project
+    User->>Qt: create blank, MNIST MLP or mini LLM project
     Qt->>App: create(parent, id, name, template)
     App->>Project: stage directory and schema-v2 model
-    Project->>Catalog: resolve copied dataset and core packages
+    Project->>Catalog: resolve copied dataset, custom and core packages
     Catalog-->>Project: exact active scope or error
     alt valid candidate
       Project->>Project: publish staged model

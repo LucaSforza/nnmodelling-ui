@@ -22,6 +22,8 @@ manifest v2, project-owned resource paths and exact package activation.
         +createStereotype(definition,Lua,dependencies) Result
         +createDataset(definition,select) Result
         +selectDataset(identity) Result
+        +datasetDefinition(identity) OwnedJSON
+        +updateDataset(identity,definition) Result
       }
       class ModelManifest {
         +int schemaVersion = 2
@@ -190,3 +192,11 @@ C catalog shares `nn_catalog_resolve` (unique exact/caret active reference),
 `nn_catalog_parameters_free` between inference, application and visualization.
 Catalog may use public NNValue types; no module includes another module's
 private header. JSON object keys are owned NNParameter entries.
+
+Dataset metadata update (2026-10-05): Project merges editable fields into the
+original definition, preserving opaque dataset/batch/retained-slot metadata and
+Python/data assets. It stages parsed metadata and a flushed definition sibling,
+keeps the original definition until model save succeeds, and restores original
+files/state on failure. Exact identity and active selection do not change.
+Application owns the successful history barrier and analysis invalidation;
+MainWindow owns manager and the shared prefilled dataset form.

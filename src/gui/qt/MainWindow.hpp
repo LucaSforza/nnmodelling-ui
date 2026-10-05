@@ -44,7 +44,7 @@ private:
     bool confirmReplaceProject();
     bool saveProject();
     void createProject(bool mnist);
-    void createVaeProject();
+    void createLlmProject();
     void addSelectedPackage();
     void arrangeCurrentScope(FlowDirection direction);
     void restoreEdit(bool redo);
@@ -52,7 +52,8 @@ private:
     void editNodeParameter(const QString &nodeId, const QString &key, const QString &value);
     void selectResource(QTreeWidgetItem *item, int column);
     void createStereotype();
-    void createDataset();
+    void createDataset(const QString &id = QString(), const QString &version = QString());
+    void manageDatasets();
     void selectDataset(QTreeWidgetItem *item, int column);
     static char *automationUiCallback(void *user, const char *operation,
                                      const char *argsJson, char *error, size_t cap);

@@ -99,16 +99,13 @@ bool nn_app_create_stereotype(NNApplication *app, const char *id, const char *ve
     return okay;
 }
 
-bool nn_app_create_dataset(NNApplication *app, const char *id, const char *version,
-                           const char *definition_json, bool select,
-                           char *error, size_t cap)
+static bool dataset_definition_valid(const char *definition_json, char *error, size_t cap)
 {
-    nn_error_set(error, cap, "");
-    if (!app || !app->project) return nn_fail(error, cap, "no active project");
-    if (app->history.group_active) return nn_fail(error, cap, "cannot create a resource during an edit group");
-    if (!id || !version || !definition_json) return nn_fail(error, cap, "invalid dataset payload");
     yyjson_doc *doc = yyjson_read(definition_json, strlen(definition_json), 0);
-    if (!doc || !yyjson_is_obj(yyjson_doc_get_root(doc))) { if (doc) yyjson_doc_free(doc); return nn_fail(error, cap, "dataset definition must be an object"); }
+    if (!doc || !yyjson_is_obj(yyjson_doc_get_root(doc))) {
+        if (doc) yyjson_doc_free(doc);
+        return nn_fail(error, cap, "dataset definition must be an object");
+    }
     yyjson_val *root = yyjson_doc_get_root(doc), *batch = yyjson_obj_get(root, "batch");
     const char *dtype_names[] = {"float16","bfloat16","float32","float64","int8","int16","int32","int64","uint8","bool"};
     bool valid = yyjson_is_obj(batch);
@@ -136,7 +133,44 @@ bool nn_app_create_dataset(NNApplication *app, const char *id, const char *versi
     }
     yyjson_doc_free(doc);
     if (!valid) return nn_fail(error, cap, "invalid dataset slots, dtype or shape");
+    return true;
+}
+
+bool nn_app_create_dataset(NNApplication *app, const char *id, const char *version,
+                           const char *definition_json, bool select,
+                           char *error, size_t cap)
+{
+    nn_error_set(error, cap, "");
+    if (!app || !app->project) return nn_fail(error, cap, "no active project");
+    if (app->history.group_active) return nn_fail(error, cap, "cannot create a resource during an edit group");
+    if (!id || !version || !definition_json) return nn_fail(error, cap, "invalid dataset payload");
+    if (!dataset_definition_valid(definition_json, error, cap)) return false;
     bool okay = nn_project_create_dataset(app->project, id, version, definition_json, select, error, cap);
+    if (okay) {
+        nn_app_history_barrier(app, true);
+        nn_app_invalidate_analysis(app);
+        nn_error_set(error, cap, "");
+    }
+    return okay;
+}
+
+char *nn_app_dataset_definition(const NNApplication *app, const char *id,
+                               const char *version, char *error, size_t cap)
+{
+    nn_error_set(error, cap, "");
+    if (!app || !app->project) { nn_fail(error, cap, "no active project"); return NULL; }
+    return nn_project_dataset_definition(app->project, id, version, error, cap);
+}
+
+bool nn_app_update_dataset(NNApplication *app, const char *id, const char *version,
+                           const char *definition_json, char *error, size_t cap)
+{
+    nn_error_set(error, cap, "");
+    if (!app || !app->project) return nn_fail(error, cap, "no active project");
+    if (app->history.group_active) return nn_fail(error, cap, "cannot update a dataset during an edit group");
+    if (!id || !version || !definition_json) return nn_fail(error, cap, "invalid dataset payload");
+    if (!dataset_definition_valid(definition_json, error, cap)) return false;
+    bool okay = nn_project_update_dataset(app->project, id, version, definition_json, error, cap);
     if (okay) {
         nn_app_history_barrier(app, true);
         nn_app_invalidate_analysis(app);
@@ -169,6 +203,18 @@ bool nn_app_create_vae(NNApplication *app, const char *parent, const char *id,
     if (app->history.group_active) return nn_fail(error, cap, "cannot replace a project during an edit group");
     NNProject *staged = NULL;
     if (!nn_project_create_vae(parent, id, name, app->core_root, &staged, error, cap)) return false;
+    NNProject *old = app->project; app->project = staged; nn_app_invalidate_analysis(app);
+    nn_app_history_reset(app); nn_project_close(old);
+    nn_error_set(error, cap, ""); return true;
+}
+
+bool nn_app_create_llm(NNApplication *app, const char *parent, const char *id,
+                       const char *name, char *error, size_t cap)
+{
+    if (!app) return nn_fail(error, cap, "application is null");
+    if (app->history.group_active) return nn_fail(error, cap, "cannot replace a project during an edit group");
+    NNProject *staged = NULL;
+    if (!nn_project_create_llm(parent, id, name, app->core_root, &staged, error, cap)) return false;
     NNProject *old = app->project; app->project = staged; nn_app_invalidate_analysis(app);
     nn_app_history_reset(app); nn_project_close(old);
     nn_error_set(error, cap, ""); return true;

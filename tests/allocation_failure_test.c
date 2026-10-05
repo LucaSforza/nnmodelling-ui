@@ -558,6 +558,65 @@ static void sweep_serializer(NNApplication *app, const char *operation)
            operation, count, valid_responses, failures);
 }
 
+static char *read_file_text(const char *path)
+{
+    FILE *file = fopen(path, "rb"); assert(file);
+    assert(fseek(file, 0, SEEK_END) == 0);
+    long length = ftell(file); assert(length >= 0);
+    rewind(file);
+    char *text = malloc((size_t)length + 1); assert(text);
+    assert(fread(text, 1, (size_t)length, file) == (size_t)length);
+    text[length] = '\0'; assert(fclose(file) == 0);
+    return text;
+}
+
+static void sweep_dataset_update(void)
+{
+    char temporary[] = "/tmp/opencode/nn-dataset-update-XXXXXX";
+    char *parent = mkdtemp(temporary); assert(parent);
+    NNApplication *app = nn_app_new("stereotype-packages/core"); assert(app);
+    char error[512] = "";
+    const char *before = "{\"name\":\"Before\",\"batch\":{\"inputs\":{\"x\":{\"dtype\":\"float32\",\"shape\":[\"B\",8]}},\"targets\":{}}}";
+    const char *after = "{\"name\":\"After\",\"batch\":{\"inputs\":{\"x\":{\"dtype\":\"float32\",\"shape\":[\"B\",16]}},\"targets\":{}}}";
+    assert(nn_app_create(app, parent, "project", "Dataset sweep", false, error, sizeof(error)));
+    assert(nn_app_create_dataset(app, "data", "1.0.0", before, true, error, sizeof(error)));
+    char definition_path[4096], model_path[4096];
+    assert(snprintf(definition_path, sizeof(definition_path), "%s/project/datasets/data-1.0.0/dataset.json", parent) < (int)sizeof(definition_path));
+    assert(snprintf(model_path, sizeof(model_path), "%s/project/model.json", parent) < (int)sizeof(model_path));
+    count_begin();
+    assert(nn_app_update_dataset(app, "data", "1.0.0", after, error, sizeof(error)));
+    size_t count = count_end(); assert(count);
+    for (size_t i = 1; i <= count; ++i) {
+        assert(nn_app_rename_node(app, "output", "Before", error, sizeof(error)));
+        assert(nn_app_update_dataset(app, "data", "1.0.0", before, error, sizeof(error)));
+        assert(nn_app_rename_node(app, "output", "Pending", error, sizeof(error)));
+        const NNInferenceReport *report = nn_app_analysis(app, error, sizeof(error)); assert(report);
+        char *old_definition = read_file_text(definition_path);
+        char *old_model = read_file_text(model_path);
+        fail_begin(i);
+        bool okay = nn_app_update_dataset(app, "data", "1.0.0", after, error, sizeof(error));
+        (void)count_end();
+        assert(failure_observed);
+        if (!okay) {
+            assert(error[0]);
+            assert(nn_project_dirty(nn_app_project(app)) && nn_app_can_undo(app));
+            assert(nn_app_analysis(app, NULL, 0) == report);
+            assert(!strcmp(nn_project_active_dataset(nn_app_project(app))->name, "Before"));
+            char *text = read_file_text(definition_path);
+            assert(!strcmp(text, old_definition)); free(text);
+            text = read_file_text(model_path);
+            assert(!strcmp(text, old_model)); free(text);
+        } else {
+            assert(!nn_project_dirty(nn_app_project(app)) && !nn_app_can_undo(app));
+            assert(!strcmp(nn_project_active_dataset(nn_app_project(app))->name, "After"));
+        }
+        free(old_definition); free(old_model);
+    }
+    printf("dataset update allocation fail-index sweep: %zu wrapped calls\n", count);
+    nn_app_free(app);
+    assert(nftw(parent, remove_temp_path, 32, FTW_DEPTH | FTW_PHYS) == 0);
+}
+
 int main(void)
 {
     NNApplication *app = nn_app_new("stereotype-packages/core");
@@ -581,5 +640,6 @@ int main(void)
 
     nn_app_free(app);
     sweep_multi_output_analysis();
+    sweep_dataset_update();
     return 0;
 }

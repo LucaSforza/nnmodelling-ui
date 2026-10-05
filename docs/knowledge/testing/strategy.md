@@ -59,3 +59,9 @@ project replacement and resource barriers, C-only and sanitizer tests. GUI check
 Edit actions/shortcuts, rerouted restored geometry and scope fallback. Shared
 layout tests check nonoverlap, feed-forward ranks, branch/join centering and compact
 preview bounds without C coordinate mutation; restart Qt/bridge after every change.
+
+Dataset manager gate (2026-10-05): verify prefilled metadata editing, stable
+identity/active selection, preserved opaque root/batch/slot metadata and Python/data
+assets, normal write/save rollback, symlink rejection and save/reopen. GUI exercises
+Dataset/New dataset entrypoints, empty selection, Edit/Select, invalid retained
+forms and cancellation. Use a disposable project for real browser UI editing.

@@ -12,12 +12,15 @@
 
 #include <QAction>
 #include <QApplication>
+#include <QDir>
+#include <QImage>
 #include <QLineEdit>
 #include <QCheckBox>
 #include <QLabel>
 #include <QComboBox>
 #include <QPushButton>
 #include <QMessageBox>
+#include <QMap>
 #include <QMenu>
 #include <QMenuBar>
 #include <QLineF>
@@ -30,6 +33,7 @@
 #include <QProcess>
 #include <QProcessEnvironment>
 #include <QTableWidget>
+#include <QTableWidgetItem>
 #include <QPlainTextEdit>
 #include <QPalette>
 #include <cmath>
@@ -39,6 +43,7 @@
 #include <QTimer>
 #include <QTreeWidget>
 #include <QTreeWidgetItemIterator>
+#include <QListWidget>
 #include <QToolBar>
 #include <QToolButton>
 #include <cstring>
@@ -50,11 +55,14 @@ class WindowTest : public QObject {
     Q_OBJECT
 private slots:
     void lifecycleAndInspector();
+    void appDialogsContrastUnderDarkPalette();
+    void miniLlmTemplateShortcut();
     void stereotypeReferenceForm();
     void modelProblemDiagnosticsAndNavigation();
     void currentScopeRetainsOutsideCauseContext();
     void retainedLuaValidationFormAndNonblockingRejection();
     void visualResourceAuthoringForms();
+    void datasetManagerEditFormAndRetainedValidation();
     void typedOutputAuthoringBoundariesAndInspector();
     void automationRejectsInvalidScopeAndCapturesCurrentScope();
     void arrangeMenuAndFitUseDirectedGridLayout();
@@ -62,6 +70,30 @@ private slots:
     void scopeTreeFollowsContainmentAndMenus();
     void socketOptionRequiresPath();
 };
+
+void WindowTest::miniLlmTemplateShortcut() {
+    NNApplication *app = nn_app_new(NN_SOURCE_DIR "/stereotype-packages/core");
+    QVERIFY(app);
+    MainWindow window(app);
+    bool foundTemplate = false;
+    for (QAction *action : window.findChildren<QAction *>()) {
+        if (action->text() == "mini LLM…") foundTemplate = true;
+        QVERIFY(action->text() != "MNIST VAE…");
+    }
+    QVERIFY(foundTemplate);
+    bool foundChooser = false;
+    QTimer::singleShot(0, &window, [&] {
+        auto *chooser = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+        if (!chooser) return;
+        for (QAbstractButton *button : chooser->buttons()) {
+            if (button->text() == "New mini LLM") foundChooser = true;
+            QVERIFY(button->text() != "New MNIST VAE");
+        }
+        chooser->reject();
+    });
+    window.showProjectChooser();
+    QVERIFY(foundChooser);
+}
 
 void WindowTest::stereotypeReferenceForm() {
     QTemporaryDir temporary;
@@ -583,6 +615,64 @@ static qreal contrastAgainstWhite(const QColor &color) {
     return 1.05 / (luminance + 0.05);
 }
 
+struct DialogRenderEvidence {
+    QColor background;
+    QColor foreground;
+    bool textRendered = false;
+    bool captured = true;
+};
+
+static qreal contrastRatio(const QColor &foreground, const QColor &background) {
+    auto luminance = [](const QColor &color) {
+        auto channel = [](int value) {
+            const qreal c = value / 255.0;
+            return c <= 0.04045 ? c / 12.92 : std::pow((c + 0.055) / 1.055, 2.4);
+        };
+        return 0.2126 * channel(color.red()) + 0.7152 * channel(color.green()) +
+               0.0722 * channel(color.blue());
+    };
+    const qreal a = luminance(foreground), b = luminance(background);
+    return (qMax(a, b) + 0.05) / (qMin(a, b) + 0.05);
+}
+
+static DialogRenderEvidence inspectDialog(QDialog *dialog, QWidget *textWidget,
+                                          const QString &capturePath = {}) {
+    dialog->ensurePolished();
+    QApplication::processEvents();
+    const QImage image = dialog->grab().toImage().convertToFormat(QImage::Format_ARGB32);
+    DialogRenderEvidence evidence;
+    if (image.isNull()) return evidence;
+
+    QMap<QRgb, int> cornerColors;
+    for (int y = 2; y < qMin(10, image.height()); ++y)
+        for (int x = 2; x < qMin(10, image.width()); ++x)
+            ++cornerColors[image.pixel(x, y)];
+    int mostCommon = 0;
+    for (auto it = cornerColors.cbegin(); it != cornerColors.cend(); ++it) {
+        if (it.value() > mostCommon) {
+            mostCommon = it.value();
+            evidence.background = QColor::fromRgba(it.key());
+        }
+    }
+
+    evidence.foreground = textWidget->palette().color(QPalette::WindowText);
+    const QPoint textOrigin = textWidget->mapTo(dialog, QPoint(0, 0));
+    const QRect textRect = QRect(textOrigin, textWidget->size()).intersected(image.rect());
+    for (int y = textRect.top(); y <= textRect.bottom() && !evidence.textRendered; ++y) {
+        for (int x = textRect.left(); x <= textRect.right(); ++x) {
+            const QColor pixel = image.pixelColor(x, y);
+            if (qAbs(pixel.red() - evidence.foreground.red()) <= 12 &&
+                qAbs(pixel.green() - evidence.foreground.green()) <= 12 &&
+                qAbs(pixel.blue() - evidence.foreground.blue()) <= 12) {
+                evidence.textRendered = true;
+                break;
+            }
+        }
+    }
+    if (!capturePath.isEmpty()) evidence.captured = image.save(capturePath);
+    return evidence;
+}
+
 void WindowTest::lifecycleAndInspector() {
     QTemporaryDir temporary;
     QVERIFY(temporary.isValid());
@@ -709,6 +799,88 @@ void WindowTest::lifecycleAndInspector() {
     QVERIFY(node && std::strcmp(node->label, "Hidden layer") == 0);
     nn_project_close(saved);
     QApplication::setPalette(systemPalette);
+}
+
+void WindowTest::appDialogsContrastUnderDarkPalette() {
+    struct PaletteRestore {
+        QPalette palette = QApplication::palette();
+        ~PaletteRestore() { QApplication::setPalette(palette); }
+    } restore;
+
+    QPalette dark = QApplication::palette();
+    dark.setColor(QPalette::Window, QColor("#20242b"));
+    dark.setColor(QPalette::WindowText, QColor("#f0f2f5"));
+    dark.setColor(QPalette::Base, QColor("#15191f"));
+    dark.setColor(QPalette::Text, QColor("#f0f2f5"));
+    dark.setColor(QPalette::Button, QColor("#20242b"));
+    dark.setColor(QPalette::ButtonText, QColor("#f0f2f5"));
+    QApplication::setPalette(dark);
+
+    QTemporaryDir temporary;
+    QVERIFY(temporary.isValid());
+    NNApplication *app = nn_app_new(NN_SOURCE_DIR "/stereotype-packages/core");
+    QVERIFY(app);
+    char error[512] = {};
+    const QByteArray parent = temporary.path().toUtf8();
+    QVERIFY2(nn_app_create(app, parent.constData(), "dialog-theme", "Dialog theme", false,
+                           error, sizeof(error)), error);
+    MainWindow window(app);
+    window.show();
+
+    const QString captureDirectory = qEnvironmentVariable("NN_TEST_DIALOG_CAPTURE_DIR");
+    auto capturePath = [&captureDirectory](const QString &name) {
+        return captureDirectory.isEmpty() ? QString() : QDir(captureDirectory).filePath(name + ".png");
+    };
+    auto checkEvidence = [](const DialogRenderEvidence &evidence, const char *widgetName) {
+        QVERIFY(evidence.background.isValid());
+        QCOMPARE(evidence.background, QColor("#eceff3"));
+        QVERIFY(evidence.textRendered);
+        QVERIFY(evidence.captured);
+        QVERIFY2(contrastRatio(evidence.foreground, evidence.background) >= 4.5,
+                 widgetName);
+    };
+    auto openAuthoringDialog = [&](const char *buttonName, const char *checkBoxName,
+                                   const QString &captureName) {
+        DialogRenderEvidence labelEvidence, checkBoxEvidence;
+        QTimer::singleShot(0, &window, [&] {
+            auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+            if (!dialog) return;
+            QLabel *label = nullptr;
+            for (QLabel *candidate : dialog->findChildren<QLabel *>())
+                if (!candidate->text().isEmpty()) { label = candidate; break; }
+            if (label)
+                labelEvidence = inspectDialog(dialog, label, capturePath(captureName));
+            if (checkBoxName) {
+                if (auto *checkBox = dialog->findChild<QCheckBox *>(checkBoxName))
+                    checkBoxEvidence = inspectDialog(dialog, checkBox);
+            }
+            dialog->reject();
+        });
+        auto *button = window.findChild<QPushButton *>(buttonName);
+        QVERIFY(button);
+        button->click();
+        checkEvidence(labelEvidence, "dialog label text needs 4.5:1 contrast against the rendered surface");
+        if (checkBoxName)
+            checkEvidence(checkBoxEvidence, "dialog checkbox text needs 4.5:1 contrast against the rendered surface");
+    };
+
+    openAuthoringDialog("createStereotypeButton", nullptr, QStringLiteral("stereotype"));
+    openAuthoringDialog("createDatasetButton", "datasetSelect", QStringLiteral("dataset"));
+
+    DialogRenderEvidence chooserEvidence;
+    QTimer::singleShot(0, &window, [&] {
+        auto *chooser = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+        if (!chooser) return;
+        QLabel *label = nullptr;
+        for (QLabel *candidate : chooser->findChildren<QLabel *>())
+            if (!candidate->text().isEmpty()) { label = candidate; break; }
+        if (label)
+            chooserEvidence = inspectDialog(chooser, label, capturePath(QStringLiteral("project-chooser")));
+        chooser->button(QMessageBox::Close)->click();
+    });
+    window.showProjectChooser();
+    checkEvidence(chooserEvidence, "project chooser text needs 4.5:1 contrast against the rendered surface");
+    window.close();
 }
 
 void WindowTest::modelProblemDiagnosticsAndNavigation() {
@@ -1101,6 +1273,133 @@ void WindowTest::visualResourceAuthoringForms() {
     QCOMPARE(QString::fromUtf8(nn_project_active_dataset(nn_app_project(reopened))->id), QStringLiteral("ui.dataset"));
     nn_app_free(reopened);
     window.close();
+}
+
+void WindowTest::datasetManagerEditFormAndRetainedValidation() {
+    QTemporaryDir temporary;
+    QVERIFY(temporary.isValid());
+    NNApplication *app = nn_app_new(NN_SOURCE_DIR "/stereotype-packages/core");
+    QVERIFY(app);
+    char error[512] = {};
+    const QByteArray parent = temporary.path().toUtf8();
+    QVERIFY2(nn_app_create(app, parent.constData(), "dataset-manager", "Dataset manager",
+                           false, error, sizeof(error)), error);
+    QVERIFY2(nn_app_create_dataset(app, "manager.data", "1.0.0",
+        R"({"name":"Manager data","description":"Original","batch":{"inputs":{"features":{"dtype":"float32","shape":["B",4]}},"targets":{}}})",
+        true, error, sizeof(error)), error);
+    MainWindow window(app);
+    auto *manage = window.findChild<QPushButton *>("manageDatasetsButton");
+    QVERIFY(manage);
+    QTimer::singleShot(0, &window, [&window] {
+        auto *manager = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+        QVERIFY(manager);
+        QCOMPARE(manager->objectName(), QStringLiteral("datasetManager"));
+        auto *list = manager->findChild<QListWidget *>("datasetManagerList");
+        QVERIFY(list && list->count() == 1);
+        auto *edit = manager->findChild<QPushButton *>("datasetManagerEdit");
+        auto *select = manager->findChild<QPushButton *>("datasetManagerSelect");
+        auto *create = manager->findChild<QPushButton *>("datasetManagerNew");
+        QVERIFY(edit && select && create);
+        list->clearSelection();
+        list->setCurrentItem(nullptr);
+        QVERIFY(!edit->isEnabled() && !select->isEnabled());
+        QTimer::singleShot(0, manager, [manager] {
+            auto *form = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+            QVERIFY(form);
+            form->findChild<QLineEdit *>("datasetId")->setText("created.via.manager");
+            form->findChild<QLineEdit *>("datasetName")->setText("Created by manager");
+            form->findChild<QCheckBox *>("datasetSelect")->setChecked(false);
+            auto *inputs = form->findChild<QTableWidget *>("datasetInputs");
+            QVERIFY(inputs);
+            QPushButton *addRow = nullptr;
+            for (QPushButton *button : form->findChildren<QPushButton *>())
+                if (button->text() == QStringLiteral("Add row")) { addRow = button; break; }
+            QVERIFY(addRow);
+            addRow->click();
+            inputs->item(0, 0)->setText("data");
+            inputs->item(0, 2)->setText("B, 3");
+            form->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Save)->click();
+        });
+        create->click();
+        QCOMPARE(list->count(), 2);
+        QListWidgetItem *newDataset = nullptr;
+        for (int i = 0; i < list->count(); ++i)
+            if (list->item(i)->data(Qt::UserRole).toString() == QStringLiteral("created.via.manager"))
+                newDataset = list->item(i);
+        QVERIFY(newDataset);
+        list->setCurrentItem(newDataset);
+        QVERIFY(select->isEnabled());
+        select->click();
+        QVERIFY(!select->isEnabled());
+
+        QListWidgetItem *existing = nullptr;
+        for (int i = 0; i < list->count(); ++i)
+            if (list->item(i)->data(Qt::UserRole).toString() == QStringLiteral("manager.data"))
+                existing = list->item(i);
+        QVERIFY(existing);
+        list->setCurrentItem(existing);
+        QVERIFY(edit->isEnabled());
+        QTimer::singleShot(0, manager, [manager] {
+            auto *form = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+            QVERIFY(form);
+            QCOMPARE(form->findChild<QLineEdit *>("datasetId")->text(), QStringLiteral("manager.data"));
+            QCOMPARE(form->findChild<QLineEdit *>("datasetVersion")->text(), QStringLiteral("1.0.0"));
+            QVERIFY(form->findChild<QLineEdit *>("datasetId")->isReadOnly());
+            QVERIFY(form->findChild<QLineEdit *>("datasetVersion")->isReadOnly());
+            QCOMPARE(form->findChild<QLineEdit *>("datasetName")->text(), QStringLiteral("Manager data"));
+            form->findChild<QLineEdit *>("datasetName")->setText("Edited in manager");
+            form->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Save)->click();
+        });
+        edit->click();
+        manager->reject();
+    });
+    manage->click();
+    char *definition = nn_app_dataset_definition(app, "manager.data", "1.0.0", error, sizeof(error));
+    QVERIFY(definition);
+    QCOMPARE(QJsonDocument::fromJson(definition).object().value("name").toString(),
+             QStringLiteral("Edited in manager"));
+    nn_app_free_text(definition);
+
+    QTimer::singleShot(0, &window, [&window] {
+        auto *manager = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+        QVERIFY(manager);
+        auto *list = manager->findChild<QListWidget *>("datasetManagerList");
+        QVERIFY(list && list->count() == 2);
+        for (int i = 0; i < list->count(); ++i)
+            if (list->item(i)->data(Qt::UserRole).toString() == QStringLiteral("manager.data"))
+                list->setCurrentItem(list->item(i));
+        auto *edit = manager->findChild<QPushButton *>("datasetManagerEdit");
+        QVERIFY(edit);
+        QTimer::singleShot(0, manager, [manager] {
+            auto *form = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+            QVERIFY(form);
+            form->findChild<QLineEdit *>("datasetName")->setText("Must be cancelled");
+            auto *inputs = form->findChild<QTableWidget *>("datasetInputs");
+            QVERIFY(inputs);
+            while (inputs->rowCount()) inputs->removeRow(0);
+            QTimer::singleShot(0, form, [form] {
+                form->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Save)->click();
+                QTimer::singleShot(0, form, [form] {
+                    QVERIFY(form->isVisible());
+                    QVERIFY(!form->findChild<QLabel *>("datasetError")->text().isEmpty());
+                    QCOMPARE(form->findChild<QLineEdit *>("datasetName")->text(),
+                             QStringLiteral("Must be cancelled"));
+                    form->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Cancel)->click();
+                });
+            });
+        });
+        edit->click();
+        manager->reject();
+    });
+    manage->click();
+    definition = nn_app_dataset_definition(app, "manager.data", "1.0.0", error, sizeof(error));
+    QVERIFY(definition);
+    QCOMPARE(QJsonDocument::fromJson(definition).object().value("name").toString(),
+             QStringLiteral("Edited in manager"));
+    nn_app_free_text(definition);
+    QVERIFY(nn_project_active_dataset(nn_app_project(app)));
+    QCOMPARE(QString::fromUtf8(nn_project_active_dataset(nn_app_project(app))->id),
+             QStringLiteral("created.via.manager"));
 }
 
 void WindowTest::typedOutputAuthoringBoundariesAndInspector() {

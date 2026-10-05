@@ -77,7 +77,8 @@ char *MainWindow::automationUiCallback(void *user, const char *operation,
             {QStringLiteral("diagnostics"), QStringLiteral("diagnostics"), self->tr("Diagnostics")},
             {QStringLiteral("scopeSelector"), QStringLiteral("scope-selector"), self->tr("Scope")},
             {QStringLiteral("createStereotypeButton"), QStringLiteral("resource-action"), self->tr("New stereotype")},
-            {QStringLiteral("createDatasetButton"), QStringLiteral("resource-action"), self->tr("New dataset")}};
+            {QStringLiteral("createDatasetButton"), QStringLiteral("resource-action"), self->tr("New dataset")},
+            {QStringLiteral("manageDatasetsButton"), QStringLiteral("resource-action"), self->tr("Manage datasets")}};
         for (const auto &entry : entries) {
             QWidget *widget = entry.id == QStringLiteral("main-window")
                 ? static_cast<QWidget *>(self) : self->findChild<QWidget *>(entry.id);

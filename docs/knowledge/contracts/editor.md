@@ -75,9 +75,16 @@ must not begin a node drag or connection and refresh is queued after events.
 
 2026-09-30 additions: [resource authoring](resource-authoring.md) governs
 positioned parameter rows, theme-independent contrast, visual creation dialogs,
-dataset selection and New MNIST VAE. [Automation](automation.md) governs local
+dataset selection and template creation. Accepted 2026-10-05: mini LLM
+replaces the VAE shortcut in startup chooser and File template menu. [Automation](automation.md) governs local
 CLI integration. Subflow navigation remains scope-local; recursive type analysis
 now delegates through the existing Proxy Lua rule.
+
+Accepted 2026-10-05: the shared MainWindow stylesheet owns an explicit light
+background and dark foreground for all app-owned QDialog surfaces, including
+resource forms, project chooser, input and message dialogs. Platform dark
+palettes must not combine with inherited dark label/checkbox text. Verify actual
+dialog rendering under a dark application palette, not only stylesheet strings.
 
 Use white canvas, light gray dock panels, compact text, restrained blue accents,
 colored computational cards and directed orthogonal connections. Boundary circles
@@ -224,3 +231,10 @@ resolution, validation, defaults and bounded inference; Qt owns controls only.
 [3D contract](visualization-3d.md) governs whole-network expanded read-only
 exploration, flight, Fit/Home, picking and transient camera. Existing scope-local
 2D gestures/layout remain unchanged; Qt only paints C-projected scene primitives.
+
+## Dataset manager (accepted 2026-10-05)
+
+Project resources retains New dataset and adds Dataset, opening the manager in
+resource-authoring.md. Exact dataset identity is stable while a shared prefilled
+form edits metadata/tensor slots. C validates, persists and refreshes analysis;
+Qt only owns form/selection state. No dataset deletion or Python/data editor.

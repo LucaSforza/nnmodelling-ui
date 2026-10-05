@@ -170,15 +170,17 @@ void MainWindow::buildUi() {
     setWindowTitle(QStringLiteral("NNModelling"));
     resize(1360, 850);
     setMinimumSize(900, 560);
+    // Top-level dialogs do not inherit the window palette on dark desktops.
     setStyleSheet(QStringLiteral(
         "QMainWindow { background: #eceff3; }"
+        "QDialog { background: #eceff3; color: #263446; }"
         "QMenuBar, QToolBar { background: #222a35; color: #edf1f6; border: 0; }"
         "QMenuBar::item:selected, QMenu::item:selected { background: #35465b; }"
         "QToolBar QToolButton { color: #edf1f6; padding: 5px 9px; }"
         "QToolBar QToolButton:hover { background: #35465b; }"
         "QDockWidget, QGroupBox { background: #edf0f4; }"
         "QWidget { color: #263446; }"
-        "QTreeWidget, QLineEdit, QComboBox, QPlainTextEdit, QTableWidget { background: #ffffff; color: #202c3b; selection-background-color: #3978c5; selection-color: #ffffff; }"
+        "QTreeWidget, QListWidget, QLineEdit, QComboBox, QPlainTextEdit, QTableWidget { background: #ffffff; color: #202c3b; selection-background-color: #3978c5; selection-color: #ffffff; }"
         "QLineEdit, QComboBox, QPlainTextEdit, QTableWidget { border: 1px solid #9aa8b8; padding: 3px; }"
         "QLineEdit { placeholder-text-color: #667587; }"
         "QLineEdit:disabled, QComboBox:disabled { background: #e2e6eb; color: #525f6e; }"
@@ -215,7 +217,7 @@ void MainWindow::buildUi() {
     fileMenu->addMenu(templatesMenu);
     templatesMenu->setObjectName(QStringLiteral("projectTemplatesMenu"));
     addAction(templatesMenu, tr("MNIST MLP…"), {}, [this] { createProject(true); });
-    addAction(templatesMenu, tr("MNIST VAE…"), {}, [this] { createVaeProject(); });
+    addAction(templatesMenu, tr("mini LLM…"), {}, [this] { createLlmProject(); });
     fileMenu->addSeparator();
     addAction(fileMenu, tr("Open project…"), QKeySequence::Open, [this] {
         const QString directory = QFileDialog::getExistingDirectory(this, tr("Open project"));
@@ -253,6 +255,7 @@ void MainWindow::buildUi() {
     auto *modelMenu = addMenu(tr("&Model"));
     addAction(modelMenu, tr("Create stereotype…"), {}, [this] { createStereotype(); });
     addAction(modelMenu, tr("Create dataset…"), {}, [this] { createDataset(); });
+    addAction(modelMenu, tr("Manage datasets…"), {}, [this] { manageDatasets(); }, "manageDatasetsAction");
     QAction *backendPanelAction = addAction(modelMenu, tr("Training backend…"), {}, [this] {
         BackendDialog dialog(application_.get(), [this] { return saveProject(); },
             [this](const QString &directory) { return openProject(directory); }, this);
@@ -376,8 +379,12 @@ void MainWindow::buildUi() {
     stereotypeButton->setObjectName(QStringLiteral("createStereotypeButton"));
     auto *datasetButton = new QPushButton(tr("New dataset"), resourcePane);
     datasetButton->setObjectName(QStringLiteral("createDatasetButton"));
+    auto *manageDatasetsButton = new QPushButton(tr("Dataset…"), resourcePane);
+    manageDatasetsButton->setObjectName(QStringLiteral("manageDatasetsButton"));
+    manageDatasetsButton->setToolTip(tr("Manage project datasets"));
     resourceActions->addWidget(stereotypeButton);
     resourceActions->addWidget(datasetButton);
+    resourceLayout->addWidget(manageDatasetsButton);
     resourceLayout->addLayout(resourceActions);
 
     auto *diagnosticPane = new QWidget(right);
@@ -472,7 +479,8 @@ void MainWindow::buildUi() {
     connect(resources_, &QTreeWidget::itemClicked, this,
             [this](QTreeWidgetItem *item, int column) { selectDataset(item, column); });
     connect(stereotypeButton, &QPushButton::clicked, this, &MainWindow::createStereotype);
-    connect(datasetButton, &QPushButton::clicked, this, &MainWindow::createDataset);
+    connect(datasetButton, &QPushButton::clicked, this, [this] { createDataset(); });
+    connect(manageDatasetsButton, &QPushButton::clicked, this, &MainWindow::manageDatasets);
     connect(arrangeAction, &QAction::triggered, this, [this] {
         arrangeCurrentScope(FlowDirection::Vertical);
     });

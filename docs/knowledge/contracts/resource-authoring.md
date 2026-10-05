@@ -32,6 +32,9 @@ All operations return bool with caller-owned error buffer; UTF-8 is borrowed:
   dataset, marks dirty; invalid identity makes no change.
   Binding mismatches remain unresolved diagnostics, not selection failures;
   incomplete graphs must permit choosing datasets before editing bindings.
+* `nn_app_create_llm(app,parent,id,name,error,cap)` copies
+  examples/models/tiny-decoder-llm into a new editable project through the same
+  staged template transaction as VAE; Qt uses it for the mini LLM shortcut.
 * `nn_app_create_vae(app,parent,id,name,error,cap)` copies examples/models/mnist-vae
   into a new editable project, including its packages and datasets.
 
@@ -60,7 +63,8 @@ files, candidate references/catalog/datasets against current graph, validates,
 atomically saves candidate model.json, then publishes. Failure keeps graph,
 resources, dirty flag and previous model.json, removing only transaction-created
 files. Success saves all current edits and clears dirty. UI labels Create as
-saving the project. Resource editing/deletion are not introduced.
+saving the project. Dataset metadata editing is accepted below; stereotype editing and resource
+deletion remain deferred.
 
 ## Subflow inference
 
@@ -98,7 +102,7 @@ claim is made. Project owns five custom stereotypes and reconstruction metadata
 and dimensions; no VAE package-ID switches in C.
 
 Accepted: above behavior and CLI integration per automation contract. Deferred:
-resource editing/deletion, object values and training. Typed output/subflow
+stereotype editing/resource deletion, object values and training. Typed output/subflow
 authoring follows typed-outputs.md.
 
 Accepted 2026-10-04: [3D contract](visualization-3d.md) supersedes Horizontal
@@ -107,3 +111,39 @@ subflow-only visualization Lua entrypoint are accepted; numerical execution
 and training remain deferred.
 
 Accepted 2026-10-05: [backend contract](backend.md) and [backend UML](../uml/backend.md) supersede earlier backend/training deferrals. Native C11 graph authority and Lua shape analysis remain unchanged.
+
+## Dataset management (accepted 2026-10-05)
+
+The Project resources panel exposes `Dataset` alongside the existing `New dataset`
+shortcut. `Dataset` opens a project-local manager listing exact identities and
+active selection, with New dataset, Edit and Select actions. Edit/Select require
+an existing selection; no-project actions report the existing open-project hint.
+The manager refreshes after successful operations; closing it changes nothing.
+
+The existing dataset form serves create and edit. Edit preloads name, description,
+input/target slots and selected identity; ID/version are read-only. Save edits
+name, description, dtype and shape/slot definitions. It preserves dataset adapter
+code, uv files, samples and all unrelated JSON keys, including batch metadata and
+extra properties of retained slots. Creation remains available through both entry
+points. Validation failure keeps fields and shows inline errors; Cancel writes nothing.
+
+`nn_app_dataset_definition(app,id,version,error,cap)` returns owned JSON for one
+exact declared dataset, released with `nn_app_free_text`. It reads the confined
+manifest definition entrypoint through C, never through Qt filesystem code.
+`nn_app_update_dataset(app,id,version,definition_json,error,cap)` patches only
+name, description and batch input/target maps of that dataset. Identity and active
+selection remain unchanged. Schema validation uses the create rules. Root, batch
+and retained-slot fields unrelated to the form survive; removed slots are removed.
+Missing graph bindings become normal unresolved diagnostics, not edit rejection.
+
+Project C stages merged JSON and owned dataset metadata, validates before writing,
+then replaces the regular definition file using a flushed sibling temporary and
+retained original backup. It saves current model edits using existing atomic
+model persistence before publishing refreshed metadata. Ordinary failure restores
+original definition bytes, active metadata, dirty state, graph and application
+history/report. Rollback failure is reported explicitly and retains recovery data.
+Symlink/traversal, invalid identity/schema and malformed definition entrypoints
+are rejected. Successful update saves current graph edits, clears dirty state,
+invalidates analysis and creates the same history barrier as resource creation.
+The two-file operation has runtime rollback; no new crash-recovery/file schema.
+Native client edits metadata only and never executes or edits Python/sample files.

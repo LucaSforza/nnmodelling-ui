@@ -59,7 +59,15 @@ bool nn_project_create_dataset(NNProject *project, const char *id, const char *v
                                char *error, size_t capacity);
 bool nn_project_select_dataset(NNProject *project, const char *id, const char *version,
                                char *error, size_t capacity);
+/* Returns owned formatted JSON; release with free(). */
+char *nn_project_dataset_definition(const NNProject *project, const char *id,
+                                    const char *version, char *error, size_t capacity);
+bool nn_project_update_dataset(NNProject *project, const char *id, const char *version,
+                               const char *definition_json, char *error, size_t capacity);
 bool nn_project_create_vae(const char *parent, const char *id, const char *name,
+                           const char *core_root, NNProject **result,
+                           char *error, size_t capacity);
+bool nn_project_create_llm(const char *parent, const char *id, const char *name,
                            const char *core_root, NNProject **result,
                            char *error, size_t capacity);
 

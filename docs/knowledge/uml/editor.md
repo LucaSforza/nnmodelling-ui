@@ -24,6 +24,8 @@ organization follows contracts/source-layout.md and architecture/overview.md.
         +outputType(node,handle) string
         +createStereotype(definition,Lua,dependencies) bool
         +createDataset(definition,select) bool
+        +datasetDefinition(identity) OwnedJSON
+        +updateDataset(identity,definition) bool
         +selectDataset(identity) bool
       }
       class MainWindow {
@@ -32,6 +34,7 @@ organization follows contracts/source-layout.md and architecture/overview.md.
         +resources
         +diagnostics
         +visualResourceDialogs
+        +datasetManager
         +localAutomationCallback
         +arrangeCurrentScope(direction)
       }
@@ -80,8 +83,10 @@ terminals in the same C transaction; Qt refresh displays all children on entry.
 
 ## Graphics and report lifetimes
 
-Qt owns items, clipping, fonts, transforms and event delivery. GraphScene copies
-diagnostic category markers; NodeItem stores no borrowed report pointers. Card
+Qt owns items, clipping, fonts, transforms and event delivery.
+MainWindow owns shared dialog surface/text styling; app-owned QDialogs inherit
+explicit contrasting backgrounds and foregrounds independently of desktop palette.
+GraphScene copies diagnostic category markers; NodeItem stores no borrowed report pointers. Card
 geometry includes definition-positioned top/bottom parameter rows and central
 title; Qt copies text and adapts port positions to height. Boundary kinds render
 filled black/brown/red circles with outside labels, not cards. Ports copy

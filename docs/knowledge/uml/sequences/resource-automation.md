@@ -114,3 +114,32 @@ thread, and cannot create a second graph owner. `ui.inspect` is read-only.
 Capture waits for layout/frame completion; optional arrangement persists the
 current scope's model positions before capture. Unknown or rejected operations
 return errors without partial mutation.
+
+## Edit dataset metadata
+
+```mermaid
+  sequenceDiagram
+    actor User
+    participant Qt as Dataset manager and form
+    participant App as NNApplication
+    participant Project as C project/dataset owner
+    User->>Qt: Dataset then Edit selected identity
+    Qt->>App: datasetDefinition(id,version)
+    App->>Project: read confined declared definition
+    Project-->>Qt: owned JSON via App
+    Qt->>Qt: prefill shared form and retain opaque fields
+    User->>Qt: save edited name/description/tensor slots
+    Qt->>App: updateDataset(id,version,definition)
+    App->>Project: validate and merge editable fields
+    Project->>Project: stage parsed metadata and flushed sibling JSON
+    Project->>Project: retain original and replace definition
+    Project->>Project: atomically save current model
+    alt success
+      Project->>Project: publish dataset metadata and release backup
+      App->>App: history barrier and invalidate analysis
+      App-->>Qt: refresh manager/resources/diagnostics
+    else failure
+      Project->>Project: restore definition and retain prior metadata/dirty state
+      App-->>Qt: inline error, keep form fields
+    end
+```
