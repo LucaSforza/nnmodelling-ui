@@ -22,7 +22,7 @@ static const NNInferenceResult *find_result(const NNInferenceReport *report,
 static NNProject *open_example(void)
 {
     char error[512] = {0};
-    NNProject *project = nn_project_open("examples/mnist-mlp", "stereotype-packages/core",
+    NNProject *project = nn_project_open("examples/models/mnist-mlp", "stereotype-packages/core",
                                          error, sizeof(error));
     if (!project) fprintf(stderr, "project open failed: %s\n", error);
     return project;
@@ -31,7 +31,7 @@ static NNProject *open_example(void)
 static NNProject *open_vae(void)
 {
     char error[512] = {0};
-    NNProject *project = nn_project_open("examples/mnist-vae", "stereotype-packages/core",
+    NNProject *project = nn_project_open("examples/models/mnist-vae", "stereotype-packages/core",
                                          error, sizeof(error));
     if (!project) fprintf(stderr, "VAE project open failed: %s\n", error);
     return project;

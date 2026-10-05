@@ -33,7 +33,7 @@ just test      # C-only configuration; no Qt or C++ compiler required
 just build
 just test-ui   # separate offscreen Qt interaction tests
 just test-sanitize # C-only ASan/UBSan/leak gate (Clang by default)
-just run examples/mnist-mlp
+just run examples/models/mnist-mlp
 ```
 
 Executable: `build/qt/nnmodelling-ui [project-directory]`. Without an argument,

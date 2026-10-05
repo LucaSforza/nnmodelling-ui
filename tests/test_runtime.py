@@ -360,7 +360,7 @@ def build(parameters,context,services): return Loss()
 
 def test_bundled_mnist_graph_executes_prediction_and_training_objective():
     repository = Path(__file__).resolve().parents[1]
-    graph = GraphModule(repository / "examples" / "mnist-mlp", repository / "stereotype-packages" / "core")
+    graph = GraphModule(repository / "examples" / "models" / "mnist-mlp", repository / "stereotype-packages" / "core")
     images = torch.randn(3, 1, 28, 28)
     prediction = graph({"image": images})["prediction"]
     assert prediction.shape == (3, 10)

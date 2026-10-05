@@ -20,7 +20,7 @@ semantics or ownership. [UI rewrite plan](../plans/ui-rewrite.md) tracks work;
 | Decisions | [Native client and Lua](decisions/native-client.md) |
 | UML | [Legacy reference](uml/legacy.md), [metamodel and typed outputs](uml/metamodel.md), [project/resources](uml/project.md), [editor/graphics and analysis ownership](uml/editor.md), [automation](uml/automation.md), [sequences](uml/sequences.md) |
 | Reference | [Legacy mapping](reference/legacy-mapping.md) |
-| Verification | [Testing strategy](testing/strategy.md), [release QA](testing/qa.md), [computer-use LLM trial](testing/ui-llm-authoring-2026-10-03.md), [training dashboard and examples](testing/training-dashboard-progress.md) |
+| Verification | [Testing strategy](testing/strategy.md), [release QA](testing/qa.md), [computer-use LLM trial](testing/ui-llm-authoring-2026-10-03.md), [training dashboard and examples](testing/training-dashboard-progress.md), [full LLM training and quality](testing/full-llm-training.md) |
 | Development tooling | [OpenCode/Codex agent contract](contracts/agent-swarm.md), [agent sequence](uml/agent-swarm.md) |
 | Resources, VAE and LLM commands | [Authoring and subflows](contracts/resource-authoring.md), [local CLI protocol](contracts/automation.md), [command use cases](uml/automation.md) |
 | Expanded 3D explorer | [Composition, occurrences and camera](contracts/visualization-3d.md), [ownership UML](uml/editor.md) |

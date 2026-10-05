@@ -9,98 +9,98 @@ manifest v2, project-owned resource paths and exact package activation.
 ## Diagram
 
 ```mermaid
-classDiagram
-    class Project {
-      +ProjectPath directory
-      +NNModel model
-      +PackageCatalog catalog
-      +DatasetCatalog datasets
-      +bool dirty
-      +open(ProjectPath) Result
-      +save() Result
-      +close() Result
-      +createStereotype(definition,Lua,dependencies) Result
-      +createDataset(definition,select) Result
-      +selectDataset(identity) Result
-    }
-    class ModelManifest {
-      +int schemaVersion = 2
-      +string id
-      +string version
-      +string name
-      +string description
-      +PackageReference[] customPackages
-      +DatasetReference[] customDatasets
-      +DatasetIdentity activeDataset
-    }
-    class PackageReference {
-      +string id
-      +string version
-      +RelativePath path
-    }
-    class DatasetReference {
-      +string id
-      +string version
-      +RelativePath path
-    }
-    class PackageCatalog {
-      +StereotypePackage[] core
-      +StereotypePackage[] projectOwned
-      +resolve(PackageRequirement) Result~StereotypePackage~
-    }
-    class StereotypePackage {
-      +PackageIdentity identity
-      +NodeDefinition definition
-      +OutputDefinition[] resolvedOutputs
-      +PackageRequirement[] dependencies
-      +RelativePath inferenceLua
-      +RelativePath pythonResource
-    }
-    class PackageRequirement {
-      +string packageId
-      +string versionConstraint
-    }
-    class DatasetCatalog {
-      +ProjectDataset[] projectOwned
-      +lookup(DatasetReference) Result~ProjectDataset~
-    }
-    class OutputDefinition {
-      +string id
-      +string type output or loss
-    }
-    class ProjectDataset {
-      +DatasetIdentity identity
-      +DatasetDefinition definition
-      +RelativePath pythonResource
-      +RelativePath dataDirectory
-    }
-    class DatasetDefinition {
-      +string name
-      +DatasetParameter[] parameters
-      +TensorSlot[] inputs
-      +TensorSlot[] targets
-    }
-    class TensorSlot {
-      +string name
-      +string dtype
-      +Dimension[] shape
-    }
-    Project "1" *-- "1" NNModel
-    NNModel "1" *-- "1" ModelManifest
-    Project "1" *-- "1" PackageCatalog
-    Project "1" *-- "1" DatasetCatalog
-    ModelManifest "1" *-- "0..*" PackageReference
-    ModelManifest "1" *-- "0..*" DatasetReference
-    ModelManifest "0..1" --> "1" ProjectDataset : activeDataset exact identity
-    PackageCatalog "1" *-- "0..*" StereotypePackage
-    DatasetCatalog "1" *-- "0..*" ProjectDataset
-    StereotypePackage "1" *-- "0..*" PackageRequirement
-    StereotypePackage "1" *-- "0..2" OutputDefinition : normalized
-    PackageRequirement --> StereotypePackage : exact resolution in active scope
-    ProjectDataset "1" *-- "1" DatasetDefinition
-    DatasetDefinition "1" *-- "0..*" TensorSlot
-    NNModel --> StereotypePackage : node package identity
-    NNModel --> TensorSlot : Input binding name
+  classDiagram
+      class Project {
+        +ProjectPath directory
+        +NNModel model
+        +PackageCatalog catalog
+        +DatasetCatalog datasets
+        +bool dirty
+        +open(ProjectPath) Result
+        +save() Result
+        +close() Result
+        +createStereotype(definition,Lua,dependencies) Result
+        +createDataset(definition,select) Result
+        +selectDataset(identity) Result
+      }
+      class ModelManifest {
+        +int schemaVersion = 2
+        +string id
+        +string version
+        +string name
+        +string description
+        +PackageReference[] customPackages
+        +DatasetReference[] customDatasets
+        +DatasetIdentity activeDataset
+      }
+      class PackageReference {
+        +string id
+        +string version
+        +RelativePath path
+      }
+      class DatasetReference {
+        +string id
+        +string version
+        +RelativePath path
+      }
+      class PackageCatalog {
+        +StereotypePackage[] core
+        +StereotypePackage[] projectOwned
+        +resolve(PackageRequirement) Result~StereotypePackage~
+      }
+      class StereotypePackage {
+        +PackageIdentity identity
+        +NodeDefinition definition
+        +OutputDefinition[] resolvedOutputs
+        +PackageRequirement[] dependencies
+        +RelativePath inferenceLua
+        +RelativePath pythonResource
+      }
+      class PackageRequirement {
+        +string packageId
+        +string versionConstraint
+      }
+      class DatasetCatalog {
+        +ProjectDataset[] projectOwned
+        +lookup(DatasetReference) Result~ProjectDataset~
+      }
+      class OutputDefinition {
+        +string id
+        +string type output or loss
+      }
+      class ProjectDataset {
+        +DatasetIdentity identity
+        +DatasetDefinition definition
+        +RelativePath pythonResource
+        +RelativePath dataDirectory
+      }
+      class DatasetDefinition {
+        +string name
+        +DatasetParameter[] parameters
+        +TensorSlot[] inputs
+        +TensorSlot[] targets
+      }
+      class TensorSlot {
+        +string name
+        +string dtype
+        +Dimension[] shape
+      }
+      Project "1" *-- "1" NNModel
+      NNModel "1" *-- "1" ModelManifest
+      Project "1" *-- "1" PackageCatalog
+      Project "1" *-- "1" DatasetCatalog
+      ModelManifest "1" *-- "0..*" PackageReference
+      ModelManifest "1" *-- "0..*" DatasetReference
+      ModelManifest "0..1" --> "1" ProjectDataset : activeDataset exact identity
+      PackageCatalog "1" *-- "0..*" StereotypePackage
+      DatasetCatalog "1" *-- "0..*" ProjectDataset
+      StereotypePackage "1" *-- "0..*" PackageRequirement
+      StereotypePackage "1" *-- "0..2" OutputDefinition : normalized
+      PackageRequirement --> StereotypePackage : exact resolution in active scope
+      ProjectDataset "1" *-- "1" DatasetDefinition
+      DatasetDefinition "1" *-- "0..*" TensorSlot
+      NNModel --> StereotypePackage : node package identity
+      NNModel --> TensorSlot : Input binding name
 ```
 
 ## Operations and ownership
@@ -133,7 +133,7 @@ Dataset resource schema 1 stores `manifest.json` with exact ID/version and
 `entrypoints.definition` pointing at `dataset.json`. Definition exposes
 `batch.inputs` and `batch.targets` maps of named `{dtype,shape}` tensor slots;
 dimensions are positive integers or symbolic batch string `B`. The bundled
-MNIST example under `examples/mnist-mlp/` demonstrates this boundary.
+MNIST example under `examples/models/mnist-mlp/` demonstrates this boundary.
 
 Accepted 2026-10-05: authored resources additionally carry uv project metadata
 and Python stubs per [backend contract](../contracts/backend.md). Dataset

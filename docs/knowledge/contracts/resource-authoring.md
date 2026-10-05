@@ -32,7 +32,7 @@ All operations return bool with caller-owned error buffer; UTF-8 is borrowed:
   dataset, marks dirty; invalid identity makes no change.
   Binding mismatches remain unresolved diagnostics, not selection failures;
   incomplete graphs must permit choosing datasets before editing bindings.
-* `nn_app_create_vae(app,parent,id,name,error,cap)` copies examples/mnist-vae
+* `nn_app_create_vae(app,parent,id,name,error,cap)` copies examples/models/mnist-vae
   into a new editable project, including its packages and datasets.
 
 Qt builds boundary definition JSON from visual forms: stereotype name,
@@ -82,7 +82,7 @@ subflows are accepted, not deferred.
 
 ## Bundled MNIST VAE design
 
-examples/mnist-vae is untrained editable metadata. Root: image -> Flatten ->
+examples/models/mnist-vae is the editable VAE project. Root: image -> Flatten ->
 encoder (core.subflow-proxy) -> Reparameterize -> decoder (core.subflow-proxy)
 -> reconstruction. Encoder shared hidden layer branches into mean/log_variance
 Linear heads. Project-owned vae.diagonal-gaussian join packs equal floating

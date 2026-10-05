@@ -41,7 +41,12 @@ test-runtime:
     uv run --group dev pytest -q tests/test_runtime.py
 
 test-examples:
-    uv run --group dev --group examples python -m pytest -q tests/test_examples.py tests/test_example_datasets.py tests/test_example_stereotypes.py
+    uv run --group dev --group examples python -m pytest -q tests/test_examples.py tests/test_example_datasets.py tests/test_example_stereotypes.py tests/test_full_llm_preparation.py tests/test_llm_wheel_consumer.py
+
+test-llm-consumer:
+    cd examples/implementation/llm && uv run --no-project python download_wheel.py
+    cd examples/implementation/llm && uv sync --locked
+    cd examples/implementation/llm && uv run --locked python main.py --tokens 8
 
 runtime-wheel:
     uv build --package nnmodelling-runtime --out-dir dist

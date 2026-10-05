@@ -135,6 +135,44 @@ public:
 class BackendDialogTest final : public QObject {
     Q_OBJECT
 private slots:
+    void curvePathsDoNotFillBetweenSeries()
+    {
+        TrainingCurveWidget curve;
+        curve.resize(640, 400);
+        curve.setMetrics(QJsonObject{{QStringLiteral("steps"), QJsonArray{
+            QJsonObject{{QStringLiteral("step"), 1}, {QStringLiteral("training_loss"), 0.5},
+                        {QStringLiteral("validation_loss"), 1.0}},
+            QJsonObject{{QStringLiteral("step"), 2}, {QStringLiteral("training_loss"), 0.5},
+                        {QStringLiteral("validation_loss"), 3.0}},
+            QJsonObject{{QStringLiteral("step"), 3}, {QStringLiteral("training_loss"), 0.5},
+                        {QStringLiteral("validation_loss"), 1.0}}
+        }}});
+        curve.show();
+        QCoreApplication::processEvents();
+        QImage image(curve.size(), QImage::Format_ARGB32_Premultiplied);
+        auto renderAndCheck = [&] {
+            image.fill(Qt::transparent);
+            curve.render(&image);
+            QCOMPARE(image.pixelColor(200, 200), QColor(Qt::white));
+            bool foundTrainingSeries = false;
+            for (int y = 0; y < image.height() && !foundTrainingSeries; ++y) {
+                for (int x = 0; x < image.width(); ++x) {
+                    if (image.pixelColor(x, y) == QColor(QStringLiteral("#2677b8"))) {
+                        foundTrainingSeries = true;
+                        break;
+                    }
+                }
+            }
+            QVERIFY(foundTrainingSeries);
+        };
+
+        renderAndCheck();
+        curve.setValidationVisible(false);
+        renderAndCheck();
+        curve.setValidationVisible(true);
+        renderAndCheck();
+    }
+
     void curveSupportsStepsFallbackInvalidAndLogScale()
     {
         TrainingCurveWidget curve;

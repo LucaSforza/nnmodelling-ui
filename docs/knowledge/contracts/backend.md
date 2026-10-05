@@ -99,6 +99,10 @@ visible final test loss. No fabricated accuracy/error percentages or dual axes
 for quantities with the same loss units. Use Qt painting, no browser chart or
 new heavyweight chart dependency. Existing connection, submit, cancel, snapshot
 and artifact actions remain accessible. The dashboard opens from Training.
+Curve paths are strokes only; filled dots identify samples. Reset brush state
+before drawing each path so a preceding series' sample fill cannot close and
+fill the next open curve. Toggling validation must never create a filled polygon
+or alter the training curve's styling.
 
 One step is one successful optimizer update across the whole job; it is not a
 dataset sequence position. Every publish_every_steps updates, run the full
@@ -153,6 +157,41 @@ VAE samples its posterior during training and uses posterior mean for evaluation
 and raw-input reconstruction. Document changed dimensions and update existing
 native example assertions. Every example receives graph/gradient/adapter/wheel
 tests and a real container training run; LLM receives a small multi-epoch run.
+
+After the first implementation commit, the accepted full-corpus follow-up trains
+only this unchanged LLM for 20 epochs on all 1,115,394 Tiny Shakespeare characters.
+Split contiguous text 80/10/10 before window extraction; enumerate every complete
+129-character next-token window with stride 128 in each split. No window crosses
+a split boundary. Retain final short tails in provenance but omit incomplete
+windows. Counts are 6971 train, 871 validation, 871 test windows of 128 tokens.
+Use Adam learning rate 0.001, batch 64, seed 0, publication/validation cadence 100;
+109 updates per epoch, 2180 total updates, plus unique epoch-tail publications.
+Preparation verifies the published corpus SHA256 and creates a separate new
+project directory; checked-in small fixtures remain unchanged. A reproducible
+preparation command and frozen training configuration accompany the second
+commit, while full corpus, weights and wheel stay in local job artifacts. The
+generic adapter/runtime/model semantics do not change for this follow-up.
+
+Accepted follow-up: editable projects live under `examples/models/`; all five
+existing directories move there with their current files and graph layout
+preserved. Update template loaders, preparation commands, tests and current
+documentation together. Historical verification records keep their original
+paths as evidence of the run, with a relocation note where needed.
+`examples/implementation/llm/` is a standalone uv consumer of the completed
+20-epoch job's downloaded wheel, independent of the repository SDK and backend
+after download. Keep downloaded wheel and its bundled weights local and ignored;
+commit the consumer code, uv metadata/lock and reproducible download instructions.
+Download the exact job artifact through HTTP and verify its recorded SHA256
+before installation. The uv project depends on that local wheel and locked CPU
+PyTorch dependencies, never the editable runtime workspace. Demonstrate
+`Model.inference(raw_text)` and `Model.infer(raw_text)`, default bundled weights
+and optional compatible safetensors path. A greedy continuation may repeatedly
+take the final decoded character and truncate context to 128 using these public
+methods; do not reach into private graph/adapter attributes or add a model API.
+Show that inference runs without a service call or source project access.
+The local CPU demonstration uses two PyTorch threads. Prove absence of the
+public SDK in the isolated verification environment; do not reject otherwise
+valid inference merely because a user also installed that SDK.
 
 ## Generic graph execution and export
 

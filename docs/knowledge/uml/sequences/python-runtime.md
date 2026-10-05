@@ -113,6 +113,8 @@ lowered execution remains the performance TODO in the backend contract.
     participant Runtime as build_wheel
     participant Wheel as Private model package
     participant User as Inference caller
+    participant API as Local artifact endpoint
+    participant UV as Independent uv environment
     participant Adapter as Bundled DatasetAdapter
     participant Graph as Bundled GraphModule
     Worker->>Worker: clone state_dict tensors to CPU
@@ -122,6 +124,11 @@ lowered execution remains the performance TODO in the backend contract.
     Runtime->>Wheel: copy adapter Python, metadata and declared inference assets
     Runtime->>Wheel: vendor private SDK ABI and weights
     Note over Runtime,Wheel: Training split payloads and undeclared data stay out of wheel
+    User->>API: GET completed job wheel
+    API-->>User: wheel bytes
+    User->>User: verify recorded SHA256 before installation
+    User->>UV: sync frozen local wheel and CPU dependencies
+    UV->>Wheel: install package with private runtime and bundled weights
     User->>Wheel: Model(weights_path optional)
     Wheel->>Adapter: construct from packaged project snapshot
     Wheel->>Graph: construct generic graph and load selected safetensors
@@ -140,3 +147,12 @@ code and frozen core. Declared dataset `inferenceAssets` use project-relative
 paths and are copied byte-for-byte. External resource dependencies are retained
 in wheel metadata, while the SDK is privately vendored; the wheel is independent
 of the service and source checkout.
+
+The executable consumer at `examples/implementation/llm/` downloads the completed
+job's wheel through the service's artifact endpoint and verifies its SHA256
+before uv installs it with locked dependencies. The inference caller above is
+then this standalone application: raw strings enter the public `Model` methods,
+using bundled weights by default. The backend and editable projects under
+`examples/models/` are not accessed during inference. Its optional greedy loop
+feeds the final decoded character back through that same public boundary, with
+the latest 128 characters as context.

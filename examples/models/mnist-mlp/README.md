@@ -10,5 +10,5 @@ split. The payload records source hashes, split indices and counts.
 From the repository root, run `uv sync --all-packages --group examples` and
 `uv run --group examples python tools/prepare_example_data.py` to reproduce the
 payload. The preparation script verifies the published MNIST MD5 checksums;
-the worker does not download data. See [examples README](../README.md) for the
+the worker does not download data. See [examples README](../../README.md) for the
 other projects and the backend skill for local training setup.

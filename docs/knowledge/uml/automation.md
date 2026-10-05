@@ -14,45 +14,45 @@ mapped terminals atomically (2026-10-03).
 ## Diagram
 
 ```mermaid
-classDiagram
-    class Application {
-      +NNModel activeModel
-      +execute(Operation) Result
-      +snapshot() ApplicationSnapshot
-    }
-    class CommandAdapter {
-      +dispatch(Request) Response
-      +inspect(UIElementId) UITree
-      +capture(CaptureRequest) Result
-    }
-    class LocalTransport {
-      +receive() Request
-      +send(Response) Result
-    }
-    class nnmodelctl {
-      +parse(argv) Request
-      +print(Response) ExitCode
-    }
-    class Request {
-      +string operation
-      +object args
-    }
-    class Response {
-      +bool ok
-      +JSON result on success
-      +string error on failure
-    }
-    class UITree {
-      +UIElementId id
-      +string role
-      +string label
-      +WidgetInfo[] widgets
-      +string currentScope
-    }
-    nnmodelctl --> LocalTransport
-    LocalTransport --> CommandAdapter
-    CommandAdapter --> Application
-    CommandAdapter --> UITree
+  classDiagram
+      class Application {
+        +NNModel activeModel
+        +execute(Operation) Result
+        +snapshot() ApplicationSnapshot
+      }
+      class CommandAdapter {
+        +dispatch(Request) Response
+        +inspect(UIElementId) UITree
+        +capture(CaptureRequest) Result
+      }
+      class LocalTransport {
+        +receive() Request
+        +send(Response) Result
+      }
+      class nnmodelctl {
+        +parse(argv) Request
+        +print(Response) ExitCode
+      }
+      class Request {
+        +string operation
+        +object args
+      }
+      class Response {
+        +bool ok
+        +JSON result on success
+        +string error on failure
+      }
+      class UITree {
+        +UIElementId id
+        +string role
+        +string label
+        +WidgetInfo[] widgets
+        +string currentScope
+      }
+      nnmodelctl --> LocalTransport
+      LocalTransport --> CommandAdapter
+      CommandAdapter --> Application
+      CommandAdapter --> UITree
 ```
 
 ## Operations

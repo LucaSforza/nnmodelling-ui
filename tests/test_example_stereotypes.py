@@ -8,7 +8,7 @@ import torch
 
 
 ROOT = Path(__file__).resolve().parents[1]
-PACKAGES = ROOT / "examples" / "mnist-vae" / "packages"
+PACKAGES = ROOT / "examples" / "models" / "mnist-vae" / "packages"
 
 
 def load_resource(name: str) -> ModuleType:

@@ -15,7 +15,7 @@ from backend.app import RequestSizeLimit
 
 
 REPOSITORY = Path(__file__).resolve().parents[1]
-EXAMPLE = REPOSITORY / "examples/local-training"
+EXAMPLE = REPOSITORY / "examples/models/local-training"
 
 
 class RunnerStub:
@@ -113,7 +113,7 @@ def payload() -> dict:
 
 
 def payload_for(example: str) -> dict:
-    directory = REPOSITORY / "examples" / example
+    directory = REPOSITORY / "examples" / "models" / example
     project = json.loads((directory / "model.json").read_text(encoding="utf-8"))
     files = {
         path.relative_to(directory).as_posix(): base64.b64encode(path.read_bytes()).decode("ascii")

@@ -715,7 +715,7 @@ void WindowTest::modelProblemDiagnosticsAndNavigation() {
     NNApplication *app = nn_app_new(NN_SOURCE_DIR "/stereotype-packages/core");
     QVERIFY(app);
     char error[512] = {};
-    const QByteArray example = QByteArray(NN_SOURCE_DIR) + "/examples/mnist-mlp";
+    const QByteArray example = QByteArray(NN_SOURCE_DIR) + "/examples/models/mnist-mlp";
     QVERIFY2(nn_app_open(app, example.constData(), error, sizeof(error)), error);
     QVERIFY2(nn_app_set_parameter_text(app, "dense1", "in_features", "800",
                                        error, sizeof(error)), error);
@@ -879,7 +879,7 @@ void WindowTest::currentScopeRetainsOutsideCauseContext() {
     NNApplication *app = nn_app_new(NN_SOURCE_DIR "/stereotype-packages/core");
     QVERIFY(app);
     char error[512] = {};
-    const QByteArray project = QByteArray(NN_SOURCE_DIR) + "/examples/mnist-vae";
+    const QByteArray project = QByteArray(NN_SOURCE_DIR) + "/examples/models/mnist-vae";
     QVERIFY2(nn_app_open(app, project.constData(), error, sizeof(error)), error);
     QVERIFY2(nn_app_set_parameter_text(app, "mean", "out_features", "31",
                                        error, sizeof(error)), error);
@@ -1382,7 +1382,7 @@ void WindowTest::automationRejectsInvalidScopeAndCapturesCurrentScope() {
     const auto enterEncoder = runCli({"--socket", socketPath, "ui.scope", "{\"id\":\"encoder\"}"});
     QCOMPARE(enterEncoder.first, 0);
     QCOMPARE(inspectScope(), QStringLiteral("encoder"));
-    const QByteArray vaePath = QByteArray(NN_SOURCE_DIR) + "/examples/mnist-vae";
+    const QByteArray vaePath = QByteArray(NN_SOURCE_DIR) + "/examples/models/mnist-vae";
     const QByteArray openArgs = QJsonDocument(QJsonObject{{QStringLiteral("path"), QString::fromUtf8(vaePath)}})
                                     .toJson(QJsonDocument::Compact);
     const auto opened = runCli({"--socket", socketPath, "project.open", QString::fromUtf8(openArgs)});

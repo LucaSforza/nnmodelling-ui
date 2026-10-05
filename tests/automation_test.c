@@ -72,7 +72,7 @@ int main(void)
     assert(grid_snapshot && strstr(grid_snapshot, "\"x\":20") &&
            strstr(grid_snapshot, "\"y\":-20"));
     free(grid_snapshot);
-    dispatch(app, "{\"operation\":\"project.open\",\"args\":{\"path\":\"examples/mnist-vae\"}}", false);
+    dispatch(app, "{\"operation\":\"project.open\",\"args\":{\"path\":\"examples/models/mnist-vae\"}}", false);
     assert(nn_model_find_node(nn_app_model(app), "relu"));
     dispatch(app, "{\"operation\":\"edge.connect\",\"args\":{\"id\":\"edge\",\"source\":\"input\",\"sourceHandle\":\"out\",\"target\":\"relu\",\"targetHandle\":\"in\"}}", true);
     dispatch(app, "{\"operation\":\"node.parameter\",\"args\":{\"id\":\"input\",\"key\":\"binding\",\"value\":\"image\"}}", true);
@@ -115,7 +115,7 @@ int main(void)
     assert(!nn_automation_start(app, socket_path, NULL, NULL, error, sizeof(error)));
     assert(lstat(socket_path, &info) == 0 && S_ISREG(info.st_mode)); assert(unlink(socket_path) == 0);
     dispatch(app, "{\"operation\":\"project.close\",\"args\":{\"discard\":true}}", true);
-    dispatch(app, "{\"operation\":\"project.open\",\"args\":{\"path\":\"examples/mnist-vae\"}}", true);
+    dispatch(app, "{\"operation\":\"project.open\",\"args\":{\"path\":\"examples/models/mnist-vae\"}}", true);
     report = nn_automation_dispatch(app,
         "{\"operation\":\"analysis.diagnostics\",\"args\":{}}", NULL, NULL);
     assert(report && strstr(report, "\"complete\":true") &&

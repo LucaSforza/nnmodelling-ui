@@ -311,7 +311,7 @@ static const NNNode *first_node(const NNModel *model)
 static void prepare_dirty_mlp(NNApplication *app)
 {
     char error[512] = "";
-    assert(nn_app_open(app, "examples/mnist-mlp", error, sizeof(error)));
+    assert(nn_app_open(app, "examples/models/mnist-mlp", error, sizeof(error)));
     const NNNode *node = first_node(nn_app_model(app));
     assert(nn_app_move_node(app, node->id, node->x + NN_MODEL_GRID_SPACING, node->y,
                             error, sizeof(error)));
@@ -323,7 +323,7 @@ static void prepare_dirty_mlp(NNApplication *app)
 static void sweep_history_snapshot(NNApplication *app)
 {
     char error[512] = "";
-    assert(nn_app_open(app, "examples/mnist-mlp", error, sizeof(error)));
+    assert(nn_app_open(app, "examples/models/mnist-mlp", error, sizeof(error)));
     const NNNode *node = first_node(nn_app_model(app));
     char id[256];
     assert(strlen(node->id) < sizeof(id));
@@ -361,7 +361,7 @@ static void sweep_project_open(NNApplication *app)
     char error[512] = "";
     prepare_dirty_mlp(app);
     count_begin();
-    assert(nn_app_open(app, "examples/mnist-vae", error, sizeof(error)));
+    assert(nn_app_open(app, "examples/models/mnist-vae", error, sizeof(error)));
     size_t count = count_end();
     assert(count > 0);
 
@@ -376,7 +376,7 @@ static void sweep_project_open(NNApplication *app)
         error[0] = '\0';
 
         fail_begin(i);
-        bool okay = nn_app_open(app, "examples/mnist-vae", error, sizeof(error));
+        bool okay = nn_app_open(app, "examples/models/mnist-vae", error, sizeof(error));
         (void)count_end();
         assert(failure_observed);
         if (!okay) {
@@ -402,7 +402,7 @@ static void sweep_project_open(NNApplication *app)
 static void sweep_add_node(NNApplication *app)
 {
     char error[512] = "";
-    assert(nn_app_open(app, "examples/mnist-vae", error, sizeof(error)));
+    assert(nn_app_open(app, "examples/models/mnist-vae", error, sizeof(error)));
     count_begin();
     assert(nn_app_add_node(app, "baseline-allocation-probe", "core.relu", "0.1.0",
                            "", 10, 10, error, sizeof(error)));
@@ -411,7 +411,7 @@ static void sweep_add_node(NNApplication *app)
 
     size_t failed = 0, succeeded = 0;
     for (size_t i = 1; i <= count; ++i) {
-        assert(nn_app_open(app, "examples/mnist-vae", error, sizeof(error)));
+        assert(nn_app_open(app, "examples/models/mnist-vae", error, sizeof(error)));
         const NNModel *old_model = nn_app_model(app);
         const NNInferenceReport *old_report = nn_app_analysis(app, error, sizeof(error));
         assert(old_model && old_report && !nn_project_dirty(nn_app_project(app)));
@@ -447,7 +447,7 @@ static void sweep_add_node(NNApplication *app)
 static void sweep_add_subflow(NNApplication *app)
 {
     char error[512] = "";
-    assert(nn_app_open(app, "examples/mnist-vae", error, sizeof(error)));
+    assert(nn_app_open(app, "examples/models/mnist-vae", error, sizeof(error)));
     count_begin();
     assert(nn_app_add_node(app, "spawn-probe", "core.repeat", "0.1.0", "",
                            100, 100, error, sizeof(error)));
@@ -456,7 +456,7 @@ static void sweep_add_subflow(NNApplication *app)
 
     size_t failed = 0, succeeded = 0;
     for (size_t i = 1; i <= count; ++i) {
-        assert(nn_app_open(app, "examples/mnist-vae", error, sizeof(error)));
+        assert(nn_app_open(app, "examples/models/mnist-vae", error, sizeof(error)));
         const NNModel *old_model = nn_app_model(app);
         const NNInferenceReport *old_report = nn_app_analysis(app, error, sizeof(error));
         size_t old_nodes = nn_model_node_count(old_model);
@@ -563,7 +563,7 @@ int main(void)
     NNApplication *app = nn_app_new("stereotype-packages/core");
     assert(app);
     char error[512] = "";
-    assert(nn_app_open(app, "examples/mnist-vae", error, sizeof(error)));
+    assert(nn_app_open(app, "examples/models/mnist-vae", error, sizeof(error)));
 
     sweep_analysis(app);
     sweep_project_open(app);
@@ -571,7 +571,7 @@ int main(void)
     sweep_add_subflow(app);
     sweep_history_snapshot(app);
 
-    assert(nn_app_open(app, "examples/mnist-vae", error, sizeof(error)));
+    assert(nn_app_open(app, "examples/models/mnist-vae", error, sizeof(error)));
     const NNInferenceReport *report = nn_app_analysis(app, error, sizeof(error));
     assert_complete_report(report, nn_model_node_count(nn_app_model(app)));
     bool dirty = nn_project_dirty(nn_app_project(app));

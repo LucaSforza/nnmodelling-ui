@@ -11,5 +11,5 @@ prediction, and loads batched tensors lazily from the project-owned series. The
 RNN resource reuses one recurrent module across all 32 timesteps, then the
 linear head predicts one value. Prepare or verify the generated series from
 the repository root with `uv run --group examples python
-tools/prepare_example_data.py`. See [examples README](../README.md) for shared
+tools/prepare_example_data.py`. See [examples README](../../README.md) for shared
 setup and backend instructions.

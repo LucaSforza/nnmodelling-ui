@@ -6,63 +6,63 @@ owners; their current details are retained here and in sequences.md. Source
 organization follows contracts/source-layout.md and architecture/overview.md.
 
 ```mermaid
-classDiagram
-    class NNApplication {
-      -NNProject project
-      +open(path) bool
-      +create(parent,id,name,template) bool
-      +save() bool
-      +close(discard) bool
-      +addNode(id,package,scope,position) bool
-      +connect(id,source,handle,target,handle) bool
-      +setParameter(node,key,value) bool
-      +setBoundaryHandle(node,handle) bool
-      +undo() bool
-      +redo() bool
-      +beginEdit() bool
-      +endEdit(commit) bool
-      +outputType(node,handle) string
-      +createStereotype(definition,Lua,dependencies) bool
-      +createDataset(definition,select) bool
-      +selectDataset(identity) bool
-    }
-    class MainWindow {
-      +palette
-      +inspector
-      +resources
-      +diagnostics
-      +visualResourceDialogs
-      +localAutomationCallback
-      +arrangeCurrentScope(direction)
-    }
-    class GraphScene {
-      +scopeId
-      +selection
-      +connectionDraft
-      +flowDirection : vertical by default
-      +refresh()
-    }
-    MainWindow --> NNApplication : pure C ABI
-    QMainWindow <|-- MainWindow
-    QGraphicsView <|-- GraphView
-    QGraphicsScene <|-- GraphScene
-    QGraphicsItem <|-- NodeItem
-    NodeItem <|-- SubflowItem
-    QGraphicsItem <|-- PortItem
-    QGraphicsPathItem <|-- EdgeItem
-    MainWindow *-- GraphView
-    GraphView --> GraphScene
-    GraphScene *-- NodeItem
-    GraphScene *-- EdgeItem
-    GraphScene --> OrthogonalRouter : rectangles / ports / tracks
-    EdgeItem --> OrthogonalRouter : explicit polyline
-    NodeItem *-- PortItem
-    MainWindow *-- GraphScene
-    GraphScene --> NNApplication : snapshots / mutations
-    NNApplication *-- NNEditHistory : owned C model snapshots
-    NNApplication *-- NNProject
-    NNProject *-- NNModel
-    NNApplication *-- NNInferenceReport : lazy semantic analysis
+  classDiagram
+      class NNApplication {
+        -NNProject project
+        +open(path) bool
+        +create(parent,id,name,template) bool
+        +save() bool
+        +close(discard) bool
+        +addNode(id,package,scope,position) bool
+        +connect(id,source,handle,target,handle) bool
+        +setParameter(node,key,value) bool
+        +setBoundaryHandle(node,handle) bool
+        +undo() bool
+        +redo() bool
+        +beginEdit() bool
+        +endEdit(commit) bool
+        +outputType(node,handle) string
+        +createStereotype(definition,Lua,dependencies) bool
+        +createDataset(definition,select) bool
+        +selectDataset(identity) bool
+      }
+      class MainWindow {
+        +palette
+        +inspector
+        +resources
+        +diagnostics
+        +visualResourceDialogs
+        +localAutomationCallback
+        +arrangeCurrentScope(direction)
+      }
+      class GraphScene {
+        +scopeId
+        +selection
+        +connectionDraft
+        +flowDirection : vertical by default
+        +refresh()
+      }
+      MainWindow --> NNApplication : pure C ABI
+      QMainWindow <|-- MainWindow
+      QGraphicsView <|-- GraphView
+      QGraphicsScene <|-- GraphScene
+      QGraphicsItem <|-- NodeItem
+      NodeItem <|-- SubflowItem
+      QGraphicsItem <|-- PortItem
+      QGraphicsPathItem <|-- EdgeItem
+      MainWindow *-- GraphView
+      GraphView --> GraphScene
+      GraphScene *-- NodeItem
+      GraphScene *-- EdgeItem
+      GraphScene --> OrthogonalRouter : rectangles / ports / tracks
+      EdgeItem --> OrthogonalRouter : explicit polyline
+      NodeItem *-- PortItem
+      MainWindow *-- GraphScene
+      GraphScene --> NNApplication : snapshots / mutations
+      NNApplication *-- NNEditHistory : owned C model snapshots
+      NNApplication *-- NNProject
+      NNProject *-- NNModel
+      NNApplication *-- NNInferenceReport : lazy semantic analysis
 ```
 
 C application owns active project and validates commands. Qt owns widget state,
@@ -139,11 +139,11 @@ yyjson owns escaping/serialization.
 ## Expanded explorer ownership (2026-10-04)
 
 ```mermaid
-flowchart LR
-  Project[C Project/model/catalog] --> Expansion[C Lua composition / occurrence scene]
-  Expansion --> Layout[C 3D layout and groups]
-  Layout --> Camera[C camera / projection / depth ordering / picking]
-  Camera --> Tab[Qt Network 3D tab: input translation and painting]
+  flowchart LR
+    Project[C Project/model/catalog] --> Expansion[C Lua composition / occurrence scene]
+    Expansion --> Layout[C 3D layout and groups]
+    Layout --> Camera[C camera / projection / depth ordering / picking]
+    Camera --> Tab[Qt Network 3D tab: input translation and painting]
 ```
 
 Scene is owned disposable presentation data. No write-back, persistence or

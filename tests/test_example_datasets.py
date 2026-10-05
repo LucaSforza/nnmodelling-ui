@@ -12,11 +12,11 @@ from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[1]
 DATASETS = {
-    "examples/local-training": "datasets/tiny-regression",
-    "examples/mnist-mlp": "datasets/mnist",
-    "examples/mnist-vae": "datasets/mnist",
-    "examples/rnn-sine": "datasets/sine.windows-1.0.0",
-    "examples/tiny-decoder-llm": "datasets/llm.tokens-1.0.0",
+    "examples/models/local-training": "datasets/tiny-regression",
+    "examples/models/mnist-mlp": "datasets/mnist",
+    "examples/models/mnist-vae": "datasets/mnist",
+    "examples/models/rnn-sine": "datasets/sine.windows-1.0.0",
+    "examples/models/tiny-decoder-llm": "datasets/llm.tokens-1.0.0",
 }
 
 
@@ -46,7 +46,7 @@ def test_each_dataset_declares_a_python_adapter_and_uv_dependencies(example: str
 
 
 def test_local_regression_adapter_has_explicit_splits_and_scalar_round_trip():
-    dataset = adapter("examples/local-training", "datasets/tiny-regression")
+    dataset = adapter("examples/models/local-training", "datasets/tiny-regression")
     assert dataset.tokenize(2.5).shape == (1, 1)
     assert dataset.untokenize(torch.tensor([[2.5]])) == [2.5]
     assert sum(batch.inputs["x"].shape[0] for batch in batches(dataset, "train")) == 4
@@ -57,8 +57,8 @@ def test_local_regression_adapter_has_explicit_splits_and_scalar_round_trip():
 @pytest.mark.parametrize(
     ("example", "target_shape"),
     [
-        ("examples/mnist-mlp", (64,)),
-        ("examples/mnist-vae", (64, 784)),
+        ("examples/models/mnist-mlp", (64,)),
+        ("examples/models/mnist-vae", (64, 784)),
     ],
 )
 def test_mnist_payloads_are_verified_bounded_and_split_disjoint(example: str, target_shape: tuple[int, ...]):
@@ -85,7 +85,7 @@ def test_mnist_payloads_are_verified_bounded_and_split_disjoint(example: str, ta
 
 
 def test_mnist_classification_raw_images_normalize_and_decode(tmp_path: Path):
-    dataset = adapter("examples/mnist-mlp", "datasets/mnist")
+    dataset = adapter("examples/models/mnist-mlp", "datasets/mnist")
     raw = np.zeros((28, 28), dtype=np.uint8)
     raw[4:9, 10:17] = 255
     png = tmp_path / "digit.png"
@@ -105,7 +105,7 @@ def test_mnist_classification_raw_images_normalize_and_decode(tmp_path: Path):
 
 
 def test_mnist_vae_returns_normalized_reconstruction_array():
-    dataset = adapter("examples/mnist-vae", "datasets/mnist")
+    dataset = adapter("examples/models/mnist-vae", "datasets/mnist")
     image = np.full((28, 28), 64, dtype=np.uint8)
     assert dataset.tokenize(image).shape == (1, 1, 28, 28)
     decoded = dataset.untokenize(torch.full((1, 784), 0.5))
@@ -118,8 +118,8 @@ def test_mnist_vae_returns_normalized_reconstruction_array():
 @pytest.mark.parametrize(
     ("example", "resource"),
     [
-        ("examples/mnist-mlp", "datasets/mnist"),
-        ("examples/mnist-vae", "datasets/mnist"),
+        ("examples/models/mnist-mlp", "datasets/mnist"),
+        ("examples/models/mnist-vae", "datasets/mnist"),
     ],
 )
 def test_mnist_integer_pixels_always_scale_while_normalized_floats_are_preserved(example: str, resource: str):
@@ -131,8 +131,8 @@ def test_mnist_integer_pixels_always_scale_while_normalized_floats_are_preserved
 
 
 def test_sine_series_is_split_before_nonoverlapping_windowing():
-    dataset = adapter("examples/rnn-sine", "datasets/sine.windows-1.0.0")
-    payload = json.loads((ROOT / "examples/rnn-sine/datasets/sine.windows-1.0.0/series.json").read_text())
+    dataset = adapter("examples/models/rnn-sine", "datasets/sine.windows-1.0.0")
+    payload = json.loads((ROOT / "examples/models/rnn-sine/datasets/sine.windows-1.0.0/series.json").read_text())
     assert payload["provenance"]["counts"] == {"train": 64, "validation": 16, "test": 16}
     for split, count in payload["provenance"]["counts"].items():
         assert len(payload["splits"][split]) == count * 33
@@ -147,8 +147,8 @@ def test_sine_series_is_split_before_nonoverlapping_windowing():
 
 
 def test_tiny_shakespeare_adapter_has_full_vocabulary_and_disjoint_windows():
-    resource = ROOT / "examples/tiny-decoder-llm/datasets/llm.tokens-1.0.0"
-    dataset = adapter("examples/tiny-decoder-llm", "datasets/llm.tokens-1.0.0")
+    resource = ROOT / "examples/models/tiny-decoder-llm/datasets/llm.tokens-1.0.0"
+    dataset = adapter("examples/models/tiny-decoder-llm", "datasets/llm.tokens-1.0.0")
     vocabulary = json.loads((resource / "vocabulary.json").read_text())["characters"]
     payload = json.loads((resource / "data.json").read_text())
     assert len(vocabulary) == 65 and vocabulary == sorted(set(vocabulary))

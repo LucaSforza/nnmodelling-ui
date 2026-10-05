@@ -143,13 +143,13 @@ def prepare_sine() -> dict[str, int]:
         ]
         cursor += size
     _write_json(
-        ROOT / "examples/rnn-sine/datasets/sine.windows-1.0.0/series.json",
+        ROOT / "examples/models/rnn-sine/datasets/sine.windows-1.0.0/series.json",
         {"provenance": {"generator": "two deterministic sine waves", "seed": 0, "window": 32, "counts": counts}, "splits": splits},
     )
     return counts
 
 
-def prepare_shakespeare(cache: Path) -> dict[str, int]:
+def verified_tiny_shakespeare(cache: Path) -> tuple[str, list[str], str]:
     path = cache / "tinyshakespeare.txt"
     if not path.exists():
         _download(TEXT_URL, path)
@@ -161,6 +161,11 @@ def prepare_shakespeare(cache: Path) -> dict[str, int]:
     vocabulary = sorted(set(full_text))
     if len(vocabulary) != 65:
         raise ValueError(f"Tiny Shakespeare vocabulary changed: expected 65 characters, got {len(vocabulary)}")
+    return full_text, vocabulary, digest
+
+
+def prepare_shakespeare(cache: Path) -> dict[str, int]:
+    full_text, vocabulary, digest = verified_tiny_shakespeare(cache)
     text = full_text[:TEXT_LIMIT]
     train_end = int(len(text) * 0.8)
     validation_end = int(len(text) * 0.9)
@@ -177,7 +182,7 @@ def prepare_shakespeare(cache: Path) -> dict[str, int]:
         if available < count:
             raise ValueError(f"Tiny Shakespeare {split} segment is too short")
         selected[split] = [round(index * (available - 1) / (count - 1)) for index in range(count)]
-    directory = ROOT / "examples/tiny-decoder-llm/datasets/llm.tokens-1.0.0"
+    directory = ROOT / "examples/models/tiny-decoder-llm/datasets/llm.tokens-1.0.0"
     _write_json(directory / "vocabulary.json", {"characters": vocabulary})
     _write_json(
         directory / "data.json",

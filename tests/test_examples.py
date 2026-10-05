@@ -27,7 +27,7 @@ EXAMPLES = (
 
 
 def test_tiny_decoder_runs_training_and_causal_inference():
-    graph = GraphModule(REPOSITORY / "examples" / "tiny-decoder-llm", CORE)
+    graph = GraphModule(REPOSITORY / "examples" / "models" / "tiny-decoder-llm", CORE)
     tokens = torch.randint(0, 65, (2, 12))
     prediction = graph(tokens)["prediction"]
     assert prediction.shape == (2, 12, 65)
@@ -47,7 +47,7 @@ def test_tiny_decoder_runs_training_and_causal_inference():
 
 
 def test_tiny_decoder_repeat_and_attention_parameters_are_independent():
-    graph = GraphModule(REPOSITORY / "examples" / "tiny-decoder-llm", CORE)
+    graph = GraphModule(REPOSITORY / "examples" / "models" / "tiny-decoder-llm", CORE)
     repeat = graph.node_modules[graph._node_modules["blocks"]]
     assert len(repeat.subflows) == 2
     first = repeat.subflows[0].node_modules["n4"].weight
@@ -74,7 +74,7 @@ def test_bundled_examples_train_and_export_isolated_inference_wheels(tmp_path):
 
     installed = []
     for index, name in enumerate(EXAMPLES):
-        project = REPOSITORY / "examples" / name
+        project = REPOSITORY / "examples" / "models" / name
         adapter = load_dataset(project)
         batch = next(iter(adapter.load("train", batch_size=2)))
         assert isinstance(batch, Batch)

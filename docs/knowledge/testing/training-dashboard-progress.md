@@ -2,6 +2,9 @@
 
 Accepted 2026-10-05: contracts/backend.md defines graph visualization, optimizer
 step publication, dataset preparation and executable example semantics.
+Editable projects now live under `examples/models/`; the standalone trained-wheel
+consumer lives under `examples/implementation/llm/`. Earlier records retain the
+paths and measurements from their original runs.
 
 Order: principal updates contracts first; Luna organizes sequence diagrams and
 validates/formats Mermaid; principal reviews diagrams against source/contract;
@@ -95,3 +98,45 @@ The browser test project was closed through the GUI and its bridge stopped.
 Worker image: `961783c493737136ddf4459f8fa81fe812b0c4d4bef826062273dee18a0fdd77`.
 Service runs on loopback port 8765; container isolation remains the production
 path. Test job snapshots are immutable and separate from later editor changes.
+
+## Full-corpus follow-up
+
+First commit completed: `ced6dc5`. Full preparation and training start only after
+that commit. Reuse unchanged tiny decoder and adapter, verify the same published
+SHA256, split all 1,115,394 characters 80/10/10, then enumerate complete stride-128
+next-token windows. Counts: 6971/871/871; incomplete tails are recorded, excluded
+from batches, and never moved across splits. Configuration: 20 epochs, batch 64,
+Adam 0.001, seed 0, cadence 100; 109 updates/epoch, 2180 total, 41 unique paired
+points (global multiples of 100 plus every epoch tail).
+
+Luna owns a minimal full-preparation command and its data-boundary regression;
+principal owns KB and actual result review. New full project must not overwrite
+an existing directory or replace small checked-in fixtures. Full-corpus data and
+model artifacts remain local; commit reproducible configuration and actual
+metrics/provenance report after successful completion and wheel inference.
+
+Full job accepted 2026-10-05T19:45:03Z:
+`a64143c8-07c2-40e7-8f89-37c33d64970b`. Frozen inputs, configuration and actual
+results are recorded in [full LLM training](full-llm-training.md).
+Completed: 20 epochs, 2180 updates, 41 paired points; final train/validation/test
+losses 1.725061/1.840051/1.947120. Exact snapshot and isolated trained-wheel
+inference passed. Full-corpus and artifacts remain outside Git. Final integrated
+Python tests: 52 passed.
+
+User-found final GUI regression: enabling validation creates a spurious blue
+polygon, absent when validation is disabled. Principal reproduced both states
+through real Qt browser interaction. Cause: drawSeries leaves the training-dot
+brush active when the validation open path is painted. Accepted correction:
+explicitly use no fill for every curve path, retain filled sample dots. Luna Qt
+owner added a rendered-pixel regression including off/on validation toggles.
+Negative control fails on the previous code with a blue triangle-interior
+pixel; corrected code passes Qt 6/6. Principal rebuilt and restarted Qt/bridge,
+then repeated validation on/off/on through the GUI: only the selected curves
+render, with no filled polygon. Updated final screenshot captures the fix.
+
+Final follow-up includes the `examples/models/` relocation and independent uv
+wheel consumer at `examples/implementation/llm/`. Verified download, default and
+alternate weights, offline execution outside the checkout, and checksum failure
+preservation passed. Final integrated Python gate: 54 passed; migrated core/Qt
+gates: 13/13 and 6/6. Mermaid: 35 diagrams in 40 files. The principal repeated
+the validation toggle in the final fresh Qt build and closed the test session.

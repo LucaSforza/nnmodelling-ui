@@ -108,7 +108,7 @@ rejected. This enables preserved Horizontal Repeat Lua, including Concat.
 
 ## LLM fixture and acceptance
 
-Replace examples/tiny-decoder-llm's opaque causal-attention node with
+Replace examples/models/tiny-decoder-llm's opaque causal-attention node with
 Horizontal Repeat of eight explicit attention heads. Each body projects Q/K/V
 512->64, transposes K, joins Q/K with MatMul, scales by 1/sqrt(64), applies causal
 mask then Softmax, joins probabilities/V with MatMul; concatenate eight heads
@@ -132,3 +132,8 @@ C catalog shares `nn_catalog_resolve` (unique exact/caret active reference),
 `nn_catalog_parameters_free` between inference, application and visualization.
 Catalog may use public NNValue types; no module includes another module's
 private header. JSON object keys are owned NNParameter entries.
+
+Accepted 2026-10-05: the CPU training fixture's smaller dimensions and executable
+resources in [backend](backend.md) supersede the historical 512-wide/eight-head
+fixture dimensions above. Explicit scoped attention and generic 3D expansion
+remain unchanged. Editable examples now live under `examples/models/`.

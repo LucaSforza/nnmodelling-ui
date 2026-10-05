@@ -97,7 +97,7 @@ NNProject *nn_project_create(const char *parent, const char *id, const char *nam
     bool okay = true;
     if (mnist_template) {
         char *repo = repo_root_from_core(core_root);
-        char *template_root = repo ? nn_path_join(repo, "examples/mnist-mlp") : NULL;
+        char *template_root = repo ? nn_path_join(repo, "examples/models/mnist-mlp") : NULL;
         char *source_model = template_root ? nn_path_join(template_root, "model.json") : NULL;
         char *destination_model = nn_path_join(directory, "model.json");
         char *source_dataset = template_root ? nn_path_join(template_root, "datasets/mnist") : NULL;
@@ -168,7 +168,7 @@ bool nn_project_create_vae(const char *parent, const char *id, const char *name,
     *result = NULL;
     if (!parent || !nn_project_valid_id(id) || !name || !*name || !core_root) { nn_errorf(error, cap, "invalid project identity"); return false; }
     struct stat st; if (lstat(parent, &st) || !S_ISDIR(st.st_mode)) { nn_errorf(error, cap, "project parent unavailable or symlinked"); return false; }
-    char *root = repo_root_from_core(core_root), *template = root ? nn_path_join(root, "examples/mnist-vae") : NULL;
+    char *root = repo_root_from_core(core_root), *template = root ? nn_path_join(root, "examples/models/mnist-vae") : NULL;
     char *destination = nn_path_join(parent, id);
     bool destination_owned = template && destination && mkdir(destination, 0755) == 0;
     bool okay = destination_owned && copy_tree_contents(template, destination);

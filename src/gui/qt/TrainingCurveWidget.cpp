@@ -47,6 +47,7 @@ void drawSeries(QPainter &painter, const QVector<QPointF> &points, const QColor 
     if (points.size() > 1) {
         QPainterPath path(points.front());
         for (int i = 1; i < points.size(); ++i) path.lineTo(points.at(i));
+        painter.setBrush(Qt::NoBrush);
         painter.drawPath(path);
     }
     painter.setBrush(color);

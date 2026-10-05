@@ -26,6 +26,12 @@ execution/SDK in `python/nnmodelling-runtime/`, managed by root uv workspace.
 This extends application layout without moving Python into C11 core; HTTP
 presentation remains Qt-only. Python tests also live under `tests/`.
 
+Accepted follow-up: `examples/models/` holds the five editable graph projects.
+`examples/implementation/llm/` holds an independent uv application using the
+downloaded full-training wheel; it is not a member of the service workspace.
+Local wheel/weights and virtual environments are ignored. Runtime code remains
+owned by the exported wheel; consumer code uses only its public `Model` API.
+
 Public headers stay named after their module and live inside its directory.
 Cross-module includes are explicit (`application/application.h`, etc.) relative
 to the exported `src` include root. No flat compatibility forwarding headers or

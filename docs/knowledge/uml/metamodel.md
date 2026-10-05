@@ -18,125 +18,125 @@ is retained as a current alternative.
 ## Diagram
 
 ```mermaid
-classDiagram
-    class NNModel {
-      +ModelManifest manifest
-      +Graph root
-      +validate() Diagnostics
-    }
-    class ModelManifest {
-      +int schemaVersion
-      +string id
-      +string version
-      +string name
-      +PackageRef[] customPackages
-      +DatasetRef[] customDatasets
-      +DatasetIdentity activeDataset
-    }
-    class Graph {
-      +Node[] nodes
-      +Connection[] edges
-      +addNode(PackageRef,ScopeId,Position,Parameters) Result~NodeId~
-      +connect(NodeId,HandleId,NodeId,HandleId) Result~EdgeId~
-    }
-    class Node {
-      +NodeId id
-      +PackageRef package
-      +NodeKind kind
-      +ScopeId scope
-      +Position position
-      +string boundaryHandle optional
-      +Parameters values
-      +Graph nestedGraph
-    }
-    class Position {
-      +int32 x
-      +int32 y
-      +gridSpacing = 20
-    }
-    class Connection {
-      +EdgeId id
-      +NodeId source
-      +HandleId sourceHandle
-      +NodeId target
-      +HandleId targetHandle
-      +RoutePoint[] route
-    }
-    class Handle {
-      +HandleId id
-      +HandleDirection direction
-      +OutputType type for output handles
-      +uint order
-    }
-    class Stereotype {
-      +PackageRef identity
-      +NodeKind kind
-      +ParameterDefinition[] parameters
-      +Handle[] handles
-      +infer(Tensor[],Parameters) InferenceResult
-    }
-    class OutputDefinition {
-      +string id
-      +OutputType type output or loss
-      +uint order
-    }
-    class OutputTensor {
-      +string handleId
-      +OutputType type
-      +string dtype
-      +Dimension[] shape
-    }
-    class InferenceResult {
-      +NodeId nodeId
-      +Status status
-      +string code
-      +NodeId causeNodeId optional
-      +string sourceFile optional
-      +uint sourceLine
-      +string message optional
-      +Tensor primaryOrConsumedView
-    }
-    class InferenceReport {
-      +Status rootStatus
-      +string rootMessage optional
-    }
-    class ParameterDefinition {
-      +string key
-      +ValueType type
-      +Value defaultValue
-      +string position optional top or bottom
-    }
-    class Parameters {
-      +ParameterValue[] entries
-      +set(string,Value) Result
-    }
-    class ParameterValue {
-      +string key
-      +Value value
-    }
-    class StereotypeApplication {
-      +PackageRef exactPackage
-      +Parameters values
-    }
-    NNModel "1" *-- "1" Graph : root
-    NNModel "1" *-- "1" ModelManifest
-    Graph "1" *-- "0..*" Node
-    Node *-- Position : normalized integer grid
-    Graph "1" *-- "0..*" Connection
-    Node "1" --> "1" StereotypeApplication
-    Node "0..1" *-- "1" Graph : subflow
-    StereotypeApplication "1" --> "1" Stereotype
-    Stereotype "1" *-- "0..*" ParameterDefinition
-    Stereotype "1" *-- "0..*" Handle
-    StereotypeApplication "1" *-- "1" Parameters
-    Parameters "1" *-- "0..*" ParameterValue
-    Connection --> Node : endpoints
-    Connection --> Handle : source/target
-    Stereotype "1" *-- "0..2" OutputDefinition : normalized outputs
-    Connection --> OutputDefinition : sourceHandle / derived type
-    Node --> OutputDefinition : terminal boundaryHandle mapping
-    InferenceReport *-- InferenceResult
-    InferenceResult "1" *-- "0..2" OutputTensor
+  classDiagram
+      class NNModel {
+        +ModelManifest manifest
+        +Graph root
+        +validate() Diagnostics
+      }
+      class ModelManifest {
+        +int schemaVersion
+        +string id
+        +string version
+        +string name
+        +PackageRef[] customPackages
+        +DatasetRef[] customDatasets
+        +DatasetIdentity activeDataset
+      }
+      class Graph {
+        +Node[] nodes
+        +Connection[] edges
+        +addNode(PackageRef,ScopeId,Position,Parameters) Result~NodeId~
+        +connect(NodeId,HandleId,NodeId,HandleId) Result~EdgeId~
+      }
+      class Node {
+        +NodeId id
+        +PackageRef package
+        +NodeKind kind
+        +ScopeId scope
+        +Position position
+        +string boundaryHandle optional
+        +Parameters values
+        +Graph nestedGraph
+      }
+      class Position {
+        +int32 x
+        +int32 y
+        +gridSpacing = 20
+      }
+      class Connection {
+        +EdgeId id
+        +NodeId source
+        +HandleId sourceHandle
+        +NodeId target
+        +HandleId targetHandle
+        +RoutePoint[] route
+      }
+      class Handle {
+        +HandleId id
+        +HandleDirection direction
+        +OutputType type for output handles
+        +uint order
+      }
+      class Stereotype {
+        +PackageRef identity
+        +NodeKind kind
+        +ParameterDefinition[] parameters
+        +Handle[] handles
+        +infer(Tensor[],Parameters) InferenceResult
+      }
+      class OutputDefinition {
+        +string id
+        +OutputType type output or loss
+        +uint order
+      }
+      class OutputTensor {
+        +string handleId
+        +OutputType type
+        +string dtype
+        +Dimension[] shape
+      }
+      class InferenceResult {
+        +NodeId nodeId
+        +Status status
+        +string code
+        +NodeId causeNodeId optional
+        +string sourceFile optional
+        +uint sourceLine
+        +string message optional
+        +Tensor primaryOrConsumedView
+      }
+      class InferenceReport {
+        +Status rootStatus
+        +string rootMessage optional
+      }
+      class ParameterDefinition {
+        +string key
+        +ValueType type
+        +Value defaultValue
+        +string position optional top or bottom
+      }
+      class Parameters {
+        +ParameterValue[] entries
+        +set(string,Value) Result
+      }
+      class ParameterValue {
+        +string key
+        +Value value
+      }
+      class StereotypeApplication {
+        +PackageRef exactPackage
+        +Parameters values
+      }
+      NNModel "1" *-- "1" Graph : root
+      NNModel "1" *-- "1" ModelManifest
+      Graph "1" *-- "0..*" Node
+      Node *-- Position : normalized integer grid
+      Graph "1" *-- "0..*" Connection
+      Node "1" --> "1" StereotypeApplication
+      Node "0..1" *-- "1" Graph : subflow
+      StereotypeApplication "1" --> "1" Stereotype
+      Stereotype "1" *-- "0..*" ParameterDefinition
+      Stereotype "1" *-- "0..*" Handle
+      StereotypeApplication "1" *-- "1" Parameters
+      Parameters "1" *-- "0..*" ParameterValue
+      Connection --> Node : endpoints
+      Connection --> Handle : source/target
+      Stereotype "1" *-- "0..2" OutputDefinition : normalized outputs
+      Connection --> OutputDefinition : sourceHandle / derived type
+      Node --> OutputDefinition : terminal boundaryHandle mapping
+      InferenceReport *-- InferenceResult
+      InferenceResult "1" *-- "0..2" OutputTensor
 ```
 
 ## Operations
@@ -223,15 +223,15 @@ failure, not partial successful state.
 ## Presentation occurrences (2026-10-04)
 
 ```mermaid
-classDiagram
-  NNModel --> ExpandedScene : read-only derivation
-  ExpandedScene *-- Occurrence
-  ExpandedScene *-- OccurrenceGroup
-  Occurrence : sourceNodeId
-  Occurrence : instancePath
-  OccurrenceGroup : ownerNodeId
-  OccurrenceGroup : parentGroup
-  Stereotype --> VisualizationLua : optional kind=subflow only
+  classDiagram
+    NNModel --> ExpandedScene : read-only derivation
+    ExpandedScene *-- Occurrence
+    ExpandedScene *-- OccurrenceGroup
+    Occurrence : sourceNodeId
+    Occurrence : instancePath
+    OccurrenceGroup : ownerNodeId
+    OccurrenceGroup : parentGroup
+    Stereotype --> VisualizationLua : optional kind=subflow only
 ```
 
 Occurrences are not NNModel nodes. Generic Lua plans describe body instances,
