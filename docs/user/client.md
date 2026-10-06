@@ -128,7 +128,7 @@ La scheda `Operation` chiede `Method name`, endpoint e codec di ingresso e uscit
 
 Le operazioni si salvano in `model.json` con il progetto. Le modifiche al grafo possono rendere un endpoint non valido; `Operations` lo segnala così si può correggere o rimuovere il metodo. `Save project and submit` blocca invio finché restano riferimenti non validi. Dopo il training, la wheel esporta ogni nome come metodo: `model.encode(value)` o `model.decode(tensor)`. L'API `model.infer(value)` resta disponibile. Il [tutorial VAE](tutorial-vae.md) mostra come creare entrambe le operazioni nell'esempio MNIST.
 
-![Segnaposto per screenshot del gestore Operations; da sostituire dopo acquisizione UI](assets/operations-manager-placeholder.svg)
+![Scheda Operation di encode con endpoint e segnatura corrente completa](assets/vae-operation-form.png)
 
 ### Gestore dei dataset
 
@@ -223,7 +223,7 @@ conservano nome e contenuto originali.
 
 ![Dashboard di training](assets/training-dashboard.png)
 
-![Segnaposto per screenshot del job VAE e wheel con operazioni; da sostituire dopo acquisizione UI](assets/vae-operations-wheel-placeholder.svg)
+![Operazioni encode e decode pronte per l'esportazione nella wheel](assets/vae-operations-manager.png)
 
 ![Scelta della scala delle curve](assets/training-scale.png)
 

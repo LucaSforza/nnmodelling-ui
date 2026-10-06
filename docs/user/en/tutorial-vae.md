@@ -29,7 +29,7 @@ Open `my-vae` with `File > Open project…`. Use a copy because this tutorial re
 
 Choose `Model > Manage operations…`. The example already lists `encode` and `decode`; in the copy, select each row and press `Remove`, then press `Save` to start with an empty list.
 
-![Placeholder: operations manager and New operation form](../assets/operations-manager-placeholder.svg)
+![The encode Operation form with endpoints and complete current signature](../assets/vae-operation-form.png)
 
 Press `New…`. In the `Operation` form, set:
 
@@ -73,7 +73,7 @@ Open `Training` and press `Connect / check health`. Use these settings for the s
 
 Press `Save project and submit`. When the job reaches `completed`, select it in history and download `Download wheel`. The operations are stored in the project manifest, and the wheel exports `Model.encode` and `Model.decode` alongside `Model.infer`.
 
-![Placeholder: VAE methods included in the Python wheel](../assets/vae-operations-wheel-placeholder.svg)
+![Encode and decode operations ready for export in the wheel](../assets/vae-operations-manager.png)
 
 ## 6. Encode, reconstruct and sample
 

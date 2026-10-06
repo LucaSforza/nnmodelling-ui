@@ -128,7 +128,7 @@ The `Operation` form asks for `Method name`, input and output endpoints, a codec
 
 Operations are saved in `model.json` with the project. Graph edits can make an endpoint invalid; `Operations` marks it so you can fix or remove the method. `Save project and submit` blocks submission while invalid references remain. After training, the wheel exposes each name as a method such as `model.encode(value)` or `model.decode(tensor)`. `model.infer(value)` remains available. The [VAE tutorial](tutorial-vae.md) shows how to create both methods in the MNIST example.
 
-![Placeholder for the operations manager screenshot](../assets/operations-manager-placeholder.svg)
+![The encode Operation form with endpoints and complete current signature](../assets/vae-operation-form.png)
 
 ### Dataset manager
 
@@ -219,7 +219,7 @@ stored wheels keep their original names and contents.
 
 ![Training dashboard](../assets/training-dashboard.png)
 
-![Placeholder for the VAE job and operations wheel screenshot](../assets/vae-operations-wheel-placeholder.svg)
+![Encode and decode operations ready for export in the wheel](../assets/vae-operations-manager.png)
 
 ![Learning curve scale selection](../assets/training-scale.png)
 

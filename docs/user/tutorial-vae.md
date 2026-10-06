@@ -29,7 +29,7 @@ Apri `my-vae` con `File > Open project…`. Usa una copia perché questo tutoria
 
 Scegli `Model > Manage operations…`. L'esempio elenca già `encode` e `decode`; nella copia seleziona ciascuna riga e premi `Remove`, poi premi `Save` per ripartire da una lista vuota.
 
-![Segnaposto: schermata del gestore e della scheda New operation](assets/operations-manager-placeholder.svg)
+![Scheda Operation di encode con endpoint e segnatura corrente completa](assets/vae-operation-form.png)
 
 Premi `New…`. Nella scheda `Operation` imposta:
 
@@ -73,7 +73,7 @@ Apri `Training` e premi `Connect / check health`. Per il piccolo dataset incluso
 
 Premi `Save project and submit`. Quando il job arriva a `completed`, selezionalo nella cronologia e scarica `Download wheel`. Le operazioni fanno parte del manifesto del progetto e la wheel esporta `Model.encode` e `Model.decode` insieme a `Model.infer`.
 
-![Segnaposto: metodi VAE disponibili nella wheel Python](assets/vae-operations-wheel-placeholder.svg)
+![Operazioni encode e decode pronte per l'esportazione nella wheel](assets/vae-operations-manager.png)
 
 ## 6. Codificare, ricostruire e campionare
 
