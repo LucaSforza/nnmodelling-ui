@@ -215,7 +215,9 @@ public:
         signature_ = new QLabel(this);
         signature_->setObjectName(QStringLiteral("operationSignature"));
         signature_->setWordWrap(true);
-        form->addRow(QObject::tr("Current signature"), signature_);
+        signature_->setMinimumHeight(2 * signature_->fontMetrics().height() + 8);
+        signature_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+        form->addRow(signature_);
         layout->addLayout(form);
         auto *buttons = new QDialogButtonBox(QDialogButtonBox::Save | QDialogButtonBox::Cancel, this);
         layout->addWidget(buttons);
@@ -224,7 +226,7 @@ public:
         char error[ErrorCapacity] = {};
         analysis_ = nn_app_analysis(app_, error, sizeof(error));
         const auto updateSignature = [this] {
-            signature_->setText(QObject::tr("%1 → %2")
+            signature_->setText(QObject::tr("Current signature: %1 → %2")
                 .arg(input_->signature(analysis_), output_->signature(analysis_)));
         };
         updateSignature();
