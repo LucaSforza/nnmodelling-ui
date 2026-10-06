@@ -54,6 +54,7 @@ private:
     void createStereotype();
     void createDataset(const QString &id = QString(), const QString &version = QString());
     void manageDatasets();
+    void manageOperations();
     void selectDataset(QTreeWidgetItem *item, int column);
     static char *automationUiCallback(void *user, const char *operation,
                                      const char *argsJson, char *error, size_t cap);

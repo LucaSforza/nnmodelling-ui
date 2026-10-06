@@ -108,6 +108,24 @@ bool nn_app_close(NNApplication *app, bool discard, char *error, size_t cap)
     return true;
 }
 
+char *nn_app_operations_json(const NNApplication *app, char *error, size_t cap)
+{
+    if (!app || !app->project) {
+        nn_fail(error, cap, "no active project");
+        return NULL;
+    }
+    return nn_project_operations_json(app->project, error, cap);
+}
+
+bool nn_app_set_operations_json(NNApplication *app, const char *json,
+                                char *error, size_t cap)
+{
+    if (!app || !app->project) return nn_fail(error, cap, "no active project");
+    if (app->history.group_active)
+        return nn_fail(error, cap, "cannot edit operations during an edit group");
+    return nn_project_set_operations_json(app->project, json, error, cap);
+}
+
 const NNProject *nn_app_project(const NNApplication *app)
 {
     return app ? app->project : NULL;

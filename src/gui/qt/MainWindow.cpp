@@ -256,6 +256,7 @@ void MainWindow::buildUi() {
     addAction(modelMenu, tr("Create stereotype…"), {}, [this] { createStereotype(); });
     addAction(modelMenu, tr("Create dataset…"), {}, [this] { createDataset(); });
     addAction(modelMenu, tr("Manage datasets…"), {}, [this] { manageDatasets(); }, "manageDatasetsAction");
+    addAction(modelMenu, tr("Manage operations…"), {}, [this] { manageOperations(); }, "manageOperationsAction");
     QAction *backendPanelAction = addAction(modelMenu, tr("Training backend…"), {}, [this] {
         BackendDialog dialog(application_.get(), [this] { return saveProject(); },
             [this](const QString &directory) { return openProject(directory); }, this);

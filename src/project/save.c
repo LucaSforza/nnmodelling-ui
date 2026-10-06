@@ -71,9 +71,11 @@ bool nn_project_write_project_document(NNProject *project, char **json, size_t *
         add_string(doc, manifest, "description", project->description ? project->description : "");
     yyjson_mut_val *packages = okay ? yyjson_mut_arr(doc) : NULL;
     yyjson_mut_val *datasets = okay ? yyjson_mut_arr(doc) : NULL;
+    yyjson_mut_val *operations = okay ? nn_project_write_operations(doc, project) : NULL;
     okay = okay && packages && datasets &&
         yyjson_mut_obj_add_val(doc, manifest, "customPackages", packages) &&
-        yyjson_mut_obj_add_val(doc, manifest, "customDatasets", datasets);
+        yyjson_mut_obj_add_val(doc, manifest, "customDatasets", datasets) && operations &&
+        yyjson_mut_obj_add_val(doc, manifest, "operations", operations);
     for (size_t i = 0; okay && i < project->package_count; ++i) {
         const NNResourceRef *ref = &project->packages[i];
         yyjson_mut_val *item = yyjson_mut_obj(doc);

@@ -112,12 +112,23 @@ A `stereotype` parameter consists of a package selector and fields from that pac
 
 ## Project resources and dataset selection
 
-`Project resources` displays two expandable groups:
+`Project resources` displays three expandable groups:
 
 - `Datasets` lists names and `id@version`. A `✓` marks the active dataset. Child rows show `Input: name [dtype]` and `Target: name [dtype]`. Selecting a dataset row makes it active, refreshes analysis and marks the project modified. Clicking an informational child row displays the resource path in the status bar.
 - `Packages` lists active packages with their exact identities. Expand a package to see dependencies in the format `Requires id version-constraint`. These rows are informational; they do not activate or deactivate resources.
+- `Operations` lists public methods that will be included in the wheel, with endpoint status. Each row's tooltip shows its nodes and codecs. Invalid endpoints remain editable in the manager and prevent training submission until fixed or removed.
 
-`New stereotype` opens the stereotype creator; `New dataset` opens the dataset creator; `Dataset…` opens the manager. The first two actions are also available under `Model`.
+`New stereotype` opens the stereotype creator; `New dataset` opens the dataset creator; `Dataset…` opens the dataset manager. `Model > Manage operations…` opens the operations manager.
+
+### Manage exported operations
+
+`Model > Manage operations…` opens `Manage operations`, the list of methods that will appear on the Python wheel. `New…` creates a method; `Edit…` changes the selected row; `Remove` deletes it. The list shows the name, endpoint status, and input and output nodes. The `Operation` form shows the current signature from graph analysis; it is informational because the Qt client does not execute Python operators.
+
+The `Operation` form asks for `Method name`, input and output endpoints, a codec for each side, and `Current signature`. Names must be simple Python identifiers such as `encode` or `decode`. An input can use the output of a root `Input` node, or a root node's input handle; in the second case, the supplied tensor replaces the value from the existing connection for this operation without changing the saved graph. The output selects an existing output handle. The `dataset` codec calls the active adapter's `tokenize` or `untokenize`; `tensor` accepts or returns a batched PyTorch tensor.
+
+Operations are saved in `model.json` with the project. Graph edits can make an endpoint invalid; `Operations` marks it so you can fix or remove the method. `Save project and submit` blocks submission while invalid references remain. After training, the wheel exposes each name as a method such as `model.encode(value)` or `model.decode(tensor)`. `model.infer(value)` remains available. The [VAE tutorial](tutorial-vae.md) shows how to create both methods in the MNIST example.
+
+![Placeholder for the operations manager screenshot](../assets/operations-manager-placeholder.svg)
 
 ### Dataset manager
 

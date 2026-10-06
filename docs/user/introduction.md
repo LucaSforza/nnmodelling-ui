@@ -30,7 +30,7 @@ Alla fine puoi portare il modello fuori dall'editor. I **pesi** sono un file `sa
 
 ## Un buon primo percorso
 
-Per prendere confidenza, apri una copia di `mini LLM`, osserva il grafo radice e seleziona qualche nodo. Segui le forme nell'Inspector, entra nel blocco decoder e poi nell'attenzione. Quando il percorso ti è chiaro, avvia il backend e invia il piccolo training del [tutorial](tutorial-tiny-llm.md). In pochi passaggi avrai attraversato l'intero ciclo: progetto, controllo, esperimento e modello esportato.
+Per prendere confidenza, apri una copia di `mini LLM`, osserva il grafo radice e seleziona qualche nodo. Segui le forme nell'Inspector, entra nel blocco decoder e poi nell'attenzione. Quando il percorso ti è chiaro, avvia il backend e invia il piccolo training del [tutorial LLM](tutorial-tiny-llm.md). Per lavorare invece con le rappresentazioni interne di un VAE, segui il [tutorial VAE](tutorial-vae.md): crea `encode` e `decode` dalla UI e richiamali dalla wheel Python.
 
 La [guida al client](client.md) accompagna ogni area della finestra; la [guida al server](server.md) raccoglie configurazione e comandi; il [catalogo dei parametri](parameters.md) serve quando vuoi capire l'effetto di un campo specifico. Puoi leggere queste pagine in ordine oppure tenerle aperte accanto al software e consultarle durante il lavoro.
 

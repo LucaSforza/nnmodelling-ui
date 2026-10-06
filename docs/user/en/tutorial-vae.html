@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>VAE tutorial · NNModelling</title><link rel="stylesheet" href="../style.css"/></head>
+<body><a class="skip" href="#content">Skip to content</a>
+<aside><a class="brand" href="index.html">NN<span>Modelling</span></a>
+<p class="edition">User guide · English<br/>Edition 6 October 2026</p><nav class="language-switch" aria-label="Guide language"><a lang="it" href="../tutorial-vae.html">Italiano</a><a lang="en" href="tutorial-vae.html" aria-current="page">English</a></nav>
+<nav aria-label="Chapters"><a href="index.html">Introduction</a><a href="client.html">Using the client</a><a href="parameters.html">Parameter catalog</a><a href="server.html">Configure the server</a><a href="tutorial-tiny-llm.html">Tiny LLM tutorial</a><a href="tutorial-vae.html" aria-current="page">VAE tutorial</a></nav><div class="outline"><p>On this page</p><div class="toc">
+<ul>
+<li><a href="#tutorial-create-operations-for-a-vae">Tutorial: create operations for a VAE</a><ul>
+<li><a href="#1-prepare-the-client-and-backend">1. Prepare the client and backend</a></li>
+<li><a href="#2-open-a-copy-of-the-vae">2. Open a copy of the VAE</a></li>
+<li><a href="#3-open-the-manager-and-create-encode">3. Open the manager and create encode</a></li>
+<li><a href="#4-create-decode-and-save-the-operations">4. Create decode and save the operations</a></li>
+<li><a href="#5-train-and-download-the-wheel">5. Train and download the wheel</a></li>
+<li><a href="#6-encode-reconstruct-and-sample">6. Encode, reconstruct and sample</a></li>
+</ul>
+</li>
+</ul>
+</div>
+</div>
+<p class="offline">Available offline.<br/><a href="README.md">Sources and verification</a></p></aside>
+<main id="content"><header><span class="eyebrow">FROM GRAPH TO MODEL</span><span class="chapter">VAE tutorial</span></header>
+<article><h1 id="tutorial-create-operations-for-a-vae">Tutorial: create operations for a VAE</h1>
+<p>The tiny LLM tutorial shows how to train a language model and call <code>infer</code>. This walkthrough starts from the shipped MNIST VAE and adds two methods to its Python wheel: <code>encode</code> maps an image to its latent representation; <code>decode</code> maps a latent tensor to a reconstructed image. Configure both operations in the UI; no graph edits or project-owned Python operator code are needed.</p>
+<h2 id="1-prepare-the-client-and-backend">1. Prepare the client and backend</h2>
+<p>From the repository root, with CMake, Qt 6, <code>just</code>, <code>uv</code> and a Docker-compatible runtime available:</p>
+<pre><code class="language-sh">just build
+just backend-sync
+just backend-image
+just backend-run
+</code></pre>
+<p>Leave the backend terminal open. In a second terminal, start <code>./build/qt/nnmodelling-ui</code>. The default backend uses <code>http://127.0.0.1:8765</code>; see the <a href="server.html">server guide</a> for tokens and other options.</p>
+<h2 id="2-open-a-copy-of-the-vae">2. Open a copy of the VAE</h2>
+<p>From the repository root, copy the entire project, including its dataset and Python packages:</p>
+<pre><code class="language-sh">cp -a examples/models/mnist-vae my-vae
+</code></pre>
+<p>Open <code>my-vae</code> with <code>File &gt; Open project…</code>. Use a copy because this tutorial removes and recreates the operations already included in the example. The root graph sends an MNIST image through <code>sample</code>, the 32-value latent vector, then into the decoder, which produces 784 pixels. The dataset adapter converts images into normalized tensors and reconstructions into <code>[28,28]</code> NumPy arrays.</p>
+<h2 id="3-open-the-manager-and-create-encode">3. Open the manager and create <code>encode</code></h2>
+<p>Choose <code>Model &gt; Manage operations…</code>. The example already lists <code>encode</code> and <code>decode</code>; in the copy, select each row and press <code>Remove</code>, then press <code>Save</code> to start with an empty list.</p>
+<figure class="annotated"><a href="../assets/operations-manager-placeholder.svg" class="image-link" title="Open screenshot at original size"><img alt="Placeholder: operations manager and New operation form" src="../assets/operations-manager-placeholder.svg" loading="lazy"></a><figcaption><strong>Placeholder: operations manager and New operation form</strong><p class="image-hint">Click the image to inspect it at its original size.</p></figcaption></figure><p>Press <code>New…</code>. In the <code>Operation</code> form, set:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Method name</code></td>
+<td><code>encode</code></td>
+</tr>
+<tr>
+<td><code>Input endpoint</code></td>
+<td>node <code>image</code>, handle <code>out</code></td>
+</tr>
+<tr>
+<td><code>Input codec</code></td>
+<td><code>dataset</code></td>
+</tr>
+<tr>
+<td><code>Output endpoint</code></td>
+<td>node <code>sample</code>, handle <code>out</code></td>
+</tr>
+<tr>
+<td><code>Output codec</code></td>
+<td><code>tensor</code></td>
+</tr>
+</tbody>
+</table>
+<p>Press <code>Save</code> in the form. The <code>dataset</code> codec passes the value given to <code>model.encode(...)</code> to the adapter's <code>tokenize</code> method, which accepts a PNG path, PIL image or NumPy array. The graph returns the latent tensor <code>[B,32]</code>. In evaluation mode, the VAE uses the posterior mean, so <code>encode</code> is deterministic.</p>
+<h2 id="4-create-decode-and-save-the-operations">4. Create <code>decode</code> and save the operations</h2>
+<p>In the manager, press <code>New…</code> again and set:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Method name</code></td>
+<td><code>decode</code></td>
+</tr>
+<tr>
+<td><code>Input endpoint</code></td>
+<td>node <code>decoder</code>, handle <code>in</code></td>
+</tr>
+<tr>
+<td><code>Input codec</code></td>
+<td><code>tensor</code></td>
+</tr>
+<tr>
+<td><code>Output endpoint</code></td>
+<td>node <code>decoder</code>, handle <code>out</code></td>
+</tr>
+<tr>
+<td><code>Output codec</code></td>
+<td><code>dataset</code></td>
+</tr>
+</tbody>
+</table>
+<p>The <code>decoder.in</code> endpoint receives the tensor passed to the method. For this operation, the runtime replaces the incoming connection's value; the saved model graph stays intact. The <code>dataset</code> codec passes output <code>[B,784]</code> to the adapter's <code>untokenize</code> method, which returns one <code>[28,28]</code> NumPy image with pixels normalized between 0 and 1.</p>
+<p>In the list, check that both statuses say <code>Ready</code>, then press <code>Save</code>. If you see <code>Stale endpoint</code>, edit the operation to select a current node and handle, or remove it. Also save the project with <code>File &gt; Save</code>.</p>
+<h2 id="5-train-and-download-the-wheel">5. Train and download the wheel</h2>
+<p>Open <code>Training</code> and press <code>Connect / check health</code>. Use these settings for the small included dataset:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Epochs</code></td>
+<td><code>1</code></td>
+</tr>
+<tr>
+<td><code>Batch</code></td>
+<td><code>32</code></td>
+</tr>
+<tr>
+<td><code>Learning rate</code></td>
+<td><code>0.001</code></td>
+</tr>
+<tr>
+<td><code>Seed</code></td>
+<td><code>0</code></td>
+</tr>
+<tr>
+<td><code>Publish every N steps</code></td>
+<td><code>10</code></td>
+</tr>
+</tbody>
+</table>
+<p>Press <code>Save project and submit</code>. When the job reaches <code>completed</code>, select it in history and download <code>Download wheel</code>. The operations are stored in the project manifest, and the wheel exports <code>Model.encode</code> and <code>Model.decode</code> alongside <code>Model.infer</code>.</p>
+<figure class="annotated"><a href="../assets/vae-operations-wheel-placeholder.svg" class="image-link" title="Open screenshot at original size"><img alt="Placeholder: VAE methods included in the Python wheel" src="../assets/vae-operations-wheel-placeholder.svg" loading="lazy"></a><figcaption><strong>Placeholder: VAE methods included in the Python wheel</strong><p class="image-hint">Click the image to inspect it at its original size.</p></figcaption></figure><h2 id="6-encode-reconstruct-and-sample">6. Encode, reconstruct and sample</h2>
+<p>Install the wheel in an isolated Python environment. Replace the path with the downloaded file:</p>
+<pre><code class="language-sh">python3 -m venv .venv
+.venv/bin/python -m pip install /path/nnm_mnist_vae-0.1.0-py3-none-any.whl
+</code></pre>
+<p>The Python module includes the job ID. Print its name from the wheel without importing its code:</p>
+<pre><code class="language-sh">python3 - /path/nnm_mnist_vae-0.1.0-py3-none-any.whl &lt;&lt;'PY'
+import sys
+import zipfile
+with zipfile.ZipFile(sys.argv[1]) as wheel:
+    for name in wheel.namelist():
+        if name.startswith("nnmodel_") and name.count("/") == 1 and name.endswith("/__init__.py"):
+            print("Module to import:", name.split("/")[0])
+PY
+</code></pre>
+<p>In the snippet below, replace <code>nnmodel_your_job_id</code> with the printed module. <code>encode</code> accepts the image path directly; <code>decode</code> returns a NumPy array. A <code>torch.randn(1,32)</code> sample explores the standard-normal prior:</p>
+<pre><code class="language-python">import numpy as np
+import torch
+from PIL import Image
+from nnmodel_your_job_id import Model  # Replace with the module from your wheel.
+
+model = Model()
+z = model.encode("digit.png")             # torch.Tensor [1, 32]
+reconstruction = model.decode(z)           # np.ndarray [28, 28], values [0, 1]
+pixels = (np.clip(reconstruction, 0, 1) * 255).astype(np.uint8)
+Image.fromarray(pixels).save("reconstruction.png")
+
+sample = model.decode(torch.randn(1, 32))   # A new image from the prior.
+</code></pre>
+<p>Use <code>model.decode(z)</code> to reconstruct the encoded image; <code>model.decode(torch.randn(1,32))</code> starts from a random point in latent space. Both use the trained wheel weights. The original <code>model.infer(...)</code> method remains available.</p></article><footer>NNModelling · English user guide · Screenshots from the real application</footer></main></body></html>

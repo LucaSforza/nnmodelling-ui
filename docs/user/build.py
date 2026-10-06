@@ -22,6 +22,7 @@ CHAPTERS = (
     ("parameters", "parameters", {"it": "Catalogo dei parametri", "en": "Parameter catalog"}),
     ("server", "server", {"it": "Configurare il server", "en": "Configure the server"}),
     ("tutorial-tiny-llm", "tutorial-tiny-llm", {"it": "Tutorial tiny LLM", "en": "Tiny LLM tutorial"}),
+    ("tutorial-vae", "tutorial-vae", {"it": "Tutorial VAE", "en": "VAE tutorial"}),
 )
 TEXT = {
     "it": {

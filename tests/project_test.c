@@ -137,6 +137,25 @@ int main(void)
     assert(nn_model_find_node(nn_project_model(project), "n1")->y == -40);
     const NNValue *config = &nn_model_find_node(nn_project_model(project), "n1")->parameters[0].value;
     assert(config->type == NN_VALUE_ARRAY && config->as.array.count == 3);
+    char *operations = nn_project_operations_json(project, error, sizeof(error));
+    assert(operations && !strcmp(operations, "[]"));
+    free(operations);
+    assert(!nn_project_dirty(project));
+    assert(!nn_project_set_operations_json(project, "{\"name\":\"bad\"}", error, sizeof(error)));
+    assert(!nn_project_set_operations_json(project,
+        "[{\"name\":\"class\",\"input\":{},\"output\":{}}]", error, sizeof(error)));
+    assert(!nn_project_set_operations_json(project,
+        "[{\"name\":\"infer\",\"input\":{},\"output\":{}}]", error, sizeof(error)));
+    assert(!nn_project_set_operations_json(project,
+        "[{\"name\":\"encode\",\"input\":{\"node\":\"gone\",\"handle\":\"in\",\"codec\":\"image\"},\"output\":{\"node\":\"gone\",\"handle\":\"out\",\"codec\":\"tensor\"}}]",
+        error, sizeof(error)));
+    assert(!nn_project_dirty(project));
+    const char *stale_operation = "[{\"name\":\"encode\",\"input\":{\"node\":\"deleted-node\",\"handle\":\"missing-in\",\"codec\":\"dataset\"},\"output\":{\"node\":\"deleted-node\",\"handle\":\"missing-out\",\"codec\":\"tensor\"}}]";
+    assert(nn_project_set_operations_json(project, stale_operation, error, sizeof(error)));
+    assert(nn_project_dirty(project));
+    operations = nn_project_operations_json(project, error, sizeof(error));
+    assert(operations && strstr(operations, "deleted-node") && strstr(operations, "encode"));
+    free(operations);
 
     NNValue update = { .type = NN_VALUE_STRING, .as.string = "saved" };
     assert(nn_model_set_parameter(nn_project_model(project), "n1", "status", &update,
@@ -198,6 +217,9 @@ int main(void)
     assert(nn_project_active_dataset(project));
     assert(nn_model_node_count(nn_project_model(project)) == 2);
     assert(nn_model_edge_count(nn_project_model(project)) == 1);
+    operations = nn_project_operations_json(project, error, sizeof(error));
+    assert(operations && strstr(operations, "deleted-node") && strstr(operations, "missing-in"));
+    free(operations);
     const NNNode *saved_node = nn_model_find_node(nn_project_model(project), "n2");
     assert(saved_node && saved_node->x == 40 && saved_node->y == 40);
     assert(saved_node->boundary_handle_id &&

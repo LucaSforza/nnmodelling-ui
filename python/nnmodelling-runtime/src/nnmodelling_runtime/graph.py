@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import contextvars
 import importlib
+import keyword
 import math
 import json
 import re
@@ -18,6 +19,51 @@ from ._imports import resource_module
 
 _CURRENT_TARGETS = contextvars.ContextVar("nnmodelling_targets", default={})
 _CURRENT_INCLUDE_LOSS = contextvars.ContextVar("nnmodelling_include_loss", default=False)
+
+
+def _operation_table(model: dict[str, Any], nodes: Mapping[str, dict[str, Any]], catalog: _Catalog | None = None):
+    """Validate code-free operation declarations and return them by public name."""
+    operations = model.get("manifest", {}).get("operations", [])
+    if not isinstance(operations, list):
+        raise ValueError("manifest.operations must be an array")
+    result = {}
+    for operation in operations:
+        if not isinstance(operation, dict):
+            raise ValueError("each operation must be an object")
+        name = operation.get("name")
+        if (not isinstance(name, str) or not name.isidentifier() or keyword.iskeyword(name)
+                or name.startswith("_") or name in {"infer", "inference", "run_operation"}):
+            raise ValueError(f"invalid or reserved operation name {name!r}")
+        if name in result:
+            raise ValueError(f"duplicate operation name {name!r}")
+        for role in ("input", "output"):
+            endpoint = operation.get(role)
+            if not isinstance(endpoint, dict) or not all(isinstance(endpoint.get(key), str) and endpoint[key] for key in ("node", "handle")):
+                raise ValueError(f"operation {name!r} has an invalid {role} endpoint")
+            if endpoint.get("codec") not in {"dataset", "tensor"}:
+                raise ValueError(f"operation {name!r} has an invalid {role} codec")
+            node = nodes.get(endpoint["node"])
+            if node is None or node.get("data", {}).get("scope", ""):
+                raise ValueError(f"operation {name!r} references a missing or non-root {role} node")
+            if catalog is None:
+                continue
+            definition = catalog.resolve(node["data"]["package"]["id"], node["data"]["package"].get("version"))[2]
+            kind = definition.get("kind", "layer")
+            handle = endpoint["handle"]
+            outputs = definition.get("outputs")
+            if outputs is None:
+                outputs = [] if kind in {"output", "loss-output"} else ([{"id": "loss"}] if kind in {"loss", "loss-calculation"} else [{"id": "out"}])
+            output_handles = {item.get("id") for item in outputs if isinstance(item, dict)}
+            if role == "input":
+                valid = handle in output_handles if kind == "input" else (
+                    handle.startswith("in-") and handle[3:].isdigit() and int(handle[3:]) > 0 if kind == "join" else handle == "in"
+                )
+            else:
+                valid = kind not in {"input", "output", "loss-output"} and handle in output_handles
+            if not valid:
+                raise ValueError(f"operation {name!r} references undeclared {role} handle {node['id']!r}.{handle}")
+        result[name] = operation
+    return result
 
 
 def _safe_relative(path: str) -> Path:
@@ -216,6 +262,7 @@ class GraphModule(torch.nn.Module):
         if len(self.nodes) != len(self.model.get("nodes", [])):
             raise ValueError("duplicate node identity")
         self.edges = self.model.get("edges", [])
+        self.operations = _operation_table(self.model, self.nodes, self.catalog)
         self.node_modules = torch.nn.ModuleDict()
         self._node_modules: dict[str, str] = {}
         self._node_module_objects: dict[str, torch.nn.Module] = {}
@@ -440,7 +487,7 @@ class GraphModule(torch.nn.Module):
         outputs = self._definition(self.nodes[node_id])[2].get("outputs", [])
         return outputs[0]["id"] if len(outputs) == 1 else "out"
 
-    def _closure(self, terminals: list[str], scope: str) -> set[str]:
+    def _closure(self, terminals: list[str], scope: str, boundary: tuple[str, str] | None = None) -> set[str]:
         required: set[str] = set()
         todo = list(terminals)
         while todo:
@@ -448,7 +495,10 @@ class GraphModule(torch.nn.Module):
             if node_id in required:
                 continue
             required.add(node_id)
-            todo.extend(source for source, _, _ in self._dependencies(node_id, scope, False))
+            dependencies = self._dependencies(node_id, scope, False)
+            if boundary and node_id == boundary[0]:
+                dependencies = [edge for edge in dependencies if edge[2] != boundary[1]]
+            todo.extend(source for source, _, _ in dependencies)
         return required
 
     def _ordered(self, scope: str, required: set[str]) -> list[str]:
@@ -484,18 +534,22 @@ class GraphModule(torch.nn.Module):
             return (suffix, "")
         raise ValueError(f"unsupported input handle {handle!r}")
 
-    def _evaluate_scope(self, scope: str, bindings: Mapping[str, torch.Tensor], targets: Mapping[str, torch.Tensor], include_loss: bool, module_overrides=None, override_keys=None, depth: int = 0) -> dict[str, torch.Tensor]:
+    def _evaluate_scope(self, scope: str, bindings: Mapping[str, torch.Tensor], targets: Mapping[str, torch.Tensor], include_loss: bool, module_overrides=None, override_keys=None, depth: int = 0, selected_output: tuple[str, str] | None = None, injected: tuple[str, str, torch.Tensor] | None = None) -> dict[str, torch.Tensor]:
         if depth > 32:
             raise ValueError("subflow execution exceeds depth 32")
-        terminals = self._terminal_nodes(scope, include_loss)
+        terminals = [selected_output[0]] if selected_output else self._terminal_nodes(scope, include_loss)
         if not terminals:
             raise ValueError(f"scope {scope!r} has no requested output terminal")
-        required = self._closure(terminals, scope)
+        boundary = (injected[0], injected[1]) if injected else None
+        required = self._closure(terminals, scope, boundary)
         values: dict[str, dict[str, torch.Tensor]] = {}
         for node_id in self._ordered(scope, required):
             node = self.nodes[node_id]
             kind = self._kind(node_id)
             if kind == "input":
+                if injected and node_id == injected[0]:
+                    values[node_id] = {injected[1]: injected[2]}
+                    continue
                 name = node.get("data", {}).get("params", {}).get("binding", "")
                 if scope:
                     if "" not in bindings:
@@ -509,9 +563,15 @@ class GraphModule(torch.nn.Module):
                 values[node_id] = {self._input_output_handle(node_id): value}
                 continue
             edges = self._dependencies(node_id, scope, include_loss)
+            if injected and node_id == injected[0]:
+                edges = [edge for edge in edges if edge[2] != injected[1]]
+                edges.append(("", injected[1], injected[1]))
             edges.sort(key=lambda item: self._input_order(item[2]))
             incoming = []
             for source, source_handle, _ in edges:
+                if injected and node_id == injected[0] and source == "":
+                    incoming.append(injected[2])
+                    continue
                 try:
                     incoming.append(values[source][source_handle])
                 except KeyError as exc:
@@ -563,6 +623,11 @@ class GraphModule(torch.nn.Module):
                     raise ValueError(f"node {node_id!r} has multiple declared outputs and must return a mapping")
                 handle = selected_outputs[0]["id"] if selected_outputs else (outputs[0]["id"] if len(outputs) == 1 else ("loss" if kind in {"loss", "loss-calculation"} else "out"))
                 values[node_id] = {handle: result}
+        if selected_output:
+            try:
+                return {"operation": values[selected_output[0]][selected_output[1]]}
+            except KeyError as exc:
+                raise ValueError(f"operation output {selected_output[0]!r}.{selected_output[1]!r} was not produced") from exc
         result: dict[str, torch.Tensor] = {}
         for terminal in terminals:
             kind = self._kind(terminal)
@@ -601,3 +666,23 @@ class GraphModule(torch.nn.Module):
         if len(names) != 1:
             raise ValueError(f"tensor shorthand requires exactly one bound root input, found {len(names)}")
         return {names[0]: value}
+
+    def run_operation(self, name: str, tensor: torch.Tensor) -> torch.Tensor:
+        if name not in self.operations:
+            raise ValueError(f"unknown model operation {name!r}")
+        if not isinstance(tensor, torch.Tensor) or tensor.ndim == 0:
+            raise TypeError("operation input must be a batched torch.Tensor")
+        operation = self.operations[name]
+        source, target = operation["input"], operation["output"]
+        was_training = self.training
+        self.eval()
+        try:
+            with torch.inference_mode():
+                result = self._evaluate_scope(
+                    "", {}, {}, False,
+                    selected_output=(target["node"], target["handle"]),
+                    injected=(source["node"], source["handle"], tensor),
+                )
+                return result["operation"]
+        finally:
+            self.train(was_training)
