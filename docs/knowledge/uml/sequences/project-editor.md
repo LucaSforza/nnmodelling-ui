@@ -222,3 +222,40 @@ the model-backed item positions and does not dirty the graph.
 
 `NNApplication` owns the bounded history. Qt holds no parallel graph history;
 camera, selection, expansion and direction are not restored by undo.
+
+## Manage exported model operations
+
+```mermaid
+  sequenceDiagram
+    actor User
+    participant Qt as Project resources / Operations dialog
+    participant App as NNApplication
+    participant Project as NNProject
+    participant Analysis as Lazy shape analysis
+    User->>Qt: New or edit operation name and endpoint codecs
+    Qt->>App: operationsJson()
+    App->>Project: return owned operation metadata snapshot
+    Project-->>App: operations array
+    App-->>Qt: current operations and stable node/handle IDs
+    Qt->>Analysis: query selected input/output tensor signatures
+    Analysis-->>Qt: dtype/shape preview, or unresolved problem
+    User->>Qt: choose root input/output endpoints
+    Qt->>App: setOperations(json)
+    App->>Project: validate safe name, codec and root endpoint references
+    alt valid operation list
+      Project->>Project: atomically replace owned operation metadata
+      App->>App: mark project dirty
+      App-->>Qt: committed list
+      Qt->>Qt: refresh Operations group and project title
+    else malformed or invalid new endpoint
+      Project-->>App: error without metadata change
+      App-->>Qt: retain dialog fields and show error
+    end
+    User->>Qt: Save project or submit training
+    Qt->>App: save / serialize immutable job snapshot
+    App->>Project: persist manifest.operations in model.json
+```
+
+The UI authors only data. A graph edit may make an existing endpoint stale;
+preserve it for repair and display its invalid status. Backend submission rejects
+stale declarations before queueing a job. No adapter or PyTorch code runs in Qt.

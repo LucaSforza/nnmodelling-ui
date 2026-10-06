@@ -50,6 +50,9 @@ discarded. Frontends request mutations through application.h; it resolves
 packages, validates parameters and handles, delegates graph invariants to the
 model and marks successful changes dirty. Snapshots are borrowed until mutation.
 Analysis remains read-only and may be refreshed after a semantic mutation.
+Optional root-scope inference operations are project-owned manifest metadata;
+the C client validates and presents endpoint references, while the exported
+Python wheel evaluates their graph slices using the same trained modules.
 Accepted 2026-09-30: application owns the lazy analysis cache and UI/CLI consume
 the same structured problems per contracts/diagnostics.md, uml/editor.md and
 uml/sequences.md. src/utils/utils.c/h centralizes allocation-free error

@@ -26,6 +26,13 @@ Natural: screenshot reflects completed layout, including requested arrange.
 Node creation, connection, parameter editing, layout, project lifecycle,
 screenshot and resource creation are supported. Authoring uses the accepted
 [resource transaction](resource-authoring.md). Resource deletion remains deferred.
-Training, monitoring and wheel download use HTTP backend, not local CLI protocol.
+Project-level inference operation authoring uses the C application API and Qt
+Operations manager. Training, monitoring and wheel download use HTTP backend,
+not local CLI protocol.
 
 Accepted 2026-10-05: [backend contract](backend.md) and [backend UML](../uml/backend.md) supersede earlier backend/training deferrals. Native C11 graph authority and Lua shape analysis remain unchanged.
+
+Accepted 2026-10-06: model.md and backend.md define code-free root-scope operation
+declarations, partial graph execution and generated wheel methods. General
+multi-input/output operations, nested-scope entrypoints and in-editor Python
+execution remain deferred.

@@ -24,6 +24,8 @@ manifest v2, project-owned resource paths and exact package activation.
         +selectDataset(identity) Result
         +datasetDefinition(identity) OwnedJSON
         +updateDataset(identity,definition) Result
+        +operationsJson() OwnedJSON
+        +setOperations(json) Result
       }
       class ModelManifest {
         +int schemaVersion = 2
@@ -34,6 +36,18 @@ manifest v2, project-owned resource paths and exact package activation.
         +PackageReference[] customPackages
         +DatasetReference[] customDatasets
         +DatasetIdentity activeDataset
+        +ModelOperation[] operations optional
+      }
+      class ModelOperation {
+        +string name safe Python identifier
+        +OperationEndpoint input
+        +string inputCodec dataset or tensor
+        +OperationEndpoint output
+        +string outputCodec dataset or tensor
+      }
+      class OperationEndpoint {
+        +NodeId nodeId
+        +HandleId handleId
       }
       class PackageReference {
         +string id
@@ -93,6 +107,10 @@ manifest v2, project-owned resource paths and exact package activation.
       Project "1" *-- "1" DatasetCatalog
       ModelManifest "1" *-- "0..*" PackageReference
       ModelManifest "1" *-- "0..*" DatasetReference
+      ModelManifest "1" *-- "0..*" ModelOperation : optional
+      ModelOperation --> OperationEndpoint : input/output
+      OperationEndpoint --> Node : stable root-scope ID
+      OperationEndpoint --> Handle : declared handle
       ModelManifest "0..1" --> "1" ProjectDataset : activeDataset exact identity
       PackageCatalog "1" *-- "0..*" StereotypePackage
       DatasetCatalog "1" *-- "0..*" ProjectDataset
@@ -143,6 +161,16 @@ manifest declares Python `Dataset` adapter; stereotype manifest declares
 PyTorch builder. Client still never executes Python. Job snapshot owns exact
 copies of project/resources/data; exported Model owns a private adapter and
 graph runtime, and excludes training data. See [backend UML](backend.md).
+
+Accepted 2026-10-06: optional `manifest.operations` persists named inference
+entrypoints in the same atomic schema-v2 project file. Each has one input
+endpoint/codec and one output endpoint/codec. Project owns its copied JSON and
+validates safe Python names, endpoint node/handle identity and root scope; Qt's
+Operations manager edits through the application API and marks the project
+dirty. Legacy projects without this field load with an empty operation list.
+Graph edits can leave a formerly valid reference stale; preserve it for repair,
+show its invalid state, and reject training/export while stale. Operation data
+is code-free and does not extend the active package catalog.
 
 ## Constraints
 
