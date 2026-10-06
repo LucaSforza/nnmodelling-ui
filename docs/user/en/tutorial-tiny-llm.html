@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Tiny LLM tutorial · NNModelling</title><link rel="stylesheet" href="../style.css"/></head>
+<body><a class="skip" href="#content">Skip to content</a>
+<aside><a class="brand" href="index.html">NN<span>Modelling</span></a>
+<p class="edition">User guide · English<br/>Edition 6 October 2026</p><nav class="language-switch" aria-label="Guide language"><a lang="it" href="../tutorial-tiny-llm.html">Italiano</a><a lang="en" href="tutorial-tiny-llm.html" aria-current="page">English</a></nav>
+<nav aria-label="Chapters"><a href="index.html">Introduction</a><a href="client.html">Using the client</a><a href="parameters.html">Parameter catalog</a><a href="server.html">Configure the server</a><a href="tutorial-tiny-llm.html" aria-current="page">Tiny LLM tutorial</a></nav><div class="outline"><p>On this page</p><div class="toc">
+<ul>
+<li><a href="#tutorial-train-a-tiny-llm">Tutorial: train a tiny LLM</a><ul>
+<li><a href="#1-prepare-the-client-and-backend">1. Prepare the client and backend</a></li>
+<li><a href="#2-create-a-model-copy">2. Create a model copy</a></li>
+<li><a href="#3-read-the-graph-before-submitting">3. Read the graph before submitting</a></li>
+<li><a href="#4-connect-and-choose-a-short-experiment">4. Connect and choose a short experiment</a></li>
+<li><a href="#5-read-the-curves-and-identify-completion">5. Read the curves and identify completion</a></li>
+<li><a href="#6-download-and-use-the-model">6. Download and use the model</a></li>
+<li><a href="#7-move-to-the-full-corpus">7. Move to the full corpus</a></li>
+<li><a href="#8-find-the-experiment-and-shut-down">8. Find the experiment and shut down</a></li>
+</ul>
+</li>
+</ul>
+</div>
+</div>
+<p class="offline">Available offline.<br/><a href="README.md">Sources and verification</a></p></aside>
+<main id="content"><header><span class="eyebrow">FROM GRAPH TO MODEL</span><span class="chapter">Tiny LLM tutorial</span></header>
+<article><h1 id="tutorial-train-a-tiny-llm">Tutorial: train a tiny LLM</h1>
+<p>This walkthrough starts from the model shipped in <code>examples/models/tiny-decoder-llm</code>, available in the client as <strong>mini LLM</strong>. Create a copy, check the dataset and graph, run a short training job and download a model that Python can use. The first experiment teaches the complete workflow; a full-corpus path is included at the end.</p>
+<h2 id="1-prepare-the-client-and-backend">1. Prepare the client and backend</h2>
+<p>From the repository root, with compilers, CMake, Qt 6, <code>just</code>, <code>uv</code> and a Docker-compatible runtime available:</p>
+<pre><code class="language-sh">just build
+just backend-sync
+just backend-image
+just backend-run
+</code></pre>
+<p>Leave the server terminal open. In a second terminal, start the client:</p>
+<pre><code class="language-sh">./build/qt/nnmodelling-ui
+</code></pre>
+<p>The default backend listens at <code>http://127.0.0.1:8765</code>. The screenshots in this tutorial show <strong>8766</strong>, chosen to isolate the walkthrough from a port that was already occupied. To reproduce that address, start the server with:</p>
+<pre><code class="language-sh">NNMODELLING_BACKEND_PORT=8766 just backend-run
+</code></pre>
+<p>Use the port of the server you started in the client. If you chose a token, enter it in the Training panel as described in the <a href="server.html">backend configuration</a>.</p>
+<h2 id="2-create-a-model-copy">2. Create a model copy</h2>
+<p>In the initial chooser, select <code>New mini LLM</code>, or use <code>File &gt; New from template &gt; mini LLM…</code>. Choose a parent folder, enter an unused ID such as <code>manuale-tiny-llm</code>, and confirm the display name. The program creates and opens the new subfolder; an existing destination is rejected.</p>
+<figure class="annotated"><a href="../assets/menu-template.png" class="image-link" title="Open screenshot at original size"><img alt="mini LLM template in the File menu" src="../assets/menu-template.png" loading="lazy"></a><figcaption><strong>mini LLM template in the File menu</strong><p class="image-hint">Click the image to inspect it at its original size.</p><ol class="callouts"><li><span class="badge" aria-hidden="true">1</span><span>Available templates</span></li></ol></figcaption></figure><p>The original project remains available for other experiments. To make a manual copy instead, copy all of <code>examples/models/tiny-decoder-llm</code> to a working folder and open <strong>that folder</strong>, not only its <code>model.json</code> file, with <code>Open project</code>.</p>
+<h2 id="3-read-the-graph-before-submitting">3. Read the graph before submitting</h2>
+<p>The model uses a <strong>65-character</strong> vocabulary, context length <strong>128</strong>, width <strong>64</strong>, <strong>two</strong> decoder blocks, <strong>four</strong> attention heads of width <strong>16</strong>, and a feed-forward layer of width <strong>256</strong>. The root Input receives <code>tokens</code>; Embedding and Positional Encoding prepare the representations; Repeat applies the decoder blocks; LayerNorm and Linear produce logits; Token Cross Entropy feeds <code>Loss Output</code>. <code>Output</code> collects the prediction.</p>
+<figure class="annotated"><a href="../assets/overview.png" class="image-link" title="Open screenshot at original size"><img alt="Root graph of the language model" src="../assets/overview.png" loading="lazy"></a><figcaption><strong>Root graph of the language model</strong><p class="image-hint">Click the image to inspect it at its original size.</p><ol class="callouts"><li><span class="badge" aria-hidden="true">1</span><span>Menu bar</span></li><li><span class="badge" aria-hidden="true">2</span><span>Scope, training and canvas tools</span></li><li><span class="badge" aria-hidden="true">3</span><span>Package catalog</span></li><li><span class="badge" aria-hidden="true">4</span><span>Graph canvas</span></li><li><span class="badge" aria-hidden="true">5</span><span>Inspector</span></li><li><span class="badge" aria-hidden="true">6</span><span>Project resources</span></li><li><span class="badge" aria-hidden="true">7</span><span>Model problems</span></li><li><span class="badge" aria-hidden="true">8</span><span>Status area</span></li></ol></figcaption></figure><p>Check <code>Project resources</code>: <code>llm.tokens@1.0.0</code> must be active. <code>Dataset… &gt; Edit</code> lets you inspect the slots without changing them:</p>
+<table>
+<thead>
+<tr>
+<th>Slot</th>
+<th>Dtype</th>
+<th>Shape</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Input <code>tokens</code></td>
+<td><code>int64</code></td>
+<td><code>[B, 128]</code></td>
+<td>Sequences of character indices.</td>
+</tr>
+<tr>
+<td>Target <code>target</code></td>
+<td><code>int64</code></td>
+<td><code>[B, 128]</code></td>
+<td>The same sequence shifted by one character: the next symbol to predict.</td>
+</tr>
+</tbody>
+</table>
+<p>Choose <code>Cancel</code> if you are only inspecting. The included dataset contains <strong>64</strong> training, <strong>16</strong> validation and <strong>16</strong> test windows, taken from a Tiny Shakespeare excerpt. It is ready to use; the first training run does not need a corpus download.</p>
+<p>Select Repeat: the Inspector shows <code>times = 2</code> and output <code>float32[B, 128, 64]</code>. Open <code>Scope</code> and choose the decoder block; in its scope select HorizontalRepeat: <code>times = 4</code>, <code>join = Concat</code>, <code>dim = -1</code>. Enter the attention-head scope to see <code>Q × Kᵀ</code>, scale <code>0.25 = 1/√16</code>, causal mask, Softmax and multiplication by V. The join concatenates four width-16 results into a width-64 tensor.</p>
+<figure class="annotated"><a href="../assets/attention.png" class="image-link" title="Open screenshot at original size"><img alt="Explicit attention inside HorizontalRepeat" src="../assets/attention.png" loading="lazy"></a><figcaption><strong>Explicit attention inside HorizontalRepeat</strong><p class="image-hint">Click the image to inspect it at its original size.</p><ol class="callouts"><li><span class="badge" aria-hidden="true">1</span><span>Current scope</span></li><li><span class="badge" aria-hidden="true">2</span><span>Dataset used by the project</span></li></ol></figcaption></figure><p>Return to <code>Root</code> in the Scope tree. The logits output should have shape <code>float32[B, 128, 65]</code>, while loss is scalar. <code>No model problems</code> means shape analysis is complete. Correct shapes and available Python resources are both required: the client shows the first, and the backend checks the second while running the project.</p>
+<h2 id="4-connect-and-choose-a-short-experiment">4. Connect and choose a short experiment</h2>
+<p>Press <code>Training</code>. Set the right endpoint, leave <code>Bearer token</code> blank if the server does not require one, and press <code>Connect / check health</code>. The status line should say that the runtime is ready for training.</p>
+<figure class="annotated"><a href="../assets/training-connect.png" class="image-link" title="Open screenshot at original size"><img alt="Connect to the local service" src="../assets/training-connect.png" loading="lazy"></a><figcaption><strong>Connect to the local service</strong><p class="image-hint">Click the image to inspect it at its original size.</p><ol class="callouts"><li><span class="badge" aria-hidden="true">1</span><span>Backend address</span></li><li><span class="badge" aria-hidden="true">2</span><span>Connect and check service health</span></li></ol></figcaption></figure><p>To reproduce the illustrated run, use:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+<th>Reason</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Epochs</code></td>
+<td><code>3</code></td>
+<td>Three passes over the small dataset.</td>
+</tr>
+<tr>
+<td><code>Batch</code></td>
+<td><code>16</code></td>
+<td>Four updates per epoch for 64 training windows.</td>
+</tr>
+<tr>
+<td><code>Learning rate</code></td>
+<td><code>0.001</code></td>
+<td>Adam optimizer step size. Use a decimal point.</td>
+</tr>
+<tr>
+<td><code>Seed</code></td>
+<td><code>0</code></td>
+<td>Fixes initialization and the job's random sources.</td>
+</tr>
+<tr>
+<td><code>Publish every N steps</code></td>
+<td><code>1</code></td>
+<td>Publishes and validates at every update, useful for seeing curves quickly in this small run.</td>
+</tr>
+</tbody>
+</table>
+<figure class="annotated"><a href="../assets/training-settings.png" class="image-link" title="Open screenshot at original size"><img alt="Short training settings" src="../assets/training-settings.png" loading="lazy"></a><figcaption><strong>Short training settings</strong><p class="image-hint">Click the image to inspect it at its original size.</p><ol class="callouts"><li><span class="badge" aria-hidden="true">1</span><span>Epochs, batch size, learning rate and seed</span></li><li><span class="badge" aria-hidden="true">2</span><span>Save the project and submit the job</span></li></ol></figcaption></figure><p>Press <strong>Save project and submit</strong> once. The client saves edits before submission, collects resources and data, and creates the job. Wait for it to appear in <code>Job history</code>, then select it; this loads curves, status and metrics. If an old submission message remains visible, <code>Connect / check health</code> refreshes the connection line; the job row status and metrics describe the experiment.</p>
+<h2 id="5-read-the-curves-and-identify-completion">5. Read the curves and identify completion</h2>
+<p>The blue series is training loss and the red series is validation loss. A lower value means a smaller mean error for this objective. Training measures the data used to update the model; validation measures separate data without updating the weights. If training keeps improving while validation gets worse, the model may be overfitting the training data.</p>
+<figure class="annotated"><a href="../assets/training-dashboard.png" class="image-link" title="Open screenshot at original size"><img alt="Completed job, curves and test loss" src="../assets/training-dashboard.png" loading="lazy"></a><figcaption><strong>Completed job, curves and test loss</strong><p class="image-hint">Click the image to inspect it at its original size.</p><ol class="callouts"><li><span class="badge" aria-hidden="true">1</span><span>Backend connection</span></li><li><span class="badge" aria-hidden="true">2</span><span>Training configuration</span></li><li><span class="badge" aria-hidden="true">3</span><span>Job history and status</span></li><li><span class="badge" aria-hidden="true">4</span><span>Training and validation loss curves</span></li><li><span class="badge" aria-hidden="true">5</span><span>Curve visibility and scale</span></li><li><span class="badge" aria-hidden="true">6</span><span>Final test loss</span></li><li><span class="badge" aria-hidden="true">7</span><span>Training and worker log</span></li><li><span class="badge" aria-hidden="true">8</span><span>Download, restore, cancel and close actions</span></li></ol></figcaption></figure><p><code>Optimizer step</code> counts global updates. This experiment has <strong>12</strong>: four in each of the three epochs. Checkboxes hide or show the series; <code>Scale &gt; Log</code> changes how loss is displayed and does not modify the job. Test loss is calculated at the end on a third, separate set.</p>
+<p>In the run made for this guide, job <code>86caba53-0690-4c79-b948-4273ed1426b4</code> reached <code>completed</code>, with final-epoch mean training loss <strong>3.462321</strong>, validation loss <strong>3.387799</strong> and test loss <strong>3.345268</strong>. These are observed results, not a target threshold: dependency versions, runtime and machine can affect the values. The small excerpt and three epochs demonstrate the workflow; they are not enough to promise high-quality text.</p>
+<p>If the job is <code>failed</code>, read <code>Error</code> in the panel and the server's <code>worker.log</code>. To stop a queued or running job, select it and press <code>Cancel job</code>. Closing the panel with <code>Close</code> leaves the job with the server. Client edits made after submission do not change the snapshot already being trained.</p>
+<h2 id="6-download-and-use-the-model">6. Download and use the model</h2>
+<p>With the <code>completed</code> job selected, press <code>Download weights</code> to get <code>weights.safetensors</code> and <code>Download wheel</code> for the Python package. Keep <strong>the full wheel filename proposed by the dialog</strong>, including its version and <code>-py3-none-any.whl</code> tag; a generic name such as <code>model.whl</code> is not a valid installable wheel filename.</p>
+<figure class="annotated"><a href="../assets/download-wheel.png" class="image-link" title="Open screenshot at original size"><img alt="Choose a filename for the exported wheel" src="../assets/download-wheel.png" loading="lazy"></a><figcaption><strong>Choose a filename for the exported wheel</strong><p class="image-hint">Click the image to inspect it at its original size.</p><ol class="callouts"><li><span class="badge" aria-hidden="true">1</span><span>Wheel filename and destination</span></li><li><span class="badge" aria-hidden="true">2</span><span>Save the downloaded wheel</span></li></ol></figcaption></figure><p>In a new folder, create an isolated environment and install the downloaded wheel. Replace the path with the actual location; <code>pip</code> also installs declared dependencies, which must be available from a network connection or local cache:</p>
+<pre><code class="language-sh">python3 -m venv .venv
+.venv/bin/python -m pip install /path/nnmodel_job_86caba53_0690_4c79_b948_4273ed1426b4-0.1.0-py3-none-any.whl
+</code></pre>
+<p>The module name varies with the job ID. For the illustrated run, save this as <code>infer.py</code>:</p>
+<pre><code class="language-python">import torch
+from nnmodel_job_86caba53_0690_4c79_b948_4273ed1426b4 import Model
+
+torch.set_num_threads(2)
+model = Model()  # Loads the weights included in the wheel.
+text = "ROMEO:\n"
+for _ in range(40):
+    prediction = model.inference(text[-128:])
+    if not prediction:
+        raise RuntimeError("The model returned an empty prediction")
+    text += prediction[-1]
+print(text)
+</code></pre>
+<p>Run <code>.venv/bin/python infer.py</code>. Text passed to the adapter must contain characters from the vocabulary and a nonempty context of at most 128 characters. <code>infer</code> is an alias for <code>inference</code>. The function returns one prediction per sequence position; the loop uses the final predicted character to build a greedy continuation. To use compatible alternative weights, construct <code>Model(weights_path="/path/weights.safetensors")</code>.</p>
+<p>For another job, read the module name from the wheel without importing its code:</p>
+<pre><code class="language-sh">python3 - /path/to/the-wheel.whl &lt;&lt;'PY'
+import sys
+import zipfile
+with zipfile.ZipFile(sys.argv[1]) as wheel:
+    for name in wheel.namelist():
+        if name.startswith("nnmodel_") and name.count("/") == 1 and name.endswith("/__init__.py"):
+            print("Module to import:", name.split("/")[0])
+PY
+</code></pre>
+<p>Replace that name in <code>infer.py</code>'s import. The wheel contains the private runtime needed to use the model: the original repository, training dataset and server are not required. <code>examples/implementation/llm</code> is a consumer already configured for a specific historical 20-epoch job; use the newly downloaded wheel and its module name for a new experiment.</p>
+<h2 id="7-move-to-the-full-corpus">7. Move to the full corpus</h2>
+<p>Once the short run works, prepare <strong>another</strong> folder for the full corpus. From the repository root:</p>
+<pre><code class="language-sh">uv run --group examples python tools/prepare_full_llm.py \
+  --output-project .computer-use/manuale-full-llm
+</code></pre>
+<p>The destination must not exist. The command verifies the Tiny Shakespeare corpus and its checksum, copies the model, and prepares contiguous 80/10/10 splits before extracting windows: <strong>6,971</strong> training, <strong>871</strong> validation and <strong>871</strong> test windows. Each window uses 128 input characters and the following character as target. If the source is not cached already, preparation needs network access; the training container remains offline.</p>
+<p>Open <code>.computer-use/manuale-full-llm</code> with <code>File &gt; Open project…</code>. In the Training panel, enter the values from <code>training.json</code> manually:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Full-corpus value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Epochs</code></td>
+<td><code>20</code></td>
+</tr>
+<tr>
+<td><code>Batch</code></td>
+<td><code>64</code></td>
+</tr>
+<tr>
+<td><code>Learning rate</code></td>
+<td><code>0.001</code></td>
+</tr>
+<tr>
+<td><code>Seed</code></td>
+<td><code>0</code></td>
+</tr>
+<tr>
+<td><code>Publish every N steps</code></td>
+<td><code>100</code></td>
+</tr>
+</tbody>
+</table>
+<p>The panel does <strong>not</strong> load <code>training.json</code> automatically. This setup has 109 steps per epoch and 2,180 in total; final partial epoch batches are also published when they do not fall on a multiple of 100. It takes longer than the short tutorial. Submit, select the new job and download its artifacts when it reaches <code>completed</code>.</p>
+<h2 id="8-find-the-experiment-and-shut-down">8. Find the experiment and shut down</h2>
+<p>History belongs to the backend's job directory. Restarting the same service with the same <code>NNMODELLING_JOB_ROOT</code> restores its experiments. <code>Restore snapshot…</code> asks for a parent folder and a new directory name, recreates the project used for that job and opens it. This restores the project; it does not continue training. A new submission initializes a new job. The panel does not offer resume or fine-tuning from downloaded weights.</p>
+<p>Save the project with <code>File &gt; Save</code>, close the client, and stop the backend with <strong>Ctrl-C</strong> in its terminal after jobs finish. Keep the wheel and weights with your experiment results.</p></article><footer>NNModelling · English user guide · Screenshots from the real application</footer></main></body></html>

@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Configure the server · NNModelling</title><link rel="stylesheet" href="../style.css"/></head>
+<body><a class="skip" href="#content">Skip to content</a>
+<aside><a class="brand" href="index.html">NN<span>Modelling</span></a>
+<p class="edition">User guide · English<br/>Edition 6 October 2026</p><nav class="language-switch" aria-label="Guide language"><a lang="it" href="../server.html">Italiano</a><a lang="en" href="server.html" aria-current="page">English</a></nav>
+<nav aria-label="Chapters"><a href="index.html">Introduction</a><a href="client.html">Using the client</a><a href="parameters.html">Parameter catalog</a><a href="server.html" aria-current="page">Configure the server</a><a href="tutorial-tiny-llm.html">Tiny LLM tutorial</a></nav><div class="outline"><p>On this page</p><div class="toc">
+<ul>
+<li><a href="#local-training">Local training</a><ul>
+<li><a href="#prepare-and-start-the-service">Prepare and start the service</a><ul>
+<li><a href="#example-port-8766-and-a-dedicated-job-store">Example: port 8766 and a dedicated job store</a></li>
+</ul>
+</li>
+<li><a href="#optional-bearer-token">Optional bearer token</a></li>
+<li><a href="#check-the-service">Check the service</a></li>
+<li><a href="#submit-a-project">Submit a project</a></li>
+<li><a href="#follow-cancel-and-retrieve-a-job">Follow, cancel and retrieve a job</a></li>
+<li><a href="#download-results">Download results</a></li>
+<li><a href="#configuration">Configuration</a></li>
+<li><a href="#common-problems">Common problems</a></li>
+</ul>
+</li>
+</ul>
+</div>
+</div>
+<p class="offline">Available offline.<br/><a href="README.md">Sources and verification</a></p></aside>
+<main id="content"><header><span class="eyebrow">FROM GRAPH TO MODEL</span><span class="chapter">Configure the server</span></header>
+<article><h1 id="local-training">Local training</h1>
+<p>NNModelling can submit an immutable copy of a project to the local FastAPI service. The service queues the work, runs it in an offline container, and stores snapshots, metrics and results on the computer. The <strong>Training</strong> window shows the connection, job history, curves and controls to cancel jobs, restore snapshots and download results.</p>
+<figure class="annotated"><a href="../assets/training-connect.png" class="image-link" title="Open screenshot at original size"><img alt="Backend connection panel" src="../assets/training-connect.png" loading="lazy"></a><figcaption><strong>Backend connection panel</strong><p class="image-hint">Click the image to inspect it at its original size.</p><ol class="callouts"><li><span class="badge" aria-hidden="true">1</span><span>Backend address</span></li><li><span class="badge" aria-hidden="true">2</span><span>Connect and check service health</span></li></ol></figcaption></figure><figure class="annotated"><a href="../assets/training-dashboard.png" class="image-link" title="Open screenshot at original size"><img alt="History, learning curves and results" src="../assets/training-dashboard.png" loading="lazy"></a><figcaption><strong>History, learning curves and results</strong><p class="image-hint">Click the image to inspect it at its original size.</p><ol class="callouts"><li><span class="badge" aria-hidden="true">1</span><span>Backend connection</span></li><li><span class="badge" aria-hidden="true">2</span><span>Training configuration</span></li><li><span class="badge" aria-hidden="true">3</span><span>Job history and status</span></li><li><span class="badge" aria-hidden="true">4</span><span>Training and validation loss curves</span></li><li><span class="badge" aria-hidden="true">5</span><span>Curve visibility and scale</span></li><li><span class="badge" aria-hidden="true">6</span><span>Final test loss</span></li><li><span class="badge" aria-hidden="true">7</span><span>Training and worker log</span></li><li><span class="badge" aria-hidden="true">8</span><span>Download, restore, cancel and close actions</span></li></ol></figcaption></figure><h2 id="prepare-and-start-the-service">Prepare and start the service</h2>
+<p>Run these Bash commands from the repository root. The token prompts use Bash <code>read -s</code>, and the reusable <code>AUTH</code> header later in this guide uses a Bash array. You need <code>uv</code>, <code>just</code> and an installed and running Docker-compatible runtime (Docker or Podman). The first command installs the workspace's locked dependencies; the second builds the CPU image used for training.</p>
+<pre><code class="language-sh">just backend-sync
+just backend-image
+just backend-run
+</code></pre>
+<p><code>backend-run</code> stays in the foreground. The default address is <code>http://127.0.0.1:8765</code>; use another terminal to query the API and press <strong>Ctrl-C</strong> to stop the service. Select <strong>Training</strong> in the app and press <strong>Connect / check health</strong>. The endpoint field already contains the default address.</p>
+<h3 id="example-port-8766-and-a-dedicated-job-store">Example: port 8766 and a dedicated job store</h3>
+<p>To keep this instance separate, set a dedicated local store and use the same configuration in the service terminal:</p>
+<pre><code class="language-sh">export NNMODELLING_BACKEND_HOST=127.0.0.1
+export NNMODELLING_BACKEND_PORT=8766
+export NNMODELLING_JOB_ROOT="$HOME/.local/share/nnmodelling/jobs-8766"
+export NNMODELLING_CONTAINER_RUNTIME=docker
+export NNMODELLING_WORKER_IMAGE=nnmodelling-worker:local
+just backend-image
+just backend-run
+</code></pre>
+<p>In a second terminal, check the service:</p>
+<pre><code class="language-sh">curl -fsS http://127.0.0.1:8766/health
+</code></pre>
+<p>In the app, open <strong>Training</strong>, change the endpoint to <code>http://127.0.0.1:8766</code> and press <strong>Connect / check health</strong>. Look in <code>~/.local/share/nnmodelling/jobs-8766</code> for this instance's snapshots, logs and artifacts. Press <strong>Ctrl-C</strong> in the first terminal to stop it.</p>
+<p>To use Podman or an image with additional dependencies, use the same runtime and image name when building and starting the service:</p>
+<pre><code class="language-sh">NNMODELLING_CONTAINER_RUNTIME=podman just backend-image
+NNMODELLING_CONTAINER_RUNTIME=podman just backend-run
+</code></pre>
+<p><code>NNMODELLING_WORKER_IMAGE</code> changes the image tag (default <code>nnmodelling-worker:local</code>). Training containers have no network access. Add dependencies declared by resources to the image before submitting a job.</p>
+<p>If a resource needs <code>scikit-image</code>, you can build an additional image with a pinned version. Save this as <code>Dockerfile.worker-extra</code> in the repository root:</p>
+<pre><code class="language-dockerfile">FROM nnmodelling-worker:local
+USER 0
+RUN uv pip install --python /app/.venv/bin/python 'scikit-image==0.25.2'
+USER 65532:65532
+</code></pre>
+<p>Build the base image with the tag used by the Dockerfile, then build the extension and select it when starting the service:</p>
+<pre><code class="language-sh">export NNMODELLING_WORKER_IMAGE=nnmodelling-worker:local
+just backend-image
+docker build -f Dockerfile.worker-extra -t nnmodelling-worker:scikit-image .
+export NNMODELLING_WORKER_IMAGE=nnmodelling-worker:scikit-image
+just backend-run
+</code></pre>
+<p>With Podman, replace <code>docker build</code> with <code>podman build</code> and set <code>NNMODELLING_CONTAINER_RUNTIME=podman</code> before building the base and starting the service. Keep resource dependencies pinned in the image and rebuild it when they change.</p>
+<h2 id="optional-bearer-token">Optional bearer token</h2>
+<p>The token is optional for a single-user local session. To require one, set it before starting the service and enter the same value in the Training window's <strong>Bearer token</strong> field. The shell input below does not display the token while you type:</p>
+<pre><code class="language-sh">read -r -s -p 'Bearer token: ' NNMODELLING_BEARER_TOKEN
+printf '\n'
+export NNMODELLING_BEARER_TOKEN
+just backend-run
+</code></pre>
+<p>The service keeps the token in memory only. The Qt client keeps it only in the current window and does not save it in the project or snapshot. Requests to <code>/v1/jobs</code> require <code>Authorization: Bearer …</code> when a token is configured; <code>/health</code> returns only service and runtime status. The service is intended for local use: keep its bind address on loopback, especially when no token is configured.</p>
+<h2 id="check-the-service">Check the service</h2>
+<p><code>GET /health</code> does not require authentication. <code>status: "ok"</code> means the API is responding; for training, <code>container.available</code> must also be <code>true</code>. <code>runtime</code> identifies the configured Docker-compatible command and <code>error</code> is <code>null</code> or the reason the runtime is unavailable.</p>
+<pre><code class="language-sh">curl -fsS http://127.0.0.1:8765/health
+</code></pre>
+<p>Example response:</p>
+<pre><code class="language-json">{"status":"ok","container":{"available":true,"runtime":"docker","error":null}}
+</code></pre>
+<p>OpenAPI documentation is available at <code>http://127.0.0.1:8765/docs</code>.</p>
+<h2 id="submit-a-project">Submit a project</h2>
+<p>Save the project in the app before submission. In the Training window, set epochs, batch, learning rate, seed and <strong>Publish every N steps</strong>, then press <strong>Save project and submit</strong>. Initial values are <code>10</code>, <code>32</code>, <code>0.001</code>, <code>0</code> and <code>10</code>. The interval controls how often paired training and validation metrics are published; the remaining window is also published at the end of each epoch.</p>
+<p>The API accepts these ranges: epochs <code>1–10000</code>, batch <code>1–4096</code>, finite learning rate greater than <code>0</code> and at most <code>1</code>, seed from <code>-2147483648</code> through <code>4294967295</code>, and publish interval <code>1–100000</code>. Additional JSON fields are rejected. A job records its configuration and file snapshot: later project edits do not change a submitted job.</p>
+<p>For a reproducible terminal submission, this example uses only the Python standard library. From the repository root, it creates an in-memory bundle of <code>examples/models/tiny-decoder-llm</code> and submits a short one-epoch configuration. File contents, order and parameters are fixed; the script creates no intermediate files. It excludes symbolic links, <code>env</code> directories, <code>.env</code>, <code>venv</code>, <code>.venv</code>, caches and bytecode, as well as application-generated folders. It also includes inference assets listed in resource manifests.</p>
+<pre><code class="language-sh">python3 - &lt;&lt;'PY'
+import base64
+import json
+import os
+from pathlib import Path, PurePosixPath
+from urllib.request import Request, urlopen
+
+base_url = os.environ.get("NNMODELLING_BACKEND_URL", "http://127.0.0.1:8765").rstrip("/")
+root = Path.cwd() / "examples/models/tiny-decoder-llm"
+if not root.is_dir() or root.is_symlink():
+    raise FileNotFoundError(f"Example project directory does not exist: {root}")
+model = json.loads((root / "model.json").read_text(encoding="utf-8"))
+excluded = {
+    ".venv", "venv", "env", ".env", "__pycache__", ".git", "build", "dist",
+    "target", ".pytest_cache", ".nnmodelling-generated", "node_modules",
+}
+files = {}
+
+def safe_relative(value):
+    if not isinstance(value, str) or not value or "\\" in value or "\x00" in value:
+        raise ValueError(f"Unsafe project-relative path: {value!r}")
+    parts = value.split("/")
+    if (PurePosixPath(value).is_absolute() or ":" in parts[0]
+            or any(part in {"", ".", ".."} for part in parts)
+            or value == "model.json"):
+        raise ValueError(f"Unsafe project-relative path: {value!r}")
+    return Path(*parts)
+
+def excluded_path(relative):
+    return (
+        any(part in excluded for part in relative.parts)
+        or relative.name == ".DS_Store"
+        or relative.suffix in {".pyc", ".pyo"}
+        or relative.name.endswith("~")
+        or ".generated." in relative.name
+    )
+
+def add_tree(value, required=False):
+    relative = safe_relative(value.as_posix() if isinstance(value, Path) else value)
+    if excluded_path(relative):
+        if required:
+            raise ValueError(f"Required project resource is in an excluded directory: {relative}")
+        return
+    source = root / relative
+    cursor = root
+    for part in relative.parts:
+        if part in {".", ".."}:
+            raise ValueError(f"Unsafe project-relative path: {relative}")
+        cursor = cursor / part
+        if cursor.is_symlink():
+            if required:
+                raise ValueError(f"Required project resource uses a symlink: {relative}")
+            return
+    if source.is_symlink():
+        if required:
+            raise ValueError(f"Required project resource uses a symlink: {relative}")
+        return
+    if source.is_file():
+        name = relative.as_posix()
+        if name not in files:
+            files[name] = base64.b64encode(source.read_bytes()).decode("ascii")
+    elif source.is_dir():
+        for child in sorted(source.iterdir(), key=lambda path: path.name):
+            if not child.is_symlink():
+                add_tree((relative / child.name).as_posix())
+    elif required:
+        raise FileNotFoundError(f"Project resource does not exist: {relative}")
+
+for group in ("customPackages", "customDatasets"):
+    for resource in model["manifest"].get(group, []):
+        add_tree(resource["path"], required=True)
+for folder in ("data", "resources"):
+    add_tree(folder)
+
+# A resource may declare inference assets outside the conventional directories.
+for name, encoded in list(files.items()):
+    if name.endswith("/manifest.json"):
+        manifest = json.loads(base64.b64decode(encoded))
+        for asset in manifest.get("inferenceAssets", []):
+            add_tree(asset, required=True)
+
+payload = {
+    "project": model,
+    "files": files,
+    "training": {
+        "epochs": 1,
+        "batch_size": 8,
+        "learning_rate": 0.001,
+        "seed": 0,
+        "publish_every_steps": 2,
+    },
+}
+headers = {"Content-Type": "application/json", "Accept": "application/json"}
+token = os.environ.get("NNMODELLING_BEARER_TOKEN")
+if token:
+    headers["Authorization"] = "Bearer " + token
+request = Request(
+    base_url + "/v1/jobs",
+    data=json.dumps(payload, separators=(",", ":")).encode("utf-8"),
+    headers=headers,
+    method="POST",
+)
+with urlopen(request, timeout=30) as response:
+    job = json.load(response)
+    print("HTTP", response.status, "job", job["id"], "status", job["status"])
+    print("Bundle files:", len(files))
+PY
+</code></pre>
+<p>The <code>202</code> response contains <code>id</code>, <code>status</code> (<code>queued</code> at submission), <code>created_at</code>, <code>error</code> and <code>metrics</code>. Copy the returned ID for the following commands:</p>
+<pre><code class="language-sh">JOB_ID='paste-the-returned-id-here'
+</code></pre>
+<h2 id="follow-cancel-and-retrieve-a-job">Follow, cancel and retrieve a job</h2>
+<p>History in the app refreshes automatically. From a terminal, list jobs and read a selected job. If you configured a token, use the terminal separate from the one running the service. Enter the token there without displaying it, then prepare the header:</p>
+<pre><code class="language-sh">read -r -s -p 'Bearer token: ' NNMODELLING_BEARER_TOKEN
+printf '\n'
+export NNMODELLING_BEARER_TOKEN
+</code></pre>
+<p>In the same terminal, prepare a header for the following commands:</p>
+<pre><code class="language-sh">AUTH=()
+if [[ -n "${NNMODELLING_BEARER_TOKEN:-}" ]]; then
+  AUTH=(-H "Authorization: Bearer $NNMODELLING_BEARER_TOKEN")
+fi
+</code></pre>
+<p>If the service has no token configured, skip the hidden prompt and initialize only <code>AUTH=()</code>; local requests are anonymous.</p>
+<pre><code class="language-sh">curl -fsS "${AUTH[@]}" http://127.0.0.1:8765/v1/jobs
+curl -fsS "${AUTH[@]}" "http://127.0.0.1:8765/v1/jobs/$JOB_ID"
+</code></pre>
+<p>Status can be <code>queued</code>, <code>running</code>, <code>completed</code>, <code>failed</code> or <code>cancelled</code>. <code>metrics.epochs</code> contains per-epoch summaries; <code>metrics.steps</code> contains published points with step number, epoch, training loss and validation loss. <code>metrics.test_loss</code> remains <code>null</code> until the final evaluation is available. <code>error</code> reports why a job failed.</p>
+<p>Cancelling a job acts on that job; it does not stop the API:</p>
+<pre><code class="language-sh">curl -fsS "${AUTH[@]}" -X POST -H 'Content-Type: application/json' -d '{}' \
+  "http://127.0.0.1:8765/v1/jobs/$JOB_ID/cancel"
+</code></pre>
+<p>A queued job changes to <code>cancelled</code> immediately. For a running job, the response may still show <code>running</code> while the container shuts down; refresh the job to read its final status. Repeating the request for an already <code>cancelled</code> job is idempotent; completed or failed jobs return <code>409</code> and cannot be cancelled.</p>
+<p><strong>Ctrl-C</strong> in the <code>just backend-run</code> terminal stops the API service and starts shutdown of managed containers; it does not send a cancellation request for an individual job. If the API restarts while a job is still <code>running</code>, it records the job as <code>failed</code> with an interruption error. Queued jobs are recovered by the service.</p>
+<p>The snapshot returns the model and original job files, with files encoded in Base64. Save it to inspect or restore it in the app:</p>
+<pre><code class="language-sh">curl -fsS "${AUTH[@]}" "http://127.0.0.1:8765/v1/jobs/$JOB_ID/snapshot" -o snapshot.json
+</code></pre>
+<h2 id="download-results">Download results</h2>
+<p>Weights and standalone wheels are available only when the status is <code>completed</code>:</p>
+<pre><code class="language-sh">curl -fS "${AUTH[@]}" "http://127.0.0.1:8765/v1/jobs/$JOB_ID/weights" -o weights.safetensors
+mkdir -p artifacts
+curl -fS --remote-name --remote-header-name --output-dir artifacts \
+  "${AUTH[@]}" "http://127.0.0.1:8765/v1/jobs/$JOB_ID/wheel"
+</code></pre>
+<p>The app provides the same <strong>Download weights</strong> and <strong>Download wheel</strong> commands. The wheel is saved with the full name supplied by the server: keep the <code>*.whl</code> basename because the distribution, version and tag are part of the name Python uses to install it. Renaming it to <code>model.whl</code> makes it an invalid wheel name. The Qt client preserves the name from the HTTP header. The wheel includes the model, its inference adapter and weights. Inference does not need the service or source project, but it does need Python, PyTorch, safetensors and the dependencies declared by the resource.</p>
+<h2 id="configuration">Configuration</h2>
+<p>Set these variables before starting <code>just backend-run</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Default</th>
+<th>Purpose and effective limits</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>NNMODELLING_BACKEND_HOST</code></td>
+<td><code>127.0.0.1</code></td>
+<td>Bind address passed to Uvicorn. Keep it on loopback for local use.</td>
+</tr>
+<tr>
+<td><code>NNMODELLING_BACKEND_PORT</code></td>
+<td><code>8765</code></td>
+<td>Port passed to Uvicorn.</td>
+</tr>
+<tr>
+<td><code>NNMODELLING_JOB_ROOT</code></td>
+<td><code>~/.local/share/nnmodelling/jobs</code></td>
+<td>Persistent directory for jobs, snapshots, logs and results.</td>
+</tr>
+<tr>
+<td><code>NNMODELLING_BEARER_TOKEN</code></td>
+<td>unset</td>
+<td>When set, protects <code>/v1/jobs</code> routes. The token is not written to job records.</td>
+</tr>
+<tr>
+<td><code>NNMODELLING_CONTAINER_RUNTIME</code></td>
+<td><code>docker</code></td>
+<td>Name or path of a Docker-compatible executable; it must be on <code>PATH</code>.</td>
+</tr>
+<tr>
+<td><code>NNMODELLING_WORKER_IMAGE</code></td>
+<td><code>nnmodelling-worker:local</code></td>
+<td>Image used by <code>just backend-image</code> and jobs; both tags must match.</td>
+</tr>
+<tr>
+<td><code>NNMODELLING_CORE_ROOT</code></td>
+<td><code>stereotype-packages/core</code> in the repository root</td>
+<td>Core package directory; usually does not need to change.</td>
+</tr>
+<tr>
+<td><code>NNMODELLING_MAX_BUNDLE_BYTES</code></td>
+<td><code>46 MiB</code></td>
+<td>Total limit for decoded bytes in submitted files.</td>
+</tr>
+<tr>
+<td><code>NNMODELLING_MAX_PROJECT_BYTES</code></td>
+<td><code>8 MiB</code></td>
+<td>Model JSON size limit.</td>
+</tr>
+<tr>
+<td><code>NNMODELLING_MAX_FILES</code></td>
+<td><code>10000</code></td>
+<td>Maximum number of files in the bundle.</td>
+</tr>
+<tr>
+<td><code>NNMODELLING_MAX_FILE_BYTES</code></td>
+<td><code>128 MiB</code></td>
+<td>Maximum size of one file.</td>
+</tr>
+</tbody>
+</table>
+<p>The four <code>MAX_*</code> limits are converted from strings to integers at startup; the service does not apply another range or minimum value to them. Defaults match the API checks. The Qt client also applies a total limit of <code>256 MiB</code> to local files before Base64 encoding. The server's default limit for decoded files is <code>46 MiB</code>, so it can reject larger bundles even when the client accepted them. Serialized metrics have a fixed limit of <code>64 MiB</code>.</p>
+<p>The worker runs in a network-disabled container with the snapshot mounted read-only and output mounted separately for writing, two CPUs and a <code>4 GiB</code> memory limit. A job's worker log is at <code>&lt;NNMODELLING_JOB_ROOT&gt;/&lt;id&gt;/output/worker.log</code>.</p>
+<h2 id="common-problems">Common problems</h2>
+<ul>
+<li>If <code>/health</code> does not respond, check that <code>just backend-run</code> is still running, that the host and port match the endpoint in the app, and that the port is not already in use.</li>
+<li>If <code>/health</code> returns <code>container.available: false</code>, the API is running but the runtime named by <code>container.runtime</code> is not ready. Start Docker/Podman, check that the user can access it and confirm the command is on <code>PATH</code>.</li>
+<li>If a job fails immediately, read the job response's <code>error</code> field and <code>&lt;NNMODELLING_JOB_ROOT&gt;/&lt;id&gt;/output/worker.log</code>. Add any missing Python dependency to the image before submitting again.</li>
+<li><code>413</code> means a request, bundle, model, file-count or single-file limit was exceeded. Exclude data and environments that are not part of the project; also check configured <code>NNMODELLING_MAX_*</code> values.</li>
+<li><code>401</code> means the required bearer token is missing or does not match the service setting. <code>404</code> means the job is not in the current store. <code>409</code> for artifacts means the job has not completed; <code>409</code> for cancellation means the job is not in a cancellable state.</li>
+<li>If the service was interrupted while a job was running, check its <code>error</code> field: the service marks the interrupted work as <code>failed</code> rather than claiming it completed without valid metrics and artifacts.</li>
+</ul></article><footer>NNModelling · English user guide · Screenshots from the real application</footer></main></body></html>

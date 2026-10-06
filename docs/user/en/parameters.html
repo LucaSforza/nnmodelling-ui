@@ -1,0 +1,442 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Parameter catalog · NNModelling</title><link rel="stylesheet" href="../style.css"/></head>
+<body><a class="skip" href="#content">Skip to content</a>
+<aside><a class="brand" href="index.html">NN<span>Modelling</span></a>
+<p class="edition">User guide · English<br/>Edition 6 October 2026</p><nav class="language-switch" aria-label="Guide language"><a lang="it" href="../parameters.html">Italiano</a><a lang="en" href="parameters.html" aria-current="page">English</a></nav>
+<nav aria-label="Chapters"><a href="index.html">Introduction</a><a href="client.html">Using the client</a><a href="parameters.html" aria-current="page">Parameter catalog</a><a href="server.html">Configure the server</a><a href="tutorial-tiny-llm.html">Tiny LLM tutorial</a></nav><div class="outline"><p>On this page</p><div class="toc">
+<ul>
+<li><a href="#package-parameters">Package parameters</a><ul>
+<li><a href="#core-parameters">Core parameters</a></li>
+<li><a href="#resources-in-the-mini-llm-project">Resources in the mini LLM project</a></li>
+</ul>
+</li>
+</ul>
+</div>
+</div>
+<p class="offline">Available offline.<br/><a href="README.md">Sources and verification</a></p></aside>
+<main id="content"><header><span class="eyebrow">FROM GRAPH TO MODEL</span><span class="chapter">Parameter catalog</span></header>
+<article><h1 id="package-parameters">Package parameters</h1>
+<p>The names below are the keys shown under <code>Inspector &gt; Parameters</code>. All listed core packages are version <code>0.1.0</code> and appear with their full identity, <code>core.&lt;id&gt;@0.1.0</code>. <code>No declared default</code> means the package schema does not specify an initial value; the Inspector and validator show whether the field is available and valid. Limits are those declared by the schema. <code>top</code> and <code>bottom</code> mean that the parameter is also shown in the corresponding row on the node card.</p>
+<h2 id="core-parameters">Core parameters</h2>
+<p>Each parameter has its own row so the purpose of every field is clear, including fields that share a default or constraint.</p>
+<table>
+<thead>
+<tr>
+<th>Package</th>
+<th>Key</th>
+<th>Type and default</th>
+<th>Constraints, choices, position</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>core.adaptive-avg-pool2d@0.1.0</code></td>
+<td><code>output_size</code></td>
+<td>integer, not declared</td>
+<td>minimum 1; <code>bottom</code></td>
+<td>Target spatial size used by adaptive average pooling.</td>
+</tr>
+<tr>
+<td><code>core.add@0.1.0</code></td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+<td>No parameters. Adds two or more tensors of the same shape.</td>
+</tr>
+<tr>
+<td><code>core.batch-norm2d@0.1.0</code></td>
+<td><code>num_features</code></td>
+<td>integer, not declared</td>
+<td>minimum 1; <code>top</code></td>
+<td>Number of channels in the C dimension of the rank-4 NCHW input.</td>
+</tr>
+<tr>
+<td><code>core.batch-norm2d@0.1.0</code></td>
+<td><code>eps</code></td>
+<td>number, <code>0.00001</code></td>
+<td>minimum 0</td>
+<td>Stabilizing constant added to variance during normalization.</td>
+</tr>
+<tr>
+<td><code>core.batch-norm2d@0.1.0</code></td>
+<td><code>momentum</code></td>
+<td>number, <code>0.1</code></td>
+<td>from 0 to 1</td>
+<td>Weight used to update the running mean and variance.</td>
+</tr>
+<tr>
+<td><code>core.batch-norm2d@0.1.0</code></td>
+<td><code>affine</code></td>
+<td>Boolean, <code>true</code></td>
+<td>—</td>
+<td>Enables learnable scale and offset after normalization.</td>
+</tr>
+<tr>
+<td><code>core.batch-norm2d@0.1.0</code></td>
+<td><code>track_running_stats</code></td>
+<td>Boolean, <code>true</code></td>
+<td>—</td>
+<td>Keeps running mean and variance statistics for evaluation mode.</td>
+</tr>
+<tr>
+<td><code>core.cast@0.1.0</code></td>
+<td><code>dtype</code></td>
+<td>dtype, <code>float32</code></td>
+<td><code>float16</code>, <code>bfloat16</code>, <code>float32</code>, <code>float64</code>, <code>int8</code>, <code>uint8</code>, <code>int16</code>, <code>int32</code>, <code>int64</code>, <code>bool</code></td>
+<td>Dtype of the converted tensor; its shape is unchanged.</td>
+</tr>
+<tr>
+<td><code>core.concat@0.1.0</code></td>
+<td><code>dim</code></td>
+<td>integer, not declared</td>
+<td>—</td>
+<td>Axis along which to concatenate inputs.</td>
+</tr>
+<tr>
+<td><code>core.conv2d@0.1.0</code></td>
+<td><code>in_channels</code></td>
+<td>integer, not declared</td>
+<td>minimum 1; <code>top</code></td>
+<td>Number of expected input channels.</td>
+</tr>
+<tr>
+<td><code>core.conv2d@0.1.0</code></td>
+<td><code>out_channels</code></td>
+<td>integer, not declared</td>
+<td>minimum 1; <code>bottom</code></td>
+<td>Number of channels produced by the convolution.</td>
+</tr>
+<tr>
+<td><code>core.conv2d@0.1.0</code></td>
+<td><code>kernel_size</code></td>
+<td>integer, not declared</td>
+<td>minimum 1</td>
+<td>Side length of the square convolution window.</td>
+</tr>
+<tr>
+<td><code>core.conv2d@0.1.0</code></td>
+<td><code>stride</code></td>
+<td>integer, <code>1</code></td>
+<td>minimum 1</td>
+<td>Step between adjacent window positions.</td>
+</tr>
+<tr>
+<td><code>core.conv2d@0.1.0</code></td>
+<td><code>padding</code></td>
+<td>integer, <code>0</code></td>
+<td>minimum 0</td>
+<td>Spatial padding added around the input.</td>
+</tr>
+<tr>
+<td><code>core.conv2d@0.1.0</code></td>
+<td><code>dilation</code></td>
+<td>integer, <code>1</code></td>
+<td>minimum 1</td>
+<td>Spacing between elements in the window.</td>
+</tr>
+<tr>
+<td><code>core.conv2d@0.1.0</code></td>
+<td><code>groups</code></td>
+<td>integer, <code>1</code></td>
+<td>minimum 1</td>
+<td>Number of independent channel groups; must be compatible with both channel counts.</td>
+</tr>
+<tr>
+<td><code>core.conv2d@0.1.0</code></td>
+<td><code>bias</code></td>
+<td>Boolean, <code>true</code></td>
+<td>—</td>
+<td>Includes a learnable bias term.</td>
+</tr>
+<tr>
+<td><code>core.cross-entropy@0.1.0</code></td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+<td>No parameters. Classification loss; reads the batch target named <code>target</code> and produces a scalar loss result.</td>
+</tr>
+<tr>
+<td><code>core.embedding@0.1.0</code></td>
+<td><code>num_embeddings</code></td>
+<td>integer, not declared</td>
+<td>minimum 1; <code>top</code></td>
+<td>Number of distinct indices represented by the embedding table.</td>
+</tr>
+<tr>
+<td><code>core.embedding@0.1.0</code></td>
+<td><code>embedding_dim</code></td>
+<td>integer, not declared</td>
+<td>minimum 1; <code>bottom</code></td>
+<td>Width of the vector associated with each index.</td>
+</tr>
+<tr>
+<td><code>core.embedding@0.1.0</code></td>
+<td><code>input_dtype</code></td>
+<td>dtype, <code>int64</code></td>
+<td><code>int32</code>, <code>int64</code></td>
+<td>Integer dtype of indices passed to the table.</td>
+</tr>
+<tr>
+<td><code>core.embedding@0.1.0</code></td>
+<td><code>dtype</code></td>
+<td>dtype, <code>float32</code></td>
+<td><code>float16</code>, <code>bfloat16</code>, <code>float32</code>, <code>float64</code></td>
+<td>Dtype of embedding vectors.</td>
+</tr>
+<tr>
+<td><code>core.flatten@0.1.0</code></td>
+<td><code>start_dim</code></td>
+<td>integer, <code>1</code></td>
+<td>—</td>
+<td>First dimension in the range to flatten.</td>
+</tr>
+<tr>
+<td><code>core.flatten@0.1.0</code></td>
+<td><code>end_dim</code></td>
+<td>integer, <code>-1</code></td>
+<td>—</td>
+<td>Last dimension in the range to flatten; <code>-1</code> means the final dimension.</td>
+</tr>
+<tr>
+<td><code>core.fork@0.1.0</code></td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+<td>No parameters. Branch point that preserves the input tensor.</td>
+</tr>
+<tr>
+<td><code>core.horizontal-repeat@0.1.0</code></td>
+<td><code>times</code></td>
+<td>integer, not declared</td>
+<td>minimum 2</td>
+<td>Number of independent copies of the subflow run in parallel.</td>
+</tr>
+<tr>
+<td><code>core.horizontal-repeat@0.1.0</code></td>
+<td><code>join</code></td>
+<td><code>stereotype</code> reference; <code>core.concat@^0.1.0</code> with <code>dim: -1</code></td>
+<td>selector filtered to <code>join</code> packages</td>
+<td>Package that combines the outputs of parallel copies; choosing another join package loads its parameters.</td>
+</tr>
+<tr>
+<td><code>core.input@0.1.0</code></td>
+<td><code>binding</code></td>
+<td>string, not declared</td>
+<td>—</td>
+<td>Name of the active dataset input slot used by this root input. In subflows, the initial input is inherited from the container.</td>
+</tr>
+<tr>
+<td><code>core.layer-norm@0.1.0</code></td>
+<td><code>normalized_shape</code></td>
+<td>integer, not declared</td>
+<td>minimum 1; <code>top</code></td>
+<td>Final dimension normalized for each sample.</td>
+</tr>
+<tr>
+<td><code>core.layer-norm@0.1.0</code></td>
+<td><code>eps</code></td>
+<td>number, <code>0.00001</code></td>
+<td>minimum 0</td>
+<td>Stabilizing constant used to calculate variance.</td>
+</tr>
+<tr>
+<td><code>core.layer-norm@0.1.0</code></td>
+<td><code>elementwise_affine</code></td>
+<td>Boolean, <code>true</code></td>
+<td>—</td>
+<td>Enables learnable element-wise scale and offset.</td>
+</tr>
+<tr>
+<td><code>core.linear@0.1.0</code></td>
+<td><code>in_features</code></td>
+<td>integer, not declared</td>
+<td>minimum 1; <code>top</code></td>
+<td>Expected width of the final input dimension.</td>
+</tr>
+<tr>
+<td><code>core.linear@0.1.0</code></td>
+<td><code>out_features</code></td>
+<td>integer, not declared</td>
+<td>minimum 1; <code>bottom</code></td>
+<td>Width of the final output dimension.</td>
+</tr>
+<tr>
+<td><code>core.linear@0.1.0</code></td>
+<td><code>bias</code></td>
+<td>Boolean, <code>true</code></td>
+<td>—</td>
+<td>Includes a learnable bias term.</td>
+</tr>
+<tr>
+<td><code>core.linear@0.1.0</code></td>
+<td><code>dtype</code></td>
+<td>dtype, <code>float32</code></td>
+<td><code>float16</code>, <code>bfloat16</code>, <code>float32</code>, <code>float64</code></td>
+<td>Dtype of linear weights and calculations.</td>
+</tr>
+<tr>
+<td><code>core.loss-output@0.1.0</code></td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+<td>No parameters. Terminal that collects one loss result; it does not automatically sum multiple contributions.</td>
+</tr>
+<tr>
+<td><code>core.matmul@0.1.0</code></td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+<td>No parameters. Receives two or more tensors and applies matrix multiplication from left to right.</td>
+</tr>
+<tr>
+<td><code>core.max-pool2d@0.1.0</code></td>
+<td><code>kernel_size</code></td>
+<td>integer, not declared</td>
+<td>minimum 1</td>
+<td>Side length of the pooling window.</td>
+</tr>
+<tr>
+<td><code>core.max-pool2d@0.1.0</code></td>
+<td><code>stride</code></td>
+<td>integer, <code>1</code></td>
+<td>minimum 1</td>
+<td>Step between successive window positions.</td>
+</tr>
+<tr>
+<td><code>core.max-pool2d@0.1.0</code></td>
+<td><code>padding</code></td>
+<td>integer, <code>0</code></td>
+<td>minimum 0</td>
+<td>Padding added around the input before pooling.</td>
+</tr>
+<tr>
+<td><code>core.max-pool2d@0.1.0</code></td>
+<td><code>dilation</code></td>
+<td>integer, <code>1</code></td>
+<td>minimum 1</td>
+<td>Spacing between elements of the pooling window.</td>
+</tr>
+<tr>
+<td><code>core.max-pool2d@0.1.0</code></td>
+<td><code>ceil_mode</code></td>
+<td>Boolean, <code>false</code></td>
+<td>—</td>
+<td>When enabled, rounds window calculations up; otherwise rounds down.</td>
+</tr>
+<tr>
+<td><code>core.mse-loss@0.1.0</code></td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+<td>No parameters. MSE regression loss; uses only the package-declared target named <code>target</code>, with the specific <code>flatten_batch</code> target transform. It does not select or flatten arbitrary targets.</td>
+</tr>
+<tr>
+<td><code>core.output@0.1.0</code></td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+<td>No parameters. Terminal marking the model prediction; accepts one edge.</td>
+</tr>
+<tr>
+<td><code>core.positional-encoding@0.1.0</code></td>
+<td><code>d_model</code></td>
+<td>integer, <code>512</code></td>
+<td>minimum 1; <code>top</code></td>
+<td>Width of the sequence representation to which positional information is added.</td>
+</tr>
+<tr>
+<td><code>core.positional-encoding@0.1.0</code></td>
+<td><code>max_len</code></td>
+<td>integer, <code>5000</code></td>
+<td>minimum 1; <code>bottom</code></td>
+<td>Maximum sequence length for which positions are prepared.</td>
+</tr>
+<tr>
+<td><code>core.relu@0.1.0</code></td>
+<td><code>inplace</code></td>
+<td>Boolean, <code>false</code></td>
+<td>—</td>
+<td>When enabled, applies ReLU in-place to the input tensor.</td>
+</tr>
+<tr>
+<td><code>core.repeat@0.1.0</code></td>
+<td><code>times</code></td>
+<td>integer, not declared</td>
+<td>minimum 1; <code>top</code></td>
+<td>Number of independent subflow copies applied in sequence.</td>
+</tr>
+<tr>
+<td><code>core.scale@0.1.0</code></td>
+<td><code>factor</code></td>
+<td>number, <code>1.0</code></td>
+<td><code>bottom</code></td>
+<td>Multiplier applied to every tensor value.</td>
+</tr>
+<tr>
+<td><code>core.softmax@0.1.0</code></td>
+<td><code>dim</code></td>
+<td>integer, <code>-1</code></td>
+<td><code>bottom</code></td>
+<td>Axis along which values are normalized to probabilities. <code>-1</code> means the final dimension.</td>
+</tr>
+<tr>
+<td><code>core.subflow-proxy@0.1.0</code></td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+<td>No parameters. Delegates analysis and execution to one instance of the nested subflow.</td>
+</tr>
+<tr>
+<td><code>core.transpose@0.1.0</code></td>
+<td><code>dim0</code></td>
+<td>integer, <code>-2</code></td>
+<td><code>top</code></td>
+<td>First dimension to swap; <code>-2</code> means the penultimate dimension.</td>
+</tr>
+<tr>
+<td><code>core.transpose@0.1.0</code></td>
+<td><code>dim1</code></td>
+<td>integer, <code>-1</code></td>
+<td><code>bottom</code></td>
+<td>Second dimension to swap; <code>-1</code> means the final dimension.</td>
+</tr>
+</tbody>
+</table>
+<p>Dtype choices are specific to each parameter. For example, <code>Embedding</code>'s <code>input_dtype</code> accepts only integer indices <code>int32</code> and <code>int64</code>; the vector dtype is limited to the four listed floating-point dtypes. Package constraints are checked when a field is confirmed and by the model validator.</p>
+<h2 id="resources-in-the-mini-llm-project">Resources in the mini LLM project</h2>
+<p>When you create <code>New mini LLM</code>, the project receives editable copies of the graph, dataset and its packages. The palette shows core packages and custom packages declared by the project; their names are descriptions, while <code>Project resources</code> and tooltips show exact identities. The custom resources below are all version <code>1.0.0</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Identity</th>
+<th>Description and fields</th>
+<th>Role in the example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>llm.causal-mask@1.0.0</code></td>
+<td><code>Causal Mask</code>: parameter <code>max_length</code> (integer, default <code>128</code>, minimum 1). Masks future positions in attention scores <code>[B,T,T]</code>.</td>
+<td>The value limits the context length expected by the package; the node uses the mask in its attention path. Change the parameter in the Inspector.</td>
+</tr>
+<tr>
+<td><code>llm.token-cross-entropy@1.0.0</code></td>
+<td><code>Token Cross Entropy</code>: no parameters; <code>loss</code> output of kind loss; external target named <code>target</code> from <code>batch.targets.target</code>. Computes mean token cross-entropy from logits <code>[B,T,V]</code> to targets <code>[B,T]</code>.</td>
+<td>Defines the next-token prediction loss. The node's Inspector has no parameter fields; the node can still be selected, connected and removed.</td>
+</tr>
+<tr>
+<td><code>llm.causal-attention@1.0.0</code></td>
+<td><code>Causal Self Attention</code>: no parameters; <code>out</code> output of kind output; legacy description: four-head causal attention, model width 64 and head width 16.</td>
+<td>The package remains among project resources but is not used by the updated graph: attention operations are represented by explicit nodes and subflows. The interface has no module for editing a package definition.</td>
+</tr>
+<tr>
+<td><code>llm.tokens@1.0.0</code> (dataset)</td>
+<td><code>Autoregressive token sequences</code>: input <code>tokens</code>, dtype <code>int64</code>, shape <code>[B,128]</code>; target <code>target</code>, dtype <code>int64</code>, shape <code>[B,128]</code>.</td>
+<td>The slots can be selected as the active dataset. <code>Dataset… &gt; Edit</code> changes name, description and slots; ID/version are fixed in the form, and the interface does not edit adapter code or samples.</td>
+</tr>
+</tbody>
+</table>
+<p>The interface can create new stereotypes with <code>Create stereotype</code>, but cannot edit or delete an existing stereotype definition. You can edit node-instance parameters in the Inspector, connect/remove/move nodes and arrange the graph. Among the three LLM resources above, only <code>Causal Mask</code> has node parameters that can be changed. The dataset manager does not edit the Python implementation or data files.</p>
+<p>Package JSON describes shapes and dtypes for native analysis; the presence of an executable Python package in the example does not mean the Qt client runs Python while editing the graph.</p></article><footer>NNModelling · English user guide · Screenshots from the real application</footer></main></body></html>

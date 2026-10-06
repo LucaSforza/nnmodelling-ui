@@ -12,7 +12,8 @@ ripristinare lo snapshot e scaricare i risultati.
 
 ## Preparare e avviare il servizio
 
-Esegui questi comandi dalla directory principale del repository. Servono `uv`,
+Esegui questi comandi in **Bash**, dalla directory principale del repository.
+Gli esempi con `read -s` e array `AUTH` usano la sintassi di questa shell. Servono `uv`,
 `just` e un runtime Docker compatibile già installato e avviato (Docker o Podman).
 Il primo comando installa le dipendenze bloccate del workspace; il secondo crea
 l'immagine CPU usata per l'addestramento.

@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Introduction · NNModelling</title><link rel="stylesheet" href="../style.css"/></head>
+<body><a class="skip" href="#content">Skip to content</a>
+<aside><a class="brand" href="index.html">NN<span>Modelling</span></a>
+<p class="edition">User guide · English<br/>Edition 6 October 2026</p><nav class="language-switch" aria-label="Guide language"><a lang="it" href="../index.html">Italiano</a><a lang="en" href="index.html" aria-current="page">English</a></nav>
+<nav aria-label="Chapters"><a href="index.html" aria-current="page">Introduction</a><a href="client.html">Using the client</a><a href="parameters.html">Parameter catalog</a><a href="server.html">Configure the server</a><a href="tutorial-tiny-llm.html">Tiny LLM tutorial</a></nav><div class="outline"><p>On this page</p><div class="toc">
+<ul>
+<li><a href="#shape-a-network">Shape a network</a><ul>
+<li><a href="#from-diagram-to-experiment">From diagram to experiment</a></li>
+<li><a href="#terms-used-in-this-guide">Terms used in this guide</a></li>
+<li><a href="#a-good-first-path">A good first path</a></li>
+</ul>
+</li>
+</ul>
+</div>
+</div>
+<p class="offline">Available offline.<br/><a href="README.md">Sources and verification</a></p></aside>
+<main id="content"><header><span class="eyebrow">FROM GRAPH TO MODEL</span><span class="chapter">Introduction</span></header>
+<article><h1 id="shape-a-network">Shape a network</h1>
+<p>A neural network begins long before the first weight update. It begins with a question: what enters the model, which transformations does it pass through, and what result should it produce? NNModelling makes that path visible. Each operator becomes a node, each connection shows how a tensor moves, and each subgraph lets you group part of the project and examine it closely.</p>
+<p>The canvas is a workbench. Start with an empty project, choose a component from the palette, connect it to others, and change its parameters in the Inspector. Or open an example and follow its reasoning: from an image to the ten logits of an MNIST classifier, or from characters to the predictions of a small language model. Tensor shapes help you read the project: <code>[B, 128, 64]</code> means a batch of sequences with 128 positions and 64 features per position. <code>B</code> leaves the batch dimension open; the other numbers describe concrete network choices.</p>
+<p>This view becomes more useful as a model grows. A wrong connection can be hard to spot in a long definition; here it has a source and a destination. An inconsistent parameter appears beside the node that uses it. A subflow groups a block without hiding its contents: expand its preview or enter its scope to work with individual operators. In the tiny LLM, for example, attention remains readable as a sequence of Query, Key and Value projections, multiplications, a causal mask and Softmax.</p>
+<h2 id="from-diagram-to-experiment">From diagram to experiment</h2>
+<p>NNModelling divides the work between two complementary tools. The <strong>client</strong> is the desktop application for building and inspecting a project. It checks connections, parameters and tensor shapes, and stores the graph and resources in the project folder. This analysis is useful even while a network is incomplete: you can keep designing, save, and fix the items listed in <code>Model problems</code>.</p>
+<p>The <strong>server</strong>, also called the backend, receives a copy of the project and trains it in a local container. The dataset supplies inputs and targets; Python operators perform the numerical computation; the optimizer updates the weights. In the client, you can follow training and validation loss, find experiments in the history, and download results. A graph edit made after submission prepares a future experiment: the running job keeps its own immutable copy.</p>
+<p>At the end, you can take the model out of the editor. The <strong>weights</strong> are a <code>safetensors</code> file; the <strong>wheel</strong> is a Python package containing the graph, resources needed for inference, the dataset adapter and trained weights. Once installed with its dependencies, it exposes <code>Model.infer(...)</code> and <code>Model.inference(...)</code>: it accepts a value such as a string, converts it into network inputs and decodes the prediction. The backend can then be shut down.</p>
+<h2 id="terms-used-in-this-guide">Terms used in this guide</h2>
+<table>
+<thead>
+<tr>
+<th>Term</th>
+<th>Meaning in the software</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Project</strong></td>
+<td>The folder containing <code>model.json</code>, custom packages and declared datasets. Copy the whole folder to preserve an editable project.</td>
+</tr>
+<tr>
+<td><strong>Package / stereotype</strong></td>
+<td>A component available in the palette. It defines the node kind, parameters, handles and rules. Core packages ship with the program; custom packages belong to the project.</td>
+</tr>
+<tr>
+<td><strong>Node and handle</strong></td>
+<td>An instance of a component and the points through which tensors enter or leave it. An occupied input handle cannot accept a second edge.</td>
+</tr>
+<tr>
+<td><strong>Scope / subflow</strong></td>
+<td>A graph scope and the node that contains its subgraph. <code>Root</code> is the top level.</td>
+</tr>
+<tr>
+<td><strong>Active dataset</strong></td>
+<td>The resource that declares inputs and targets and supplies batches for training, validation and testing. A root Input's <code>binding</code> parameter selects the slot name.</td>
+</tr>
+<tr>
+<td><strong>Output</strong></td>
+<td>The prediction terminal, drawn as a brown circle.</td>
+</tr>
+<tr>
+<td><strong>Loss Output</strong></td>
+<td>The objective terminal, drawn as a red circle. The loss must be computed and connected explicitly.</td>
+</tr>
+<tr>
+<td><strong>Job / snapshot</strong></td>
+<td>An experiment and the copy of files and configuration submitted with it. Restoring a snapshot creates a new project.</td>
+</tr>
+<tr>
+<td><strong>Epoch / step</strong></td>
+<td>One pass over the training data / one optimizer update. A single epoch can contain many steps.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="a-good-first-path">A good first path</h2>
+<p>To get familiar with the application, open a copy of <code>mini LLM</code>, inspect the root graph and select a few nodes. Follow the shapes in the Inspector, enter the decoder block and then its attention scope. Once the path is clear, start the backend and submit the short training run in the <a href="tutorial-tiny-llm.html">tutorial</a>. In a few steps you will have gone through the full cycle: project, checks, experiment and exported model.</p>
+<p>The <a href="client.html">client guide</a> walks through each area of the window; the <a href="server.html">server guide</a> covers configuration and commands; the <a href="parameters.html">parameter catalog</a> explains individual fields. Read the pages in order or keep them open beside the software as you work.</p>
+<p>This edition describes the Qt interface verified on <strong>6 October 2026</strong>. Screenshots come from the real application; arrows and numbers are editorial annotations. English labels match the buttons exactly. The language-model walkthrough uses <code>examples/models/tiny-decoder-llm</code>; other experimental models are outside the tutorial's scope.</p></article><footer>NNModelling · English user guide · Screenshots from the real application</footer></main></body></html>

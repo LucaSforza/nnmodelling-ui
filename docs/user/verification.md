@@ -28,7 +28,9 @@ controllato con computer use attraverso il bridge noVNC locale.
 - Esempio API del capitolo server provato su un backend isolato: invio di un
   job breve, completamento e recupero di snapshot, pesi e wheel.
 - HTML rigenerato e controllato con `build.py --check`: pagine, link locali,
-  ancore e immagini. Impaginazione controllata nel browser via computer use.
+  ancore e immagini. Entrambe le lingue e il passaggio al medesimo capitolo
+  verificati; impaginazione desktop e mobile controllata via computer use.
+  La sintassi dei comandi shell e Python è stata controllata anche nella traduzione.
 
 ## Limiti osservati
 

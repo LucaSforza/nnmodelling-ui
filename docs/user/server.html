@@ -3,7 +3,7 @@
 <title>Configurare il server · NNModelling</title><link rel="stylesheet" href="style.css"/></head>
 <body><a class="skip" href="#content">Vai al contenuto</a>
 <aside><a class="brand" href="index.html">NN<span>Modelling</span></a>
-<p class="edition">Manuale utente · Italiano<br/>Edizione 6 ottobre 2026</p>
+<p class="edition">Manuale utente · Italiano<br/>Edizione 6 ottobre 2026</p><nav class="language-switch" aria-label="Lingua del manuale"><a lang="it" href="server.html" aria-current="page">Italiano</a><a lang="en" href="en/server.html">English</a></nav>
 <nav aria-label="Capitoli"><a href="index.html">Introduzione</a><a href="client.html">Usare il client</a><a href="parameters.html">Catalogo dei parametri</a><a href="server.html" aria-current="page">Configurare il server</a><a href="tutorial-tiny-llm.html">Tutorial tiny LLM</a></nav><div class="outline"><p>In questa pagina</p><div class="toc">
 <ul>
 <li><a href="#addestramento-locale">Addestramento locale</a><ul>
@@ -32,7 +32,8 @@ conserva snapshot, metriche e risultati sul computer. La finestra <strong>Traini
 mostra il collegamento, la cronologia dei job, le curve e i comandi per annullare,
 ripristinare lo snapshot e scaricare i risultati.</p>
 <figure class="annotated"><a href="assets/training-connect.png" class="image-link" title="Apri screenshot a dimensione originale"><img alt="Pannello di connessione al backend" src="assets/training-connect.png" loading="lazy"></a><figcaption><strong>Pannello di connessione al backend</strong><p class="image-hint">Clic sull'immagine per leggere i dettagli a dimensione originale.</p><ol class="callouts"><li><span class="badge" aria-hidden="true">1</span><span>Indirizzo del backend</span></li><li><span class="badge" aria-hidden="true">2</span><span>Connetti e verifica lo stato del servizio</span></li></ol></figcaption></figure><figure class="annotated"><a href="assets/training-dashboard.png" class="image-link" title="Apri screenshot a dimensione originale"><img alt="Cronologia, curve di apprendimento e risultati" src="assets/training-dashboard.png" loading="lazy"></a><figcaption><strong>Cronologia, curve di apprendimento e risultati</strong><p class="image-hint">Clic sull'immagine per leggere i dettagli a dimensione originale.</p><ol class="callouts"><li><span class="badge" aria-hidden="true">1</span><span>Connessione al backend</span></li><li><span class="badge" aria-hidden="true">2</span><span>Configurazione dell’addestramento</span></li><li><span class="badge" aria-hidden="true">3</span><span>Cronologia e stato delle attività</span></li><li><span class="badge" aria-hidden="true">4</span><span>Curve della perdita di addestramento e validazione</span></li><li><span class="badge" aria-hidden="true">5</span><span>Visibilità e scala delle curve</span></li><li><span class="badge" aria-hidden="true">6</span><span>Perdita finale sul test</span></li><li><span class="badge" aria-hidden="true">7</span><span>Registro dell’addestramento e del worker</span></li><li><span class="badge" aria-hidden="true">8</span><span>Azioni per scaricare, ripristinare, annullare e chiudere</span></li></ol></figcaption></figure><h2 id="preparare-e-avviare-il-servizio">Preparare e avviare il servizio</h2>
-<p>Esegui questi comandi dalla directory principale del repository. Servono <code>uv</code>,
+<p>Esegui questi comandi in <strong>Bash</strong>, dalla directory principale del repository.
+Gli esempi con <code>read -s</code> e array <code>AUTH</code> usano la sintassi di questa shell. Servono <code>uv</code>,
 <code>just</code> e un runtime Docker compatibile già installato e avviato (Docker o Podman).
 Il primo comando installa le dipendenze bloccate del workspace; il secondo crea
 l'immagine CPU usata per l'addestramento.</p>
