@@ -19,6 +19,10 @@ Apri [introduction.html](introduction.html) nel browser: il manuale completo fun
 
 Sorgenti: [introduzione](introduction.md), [client](client.md), [parametri](parameters.md), [server](server.md), [tutorial tiny LLM](tutorial-tiny-llm.md) e [verifica](verification.md).
 
+## Online publication
+
+The GitHub Actions workflow publishes this directory to [GitHub Pages](https://lucasforza.github.io/nnmodelling-ui/) when files here change on `main`. The published site contains only this user guide, not the rest of `docs/`. Update the generated HTML with the build command below when editing Markdown sources.
+
 ## Build and verification / Generazione e verifica
 
 Run either command from the repository root. If Python-Markdown 3.10.3 is already installed, use `python3` in place of `uv run --script`.

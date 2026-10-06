@@ -7,6 +7,8 @@ analysis, application operations and schema-v2 project persistence. Only
 The local FastAPI backend runs training in isolated CPU containers; there is no
 compiler/IR implementation in this checkout.
 
+📖 **[Documentazione online](https://lucasforza.github.io/nnmodelling-ui/)**
+
 The illustrated user manual opens in [English](docs/user/index.html) by default
 and is also available in [Italian](docs/user/introduction.html), with a language
 selector on every page. It
