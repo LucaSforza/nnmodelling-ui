@@ -120,6 +120,8 @@ lowered execution remains the performance TODO in the backend contract.
     Worker->>Worker: clone state_dict tensors to CPU
     Worker->>Worker: save weights.safetensors
     Worker->>Runtime: build_wheel(project, core, weights, output, job ID)
+    Runtime->>Runtime: normalize frozen project ID for nnm distribution name
+    Note over Runtime,Wheel: Filename and dist-info use project identity, import package retains job identity
     Runtime->>Wheel: copy exact graph and package closure
     Runtime->>Wheel: copy adapter Python, metadata and declared inference assets
     Runtime->>Wheel: vendor private SDK ABI and weights

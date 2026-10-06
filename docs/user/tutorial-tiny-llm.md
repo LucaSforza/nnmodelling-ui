@@ -13,6 +13,10 @@ just backend-image
 just backend-run
 ```
 
+Se il backend era già installato e attivo prima dell'aggiornamento, ricostruisci
+l'immagine con `just backend-image`, arresta il servizio con Ctrl-C e avvialo di
+nuovo con `just backend-run` prima di inviare il job.
+
 Lascia il terminale del server aperto. In un secondo terminale avvia il client:
 
 ```sh
@@ -29,7 +33,7 @@ Usa nel client la porta del server che hai avviato. Se hai scelto un token, inse
 
 ## 2. Creare una copia del modello
 
-Nel selettore iniziale scegli `New mini LLM`, oppure usa `File > New from template > mini LLM…`. Scegli una cartella genitore, inserisci un ID libero, per esempio `manuale-tiny-llm`, e conferma il nome visualizzato. Il programma crea la nuova sottocartella e la apre; una destinazione già esistente viene rifiutata.
+Nel selettore iniziale scegli `New mini LLM`, oppure usa `File > New from template > mini LLM…`. Scegli una cartella genitore, inserisci l'ID `llm` e conferma il nome visualizzato. Il programma crea la nuova sottocartella e la apre; una destinazione già esistente viene rifiutata.
 
 ![Template mini LLM nel menu File](assets/menu-template.png)
 
@@ -84,13 +88,13 @@ La serie blu è la loss di training, quella rossa la loss di validazione. Un val
 
 `Optimizer step` conta gli aggiornamenti globali. In questo esperimento sono **12**: quattro per ciascuna delle tre epoche. I checkbox nascondono o mostrano le serie; `Scale > Log` cambia la rappresentazione della loss e non modifica il job. La test loss viene calcolata alla fine su un terzo insieme separato.
 
-Nella prova eseguita per il manuale il job `86caba53-0690-4c79-b948-4273ed1426b4` è arrivato a `completed`, con training loss media dell'ultima epoca **3.462321**, validation loss **3.387799** e test loss **3.345268**. Sono risultati osservati, non una soglia da raggiungere: versione delle dipendenze, runtime e macchina possono influire sui valori. Il piccolo estratto e tre epoche dimostrano il percorso; non bastano a promettere testo di buona qualità.
+Immagine e metriche sopra documentano il job storico `86caba53-0690-4c79-b948-4273ed1426b4`: è arrivato a `completed`, con training loss media dell'ultima epoca **3.462321**, validation loss **3.387799** e test loss **3.345268**. La schermata di download mostra anche il vecchio nome della wheel. Non sono risultati né un artifact di una nuova esecuzione del percorso con ID `llm`; versione delle dipendenze, runtime e macchina possono influire sui valori. Il piccolo estratto e tre epoche dimostrano il flusso, ma non bastano a promettere testo di buona qualità.
 
 Se il job è `failed`, leggi `Error` nel pannello e il `worker.log` del server. Se vuoi interrompere un job ancora in coda o in esecuzione, selezionalo e premi `Cancel job`. Chiudere il pannello con `Close` lascia il job al server. Le modifiche fatte nel client dopo l'invio non cambiano lo snapshot già in addestramento.
 
 ## 6. Scaricare e usare il modello
 
-Con il job `completed` selezionato, premi `Download weights` per ottenere `weights.safetensors` e `Download wheel` per il pacchetto Python. Conserva **il nome completo proposto per la wheel**, con versione e tag `-py3-none-any.whl`: un nome generico come `model.whl` non è un nome wheel installabile valido.
+Con il job `completed` selezionato, premi `Download weights` per ottenere `weights.safetensors` e `Download wheel` per il pacchetto Python. Per il nuovo job creato sopra con ID progetto `llm`, il nome atteso è `nnm_llm-0.1.0-py3-none-any.whl`; `nnm_llm.whl` non è valido perché mancano versione e tag. La distribuzione `nnm_llm` deriva dall'ID del progetto: sequenze di caratteri diverse da lettere e cifre ASCII diventano `_`, gli underscore ai margini sono rimossi e il risultato è minuscolo. Conserva il nome completo proposto per la wheel. Un job storico già salvato può invece scaricare il suo nome precedente: non rinominare né modificare wheel esistenti.
 
 ![Scelta del file della wheel esportata](assets/download-wheel.png)
 
@@ -98,10 +102,23 @@ In una nuova cartella prepara un ambiente isolato e installa la wheel scaricata.
 
 ```sh
 python3 -m venv .venv
-.venv/bin/python -m pip install /percorso/nnmodel_job_86caba53_0690_4c79_b948_4273ed1426b4-0.1.0-py3-none-any.whl
+.venv/bin/python -m pip install /percorso/nnm_llm-0.1.0-py3-none-any.whl
 ```
 
-Il nome del modulo varia con l'ID del job. Per la prova illustrata, salva questo testo in `infer.py`:
+Il nome della distribuzione (`nnm_llm`) è diverso dal modulo Python, che resta specifico del job e ha forma `nnmodel_<id-job-normalizzato>`. Prima di creare `infer.py`, leggi il nome del modulo dalla wheel scaricata con questo comando, senza importare codice:
+
+```sh
+python3 - /percorso/nnm_llm-0.1.0-py3-none-any.whl <<'PY'
+import sys
+import zipfile
+with zipfile.ZipFile(sys.argv[1]) as wheel:
+    for name in wheel.namelist():
+        if name.startswith("nnmodel_") and name.count("/") == 1 and name.endswith("/__init__.py"):
+            print("Modulo da importare:", name.split("/")[0])
+PY
+```
+
+Il frammento seguente mostra **solo l'import del job storico** nelle schermate e nelle metriche sopra:
 
 ```python
 import torch
@@ -118,22 +135,11 @@ for _ in range(40):
 print(text)
 ```
 
+Salva il codice in `infer.py`, sostituendo l'import storico con il nome trovato nella wheel del tuo job; non dedurlo dal nome della distribuzione.
+
 Esegui `.venv/bin/python infer.py`. Il testo passato all'adapter deve contenere caratteri del vocabolario e un contesto non vuoto lungo al massimo 128 caratteri. `infer` è un alias di `inference`. La funzione restituisce una predizione per le posizioni della sequenza; il ciclo usa l'ultimo carattere predetto per costruire una continuazione greedy. Se vuoi pesi alternativi compatibili, costruisci `Model(weights_path="/percorso/weights.safetensors")`.
 
-Per un altro job leggi il nome del modulo dalla wheel, senza importare codice:
-
-```sh
-python3 - /percorso/della-wheel.whl <<'PY'
-import sys
-import zipfile
-with zipfile.ZipFile(sys.argv[1]) as wheel:
-    for name in wheel.namelist():
-        if name.startswith("nnmodel_") and name.count("/") == 1 and name.endswith("/__init__.py"):
-            print("Modulo da importare:", name.split("/")[0])
-PY
-```
-
-Sostituisci quel nome nell'import di `infer.py`. La wheel contiene il runtime privato necessario: per usarla non servono il repository originale, il dataset di training o una chiamata al server. `examples/implementation/llm` è invece un consumer già configurato per uno specifico job storico a 20 epoche; per il nuovo esperimento usa la wheel appena ottenuta e il suo nome modulo.
+La wheel contiene il runtime privato necessario: per usarla non servono il repository originale, il dataset di training o una chiamata al server. Job diversi dello stesso progetto, oppure di progetti con ID che producono lo stesso nome normalizzato, condividono distribuzione e versione: installa le rispettive wheel in ambienti separati. Gli artifact restano distinti per job. `examples/implementation/llm` è un consumer configurato per uno specifico job storico a 20 epoche; non cambiarne la wheel esistente.
 
 ## 7. Passare al corpus completo
 

@@ -243,8 +243,28 @@ execution or torch.compile/export after profiling; preserve handle, join,
 subflow and adapter semantics. Initial generic executor is accepted release path.
 
 Export valid wheel with job-specific import package `nnmodel_<job-id-normalized>`
-exposing `Model(weights_path=None)`. Default loads bundled weights.safetensors;
-explicit path loads alternate compatible weights. `Model.infer(value)` and alias
+exposing `Model(weights_path=None)`.
+
+Accepted 2026-10-06: distribution identity is separate from this job-specific import package. New exports use
+`nnm_<normalized-project-id>-0.1.0-py3-none-any.whl`, with the same distribution
+name in METADATA and `<distribution>-0.1.0.dist-info`. Normalize frozen
+`manifest.id` by replacing runs outside ASCII letters/digits with `_`, trimming
+underscores and lowercasing; reject a missing/non-string ID or an empty result.
+The `nnm_` prefix makes numeric project IDs valid distribution names. Version
+remains the export format's existing `0.1.0`, not the model manifest version.
+No example-specific naming or new API field is introduced. For project ID `llm`,
+the wheel is `nnm_llm-0.1.0-py3-none-any.whl`; `nnm_llm.whl` is invalid.
+Preserve job-specific imports, Model API, HTTP routes and snapshots. Existing
+stored wheels remain downloadable unchanged; do not rename their bytes or
+metadata. Qt uses the actual HTTP artifact filename. Rebuild the worker image
+before training to activate this exporter change. Exports sharing a normalized
+project ID share distribution identity and version; install different runs in
+separate environments to avoid replacement/conflicting installations, and keep
+artifacts in separate job directories. Normalization may also collapse distinct
+IDs such as `a-b` and `a_b`; it is a readable label, not a unique job identity.
+
+Default loads bundled weights.safetensors; explicit path loads alternate
+compatible weights. `Model.infer(value)` and alias
 `Model.inference(value)` call dataset tokenize, prediction under eval/inference
 mode, then untokenize. Bundle exact graph, required Python resources, adapter,
 private runtime and weights; wheel needs torch/safetensors plus declared resource

@@ -254,6 +254,22 @@ def test_completed_download_refuses_worker_symlink_artifacts(tmp_path, monkeypat
         assert store.validated_result(job_id)[0] is None
 
 
+def test_wheel_download_preserves_readable_and_historical_artifact_names(tmp_path, monkeypatch):
+    http, store, _ = client(tmp_path, monkeypatch)
+    with http:
+        for filename in ("nnm_llm-0.1.0-py3-none-any.whl", "nnmodel_job_old-0.1.0-py3-none-any.whl"):
+            job_id = http.post("/v1/jobs", json=payload()).json()["id"]
+            artifact = store.job_dir(job_id) / "output" / filename
+            artifact.write_bytes(b"stored wheel bytes")
+            assert http.get(f"/v1/jobs/{job_id}/wheel").status_code == 409
+            store.update(job_id, status="completed")
+            response = http.loop.run_until_complete(service.get_wheel(job_id, "local-owner"))
+            assert response.status_code == 200
+            assert response.headers["content-disposition"] == f'attachment; filename="{filename}"'
+            assert Path(response.path) == artifact
+            assert artifact.read_bytes() == b"stored wheel bytes"
+
+
 def test_runner_cannot_start_a_job_cancelled_while_queued(tmp_path, monkeypatch):
     store = JobStore(tmp_path / "jobs")
     job = store.create(payload()["project"], {}, payload()["training"], {}, "local-owner")

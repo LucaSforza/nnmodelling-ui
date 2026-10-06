@@ -29,6 +29,19 @@ just backend-run
 **Ctrl-C** per fermare il servizio. Seleziona **Training** nell'app e premi
 **Connect / check health**. Il campo endpoint usa già l'indirizzo predefinito.
 
+L'esportatore wheel è incluso nell'immagine worker. Dopo aver aggiornato il
+repository per usare i nuovi nomi leggibili, ricostruisci l'immagine e riavvia
+il backend prima di inviare altri job:
+
+```sh
+just backend-image
+# Ferma con Ctrl-C l'eventuale backend già attivo, poi:
+just backend-run
+```
+
+La ricostruzione non modifica wheel già archiviate: restano scaricabili con
+nome e contenuto originali. Non rinominarle manualmente.
+
 ### Esempio: porta 8766 e archivio dedicato
 
 Per tenere questa istanza separata, imposta un archivio locale dedicato e usa
@@ -348,11 +361,18 @@ curl -fS --remote-name --remote-header-name --output-dir artifacts \
   "${AUTH[@]}" "http://127.0.0.1:8765/v1/jobs/$JOB_ID/wheel"
 ```
 
-L'app offre gli stessi comandi **Download weights** e **Download wheel**. La
-wheel viene salvata con il nome completo inviato dal server: conserva il basename
-`*.whl`, perché distribuzione, versione e tag fanno parte del nome che Python usa
-per installarla. Rinominandola `model.whl` il file non ha più un nome wheel
-valido. Il client Qt preserva già il nome ricevuto nell'header HTTP. La wheel
+L'app offre gli stessi comandi **Download weights** e **Download wheel**. Per i
+nuovi job, il nome della distribuzione è `nnm_<id-progetto-normalizzato>`; ad
+esempio, ID `llm` produce `nnm_llm-0.1.0-py3-none-any.whl`. Per normalizzare,
+sequenze diverse da lettere e cifre ASCII diventano `_`, gli underscore iniziali
+e finali sono rimossi e il risultato è minuscolo. Il client Qt conserva il nome
+completo inviato dal server, che include distribuzione, versione e tag. Il nome
+del modulo Python resta invece specifico del job: `nnmodel_<id-job-normalizzato>`.
+Non ricavare l'import dal nome della wheel; leggi il modulo al suo interno. Job
+generati dallo stesso progetto, o da progetti con lo stesso ID normalizzato,
+condividono distribuzione e versione:
+installali in ambienti Python separati. Le wheel archiviate prima della modifica
+mantengono nome e contenuto originali; non rinominarle manualmente. La wheel
 include il modello, l'adapter necessario all'inferenza e i pesi; non richiede il
 servizio né il progetto sorgente per eseguire l'inferenza, ma richiede Python,
 PyTorch, safetensors e le dipendenze dichiarate dalla risorsa.

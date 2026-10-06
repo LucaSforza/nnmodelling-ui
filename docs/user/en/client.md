@@ -198,6 +198,14 @@ Submission fields are `Epochs` (10), `Batch` (32), `Learning rate` (0.001), `See
 
 `Training and worker log` reports status, any error, metrics and final test loss. The bottom controls are `Download weights`, `Download wheel`, `Restore snapshot…`, `Cancel job` and `Close`. Downloads require a completed job and save the selected file through the system dialog. `Restore snapshot…` recreates a copy in a new folder chosen by the user, opens it as a project and does not overwrite an existing folder. `Cancel job` requests cancellation of the selected job. `Close` closes the panel.
 
+New wheels use distribution `nnm_<normalized-project-id>`; for example, project
+ID `llm` produces `nnm_llm-0.1.0-py3-none-any.whl`. The Python module inside the
+wheel remains job-specific (`nnmodel_<normalized-job-id>`): read the module name
+from the wheel for the import instead of deriving it from the filename. Jobs
+from projects with the same normalized ID share a distribution name and
+version; install their wheels in separate Python environments. Previously
+stored wheels keep their original names and contents.
+
 ![Training dashboard](../assets/training-dashboard.png)
 
 ![Learning curve scale selection](../assets/training-scale.png)

@@ -200,6 +200,14 @@ I campi di invio sono `Epochs` (10), `Batch` (32), `Learning rate` (0.001), `See
 
 `Training and worker log` riporta stato, eventuale errore, metriche e test loss conclusiva. I controlli in basso sono `Download weights`, `Download wheel`, `Restore snapshot…`, `Cancel job` e `Close`. I download richiedono un job completato e salvano il file scelto con la finestra di sistema. `Restore snapshot…` ricrea una copia in una nuova cartella scelta dall'utente, la apre come progetto e non sovrascrive una cartella esistente. `Cancel job` invia la richiesta di annullamento del job selezionato. `Close` chiude il pannello.
 
+Le nuove wheel usano la distribuzione `nnm_<id-progetto-normalizzato>`; per
+esempio, ID `llm` produce `nnm_llm-0.1.0-py3-none-any.whl`. Il modulo Python
+contenuto nella wheel resta specifico del job (`nnmodel_<id-job-normalizzato>`):
+per l'import va letto il nome del modulo dalla wheel, non dedotto dal filename.
+Job di progetti con lo stesso ID normalizzato condividono distribuzione e
+versione; installa le wheel in ambienti Python separati. Le wheel già archiviate
+conservano nome e contenuto originali.
+
 ![Dashboard di training](assets/training-dashboard.png)
 
 ![Scelta della scala delle curve](assets/training-scale.png)

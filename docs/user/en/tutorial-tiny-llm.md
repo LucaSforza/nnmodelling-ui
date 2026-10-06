@@ -13,6 +13,10 @@ just backend-image
 just backend-run
 ```
 
+If the backend was already installed and running before this update, rebuild
+the image with `just backend-image`, stop the service with Ctrl-C, and start it
+again with `just backend-run` before submitting the job.
+
 Leave the server terminal open. In a second terminal, start the client:
 
 ```sh
@@ -29,7 +33,7 @@ Use the port of the server you started in the client. If you chose a token, ente
 
 ## 2. Create a model copy
 
-In the initial chooser, select `New mini LLM`, or use `File > New from template > mini LLM…`. Choose a parent folder, enter an unused ID such as `manuale-tiny-llm`, and confirm the display name. The program creates and opens the new subfolder; an existing destination is rejected.
+In the initial chooser, select `New mini LLM`, or use `File > New from template > mini LLM…`. Choose a parent folder, enter the ID `llm`, and confirm the display name. The program creates and opens the new subfolder; an existing destination is rejected.
 
 ![mini LLM template in the File menu](../assets/menu-template.png)
 
@@ -84,13 +88,13 @@ The blue series is training loss and the red series is validation loss. A lower 
 
 `Optimizer step` counts global updates. This experiment has **12**: four in each of the three epochs. Checkboxes hide or show the series; `Scale > Log` changes how loss is displayed and does not modify the job. Test loss is calculated at the end on a third, separate set.
 
-In the run made for this guide, job `86caba53-0690-4c79-b948-4273ed1426b4` reached `completed`, with final-epoch mean training loss **3.462321**, validation loss **3.387799** and test loss **3.345268**. These are observed results, not a target threshold: dependency versions, runtime and machine can affect the values. The small excerpt and three epochs demonstrate the workflow; they are not enough to promise high-quality text.
+The image and metrics above document historical job `86caba53-0690-4c79-b948-4273ed1426b4`: it reached `completed`, with final-epoch mean training loss **3.462321**, validation loss **3.387799** and test loss **3.345268**. The download screenshot also shows the old wheel filename. These are neither results nor an artifact from a new run using project ID `llm`; dependency versions, runtime and machine can affect the values. The small excerpt and three epochs demonstrate the workflow, but are not enough to promise high-quality text.
 
 If the job is `failed`, read `Error` in the panel and the server's `worker.log`. To stop a queued or running job, select it and press `Cancel job`. Closing the panel with `Close` leaves the job with the server. Client edits made after submission do not change the snapshot already being trained.
 
 ## 6. Download and use the model
 
-With the `completed` job selected, press `Download weights` to get `weights.safetensors` and `Download wheel` for the Python package. Keep **the full wheel filename proposed by the dialog**, including its version and `-py3-none-any.whl` tag; a generic name such as `model.whl` is not a valid installable wheel filename.
+With the `completed` job selected, press `Download weights` to get `weights.safetensors` and `Download wheel` for the Python package. For the new job created above with project ID `llm`, the expected filename is `nnm_llm-0.1.0-py3-none-any.whl`; `nnm_llm.whl` is invalid because it lacks the version and tag. The `nnm_llm` distribution name comes from the project ID: runs of characters outside ASCII letters and digits become `_`, edge underscores are trimmed, and the result is lowercased. Keep the full proposed wheel filename. A previously stored historical job may still download its old filename; do not rename or alter existing wheels.
 
 ![Choose a filename for the exported wheel](../assets/download-wheel.png)
 
@@ -98,10 +102,23 @@ In a new folder, create an isolated environment and install the downloaded wheel
 
 ```sh
 python3 -m venv .venv
-.venv/bin/python -m pip install /path/nnmodel_job_86caba53_0690_4c79_b948_4273ed1426b4-0.1.0-py3-none-any.whl
+.venv/bin/python -m pip install /path/nnm_llm-0.1.0-py3-none-any.whl
 ```
 
-The module name varies with the job ID. For the illustrated run, save this as `infer.py`:
+The distribution name (`nnm_llm`) differs from the Python module, which remains job-specific and has the form `nnmodel_<normalized-job-id>`. Before creating `infer.py`, read the module name from your downloaded wheel with this command, without importing code:
+
+```sh
+python3 - /path/nnm_llm-0.1.0-py3-none-any.whl <<'PY'
+import sys
+import zipfile
+with zipfile.ZipFile(sys.argv[1]) as wheel:
+    for name in wheel.namelist():
+        if name.startswith("nnmodel_") and name.count("/") == 1 and name.endswith("/__init__.py"):
+            print("Module to import:", name.split("/")[0])
+PY
+```
+
+The following snippet shows **only the import for the historical job** in the screenshots and metrics above:
 
 ```python
 import torch
@@ -118,22 +135,11 @@ for _ in range(40):
 print(text)
 ```
 
+Save the code as `infer.py`, replacing the historical import with the module found in your job’s wheel; do not infer it from the distribution name.
+
 Run `.venv/bin/python infer.py`. Text passed to the adapter must contain characters from the vocabulary and a nonempty context of at most 128 characters. `infer` is an alias for `inference`. The function returns one prediction per sequence position; the loop uses the final predicted character to build a greedy continuation. To use compatible alternative weights, construct `Model(weights_path="/path/weights.safetensors")`.
 
-For another job, read the module name from the wheel without importing its code:
-
-```sh
-python3 - /path/to/the-wheel.whl <<'PY'
-import sys
-import zipfile
-with zipfile.ZipFile(sys.argv[1]) as wheel:
-    for name in wheel.namelist():
-        if name.startswith("nnmodel_") and name.count("/") == 1 and name.endswith("/__init__.py"):
-            print("Module to import:", name.split("/")[0])
-PY
-```
-
-Replace that name in `infer.py`'s import. The wheel contains the private runtime needed to use the model: the original repository, training dataset and server are not required. `examples/implementation/llm` is a consumer already configured for a specific historical 20-epoch job; use the newly downloaded wheel and its module name for a new experiment.
+The wheel contains the private runtime needed to use the model: the original repository, training dataset and server are not required. Different jobs from the same project, or from projects whose IDs normalize to the same name, share a distribution name and version: install their wheels in separate environments. Artifacts remain separate by job. `examples/implementation/llm` is a consumer configured for a specific historical 20-epoch job; do not change its existing wheel.
 
 ## 7. Move to the full corpus
 

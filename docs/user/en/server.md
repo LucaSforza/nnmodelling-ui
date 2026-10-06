@@ -18,6 +18,19 @@ just backend-run
 
 `backend-run` stays in the foreground. The default address is `http://127.0.0.1:8765`; use another terminal to query the API and press **Ctrl-C** to stop the service. Select **Training** in the app and press **Connect / check health**. The endpoint field already contains the default address.
 
+The wheel exporter is included in the worker image. After updating the
+repository to use the readable filenames, rebuild the image and restart the
+backend before submitting more jobs:
+
+```sh
+just backend-image
+# Stop an already running backend with Ctrl-C, then:
+just backend-run
+```
+
+Rebuilding does not alter wheels already stored: they remain downloadable with
+their original names and contents. Do not rename them manually.
+
 ### Example: port 8766 and a dedicated job store
 
 To keep this instance separate, set a dedicated local store and use the same configuration in the service terminal:
@@ -279,7 +292,7 @@ curl -fS --remote-name --remote-header-name --output-dir artifacts \
   "${AUTH[@]}" "http://127.0.0.1:8765/v1/jobs/$JOB_ID/wheel"
 ```
 
-The app provides the same **Download weights** and **Download wheel** commands. The wheel is saved with the full name supplied by the server: keep the `*.whl` basename because the distribution, version and tag are part of the name Python uses to install it. Renaming it to `model.whl` makes it an invalid wheel name. The Qt client preserves the name from the HTTP header. The wheel includes the model, its inference adapter and weights. Inference does not need the service or source project, but it does need Python, PyTorch, safetensors and the dependencies declared by the resource.
+The app provides the same **Download weights** and **Download wheel** commands. New jobs use distribution name `nnm_<normalized-project-id>`; for example, project ID `llm` produces `nnm_llm-0.1.0-py3-none-any.whl`. Normalization replaces runs outside ASCII letters and digits with `_`, trims leading and trailing underscores, and lowercases the result. Qt preserves the full name supplied by the server, including distribution, version and tag. The Python module remains job-specific as `nnmodel_<normalized-job-id>`. Do not derive the import from the wheel filename; inspect the module inside it. Different jobs from the same project, or from projects whose IDs normalize to the same value, share a distribution name and version, so install them in separate Python environments. Wheels stored before this change keep their original names and contents; do not rename them manually. The wheel includes the model, its inference adapter and weights. Inference does not need the service or source project, but it does need Python, PyTorch, safetensors and the dependencies declared by the resource.
 
 ## Configuration
 

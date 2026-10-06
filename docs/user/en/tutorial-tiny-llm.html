@@ -31,6 +31,9 @@ just backend-sync
 just backend-image
 just backend-run
 </code></pre>
+<p>If the backend was already installed and running before this update, rebuild
+the image with <code>just backend-image</code>, stop the service with Ctrl-C, and start it
+again with <code>just backend-run</code> before submitting the job.</p>
 <p>Leave the server terminal open. In a second terminal, start the client:</p>
 <pre><code class="language-sh">./build/qt/nnmodelling-ui
 </code></pre>
@@ -39,7 +42,7 @@ just backend-run
 </code></pre>
 <p>Use the port of the server you started in the client. If you chose a token, enter it in the Training panel as described in the <a href="server.html">backend configuration</a>.</p>
 <h2 id="2-create-a-model-copy">2. Create a model copy</h2>
-<p>In the initial chooser, select <code>New mini LLM</code>, or use <code>File &gt; New from template &gt; mini LLM…</code>. Choose a parent folder, enter an unused ID such as <code>manuale-tiny-llm</code>, and confirm the display name. The program creates and opens the new subfolder; an existing destination is rejected.</p>
+<p>In the initial chooser, select <code>New mini LLM</code>, or use <code>File &gt; New from template &gt; mini LLM…</code>. Choose a parent folder, enter the ID <code>llm</code>, and confirm the display name. The program creates and opens the new subfolder; an existing destination is rejected.</p>
 <figure class="annotated"><a href="../assets/menu-template.png" class="image-link" title="Open screenshot at original size"><img alt="mini LLM template in the File menu" src="../assets/menu-template.png" loading="lazy"></a><figcaption><strong>mini LLM template in the File menu</strong><p class="image-hint">Click the image to inspect it at its original size.</p><ol class="callouts"><li><span class="badge" aria-hidden="true">1</span><span>Available templates</span></li></ol></figcaption></figure><p>The original project remains available for other experiments. To make a manual copy instead, copy all of <code>examples/models/tiny-decoder-llm</code> to a working folder and open <strong>that folder</strong>, not only its <code>model.json</code> file, with <code>Open project</code>.</p>
 <h2 id="3-read-the-graph-before-submitting">3. Read the graph before submitting</h2>
 <p>The model uses a <strong>65-character</strong> vocabulary, context length <strong>128</strong>, width <strong>64</strong>, <strong>two</strong> decoder blocks, <strong>four</strong> attention heads of width <strong>16</strong>, and a feed-forward layer of width <strong>256</strong>. The root Input receives <code>tokens</code>; Embedding and Positional Encoding prepare the representations; Repeat applies the decoder blocks; LayerNorm and Linear produce logits; Token Cross Entropy feeds <code>Loss Output</code>. <code>Output</code> collects the prediction.</p>
@@ -114,15 +117,25 @@ just backend-run
 <h2 id="5-read-the-curves-and-identify-completion">5. Read the curves and identify completion</h2>
 <p>The blue series is training loss and the red series is validation loss. A lower value means a smaller mean error for this objective. Training measures the data used to update the model; validation measures separate data without updating the weights. If training keeps improving while validation gets worse, the model may be overfitting the training data.</p>
 <figure class="annotated"><a href="../assets/training-dashboard.png" class="image-link" title="Open screenshot at original size"><img alt="Completed job, curves and test loss" src="../assets/training-dashboard.png" loading="lazy"></a><figcaption><strong>Completed job, curves and test loss</strong><p class="image-hint">Click the image to inspect it at its original size.</p><ol class="callouts"><li><span class="badge" aria-hidden="true">1</span><span>Backend connection</span></li><li><span class="badge" aria-hidden="true">2</span><span>Training configuration</span></li><li><span class="badge" aria-hidden="true">3</span><span>Job history and status</span></li><li><span class="badge" aria-hidden="true">4</span><span>Training and validation loss curves</span></li><li><span class="badge" aria-hidden="true">5</span><span>Curve visibility and scale</span></li><li><span class="badge" aria-hidden="true">6</span><span>Final test loss</span></li><li><span class="badge" aria-hidden="true">7</span><span>Training and worker log</span></li><li><span class="badge" aria-hidden="true">8</span><span>Download, restore, cancel and close actions</span></li></ol></figcaption></figure><p><code>Optimizer step</code> counts global updates. This experiment has <strong>12</strong>: four in each of the three epochs. Checkboxes hide or show the series; <code>Scale &gt; Log</code> changes how loss is displayed and does not modify the job. Test loss is calculated at the end on a third, separate set.</p>
-<p>In the run made for this guide, job <code>86caba53-0690-4c79-b948-4273ed1426b4</code> reached <code>completed</code>, with final-epoch mean training loss <strong>3.462321</strong>, validation loss <strong>3.387799</strong> and test loss <strong>3.345268</strong>. These are observed results, not a target threshold: dependency versions, runtime and machine can affect the values. The small excerpt and three epochs demonstrate the workflow; they are not enough to promise high-quality text.</p>
+<p>The image and metrics above document historical job <code>86caba53-0690-4c79-b948-4273ed1426b4</code>: it reached <code>completed</code>, with final-epoch mean training loss <strong>3.462321</strong>, validation loss <strong>3.387799</strong> and test loss <strong>3.345268</strong>. The download screenshot also shows the old wheel filename. These are neither results nor an artifact from a new run using project ID <code>llm</code>; dependency versions, runtime and machine can affect the values. The small excerpt and three epochs demonstrate the workflow, but are not enough to promise high-quality text.</p>
 <p>If the job is <code>failed</code>, read <code>Error</code> in the panel and the server's <code>worker.log</code>. To stop a queued or running job, select it and press <code>Cancel job</code>. Closing the panel with <code>Close</code> leaves the job with the server. Client edits made after submission do not change the snapshot already being trained.</p>
 <h2 id="6-download-and-use-the-model">6. Download and use the model</h2>
-<p>With the <code>completed</code> job selected, press <code>Download weights</code> to get <code>weights.safetensors</code> and <code>Download wheel</code> for the Python package. Keep <strong>the full wheel filename proposed by the dialog</strong>, including its version and <code>-py3-none-any.whl</code> tag; a generic name such as <code>model.whl</code> is not a valid installable wheel filename.</p>
+<p>With the <code>completed</code> job selected, press <code>Download weights</code> to get <code>weights.safetensors</code> and <code>Download wheel</code> for the Python package. For the new job created above with project ID <code>llm</code>, the expected filename is <code>nnm_llm-0.1.0-py3-none-any.whl</code>; <code>nnm_llm.whl</code> is invalid because it lacks the version and tag. The <code>nnm_llm</code> distribution name comes from the project ID: runs of characters outside ASCII letters and digits become <code>_</code>, edge underscores are trimmed, and the result is lowercased. Keep the full proposed wheel filename. A previously stored historical job may still download its old filename; do not rename or alter existing wheels.</p>
 <figure class="annotated"><a href="../assets/download-wheel.png" class="image-link" title="Open screenshot at original size"><img alt="Choose a filename for the exported wheel" src="../assets/download-wheel.png" loading="lazy"></a><figcaption><strong>Choose a filename for the exported wheel</strong><p class="image-hint">Click the image to inspect it at its original size.</p><ol class="callouts"><li><span class="badge" aria-hidden="true">1</span><span>Wheel filename and destination</span></li><li><span class="badge" aria-hidden="true">2</span><span>Save the downloaded wheel</span></li></ol></figcaption></figure><p>In a new folder, create an isolated environment and install the downloaded wheel. Replace the path with the actual location; <code>pip</code> also installs declared dependencies, which must be available from a network connection or local cache:</p>
 <pre><code class="language-sh">python3 -m venv .venv
-.venv/bin/python -m pip install /path/nnmodel_job_86caba53_0690_4c79_b948_4273ed1426b4-0.1.0-py3-none-any.whl
+.venv/bin/python -m pip install /path/nnm_llm-0.1.0-py3-none-any.whl
 </code></pre>
-<p>The module name varies with the job ID. For the illustrated run, save this as <code>infer.py</code>:</p>
+<p>The distribution name (<code>nnm_llm</code>) differs from the Python module, which remains job-specific and has the form <code>nnmodel_&lt;normalized-job-id&gt;</code>. Before creating <code>infer.py</code>, read the module name from your downloaded wheel with this command, without importing code:</p>
+<pre><code class="language-sh">python3 - /path/nnm_llm-0.1.0-py3-none-any.whl &lt;&lt;'PY'
+import sys
+import zipfile
+with zipfile.ZipFile(sys.argv[1]) as wheel:
+    for name in wheel.namelist():
+        if name.startswith("nnmodel_") and name.count("/") == 1 and name.endswith("/__init__.py"):
+            print("Module to import:", name.split("/")[0])
+PY
+</code></pre>
+<p>The following snippet shows <strong>only the import for the historical job</strong> in the screenshots and metrics above:</p>
 <pre><code class="language-python">import torch
 from nnmodel_job_86caba53_0690_4c79_b948_4273ed1426b4 import Model
 
@@ -136,18 +149,9 @@ for _ in range(40):
     text += prediction[-1]
 print(text)
 </code></pre>
+<p>Save the code as <code>infer.py</code>, replacing the historical import with the module found in your job’s wheel; do not infer it from the distribution name.</p>
 <p>Run <code>.venv/bin/python infer.py</code>. Text passed to the adapter must contain characters from the vocabulary and a nonempty context of at most 128 characters. <code>infer</code> is an alias for <code>inference</code>. The function returns one prediction per sequence position; the loop uses the final predicted character to build a greedy continuation. To use compatible alternative weights, construct <code>Model(weights_path="/path/weights.safetensors")</code>.</p>
-<p>For another job, read the module name from the wheel without importing its code:</p>
-<pre><code class="language-sh">python3 - /path/to/the-wheel.whl &lt;&lt;'PY'
-import sys
-import zipfile
-with zipfile.ZipFile(sys.argv[1]) as wheel:
-    for name in wheel.namelist():
-        if name.startswith("nnmodel_") and name.count("/") == 1 and name.endswith("/__init__.py"):
-            print("Module to import:", name.split("/")[0])
-PY
-</code></pre>
-<p>Replace that name in <code>infer.py</code>'s import. The wheel contains the private runtime needed to use the model: the original repository, training dataset and server are not required. <code>examples/implementation/llm</code> is a consumer already configured for a specific historical 20-epoch job; use the newly downloaded wheel and its module name for a new experiment.</p>
+<p>The wheel contains the private runtime needed to use the model: the original repository, training dataset and server are not required. Different jobs from the same project, or from projects whose IDs normalize to the same name, share a distribution name and version: install their wheels in separate environments. Artifacts remain separate by job. <code>examples/implementation/llm</code> is a consumer configured for a specific historical 20-epoch job; do not change its existing wheel.</p>
 <h2 id="7-move-to-the-full-corpus">7. Move to the full corpus</h2>
 <p>Once the short run works, prepare <strong>another</strong> folder for the full corpus. From the repository root:</p>
 <pre><code class="language-sh">uv run --group examples python tools/prepare_full_llm.py \

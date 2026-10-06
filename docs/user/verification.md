@@ -32,6 +32,17 @@ controllato con computer use attraverso il bridge noVNC locale.
   verificati; impaginazione desktop e mobile controllata via computer use.
   La sintassi dei comandi shell e Python è stata controllata anche nella traduzione.
 
+## Verifica dei nomi wheel (6 ottobre 2026)
+
+Un'esportazione del grafo tiny LLM con ID progetto temporaneo `llm` e pesi già
+addestrati del job storico `86caba53-0690-4c79-b948-4273ed1426b4` ha prodotto
+`nnm_llm-0.1.0-py3-none-any.whl`, mantenendo il modulo
+`nnmodel_job_86caba53_0690_4c79_b948_4273ed1426b4`. La wheel è stata eseguita
+senza backend e ha prodotto otto caratteri di continuazione. Questa verifica
+non ha incluso nuovo training, ricostruzione dell'immagine worker o acquisizione
+di screenshot; le schermate del tutorial restano quelle storiche sopra indicate.
+Le suite backend (15 test), runtime (15) ed esempi (32) sono passate.
+
 ## Limiti osservati
 
 Il percorso con corpus completo e 20 epoche è documentato dai file dell'esempio

@@ -45,6 +45,15 @@ just backend-run
 <code>http://127.0.0.1:8765</code>; apri un altro terminale per interrogare l'API e usa
 <strong>Ctrl-C</strong> per fermare il servizio. Seleziona <strong>Training</strong> nell'app e premi
 <strong>Connect / check health</strong>. Il campo endpoint usa già l'indirizzo predefinito.</p>
+<p>L'esportatore wheel è incluso nell'immagine worker. Dopo aver aggiornato il
+repository per usare i nuovi nomi leggibili, ricostruisci l'immagine e riavvia
+il backend prima di inviare altri job:</p>
+<pre><code class="language-sh">just backend-image
+# Ferma con Ctrl-C l'eventuale backend già attivo, poi:
+just backend-run
+</code></pre>
+<p>La ricostruzione non modifica wheel già archiviate: restano scaricabili con
+nome e contenuto originali. Non rinominarle manualmente.</p>
 <h3 id="esempio-porta-8766-e-archivio-dedicato">Esempio: porta 8766 e archivio dedicato</h3>
 <p>Per tenere questa istanza separata, imposta un archivio locale dedicato e usa
 la stessa configurazione nel terminale del servizio:</p>
@@ -300,11 +309,18 @@ mkdir -p artifacts
 curl -fS --remote-name --remote-header-name --output-dir artifacts \
   "${AUTH[@]}" "http://127.0.0.1:8765/v1/jobs/$JOB_ID/wheel"
 </code></pre>
-<p>L'app offre gli stessi comandi <strong>Download weights</strong> e <strong>Download wheel</strong>. La
-wheel viene salvata con il nome completo inviato dal server: conserva il basename
-<code>*.whl</code>, perché distribuzione, versione e tag fanno parte del nome che Python usa
-per installarla. Rinominandola <code>model.whl</code> il file non ha più un nome wheel
-valido. Il client Qt preserva già il nome ricevuto nell'header HTTP. La wheel
+<p>L'app offre gli stessi comandi <strong>Download weights</strong> e <strong>Download wheel</strong>. Per i
+nuovi job, il nome della distribuzione è <code>nnm_&lt;id-progetto-normalizzato&gt;</code>; ad
+esempio, ID <code>llm</code> produce <code>nnm_llm-0.1.0-py3-none-any.whl</code>. Per normalizzare,
+sequenze diverse da lettere e cifre ASCII diventano <code>_</code>, gli underscore iniziali
+e finali sono rimossi e il risultato è minuscolo. Il client Qt conserva il nome
+completo inviato dal server, che include distribuzione, versione e tag. Il nome
+del modulo Python resta invece specifico del job: <code>nnmodel_&lt;id-job-normalizzato&gt;</code>.
+Non ricavare l'import dal nome della wheel; leggi il modulo al suo interno. Job
+generati dallo stesso progetto, o da progetti con lo stesso ID normalizzato,
+condividono distribuzione e versione:
+installali in ambienti Python separati. Le wheel archiviate prima della modifica
+mantengono nome e contenuto originali; non rinominarle manualmente. La wheel
 include il modello, l'adapter necessario all'inferenza e i pesi; non richiede il
 servizio né il progetto sorgente per eseguire l'inferenza, ma richiede Python,
 PyTorch, safetensors e le dipendenze dichiarate dalla risorsa.</p>

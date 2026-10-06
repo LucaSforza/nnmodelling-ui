@@ -31,6 +31,9 @@ just backend-sync
 just backend-image
 just backend-run
 </code></pre>
+<p>Se il backend era già installato e attivo prima dell'aggiornamento, ricostruisci
+l'immagine con <code>just backend-image</code>, arresta il servizio con Ctrl-C e avvialo di
+nuovo con <code>just backend-run</code> prima di inviare il job.</p>
 <p>Lascia il terminale del server aperto. In un secondo terminale avvia il client:</p>
 <pre><code class="language-sh">./build/qt/nnmodelling-ui
 </code></pre>
@@ -39,7 +42,7 @@ just backend-run
 </code></pre>
 <p>Usa nel client la porta del server che hai avviato. Se hai scelto un token, inseriscilo nel pannello Training come spiegato nella <a href="server.html">configurazione del backend</a>.</p>
 <h2 id="2-creare-una-copia-del-modello">2. Creare una copia del modello</h2>
-<p>Nel selettore iniziale scegli <code>New mini LLM</code>, oppure usa <code>File &gt; New from template &gt; mini LLM…</code>. Scegli una cartella genitore, inserisci un ID libero, per esempio <code>manuale-tiny-llm</code>, e conferma il nome visualizzato. Il programma crea la nuova sottocartella e la apre; una destinazione già esistente viene rifiutata.</p>
+<p>Nel selettore iniziale scegli <code>New mini LLM</code>, oppure usa <code>File &gt; New from template &gt; mini LLM…</code>. Scegli una cartella genitore, inserisci l'ID <code>llm</code> e conferma il nome visualizzato. Il programma crea la nuova sottocartella e la apre; una destinazione già esistente viene rifiutata.</p>
 <figure class="annotated"><a href="assets/menu-template.png" class="image-link" title="Apri screenshot a dimensione originale"><img alt="Template mini LLM nel menu File" src="assets/menu-template.png" loading="lazy"></a><figcaption><strong>Template mini LLM nel menu File</strong><p class="image-hint">Clic sull'immagine per leggere i dettagli a dimensione originale.</p><ol class="callouts"><li><span class="badge" aria-hidden="true">1</span><span>Modelli disponibili</span></li></ol></figcaption></figure><p>Il progetto originale resta disponibile per altri esperimenti. Se preferisci una copia manuale, copia tutta <code>examples/models/tiny-decoder-llm</code> in una cartella di lavoro e apri <strong>quella cartella</strong>, non il solo file <code>model.json</code>, con <code>Open project</code>.</p>
 <h2 id="3-leggere-il-grafo-prima-di-inviarlo">3. Leggere il grafo prima di inviarlo</h2>
 <p>Il modello usa un vocabolario di <strong>65 caratteri</strong>, contesto <strong>128</strong>, larghezza <strong>64</strong>, <strong>due</strong> blocchi decoder, <strong>quattro</strong> teste di attenzione di larghezza <strong>16</strong> e uno strato feed-forward di larghezza <strong>256</strong>. L'Input radice riceve <code>tokens</code>; Embedding e Positional Encoding preparano le rappresentazioni; Repeat applica i blocchi decoder; LayerNorm e Linear producono i logit; Token Cross Entropy alimenta <code>Loss Output</code>. <code>Output</code> raccoglie la predizione.</p>
@@ -114,15 +117,25 @@ just backend-run
 <h2 id="5-leggere-le-curve-e-riconoscere-il-completamento">5. Leggere le curve e riconoscere il completamento</h2>
 <p>La serie blu è la loss di training, quella rossa la loss di validazione. Un valore più basso significa un errore medio minore per questo obiettivo. Il training misura i dati su cui il modello viene aggiornato; la validazione misura dati separati senza aggiornare i pesi. Se il training continua a migliorare e la validazione peggiora, il modello potrebbe adattarsi troppo ai dati di training.</p>
 <figure class="annotated"><a href="assets/training-dashboard.png" class="image-link" title="Apri screenshot a dimensione originale"><img alt="Job reale completato, curve e test loss" src="assets/training-dashboard.png" loading="lazy"></a><figcaption><strong>Job reale completato, curve e test loss</strong><p class="image-hint">Clic sull'immagine per leggere i dettagli a dimensione originale.</p><ol class="callouts"><li><span class="badge" aria-hidden="true">1</span><span>Connessione al backend</span></li><li><span class="badge" aria-hidden="true">2</span><span>Configurazione dell’addestramento</span></li><li><span class="badge" aria-hidden="true">3</span><span>Cronologia e stato delle attività</span></li><li><span class="badge" aria-hidden="true">4</span><span>Curve della perdita di addestramento e validazione</span></li><li><span class="badge" aria-hidden="true">5</span><span>Visibilità e scala delle curve</span></li><li><span class="badge" aria-hidden="true">6</span><span>Perdita finale sul test</span></li><li><span class="badge" aria-hidden="true">7</span><span>Registro dell’addestramento e del worker</span></li><li><span class="badge" aria-hidden="true">8</span><span>Azioni per scaricare, ripristinare, annullare e chiudere</span></li></ol></figcaption></figure><p><code>Optimizer step</code> conta gli aggiornamenti globali. In questo esperimento sono <strong>12</strong>: quattro per ciascuna delle tre epoche. I checkbox nascondono o mostrano le serie; <code>Scale &gt; Log</code> cambia la rappresentazione della loss e non modifica il job. La test loss viene calcolata alla fine su un terzo insieme separato.</p>
-<p>Nella prova eseguita per il manuale il job <code>86caba53-0690-4c79-b948-4273ed1426b4</code> è arrivato a <code>completed</code>, con training loss media dell'ultima epoca <strong>3.462321</strong>, validation loss <strong>3.387799</strong> e test loss <strong>3.345268</strong>. Sono risultati osservati, non una soglia da raggiungere: versione delle dipendenze, runtime e macchina possono influire sui valori. Il piccolo estratto e tre epoche dimostrano il percorso; non bastano a promettere testo di buona qualità.</p>
+<p>Immagine e metriche sopra documentano il job storico <code>86caba53-0690-4c79-b948-4273ed1426b4</code>: è arrivato a <code>completed</code>, con training loss media dell'ultima epoca <strong>3.462321</strong>, validation loss <strong>3.387799</strong> e test loss <strong>3.345268</strong>. La schermata di download mostra anche il vecchio nome della wheel. Non sono risultati né un artifact di una nuova esecuzione del percorso con ID <code>llm</code>; versione delle dipendenze, runtime e macchina possono influire sui valori. Il piccolo estratto e tre epoche dimostrano il flusso, ma non bastano a promettere testo di buona qualità.</p>
 <p>Se il job è <code>failed</code>, leggi <code>Error</code> nel pannello e il <code>worker.log</code> del server. Se vuoi interrompere un job ancora in coda o in esecuzione, selezionalo e premi <code>Cancel job</code>. Chiudere il pannello con <code>Close</code> lascia il job al server. Le modifiche fatte nel client dopo l'invio non cambiano lo snapshot già in addestramento.</p>
 <h2 id="6-scaricare-e-usare-il-modello">6. Scaricare e usare il modello</h2>
-<p>Con il job <code>completed</code> selezionato, premi <code>Download weights</code> per ottenere <code>weights.safetensors</code> e <code>Download wheel</code> per il pacchetto Python. Conserva <strong>il nome completo proposto per la wheel</strong>, con versione e tag <code>-py3-none-any.whl</code>: un nome generico come <code>model.whl</code> non è un nome wheel installabile valido.</p>
+<p>Con il job <code>completed</code> selezionato, premi <code>Download weights</code> per ottenere <code>weights.safetensors</code> e <code>Download wheel</code> per il pacchetto Python. Per il nuovo job creato sopra con ID progetto <code>llm</code>, il nome atteso è <code>nnm_llm-0.1.0-py3-none-any.whl</code>; <code>nnm_llm.whl</code> non è valido perché mancano versione e tag. La distribuzione <code>nnm_llm</code> deriva dall'ID del progetto: sequenze di caratteri diverse da lettere e cifre ASCII diventano <code>_</code>, gli underscore ai margini sono rimossi e il risultato è minuscolo. Conserva il nome completo proposto per la wheel. Un job storico già salvato può invece scaricare il suo nome precedente: non rinominare né modificare wheel esistenti.</p>
 <figure class="annotated"><a href="assets/download-wheel.png" class="image-link" title="Apri screenshot a dimensione originale"><img alt="Scelta del file della wheel esportata" src="assets/download-wheel.png" loading="lazy"></a><figcaption><strong>Scelta del file della wheel esportata</strong><p class="image-hint">Clic sull'immagine per leggere i dettagli a dimensione originale.</p><ol class="callouts"><li><span class="badge" aria-hidden="true">1</span><span>Nome e destinazione del file wheel</span></li><li><span class="badge" aria-hidden="true">2</span><span>Salva il wheel scaricato</span></li></ol></figcaption></figure><p>In una nuova cartella prepara un ambiente isolato e installa la wheel scaricata. Sostituisci il percorso con quello reale; <code>pip</code> installa anche le dipendenze dichiarate, che devono essere disponibili dalla rete o da una cache locale:</p>
 <pre><code class="language-sh">python3 -m venv .venv
-.venv/bin/python -m pip install /percorso/nnmodel_job_86caba53_0690_4c79_b948_4273ed1426b4-0.1.0-py3-none-any.whl
+.venv/bin/python -m pip install /percorso/nnm_llm-0.1.0-py3-none-any.whl
 </code></pre>
-<p>Il nome del modulo varia con l'ID del job. Per la prova illustrata, salva questo testo in <code>infer.py</code>:</p>
+<p>Il nome della distribuzione (<code>nnm_llm</code>) è diverso dal modulo Python, che resta specifico del job e ha forma <code>nnmodel_&lt;id-job-normalizzato&gt;</code>. Prima di creare <code>infer.py</code>, leggi il nome del modulo dalla wheel scaricata con questo comando, senza importare codice:</p>
+<pre><code class="language-sh">python3 - /percorso/nnm_llm-0.1.0-py3-none-any.whl &lt;&lt;'PY'
+import sys
+import zipfile
+with zipfile.ZipFile(sys.argv[1]) as wheel:
+    for name in wheel.namelist():
+        if name.startswith("nnmodel_") and name.count("/") == 1 and name.endswith("/__init__.py"):
+            print("Modulo da importare:", name.split("/")[0])
+PY
+</code></pre>
+<p>Il frammento seguente mostra <strong>solo l'import del job storico</strong> nelle schermate e nelle metriche sopra:</p>
 <pre><code class="language-python">import torch
 from nnmodel_job_86caba53_0690_4c79_b948_4273ed1426b4 import Model
 
@@ -136,18 +149,9 @@ for _ in range(40):
     text += prediction[-1]
 print(text)
 </code></pre>
+<p>Salva il codice in <code>infer.py</code>, sostituendo l'import storico con il nome trovato nella wheel del tuo job; non dedurlo dal nome della distribuzione.</p>
 <p>Esegui <code>.venv/bin/python infer.py</code>. Il testo passato all'adapter deve contenere caratteri del vocabolario e un contesto non vuoto lungo al massimo 128 caratteri. <code>infer</code> è un alias di <code>inference</code>. La funzione restituisce una predizione per le posizioni della sequenza; il ciclo usa l'ultimo carattere predetto per costruire una continuazione greedy. Se vuoi pesi alternativi compatibili, costruisci <code>Model(weights_path="/percorso/weights.safetensors")</code>.</p>
-<p>Per un altro job leggi il nome del modulo dalla wheel, senza importare codice:</p>
-<pre><code class="language-sh">python3 - /percorso/della-wheel.whl &lt;&lt;'PY'
-import sys
-import zipfile
-with zipfile.ZipFile(sys.argv[1]) as wheel:
-    for name in wheel.namelist():
-        if name.startswith("nnmodel_") and name.count("/") == 1 and name.endswith("/__init__.py"):
-            print("Modulo da importare:", name.split("/")[0])
-PY
-</code></pre>
-<p>Sostituisci quel nome nell'import di <code>infer.py</code>. La wheel contiene il runtime privato necessario: per usarla non servono il repository originale, il dataset di training o una chiamata al server. <code>examples/implementation/llm</code> è invece un consumer già configurato per uno specifico job storico a 20 epoche; per il nuovo esperimento usa la wheel appena ottenuta e il suo nome modulo.</p>
+<p>La wheel contiene il runtime privato necessario: per usarla non servono il repository originale, il dataset di training o una chiamata al server. Job diversi dello stesso progetto, oppure di progetti con ID che producono lo stesso nome normalizzato, condividono distribuzione e versione: installa le rispettive wheel in ambienti separati. Gli artifact restano distinti per job. <code>examples/implementation/llm</code> è un consumer configurato per uno specifico job storico a 20 epoche; non cambiarne la wheel esistente.</p>
 <h2 id="7-passare-al-corpus-completo">7. Passare al corpus completo</h2>
 <p>Quando il percorso breve funziona, prepara <strong>un'altra</strong> cartella per il corpus completo. Dalla root del repository:</p>
 <pre><code class="language-sh">uv run --group examples python tools/prepare_full_llm.py \

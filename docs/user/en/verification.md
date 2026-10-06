@@ -13,6 +13,17 @@ Verification performed on 6 October 2026. Descriptions follow the KB contracts a
 - The server chapter's API example was tried against an isolated backend: submit a short job, wait for completion, and retrieve its snapshot, weights and wheel.
 - HTML regenerated and checked with `build.py --check`: pages, local links, anchors and images. Both languages and same-chapter switching were verified; desktop and mobile layouts were checked through computer use. Shell and Python command syntax was also checked in the translation.
 
+## Wheel filename check (6 October 2026)
+
+An export of the tiny LLM graph with temporary project ID `llm` and previously
+trained weights from historical job `86caba53-0690-4c79-b948-4273ed1426b4`
+produced `nnm_llm-0.1.0-py3-none-any.whl`, retaining module
+`nnmodel_job_86caba53_0690_4c79_b948_4273ed1426b4`. The wheel ran without the
+backend and produced an eight-character continuation. No new training, worker
+image rebuild or screenshot capture was performed; the tutorial images remain
+the historical ones identified above. The backend (15 tests), runtime (15)
+and examples (32) suites passed.
+
 ## Observed limits
 
 The full-corpus, 20-epoch path is documented by the example files and preparation script; it was not rerun during this session.

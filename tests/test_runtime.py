@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import base64
+import csv
+import hashlib
 import json
 import struct
 import subprocess
@@ -447,6 +450,22 @@ def test_dataset_adapter_and_standalone_wheels_support_weight_override_and_isola
             assert "Requires-Dist: nnmodelling-runtime" not in metadata
     targets = []
     for index, wheel in enumerate(wheels):
+        assert wheel.name == "nnm_fixture-0.1.0-py3-none-any.whl"
+        with zipfile.ZipFile(wheel) as archive:
+            names = archive.namelist()
+            dist_info = "nnm_fixture-0.1.0.dist-info"
+            assert f"{dist_info}/METADATA" in names
+            assert f"{dist_info}/RECORD" in names
+            metadata = archive.read(f"{dist_info}/METADATA").decode()
+            assert "Name: nnm_fixture\n" in metadata
+            records = {row[0]: row[1:] for row in csv.reader(archive.read(f"{dist_info}/RECORD").decode().splitlines())}
+            for name, digest_and_size in records.items():
+                if name.endswith("/RECORD"):
+                    assert digest_and_size == ["", ""]
+                    continue
+                payload = archive.read(name)
+                digest = base64.urlsafe_b64encode(hashlib.sha256(payload).digest()).rstrip(b"=").decode("ascii")
+                assert digest_and_size == [f"sha256={digest}", str(len(payload))]
         target = tmp_path / f"install-{index}"
         install = subprocess.run(["uv", "pip", "install", "--python", sys.executable, "--target", str(target), "--no-deps", str(wheel)], capture_output=True, text=True)
         assert install.returncode == 0, install.stderr
@@ -463,3 +482,49 @@ print(first.infer(x).item(), second.inference(x).item())
 '''
     result = subprocess.run([sys.executable, "-c", script, str(targets[0]), str(targets[1]), str(alternate)], cwd=tmp_path, check=True, capture_output=True, text=True)
     assert result.stdout.strip() == "6.0 15.0"
+
+
+@pytest.mark.parametrize(
+    ("project_id", "distribution"),
+    [("llm", "nnm_llm"), ("123", "nnm_123"), ("My--Project.42", "nnm_my_project_42")],
+)
+def test_wheel_distribution_uses_normalized_project_id(tmp_path, project_id, distribution):
+    root, core = _project(
+        tmp_path,
+        [_input_package(), _output_package(),
+         ("test.scale", "layer", _linear_source(), {"value": {"type": "real", "default": 2.0}}, [{"id": "out", "type": "output"}])],
+        [_node("x", "core.input", params={"binding": "features"}), _node("scale", "test.scale"), _node("pred", "core.output")],
+        [{"id": "a", "source": "x", "target": "scale"}, {"id": "b", "source": "scale", "sourceHandle": "out", "target": "pred"}],
+        dataset=True,
+    )
+    model = json.loads((root / "model.json").read_text(encoding="utf-8"))
+    model["manifest"]["id"] = project_id
+    _write_json(root / "model.json", model)
+    weights = tmp_path / "weights.safetensors"
+    _write_scalar_weights(weights, 2.0)
+
+    wheel = build_wheel(root, core, weights, tmp_path / "wheels", "job-1")
+
+    assert wheel.name == f"{distribution}-0.1.0-py3-none-any.whl"
+    import zipfile
+    with zipfile.ZipFile(wheel) as archive:
+        assert f"{distribution}-0.1.0.dist-info/METADATA" in archive.namelist()
+        metadata = archive.read(f"{distribution}-0.1.0.dist-info/METADATA").decode()
+        assert f"Name: {distribution}\n" in metadata
+        assert "nnmodel_job_1/__init__.py" in archive.namelist()
+
+
+@pytest.mark.parametrize("project_id", [None, 7, "", "!!!"])
+def test_wheel_rejects_missing_or_unreadable_project_id(tmp_path, project_id):
+    root, core = _project(tmp_path, [_input_package(), _output_package()], [], [], dataset=True)
+    model = json.loads((root / "model.json").read_text(encoding="utf-8"))
+    if project_id is None:
+        del model["manifest"]["id"]
+    else:
+        model["manifest"]["id"] = project_id
+    _write_json(root / "model.json", model)
+    weights = tmp_path / "weights.safetensors"
+    _write_scalar_weights(weights, 2.0)
+
+    with pytest.raises(ValueError, match="project ID"):
+        build_wheel(root, core, weights, tmp_path / "wheels", "job-1")

@@ -51,6 +51,17 @@ def _wheel_record(payload: bytes) -> str:
     return f"sha256={digest}"
 
 
+def _distribution_name(model: dict[str, Any]) -> str:
+    manifest = model.get("manifest")
+    project_id = manifest.get("id") if isinstance(manifest, dict) else None
+    if not isinstance(project_id, str):
+        raise ValueError("wheel export requires a string project ID")
+    normalized = re.sub(r"[^A-Za-z0-9]+", "_", project_id).strip("_").lower()
+    if not normalized:
+        raise ValueError("wheel export requires a project ID with ASCII letters or digits")
+    return f"nnm_{normalized}"
+
+
 def _copy_runtime(destination: Path) -> None:
     source_root = Path(__file__).resolve().parents[1]
     for package in ("nnmodelling_runtime", "stereotype_runtime"):
@@ -106,11 +117,11 @@ def build_wheel(
     if python_entry.get("language") != "python" or not python_entry.get("file"):
         raise ValueError("wheel export requires a Python dataset adapter")
 
+    dist_name = _distribution_name(model)
     normalized = re.sub(r"[^A-Za-z0-9_]+", "_", job_id).strip("_").lower()
     if not normalized or not normalized[0].isalpha():
         normalized = "job_" + normalized
     package_name = f"nnmodel_{normalized}"
-    dist_name = package_name
     version = "0.1.0"
     wheel_name = f"{dist_name}-{version}-py3-none-any.whl"
     with tempfile.TemporaryDirectory(prefix="nnmodel-wheel-") as temporary:
