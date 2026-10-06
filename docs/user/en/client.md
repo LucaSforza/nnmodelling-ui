@@ -219,6 +219,8 @@ stored wheels keep their original names and contents.
 
 ![Training dashboard](../assets/training-dashboard.png)
 
+![Placeholder for the VAE job and operations wheel screenshot](../assets/vae-operations-wheel-placeholder.svg)
+
 ![Learning curve scale selection](../assets/training-scale.png)
 
 ## Features not exposed in the current interface
