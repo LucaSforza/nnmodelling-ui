@@ -1,0 +1,468 @@
+{
+  "overview.png": {
+    "caption": "Aree principali dell’area di lavoro",
+    "callouts": [
+      {
+        "number": 1,
+        "region": "Barra dei menu"
+      },
+      {
+        "number": 2,
+        "region": "Ambito, addestramento e strumenti del canvas"
+      },
+      {
+        "number": 3,
+        "region": "Catalogo dei pacchetti"
+      },
+      {
+        "number": 4,
+        "region": "Canvas del grafo"
+      },
+      {
+        "number": 5,
+        "region": "Ispettore"
+      },
+      {
+        "number": 6,
+        "region": "Risorse del progetto"
+      },
+      {
+        "number": 7,
+        "region": "Problemi del modello"
+      },
+      {
+        "number": 8,
+        "region": "Area di stato"
+      }
+    ]
+  },
+  "inspector.png": {
+    "caption": "Ispettore e risorse del progetto",
+    "callouts": [
+      {
+        "number": 1,
+        "region": "Proprietà dell’oggetto selezionato"
+      },
+      {
+        "number": 2,
+        "region": "Risorse del progetto e azioni sui dataset"
+      },
+      {
+        "number": 3,
+        "region": "Problemi del modello"
+      }
+    ]
+  },
+  "menu-file.png": {
+    "caption": "Menu File",
+    "callouts": [
+      {
+        "number": 1,
+        "region": "Crea, apri, salva e chiudi il progetto"
+      }
+    ]
+  },
+  "menu-template.png": {
+    "caption": "Modelli di progetto",
+    "callouts": [
+      {
+        "number": 1,
+        "region": "Modelli disponibili"
+      }
+    ]
+  },
+  "menu-edit.png": {
+    "caption": "Menu Modifica",
+    "callouts": [
+      {
+        "number": 1,
+        "region": "Annulla e ripeti"
+      }
+    ]
+  },
+  "menu-model.png": {
+    "caption": "Menu Modello",
+    "callouts": [
+      {
+        "number": 1,
+        "region": "Azioni per stereotipi, dataset e addestramento"
+      }
+    ]
+  },
+  "menu-view.png": {
+    "caption": "Menu Visualizza",
+    "callouts": [
+      {
+        "number": 1,
+        "region": "Comandi Adatta e zoom"
+      }
+    ]
+  },
+  "menu-arrange.png": {
+    "caption": "Sottomenu Disponi",
+    "callouts": [
+      {
+        "number": 1,
+        "region": "Disposizione verticale e orizzontale"
+      }
+    ]
+  },
+  "scope-tree.png": {
+    "caption": "Navigazione degli ambiti",
+    "callouts": [
+      {
+        "number": 1,
+        "region": "Ambito principale e ambiti annidati"
+      }
+    ]
+  },
+  "attention.png": {
+    "caption": "Grafo del sottoflusso di attenzione",
+    "callouts": [
+      {
+        "number": 1,
+        "region": "Ambito corrente"
+      },
+      {
+        "number": 2,
+        "region": "Dataset usato dal progetto"
+      }
+    ]
+  },
+  "dataset-manager.png": {
+    "caption": "Gestione dei dataset",
+    "callouts": [
+      {
+        "number": 1,
+        "region": "Dataset attivo"
+      },
+      {
+        "number": 2,
+        "region": "Modifica il dataset selezionato"
+      }
+    ]
+  },
+  "dataset-form.png": {
+    "caption": "Metadati del dataset e slot di ingresso",
+    "callouts": [
+      {
+        "number": 1,
+        "region": "Identificativo, versione, nome e descrizione del dataset"
+      },
+      {
+        "number": 2,
+        "region": "Nome, tipo e forma dello slot di ingresso"
+      },
+      {
+        "number": 3,
+        "region": "Salva le modifiche o annulla"
+      }
+    ]
+  },
+  "dataset-targets.png": {
+    "caption": "Slot target del dataset",
+    "callouts": [
+      {
+        "number": 1,
+        "region": "Nome, tipo e forma dello slot target"
+      },
+      {
+        "number": 2,
+        "region": "Salva le modifiche o annulla"
+      }
+    ]
+  },
+  "stereotype-form.png": {
+    "caption": "Modulo completo di definizione dello stereotipo",
+    "callouts": [
+      {
+        "number": 1,
+        "region": "Identità, versione, nome, descrizione e tipo"
+      },
+      {
+        "number": 2,
+        "region": "Maniglie di uscita esplicite"
+      },
+      {
+        "number": 3,
+        "region": "Schema dei parametri"
+      },
+      {
+        "number": 4,
+        "region": "Dipendenze del pacchetto"
+      },
+      {
+        "number": 5,
+        "region": "Funzione Lua opzionale"
+      },
+      {
+        "number": 6,
+        "region": "Crea e salva il progetto"
+      }
+    ]
+  },
+  "project-id.png": {
+    "caption": "Scegli un identificativo per il progetto",
+    "callouts": [
+      {
+        "number": 1,
+        "region": "Identificativo del progetto"
+      },
+      {
+        "number": 2,
+        "region": "Conferma"
+      }
+    ]
+  },
+  "project-name.png": {
+    "caption": "Scegli un nome visualizzato",
+    "callouts": [
+      {
+        "number": 1,
+        "region": "Nome visualizzato"
+      },
+      {
+        "number": 2,
+        "region": "Conferma"
+      }
+    ]
+  },
+  "training-connect.png": {
+    "caption": "Connessione al backend locale di addestramento",
+    "callouts": [
+      {
+        "number": 1,
+        "region": "Indirizzo del backend"
+      },
+      {
+        "number": 2,
+        "region": "Connetti e verifica lo stato del servizio"
+      }
+    ]
+  },
+  "training-settings.png": {
+    "caption": "Impostazione delle opzioni di addestramento",
+    "callouts": [
+      {
+        "number": 1,
+        "region": "Epoche, dimensione del batch, tasso di apprendimento e seme"
+      },
+      {
+        "number": 2,
+        "region": "Salva il progetto e invia l’attività"
+      }
+    ],
+    "details": "3 epoche; batch 16; tasso di apprendimento 0,001; seme 0; pubblicazione a ogni passaggio."
+  },
+  "training-dashboard.png": {
+    "caption": "Dashboard al termine dell’addestramento in 12 passaggi",
+    "callouts": [
+      {
+        "number": 1,
+        "region": "Connessione al backend"
+      },
+      {
+        "number": 2,
+        "region": "Configurazione dell’addestramento"
+      },
+      {
+        "number": 3,
+        "region": "Cronologia e stato delle attività"
+      },
+      {
+        "number": 4,
+        "region": "Curve della perdita di addestramento e validazione"
+      },
+      {
+        "number": 5,
+        "region": "Visibilità e scala delle curve"
+      },
+      {
+        "number": 6,
+        "region": "Perdita finale sul test"
+      },
+      {
+        "number": 7,
+        "region": "Registro dell’addestramento e del worker"
+      },
+      {
+        "number": 8,
+        "region": "Azioni per scaricare, ripristinare, annullare e chiudere"
+      }
+    ],
+    "details": "Completato in 3 epoche; perdita finale sul test 3,345268."
+  },
+  "training-scale.png": {
+    "caption": "Scegli la scala delle curve di apprendimento",
+    "callouts": [
+      {
+        "number": 1,
+        "region": "Scala lineare o logaritmica delle curve"
+      }
+    ]
+  },
+  "download-wheel.png": {
+    "caption": "Salva un file wheel scaricato",
+    "callouts": [
+      {
+        "number": 1,
+        "region": "Nome e destinazione del file wheel"
+      },
+      {
+        "number": 2,
+        "region": "Salva il wheel scaricato"
+      }
+    ]
+  },
+  "subflow-menu.png": {
+    "caption": "Menu contestuale del sottoflusso",
+    "callouts": [
+      {
+        "number": 1,
+        "region": "Entra nel sottoflusso"
+      },
+      {
+        "number": 2,
+        "region": "Espandi e ispeziona"
+      }
+    ]
+  },
+  "decoder.png": {
+    "caption": "Grafo del sottoflusso decoder",
+    "callouts": [
+      {
+        "number": 1,
+        "region": "Ambito annidato corrente"
+      },
+      {
+        "number": 2,
+        "region": "Blocco sottoflusso ripetuto"
+      },
+      {
+        "number": 3,
+        "region": "Livelli di proiezione e attivazione"
+      }
+    ]
+  },
+  "inspector-reference.png": {
+    "caption": "Riferimento a un pacchetto nel pannello Proprietà",
+    "callouts": [
+      {
+        "number": 1,
+        "region": "Pacchetto referenziato"
+      },
+      {
+        "number": 2,
+        "region": "Parametri del riferimento"
+      }
+    ]
+  },
+  "inspector-reference-menu.png": {
+    "caption": "Scegli un riferimento a un pacchetto",
+    "callouts": [
+      {
+        "number": 1,
+        "region": "Pacchetti disponibili"
+      }
+    ]
+  },
+  "inspector-boundary.png": {
+    "caption": "Mappa il confine di uscita del sottoflusso",
+    "callouts": [
+      {
+        "number": 1,
+        "region": "Selettore della mappatura del confine"
+      },
+      {
+        "number": 2,
+        "region": "Confine di uscita selezionato"
+      }
+    ]
+  },
+  "join-controls.png": {
+    "caption": "Comandi degli ingressi del nodo join",
+    "callouts": [
+      {
+        "number": 1,
+        "region": "Rimuovi uno slot di ingresso"
+      },
+      {
+        "number": 2,
+        "region": "Aggiungi uno slot di ingresso"
+      }
+    ]
+  },
+  "join-extra.png": {
+    "caption": "Comandi del nodo join con ingressi collegati",
+    "callouts": [
+      {
+        "number": 1,
+        "region": "Rimuovi uno slot di ingresso"
+      },
+      {
+        "number": 2,
+        "region": "Aggiungi uno slot di ingresso"
+      }
+    ]
+  },
+  "model-problems.png": {
+    "caption": "Diagnostica del modello incompleto",
+    "callouts": [
+      {
+        "number": 1,
+        "region": "Elenco dei problemi"
+      },
+      {
+        "number": 2,
+        "region": "Nodi del grafo interessati"
+      }
+    ]
+  },
+  "project-chooser.png": {
+    "caption": "Scegli un progetto da modificare",
+    "callouts": [
+      {
+        "number": 1,
+        "region": "Crea un nuovo progetto"
+      },
+      {
+        "number": 2,
+        "region": "Apri un progetto esistente"
+      }
+    ]
+  },
+  "stereotype-form-top.png": {
+    "caption": "Identità e uscite dello stereotipo",
+    "callouts": [
+      {
+        "number": 1,
+        "region": "Identificativo, versione, nome e descrizione"
+      },
+      {
+        "number": 2,
+        "region": "Tipo, colore e uscite"
+      }
+    ]
+  },
+  "stereotype-form-bottom.png": {
+    "caption": "Parametri, dipendenze e funzione Lua",
+    "callouts": [
+      {
+        "number": 1,
+        "region": "Schema dei parametri"
+      },
+      {
+        "number": 2,
+        "region": "Dipendenze del pacchetto"
+      },
+      {
+        "number": 3,
+        "region": "Funzione Lua opzionale"
+      },
+      {
+        "number": 4,
+        "region": "Crea e salva il progetto"
+      }
+    ]
+  }
+}

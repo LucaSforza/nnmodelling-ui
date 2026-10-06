@@ -4,7 +4,13 @@ Qt 6 Widgets frontend over an independent C11 NNModelling core. The C library
 owns graph/model state, coordinates, validation, package metadata, Lua shape
 analysis, application operations and schema-v2 project persistence. Only
 `src/gui/qt/` is C++; Qt items hold stable model IDs and transient graphical state.
-There is no training backend or compiler/IR implementation in this checkout.
+The local FastAPI backend runs training in isolated CPU containers; there is no
+compiler/IR implementation in this checkout.
+
+The illustrated [Italian user manual](docs/user/index.html) covers client
+panels, menus and fields, backend setup/API commands, and a Tiny Decoder LLM
+training tutorial. It works offline; [Markdown sources](docs/user/README.md)
+are included.
 
 The [knowledge base](docs/knowledge/README.md) defines ownership and semantics.
 The dependency direction is Qt GUI → pure C API → C core, never the reverse.
@@ -100,7 +106,7 @@ loss contributions. Outgoing ports/edges are black or red by their source type.
 
 Input, Output and Loss Output appear as filled black, brown and red circles.
 Every complete root has one Output and one Loss Output. Subflow creation spawns
-one mapped terminal for each declared output; designers add the internal Input,
+one internal Input and one mapped terminal for each declared output; designers add
 nodes and connections. Nested terminal `data.boundaryHandle` names the external
 handle. Single-output Lua uses `output=tensor`; two-output Lua uses a keyed
 `outputs={prediction=tensor1,objective=tensor2}` result. Inspect all outputs in
