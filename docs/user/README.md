@@ -1,9 +1,11 @@
 # NNModelling user guide · Manuale utente
 
+The default entry [index.html](index.html) opens English. / L’ingresso predefinito [index.html](index.html) apre la versione inglese.
+
 Choose an edition / Scegli un'edizione:
 
 - [English guide](en/index.html)
-- [Manuale in italiano](index.html)
+- [Manuale in italiano](introduction.html)
 
 ## English
 
@@ -13,7 +15,7 @@ Sources: [introduction](en/introduction.md), [client](en/client.md), [parameters
 
 ## Italiano
 
-Apri [index.html](index.html) nel browser: il manuale completo funziona offline, senza server web, JavaScript, font remoti o CDN. Le immagini sono cliccabili per leggere il dettaglio originale; frecce rosse e numeri corrispondono alle legende affiancate. Su schermi stretti la legenda passa sotto l'immagine. La stampa usa un foglio di stile dedicato.
+Apri [introduction.html](introduction.html) nel browser: il manuale completo funziona offline, senza server web, JavaScript, font remoti o CDN. Le immagini sono cliccabili per leggere il dettaglio originale; frecce rosse e numeri corrispondono alle legende affiancate. Su schermi stretti la legenda passa sotto l'immagine. La stampa usa un foglio di stile dedicato.
 
 Sorgenti: [introduzione](introduction.md), [client](client.md), [parametri](parameters.md), [server](server.md), [tutorial tiny LLM](tutorial-tiny-llm.md) e [verifica](verification.md).
 
@@ -26,4 +28,4 @@ uv run --script docs/user/build.py
 uv run --script docs/user/build.py --check
 ```
 
-Generated HTML is versioned so readers do not need to install build tools. The check validates all ten pages, local links, anchors and image files. Shared screenshots live in `assets/`; `captions.json` and `captions-en.json` hold the Italian and English callout text. Screenshots were captured from the real Qt client using computer use through the local noVNC bridge. Original captures and working copies remain local and ignored in `.computer-use/user-docs/`. The editorial verification pages distinguish performed checks, observed results and environment limits. The guide is descriptive; the KB under `docs/knowledge/` remains the project's normative source.
+Generated HTML is versioned so readers do not need to install build tools. The check validates both editions and the default entry, local links, anchors and image files. Shared screenshots live in `assets/`; `captions.json` and `captions-en.json` hold the Italian and English callout text. Screenshots were captured from the real Qt client using computer use through the local noVNC bridge. Original captures and working copies remain local and ignored in `.computer-use/user-docs/`. The editorial verification pages distinguish performed checks, observed results and environment limits. The guide is descriptive; the KB under `docs/knowledge/` remains the project's normative source.

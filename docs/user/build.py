@@ -23,7 +23,6 @@ CHAPTERS = (
     ("server", "server", {"it": "Configurare il server", "en": "Configure the server"}),
     ("tutorial-tiny-llm", "tutorial-tiny-llm", {"it": "Tutorial tiny LLM", "en": "Tiny LLM tutorial"}),
 )
-DESTINATIONS = {f"{source}.md": f"{target}.html" for source, target, _ in CHAPTERS}
 TEXT = {
     "it": {
         "skip": "Vai al contenuto", "edition": "Manuale utente · Italiano", "outline": "In questa pagina",
@@ -46,16 +45,21 @@ TEXT = {
 }
 
 
+def page_name(language: str, target: str) -> str:
+    return "introduction.html" if language == "it" and target == "index" else f"{target}.html"
+
+
 def render(language: str, source: str, target: str, label: str, captions: dict) -> str:
     source_root = ROOT if language == "it" else ROOT / "en"
     stylesheet = "style.css" if language == "it" else "../style.css"
     strings = TEXT[language]
+    destinations = {f"{chapter}.md": page_name(language, destination) for chapter, destination, _ in CHAPTERS}
     converter = markdown.Markdown(extensions=["tables", "fenced_code", "toc"], output_format="xhtml")
     content = ET.fromstring(f"<article>{converter.convert((source_root / f'{source}.md').read_text())}</article>")
     for link in content.iter("a"):
         path, separator, anchor = link.get("href", "").partition("#")
-        if path in DESTINATIONS:
-            link.set("href", DESTINATIONS[path] + separator + anchor)
+        if path in destinations:
+            link.set("href", destinations[path] + separator + anchor)
     for parent in list(content.iter()):
         for position, element in enumerate(list(parent)):
             if element.tag != "p" or len(element) != 1 or element[0].tag != "img":
@@ -84,10 +88,10 @@ def render(language: str, source: str, target: str, label: str, captions: dict) 
             parent.insert(position, figure)
 
     navigation = "".join(
-        f'<a href="{destination}.html"' + (' aria-current="page"' if destination == target else "") + f'>{html.escape(titles[language])}</a>'
+        f'<a href="{page_name(language, destination)}"' + (' aria-current="page"' if destination == target else "") + f'>{html.escape(titles[language])}</a>'
         for _, destination, titles in CHAPTERS
     )
-    italian_href = f"{target}.html" if language == "it" else f"../{target}.html"
+    italian_href = page_name("it", target) if language == "it" else f'../{page_name("it", target)}'
     english_href = f"en/{target}.html" if language == "it" else f"{target}.html"
     language_switch = (
         f'<nav class="language-switch" aria-label="{strings["switch"]}">'
@@ -101,7 +105,7 @@ def render(language: str, source: str, target: str, label: str, captions: dict) 
 <html lang="{language}"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>{html.escape(label)} · NNModelling</title><link rel="stylesheet" href="{stylesheet}"/></head>
 <body><a class="skip" href="#content">{strings["skip"]}</a>
-<aside><a class="brand" href="index.html">NN<span>Modelling</span></a>
+<aside><a class="brand" href="{page_name(language, "index")}">NN<span>Modelling</span></a>
 <p class="edition">{strings["edition"]}<br/>{strings["date"]}</p>{language_switch}
 <nav aria-label="{strings["chapters"]}">{navigation}</nav><div class="outline"><p>{strings["outline"]}</p>{converter.toc}</div>
 <p class="offline">{strings["offline"]}<br/><a href="README.md">{strings["sources"]}</a></p></aside>
@@ -137,9 +141,10 @@ def verify(pages: dict[str, str]) -> None:
     for name, page in parsed.items():
         parent = posixpath.dirname(name)
         chapter = posixpath.basename(name)
-        expected_languages = ({"it": chapter, "en": f"en/{chapter}"} if not parent else
-                              {"it": f"../{chapter}", "en": chapter})
-        if page.languages != expected_languages:
+        target = "index" if chapter == "introduction.html" else chapter.removesuffix(".html")
+        expected_languages = ({"it": page_name("it", target), "en": f"en/{target}.html"} if not parent else
+                              {"it": f'../{page_name("it", target)}', "en": chapter})
+        if name != "index.html" and page.languages != expected_languages:
             raise ValueError(f"{name}: language switch must link to the matching chapter: {page.languages}")
         for ref in page.links:
             if ":" in ref or ref.startswith("//"):
@@ -162,8 +167,16 @@ def main() -> None:
     pages = {}
     for language in ("it", "en"):
         for source, target, titles in CHAPTERS:
-            name = f"{target}.html" if language == "it" else f"en/{target}.html"
+            name = page_name(language, target) if language == "it" else f"en/{target}.html"
             pages[name] = render(language, source, target, titles[language], captions[language])
+    # A relative redirect also works when opening the guide directly from disk.
+    pages["index.html"] = '''<!doctype html>
+<html lang="en"><head><meta charset="utf-8"/>
+<meta http-equiv="refresh" content="0; url=en/index.html"/>
+<title>NNModelling user guide</title></head>
+<body><p><a href="en/index.html">Open the English user guide</a></p>
+<p><a href="introduction.html" lang="it">Apri il manuale in italiano</a></p></body></html>
+'''
     verify(pages)
     for name, page in pages.items():
         destination = ROOT / name

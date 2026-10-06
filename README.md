@@ -7,8 +7,9 @@ analysis, application operations and schema-v2 project persistence. Only
 The local FastAPI backend runs training in isolated CPU containers; there is no
 compiler/IR implementation in this checkout.
 
-The illustrated user manual is available in [Italian](docs/user/index.html) and
-[English](docs/user/en/index.html), with a language selector on every page. It
+The illustrated user manual opens in [English](docs/user/index.html) by default
+and is also available in [Italian](docs/user/introduction.html), with a language
+selector on every page. It
 covers client panels, menus and fields, backend setup/API commands, and a Tiny
 Decoder LLM training tutorial. It works offline;
 [Markdown sources](docs/user/README.md) are included.
