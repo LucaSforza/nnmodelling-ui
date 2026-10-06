@@ -57,9 +57,22 @@ test-sanitize:
     cmake --build build/sanitizers --parallel 4
     ASAN_OPTIONS=detect_leaks=1 UBSAN_OPTIONS=halt_on_error=1 ctest --test-dir build/sanitizers --output-on-failure -L core
 
-# Count project C and C++ source/header lines, excluding tests, dependencies and generated build trees.
+# Count project source lines by language and owned subtree.
 count-lines:
-    find . -type d \( -name .git -o -name build -o -name tests -o -name third_party \) -prune -o -type f \( -name '*.c' -o -name '*.h' -o -name '*.C' -o -name '*.cc' -o -name '*.cpp' -o -name '*.cxx' -o -name '*.hh' -o -name '*.hpp' -o -name '*.hxx' -o -name '*.h++' -o -name '*.c++' \) -print0 | xargs -0 wc -l
+    @set -euo pipefail; \
+    c_output=$(find src -type f \( -name '*.c' -o -name '*.h' \) -print0 | sort -z | xargs -0 -r wc -l); \
+    cpp_output=$(find src -type f \( -name '*.C' -o -name '*.cc' -o -name '*.cpp' -o -name '*.cxx' -o -name '*.hh' -o -name '*.hpp' -o -name '*.hxx' -o -name '*.h++' -o -name '*.c++' \) -print0 | sort -z | xargs -0 -r wc -l); \
+    python_output=$(find backend python/nnmodelling-runtime -type d \( -name .git -o -name build -o -name .venv -o -name venv -o -name __pycache__ \) -prune -o -type f -name '*.py' -print0 | sort -z | xargs -0 -r wc -l); \
+    stereotype_output=$(find stereotype-packages -type d \( -name .git -o -name build -o -name .venv -o -name venv -o -name __pycache__ \) -prune -o -type f \( -name '*.lua' -o -name '*.py' \) -print0 | sort -z | xargs -0 -r wc -l); \
+    c_count=$(printf '%s\n' "$c_output" | awk 'NF && $2 != "total" { sum += $1 } END { print sum + 0 }'); \
+    cpp_count=$(printf '%s\n' "$cpp_output" | awk 'NF && $2 != "total" { sum += $1 } END { print sum + 0 }'); \
+    python_count=$(printf '%s\n' "$python_output" | awk 'NF && $2 != "total" { sum += $1 } END { print sum + 0 }'); \
+    stereotype_count=$(printf '%s\n' "$stereotype_output" | awk 'NF && $2 != "total" { sum += $1 } END { print sum + 0 }'); \
+    total_c=$((c_count + cpp_count)); \
+    printf '%s\n' 'C and C++ source and headers:' 'C files:' "$c_output" 'C++ files:' "$cpp_output"; \
+    printf 'C code: %s lines\nC++ code: %s lines\nTotal C code (C + C++): %s + %s = %s lines\n' "$c_count" "$cpp_count" "$c_count" "$cpp_count" "$total_c"; \
+    printf '%s\n' 'Python (backend and runtime):' "$python_output" 'Lua and Python (stereotype-packages):' "$stereotype_output"; \
+    printf '%s lines of C code + %s lines of backend code + %s lines of stereotype-packages code = %s total lines\n' "$total_c" "$python_count" "$stereotype_count" "$((total_c + python_count + stereotype_count))"
 
 # Repository-local OpenCode V2 development tooling.
 swarm-setup:
