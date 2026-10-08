@@ -31,3 +31,37 @@ USER 65532:65532
 ```
 
 Build the base image with `just backend-image`, then build the extension as `docker build -f Dockerfile.worker-extra -t nnmodelling-worker:pillow .`. Set `NNMODELLING_WORKER_IMAGE=nnmodelling-worker:pillow` when starting the service (for example, `NNMODELLING_WORKER_IMAGE=nnmodelling-worker:pillow just backend-run`). Keep resource dependencies pinned in the image recipe and rebuild after changing them. Training containers run without network access; a missing dependency appears as a failed job with the worker import error.
+
+## Local API with Slurm/Singularity workers
+
+Accepted execution target: keep this service on the local computer and launch
+only training containers through an existing SSH alias. No remote FastAPI server
+or SSH credential copy is needed. Configure absolute cluster paths first:
+
+```sh
+export NNMODELLING_SLURM_HOST=cluster
+export NNMODELLING_SLURM_ROOT=/absolute/remote/path/nnmodelling-jobs
+export NNMODELLING_SLURM_IMAGE=/absolute/remote/path/worker.sif
+just backend-slurm
+```
+
+The existing Qt Training dashboard uses the same local endpoint. Slurm defaults
+to partition students, two CPUs, 4G memory and a 30-minute allocation. Configure
+`NNMODELLING_SLURM_PARTITION`, `NNMODELLING_SLURM_CPUS`,
+`NNMODELLING_SLURM_MEMORY` and `NNMODELLING_SLURM_TIME` when needed. The SIF must
+already contain Python, torch, NumPy, safetensors and all resource dependencies
+(including Pillow for MNIST); worker/runtime source is frozen per job. Never
+install dependencies during training. An immutable SIF copy and recorded SHA256
+make the deployment reproducible.
+
+`/health` keeps its container object and identifies `executor: slurm`; errors
+remain visible and there is no fallback to host training. Snapshot, metric and
+artifact ownership stays local. Cancellation/shutdown/restart use scancel only
+for recorded owned scheduler jobs. Keep default Docker behavior with
+`just backend-run`; switching executor does not change model semantics.
+
+`just train-cluster-examples` submits the five bundled models, excludes DeepSeek,
+waits for three-epoch training and downloads verified artifacts into ignored
+`.computer-use/cluster-training`. Repeating the same command resumes its report
+without duplicating recorded jobs. Standalone public-API consumers live under
+`examples/implementation/llm/` and `examples/implementation/vae/`.

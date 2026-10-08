@@ -1,0 +1,24 @@
+{
+  "batch": {
+    "inputs": {
+      "tokens": {
+        "dtype": "int64",
+        "shape": [
+          "B",
+          128
+        ]
+      }
+    },
+    "targets": {
+      "target": {
+        "dtype": "int64",
+        "shape": [
+          "B",
+          128
+        ]
+      }
+    }
+  },
+  "description": "Bounded verified Tiny Shakespeare excerpt, sorted 65-character vocabulary, and 128-character next-token windows.",
+  "name": "Autoregressive token sequences"
+}

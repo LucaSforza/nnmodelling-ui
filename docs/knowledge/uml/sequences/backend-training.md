@@ -185,3 +185,33 @@ errors are recorded instead of represented as successful completion.
 Restore does not overwrite the original project or an existing destination.
 Downloaded weights and wheels require completed jobs. Safetensors is the
 interchange checkpoint; pickle checkpoints are not emitted.
+
+## Local API with remote Slurm containers (accepted 2026-10-08)
+
+```mermaid
+sequenceDiagram
+    participant API as Local FastAPI
+    participant Store as Local JobStore
+    participant Runner as SlurmJobRunner
+    participant SSH as Cluster SSH
+    participant Slurm as Slurm scheduler
+    participant SIF as Singularity worker
+    API->>Store: Freeze request
+    API->>Runner: Queue local job ID
+    Runner->>SSH: Stage snapshot and worker source in new UUID directory
+    Runner->>SSH: sbatch contained Singularity command
+    SSH-->>Runner: Scheduler job ID
+    Runner->>Store: Persist scheduler identity and configuration
+    Slurm->>SIF: Execute same backend.worker
+    loop Until scheduler termination
+        Runner->>SSH: Read scheduler state and complete metrics
+        SSH-->>Runner: State and metrics bytes
+        Runner->>Store: Atomically publish local metrics
+    end
+    Runner->>SSH: Retrieve safe output files
+    Runner->>Store: Validate metrics weights wheel and commit completion
+    opt Cancel shutdown restart or transport failure
+        Runner->>SSH: scancel recorded owned scheduler job
+        Runner->>Store: Record cancellation or visible interruption/error
+    end
+```

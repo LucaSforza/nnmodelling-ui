@@ -9,9 +9,9 @@ from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
 
 
-JOB_ID = "a64143c8-07c2-40e7-8f89-37c33d64970b"
-FILENAME = "nnmodel_a64143c8_07c2_40e7_8f89_37c33d64970b-0.1.0-py3-none-any.whl"
-SHA256 = "efd2e36435cce8ba5e22121925cbdff1af13773f6b5494d912fdbd9a260de33d"
+JOB_ID = "1e8594bb-3d8c-43e7-ae96-56bc94c461d9"
+FILENAME = "nnm_tiny_decoder_llm-0.1.0-py3-none-any.whl"
+SHA256 = "154379d2eb73fb9d3d8dc1990b11fd1d0d67bf2d7c9835452501aef1e83ab601"
 
 
 def download(base_url: str, destination: Path) -> None:
@@ -32,7 +32,7 @@ def download(base_url: str, destination: Path) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Download and verify the completed full-training model wheel.")
+    parser = argparse.ArgumentParser(description="Download and verify the completed clustered Tiny Decoder LLM wheel.")
     parser.add_argument("--base-url", default="http://127.0.0.1:8765", help="local backend URL (default: %(default)s)")
     parser.add_argument("--output-dir", type=Path, default=Path(__file__).parent / "wheels")
     args = parser.parse_args()

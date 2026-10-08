@@ -6,7 +6,7 @@ from pathlib import Path
 
 import torch
 
-from nnmodel_a64143c8_07c2_40e7_8f89_37c33d64970b import Model
+from nnmodel_job_1e8594bb_3d8c_43e7_ae96_56bc94c461d9 import Model
 
 
 CONTEXT_LENGTH = 128

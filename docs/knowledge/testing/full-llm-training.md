@@ -1,5 +1,9 @@
 # Full Tiny Shakespeare training
 
+Historical proof is retained below. On 2026-10-08 the standalone LLM consumer
+was repinned to a new bounded three-epoch Sapienza Slurm job; current consumer
+identity and verification are in [cluster training](cluster-training.md).
+
 Started after implementation commit `ced6dc5`, following the accepted user
 choice of 20 epochs. Job: `a64143c8-07c2-40e7-8f89-37c33d64970b`, accepted
 2026-10-05T19:45:03Z by the local FastAPI service. CPU container image:

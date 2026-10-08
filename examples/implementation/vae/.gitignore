@@ -1,0 +1,7 @@
+/.venv/
+/wheels/*.whl
+/wheels/*.download
+/weights/*.safetensors
+/inputs/*.png
+/output/
+/__pycache__/

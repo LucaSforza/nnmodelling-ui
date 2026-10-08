@@ -1,0 +1,23 @@
+{
+  "name": "Causal Mask",
+  "description": "Masks future positions in [B,T,T] attention scores.",
+  "kind": "layer",
+  "view": {
+    "color": "#4779c4",
+    "width": 180,
+    "height": 100
+  },
+  "parameters": {
+    "max_length": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 128
+    }
+  },
+  "outputs": [
+    {
+      "id": "out",
+      "type": "output"
+    }
+  ]
+}

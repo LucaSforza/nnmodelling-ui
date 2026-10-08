@@ -48,8 +48,9 @@ without final metrics, weights and wheel. Worker failures publish errors.
 
 ## Container and training
 
-Production path always launches Docker-compatible containers, no permanent
-local-process alternative. Build CPU worker image via just recipe. Mount only
+Production training always runs in containers: Docker-compatible containers locally
+or Singularity containers submitted through SSH to Slurm (accepted 2026-10-08).
+There is no permanent local-process training alternative. Build CPU worker image via just recipe. Mount only
 job snapshot read-only and job output read-write; no network during training,
 no host credentials/socket, resource limits and unprivileged worker. One local
 job at a time suffices; persistent queue, cancellation and shutdown are owned
@@ -85,6 +86,52 @@ Root uv workspace has an examples dependency group, locked with the workspace;
 the standard local worker image installs this group before launch. Keep image
 decoding out of the base SDK dependency set and avoid a second unlocked pip
 requirements path. Local example tests install the same group.
+
+## SSH / Slurm execution (accepted 2026-10-08)
+
+The FastAPI service, HTTP protocol, owner checks, persistent queue, snapshots and
+artifact downloads remain on this computer. Deployment configuration selects
+`NNMODELLING_EXECUTOR=docker` (default) or `slurm`; both execute the same worker,
+graph, training configuration and wheel exporter. This is an execution location,
+not a model semantic variant. No backend service is launched on the cluster.
+
+Slurm configuration is service-private: SSH alias (`NNMODELLING_SLURM_HOST`),
+absolute remote root (`NNMODELLING_SLURM_ROOT`), absolute prebuilt SIF image
+(`NNMODELLING_SLURM_IMAGE`), partition (`NNMODELLING_SLURM_PARTITION`, default
+students), CPUs (default 2), memory (default 4G) and time (default 00:30:00).
+Use existing SSH authentication and host verification; never copy credentials
+into jobs or disable host-key checks. Fail visibly on missing configuration,
+SSH, image, dependencies, scheduler failures and timeouts; never fall back to
+local training. Health retains its `container` object and reports selected executor.
+
+Local immutable snapshot is transferred into a new UUID-specific remote directory.
+Slurm launches Singularity with clean environment, containment, an isolated
+loopback-only network (`--net --network none`), read-only snapshot and worker
+source, writable output, and bounded CPU/thread resources. The SIF
+contains Python, torch, NumPy, safetensors and declared resource dependencies;
+worker/runtime source is frozen per submitted job. Dependency preparation occurs
+before training, never in the worker. Remote home, host secrets and sockets are
+not mounted into the worker. Slurm enforces job resources/time. CPU training is
+sufficient for bundled examples; GPU execution is outside this change.
+
+Persist remote scheduler identity and execution configuration before observation;
+status remains running while the launcher waits for the scheduler. Poll scheduler
+with bounded SSH commands, publish complete valid metric files atomically to local
+output during training, and retrieve logs, weights and wheel after termination.
+Never extract remote links or traversal paths. Completion requires successful
+scheduler exit and existing local result validation. Cancellation uses scancel;
+service shutdown/restart cancels only its own recorded jobs and makes interrupted
+work visibly failed. Do not cancel unrelated cluster jobs. Transport failure must
+attempt cancellation and retain scheduler identity/error for diagnosis.
+
+The standalone `examples/implementation/llm/` consumer may be repinned to a new
+verified cluster-produced wheel; recorded full-corpus historical proof remains.
+Add `examples/implementation/vae/` as an isolated uv consumer with a verified
+HTTP-downloaded wheel, bundled/default and explicit safetensors, reconstruction,
+`encode` and `decode` (including a seeded prior sample). It uses public Model APIs,
+validates finite results and writes PNGs. Both consumers run without backend or
+source checkout after artifact download. Keep wheels, environments and images
+ignored; freeze distribution/import identity and SHA256 in consumer metadata.
 
 ## Step publication and learning curves (accepted 2026-10-05)
 
@@ -243,7 +290,11 @@ execution or torch.compile/export after profiling; preserve handle, join,
 subflow and adapter semantics. Initial generic executor is accepted release path.
 
 Export valid wheel with job-specific import package `nnmodel_<job-id-normalized>`
-exposing `Model(weights_path=None)`.
+exposing `Model(weights_path=None)`. Existing import normalization replaces non-ASCII
+identifier characters with underscores, trims and lowercases; when its first
+character is not a letter, it inserts `job_` before the normalized job identity.
+Read the actual wheel package when pinning consumers (numeric-leading UUIDs
+therefore import as `nnmodel_job_<uuid-with-underscores>`).
 
 Accepted 2026-10-06: distribution identity is separate from this job-specific import package. New exports use
 `nnm_<normalized-project-id>-0.1.0-py3-none-any.whl`, with the same distribution

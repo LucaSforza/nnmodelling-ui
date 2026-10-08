@@ -74,3 +74,13 @@ identity/active selection, preserved opaque root/batch/slot metadata and Python/
 assets, normal write/save rollback, symlink rejection and save/reopen. GUI exercises
 Dataset/New dataset entrypoints, empty selection, Edit/Select, invalid retained
 forms and cancellation. Use a disposable project for real browser UI editing.
+
+Slurm gate (accepted 2026-10-08): retain Docker lifecycle regressions and add
+mocked SSH/scheduler tests for staging, command quoting, scheduler outcomes,
+transport errors, cancellation/restart and safe artifact transfer. Actual proof
+requires local HTTP submissions with health identifying Slurm, scheduler job IDs
+and compute nodes, finite train/validation/test metrics, weights and wheels for
+all bundled models except DeepSeek. Run standalone LLM/VAE consumers in isolated
+environments without source checkout or public SDK, using bundled and explicit
+weights; exercise VAE encode/decode and seeded prior generation. Diagnostic
+worker or mocked scheduler tests cannot substitute for actual cluster training.

@@ -1,0 +1,25 @@
+{
+  "name": "Token Cross Entropy",
+  "description": "Mean next-token cross entropy for logits [B,T,V] and targets [B,T].",
+  "kind": "loss",
+  "view": {
+    "color": "#b85c5c",
+    "width": 180,
+    "height": 100
+  },
+  "parameters": {},
+  "outputs": [
+    {
+      "id": "loss",
+      "type": "loss"
+    }
+  ],
+  "objective": {
+    "externalInputs": [
+      {
+        "name": "target",
+        "source": "batch.targets.target"
+      }
+    ]
+  }
+}

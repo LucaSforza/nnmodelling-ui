@@ -1,0 +1,9 @@
+[project]
+name = "llm-causal-attention"
+version = "1.0.0"
+requires-python = ">=3.11"
+dependencies = ["torch>=2.2", "nnmodelling-runtime>=0.1.0"]
+
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"

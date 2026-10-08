@@ -34,6 +34,18 @@ backend-image:
 backend-run:
     uv run --package nnmodelling-backend --no-sync uvicorn backend.app:app --host "${NNMODELLING_BACKEND_HOST:-127.0.0.1}" --port "${NNMODELLING_BACKEND_PORT:-8765}"
 
+# Backend stays local; only isolated workers run on the configured Slurm cluster.
+backend-slurm:
+    NNMODELLING_EXECUTOR=slurm NNMODELLING_SLURM_HOST="${NNMODELLING_SLURM_HOST:-cluster}" uv run --package nnmodelling-backend --no-sync uvicorn backend.app:app --host "${NNMODELLING_BACKEND_HOST:-127.0.0.1}" --port "${NNMODELLING_BACKEND_PORT:-8765}"
+
+train-cluster-examples:
+    uv run --no-project python tools/train_cluster_examples.py --wait
+
+test-vae-consumer:
+    cd examples/implementation/vae && uv run --no-project python download_wheel.py
+    cd examples/implementation/vae && uv sync --locked
+    cd examples/implementation/vae && uv run --locked python main.py
+
 test-backend:
     uv run --package nnmodelling-backend --group dev pytest -q tests/test_backend.py tests/backend
 
@@ -41,7 +53,7 @@ test-runtime:
     uv run --group dev pytest -q tests/test_runtime.py tests/test_operations.py
 
 test-examples:
-    uv run --group dev --group examples python -m pytest -q tests/test_examples.py tests/test_example_datasets.py tests/test_example_stereotypes.py tests/test_full_llm_preparation.py tests/test_llm_wheel_consumer.py
+    uv run --group dev --group examples python -m pytest -q tests/test_examples.py tests/test_example_datasets.py tests/test_example_stereotypes.py tests/test_full_llm_preparation.py tests/test_llm_wheel_consumer.py tests/test_vae_wheel_consumer.py tests/test_cluster_examples.py
 
 test-llm-consumer:
     cd examples/implementation/llm && uv run --no-project python download_wheel.py

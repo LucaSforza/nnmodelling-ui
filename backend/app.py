@@ -15,6 +15,7 @@ from typing import Literal
 
 from . import config
 from .runner import JobRunner, container_status
+from .slurm import SlurmJobRunner, slurm_status
 from .store import JobStore, utc_now
 from .validation import resolve_core_packages, safe_relative_path, validate_project, validate_training
 
@@ -111,7 +112,17 @@ class RequestSizeLimit:
 
 
 store = JobStore()
-runner = JobRunner(store)
+
+
+def build_runner(job_store: JobStore) -> JobRunner:
+    if config.EXECUTOR == "docker":
+        return JobRunner(job_store)
+    if config.EXECUTOR == "slurm":
+        return SlurmJobRunner(job_store)
+    raise ValueError("NNMODELLING_EXECUTOR must be 'docker' or 'slurm'.")
+
+
+runner = build_runner(store)
 
 
 @asynccontextmanager
@@ -139,7 +150,13 @@ async def current_owner(authorization: str | None = Header(default=None)) -> str
 
 @app.get("/health")
 async def health() -> dict[str, Any]:
-    runtime = await asyncio.to_thread(container_status)
+    if config.EXECUTOR == "docker":
+        runtime = await asyncio.to_thread(container_status)
+    elif config.EXECUTOR == "slurm":
+        runtime = await asyncio.to_thread(slurm_status)
+    else:
+        runtime = {"available": False, "runtime": None, "executor": config.EXECUTOR,
+                   "error": "NNMODELLING_EXECUTOR must be 'docker' or 'slurm'."}
     return {"status": "ok", "container": runtime}
 
 

@@ -1,0 +1,849 @@
+{
+  "nodes": [
+    {
+      "id": "output",
+      "type": "custom",
+      "position": {
+        "x": 280,
+        "y": 1620
+      },
+      "data": {
+        "name": "Output",
+        "scope": "",
+        "package": {
+          "id": "core.output",
+          "version": "0.1.0"
+        },
+        "params": {}
+      }
+    },
+    {
+      "id": "loss-output",
+      "type": "custom",
+      "position": {
+        "x": 20,
+        "y": 1620
+      },
+      "data": {
+        "name": "Loss Output",
+        "scope": "",
+        "package": {
+          "id": "core.loss-output",
+          "version": "0.1.0"
+        },
+        "params": {}
+      }
+    },
+    {
+      "id": "tokens",
+      "type": "custom",
+      "position": {
+        "x": 140,
+        "y": 80
+      },
+      "data": {
+        "name": "Input: tokens",
+        "scope": "",
+        "package": {
+          "id": "core.input",
+          "version": "0.1.0"
+        },
+        "params": {
+          "binding": "tokens"
+        }
+      }
+    },
+    {
+      "id": "embedding",
+      "type": "custom",
+      "position": {
+        "x": 100,
+        "y": 240
+      },
+      "data": {
+        "name": "Token Embedding: 65 × 64",
+        "scope": "",
+        "package": {
+          "id": "core.embedding",
+          "version": "0.1.0"
+        },
+        "params": {
+          "num_embeddings": 65,
+          "embedding_dim": 64,
+          "input_dtype": "int64",
+          "dtype": "float32"
+        }
+      }
+    },
+    {
+      "id": "position",
+      "type": "custom",
+      "position": {
+        "x": 100,
+        "y": 480
+      },
+      "data": {
+        "name": "Positional Encoding: context 128",
+        "scope": "",
+        "package": {
+          "id": "core.positional-encoding",
+          "version": "0.1.0"
+        },
+        "params": {
+          "d_model": 64,
+          "max_len": 128
+        }
+      }
+    },
+    {
+      "id": "blocks",
+      "type": "custom",
+      "position": {
+        "x": 100,
+        "y": 720
+      },
+      "data": {
+        "name": "Repeat: 2 decoder blocks",
+        "scope": "",
+        "package": {
+          "id": "core.repeat",
+          "version": "0.1.0"
+        },
+        "params": {
+          "times": 2
+        }
+      }
+    },
+    {
+      "id": "final-norm",
+      "type": "custom",
+      "position": {
+        "x": 100,
+        "y": 960
+      },
+      "data": {
+        "name": "LayerNorm: 64",
+        "scope": "",
+        "package": {
+          "id": "core.layer-norm",
+          "version": "0.1.0"
+        },
+        "params": {
+          "normalized_shape": 64,
+          "eps": 0.00001,
+          "elementwise_affine": true
+        }
+      }
+    },
+    {
+      "id": "logits",
+      "type": "custom",
+      "position": {
+        "x": 100,
+        "y": 1160
+      },
+      "data": {
+        "name": "Linear: 64 → 65",
+        "scope": "",
+        "package": {
+          "id": "core.linear",
+          "version": "0.1.0"
+        },
+        "params": {
+          "in_features": 64,
+          "out_features": 65,
+          "bias": true,
+          "dtype": "float32"
+        }
+      }
+    },
+    {
+      "id": "token-loss",
+      "type": "custom",
+      "position": {
+        "x": -20,
+        "y": 1400
+      },
+      "data": {
+        "name": "Token Cross Entropy",
+        "scope": "",
+        "package": {
+          "id": "llm.token-cross-entropy",
+          "version": "1.0.0"
+        },
+        "params": {}
+      }
+    },
+    {
+      "id": "block-input",
+      "type": "custom",
+      "position": {
+        "x": 120,
+        "y": 80
+      },
+      "data": {
+        "name": "Input",
+        "scope": "blocks",
+        "package": {
+          "id": "core.input",
+          "version": "0.1.0"
+        },
+        "params": {
+          "binding": "tokens"
+        }
+      }
+    },
+    {
+      "id": "attn-norm",
+      "type": "custom",
+      "position": {
+        "x": 300,
+        "y": 240
+      },
+      "data": {
+        "name": "LayerNorm: 64",
+        "scope": "blocks",
+        "package": {
+          "id": "core.layer-norm",
+          "version": "0.1.0"
+        },
+        "params": {
+          "normalized_shape": 64,
+          "eps": 0.00001,
+          "elementwise_affine": true
+        }
+      }
+    },
+    {
+      "id": "heads",
+      "type": "custom",
+      "position": {
+        "x": 300,
+        "y": 500
+      },
+      "data": {
+        "name": "HorizontalRepeat: 4 heads × 16",
+        "scope": "blocks",
+        "package": {
+          "id": "core.horizontal-repeat",
+          "version": "0.1.0"
+        },
+        "params": {
+          "times": 4,
+          "join": {
+            "id": "core.concat",
+            "version": "0.1.0",
+            "parameters": {
+              "dim": -1
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "residual-attn",
+      "type": "custom",
+      "position": {
+        "x": 60,
+        "y": 720
+      },
+      "data": {
+        "name": "Add: attention residual",
+        "scope": "blocks",
+        "package": {
+          "id": "core.add",
+          "version": "0.1.0"
+        },
+        "params": {}
+      }
+    },
+    {
+      "id": "ff-norm",
+      "type": "custom",
+      "position": {
+        "x": 360,
+        "y": 1000
+      },
+      "data": {
+        "name": "LayerNorm: 64",
+        "scope": "blocks",
+        "package": {
+          "id": "core.layer-norm",
+          "version": "0.1.0"
+        },
+        "params": {
+          "normalized_shape": 64,
+          "eps": 0.00001,
+          "elementwise_affine": true
+        }
+      }
+    },
+    {
+      "id": "ff-expand",
+      "type": "custom",
+      "position": {
+        "x": 360,
+        "y": 1240
+      },
+      "data": {
+        "name": "Linear: 64 → 256",
+        "scope": "blocks",
+        "package": {
+          "id": "core.linear",
+          "version": "0.1.0"
+        },
+        "params": {
+          "in_features": 64,
+          "out_features": 256,
+          "bias": true,
+          "dtype": "float32"
+        }
+      }
+    },
+    {
+      "id": "ff-activation",
+      "type": "custom",
+      "position": {
+        "x": 360,
+        "y": 1500
+      },
+      "data": {
+        "name": "ReLU",
+        "scope": "blocks",
+        "package": {
+          "id": "core.relu",
+          "version": "0.1.0"
+        },
+        "params": {
+          "inplace": false
+        }
+      }
+    },
+    {
+      "id": "ff-contract",
+      "type": "custom",
+      "position": {
+        "x": 360,
+        "y": 1680
+      },
+      "data": {
+        "name": "Linear: 256 → 64",
+        "scope": "blocks",
+        "package": {
+          "id": "core.linear",
+          "version": "0.1.0"
+        },
+        "params": {
+          "in_features": 256,
+          "out_features": 64,
+          "bias": true,
+          "dtype": "float32"
+        }
+      }
+    },
+    {
+      "id": "residual-ff",
+      "type": "custom",
+      "position": {
+        "x": 60,
+        "y": 1940
+      },
+      "data": {
+        "name": "Add: feed-forward residual",
+        "scope": "blocks",
+        "package": {
+          "id": "core.add",
+          "version": "0.1.0"
+        },
+        "params": {}
+      }
+    },
+    {
+      "id": "block-output",
+      "type": "custom",
+      "position": {
+        "x": 120,
+        "y": 2200
+      },
+      "data": {
+        "name": "Output: out",
+        "scope": "blocks",
+        "package": {
+          "id": "core.output",
+          "version": "0.1.0"
+        },
+        "params": {},
+        "boundaryHandle": "out"
+      }
+    },
+    {
+      "id": "head-input",
+      "type": "custom",
+      "position": {
+        "x": 120,
+        "y": 80
+      },
+      "data": {
+        "name": "Input",
+        "scope": "heads",
+        "package": {
+          "id": "core.input",
+          "version": "0.1.0"
+        },
+        "params": {
+          "binding": "tokens"
+        }
+      }
+    },
+    {
+      "id": "query",
+      "type": "custom",
+      "position": {
+        "x": 80,
+        "y": 280
+      },
+      "data": {
+        "name": "Query: 64 → 16",
+        "scope": "heads",
+        "package": {
+          "id": "core.linear",
+          "version": "0.1.0"
+        },
+        "params": {
+          "in_features": 64,
+          "out_features": 16,
+          "bias": true,
+          "dtype": "float32"
+        }
+      }
+    },
+    {
+      "id": "key",
+      "type": "custom",
+      "position": {
+        "x": -200,
+        "y": 280
+      },
+      "data": {
+        "name": "Key: 64 → 16",
+        "scope": "heads",
+        "package": {
+          "id": "core.linear",
+          "version": "0.1.0"
+        },
+        "params": {
+          "in_features": 64,
+          "out_features": 16,
+          "bias": true,
+          "dtype": "float32"
+        }
+      }
+    },
+    {
+      "id": "value",
+      "type": "custom",
+      "position": {
+        "x": 340,
+        "y": 280
+      },
+      "data": {
+        "name": "Value: 64 → 16",
+        "scope": "heads",
+        "package": {
+          "id": "core.linear",
+          "version": "0.1.0"
+        },
+        "params": {
+          "in_features": 64,
+          "out_features": 16,
+          "bias": true,
+          "dtype": "float32"
+        }
+      }
+    },
+    {
+      "id": "key-transpose",
+      "type": "custom",
+      "position": {
+        "x": -200,
+        "y": 560
+      },
+      "data": {
+        "name": "Transpose: T × T",
+        "scope": "heads",
+        "package": {
+          "id": "core.transpose",
+          "version": "0.1.0"
+        },
+        "params": {
+          "dim0": -2,
+          "dim1": -1
+        }
+      }
+    },
+    {
+      "id": "scores",
+      "type": "custom",
+      "position": {
+        "x": -80,
+        "y": 840
+      },
+      "data": {
+        "name": "MatMul: Q × Kᵀ",
+        "scope": "heads",
+        "package": {
+          "id": "core.matmul",
+          "version": "0.1.0"
+        },
+        "params": {}
+      }
+    },
+    {
+      "id": "scale",
+      "type": "custom",
+      "position": {
+        "x": -60,
+        "y": 1120
+      },
+      "data": {
+        "name": "Scale: 1 / √16",
+        "scope": "heads",
+        "package": {
+          "id": "core.scale",
+          "version": "0.1.0"
+        },
+        "params": {
+          "factor": 0.25
+        }
+      }
+    },
+    {
+      "id": "causal-mask",
+      "type": "custom",
+      "position": {
+        "x": -60,
+        "y": 1340
+      },
+      "data": {
+        "name": "Causal Mask: context 128",
+        "scope": "heads",
+        "package": {
+          "id": "llm.causal-mask",
+          "version": "1.0.0"
+        },
+        "params": {
+          "max_length": 128
+        }
+      }
+    },
+    {
+      "id": "softmax",
+      "type": "custom",
+      "position": {
+        "x": -60,
+        "y": 1540
+      },
+      "data": {
+        "name": "Softmax: attention weights",
+        "scope": "heads",
+        "package": {
+          "id": "core.softmax",
+          "version": "0.1.0"
+        },
+        "params": {
+          "dim": -1
+        }
+      }
+    },
+    {
+      "id": "weighted-value",
+      "type": "custom",
+      "position": {
+        "x": 120,
+        "y": 1760
+      },
+      "data": {
+        "name": "MatMul: attention × V",
+        "scope": "heads",
+        "package": {
+          "id": "core.matmul",
+          "version": "0.1.0"
+        },
+        "params": {}
+      }
+    },
+    {
+      "id": "head-output",
+      "type": "custom",
+      "position": {
+        "x": 180,
+        "y": 2020
+      },
+      "data": {
+        "name": "Output: out",
+        "scope": "heads",
+        "package": {
+          "id": "core.output",
+          "version": "0.1.0"
+        },
+        "params": {},
+        "boundaryHandle": "out"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "source": "tokens",
+      "sourceHandle": "out",
+      "target": "embedding",
+      "targetHandle": "in"
+    },
+    {
+      "id": "e2",
+      "source": "embedding",
+      "sourceHandle": "out",
+      "target": "position",
+      "targetHandle": "in"
+    },
+    {
+      "id": "e3",
+      "source": "position",
+      "sourceHandle": "out",
+      "target": "blocks",
+      "targetHandle": "in"
+    },
+    {
+      "id": "e4",
+      "source": "blocks",
+      "sourceHandle": "out",
+      "target": "final-norm",
+      "targetHandle": "in"
+    },
+    {
+      "id": "e5",
+      "source": "final-norm",
+      "sourceHandle": "out",
+      "target": "logits",
+      "targetHandle": "in"
+    },
+    {
+      "id": "e6",
+      "source": "logits",
+      "sourceHandle": "out",
+      "target": "output",
+      "targetHandle": "in"
+    },
+    {
+      "id": "e7",
+      "source": "logits",
+      "sourceHandle": "out",
+      "target": "token-loss",
+      "targetHandle": "in"
+    },
+    {
+      "id": "e8",
+      "source": "token-loss",
+      "sourceHandle": "loss",
+      "target": "loss-output",
+      "targetHandle": "in"
+    },
+    {
+      "id": "e9",
+      "source": "block-input",
+      "sourceHandle": "out",
+      "target": "attn-norm",
+      "targetHandle": "in"
+    },
+    {
+      "id": "e10",
+      "source": "attn-norm",
+      "sourceHandle": "out",
+      "target": "heads",
+      "targetHandle": "in"
+    },
+    {
+      "id": "e11",
+      "source": "block-input",
+      "sourceHandle": "out",
+      "target": "residual-attn",
+      "targetHandle": "in-1"
+    },
+    {
+      "id": "e12",
+      "source": "heads",
+      "sourceHandle": "out",
+      "target": "residual-attn",
+      "targetHandle": "in-2"
+    },
+    {
+      "id": "e13",
+      "source": "residual-attn",
+      "sourceHandle": "out",
+      "target": "ff-norm",
+      "targetHandle": "in"
+    },
+    {
+      "id": "e14",
+      "source": "ff-norm",
+      "sourceHandle": "out",
+      "target": "ff-expand",
+      "targetHandle": "in"
+    },
+    {
+      "id": "e15",
+      "source": "ff-expand",
+      "sourceHandle": "out",
+      "target": "ff-activation",
+      "targetHandle": "in"
+    },
+    {
+      "id": "e16",
+      "source": "ff-activation",
+      "sourceHandle": "out",
+      "target": "ff-contract",
+      "targetHandle": "in"
+    },
+    {
+      "id": "e17",
+      "source": "residual-attn",
+      "sourceHandle": "out",
+      "target": "residual-ff",
+      "targetHandle": "in-1"
+    },
+    {
+      "id": "e18",
+      "source": "ff-contract",
+      "sourceHandle": "out",
+      "target": "residual-ff",
+      "targetHandle": "in-2"
+    },
+    {
+      "id": "e19",
+      "source": "residual-ff",
+      "sourceHandle": "out",
+      "target": "block-output",
+      "targetHandle": "in"
+    },
+    {
+      "id": "e20",
+      "source": "head-input",
+      "sourceHandle": "out",
+      "target": "query",
+      "targetHandle": "in"
+    },
+    {
+      "id": "e21",
+      "source": "head-input",
+      "sourceHandle": "out",
+      "target": "key",
+      "targetHandle": "in"
+    },
+    {
+      "id": "e22",
+      "source": "head-input",
+      "sourceHandle": "out",
+      "target": "value",
+      "targetHandle": "in"
+    },
+    {
+      "id": "e23",
+      "source": "key",
+      "sourceHandle": "out",
+      "target": "key-transpose",
+      "targetHandle": "in"
+    },
+    {
+      "id": "e24",
+      "source": "query",
+      "sourceHandle": "out",
+      "target": "scores",
+      "targetHandle": "in-1"
+    },
+    {
+      "id": "e25",
+      "source": "key-transpose",
+      "sourceHandle": "out",
+      "target": "scores",
+      "targetHandle": "in-2"
+    },
+    {
+      "id": "e26",
+      "source": "scores",
+      "sourceHandle": "out",
+      "target": "scale",
+      "targetHandle": "in"
+    },
+    {
+      "id": "e27",
+      "source": "scale",
+      "sourceHandle": "out",
+      "target": "causal-mask",
+      "targetHandle": "in"
+    },
+    {
+      "id": "e28",
+      "source": "causal-mask",
+      "sourceHandle": "out",
+      "target": "softmax",
+      "targetHandle": "in"
+    },
+    {
+      "id": "e29",
+      "source": "softmax",
+      "sourceHandle": "out",
+      "target": "weighted-value",
+      "targetHandle": "in-1"
+    },
+    {
+      "id": "e30",
+      "source": "value",
+      "sourceHandle": "out",
+      "target": "weighted-value",
+      "targetHandle": "in-2"
+    },
+    {
+      "id": "e31",
+      "source": "weighted-value",
+      "sourceHandle": "out",
+      "target": "head-output",
+      "targetHandle": "in"
+    }
+  ],
+  "layoutDirection": "horizontal",
+  "manifest": {
+    "schemaVersion": 2,
+    "id": "miniDeepSeekv4",
+    "version": "0.1.0",
+    "name": "miniDeepSeekv4",
+    "description": "",
+    "customPackages": [
+      {
+        "id": "llm.causal-attention",
+        "version": "1.0.0",
+        "path": "packages/llm.causal-attention-1.0.0"
+      },
+      {
+        "id": "llm.causal-mask",
+        "version": "1.0.0",
+        "path": "packages/llm.causal-mask-1.0.0"
+      },
+      {
+        "id": "llm.token-cross-entropy",
+        "version": "1.0.0",
+        "path": "packages/llm.token-cross-entropy-1.0.0"
+      }
+    ],
+    "customDatasets": [
+      {
+        "id": "llm.tokens",
+        "version": "1.0.0",
+        "path": "datasets/llm.tokens-1.0.0"
+      }
+    ],
+    "activeDataset": {
+      "id": "llm.tokens",
+      "version": "1.0.0"
+    }
+  }
+}

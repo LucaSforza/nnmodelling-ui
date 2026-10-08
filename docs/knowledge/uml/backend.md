@@ -9,8 +9,12 @@ kept in the [backend sequence](sequences/backend-training.md).
     UI[Qt backend panel] -->|async HTTP v1| API[FastAPI local service]
     UI -->|save/open| C[C application and project authority]
     API --> Store[Persistent jobs and immutable snapshots]
-    API --> Runner[Container queue and lifecycle]
-    Runner --> Worker[Isolated Python training worker]
+    API --> Runner[Local queue and Docker or SSH Slurm lifecycle]
+    Runner --> Scheduler[SSH Slurm scheduler]
+    Scheduler --> SIF[Contained Singularity worker]
+    Runner --> Docker[Local Docker runtime]
+    Docker --> Worker[Isolated Python training worker]
+    SIF --> Worker
     Store -->|read-only snapshot| Runner
     Runner -->|mount snapshot and output| Worker
     Worker --> Graph[Generic PyTorch DAG module]
@@ -34,3 +38,7 @@ runtime and weights, without training payloads.
 Wheel export separates readable distribution identity (`nnm_<normalized-project-id>`)
 from the existing job-specific Python import package (`nnmodel_<normalized-job-id>`).
 The API serves the stored artifact filename; old wheels remain unchanged.
+
+Slurm execution keeps Store/API local. UUID job directories receive frozen snapshots
+and worker source; scheduler identity is persisted for scancel/recovery. Metrics and
+artifacts return through bounded SSH transfers and existing local result validation.

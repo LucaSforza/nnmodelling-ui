@@ -26,7 +26,7 @@ def container_status() -> dict[str, Any]:
     if result.returncode:
         detail = (result.stderr or result.stdout).strip()[-1000:]
         return {"available": False, "runtime": config.CONTAINER_RUNTIME, "error": detail or "Container daemon is unavailable."}
-    return {"available": True, "runtime": config.CONTAINER_RUNTIME, "error": None}
+    return {"available": True, "runtime": config.CONTAINER_RUNTIME, "executor": "docker", "error": None}
 
 
 @lru_cache(maxsize=4)
