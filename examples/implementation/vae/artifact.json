@@ -1,7 +1,7 @@
 {
-  "job_id": "1856e337-b103-4f4e-a29b-4a8c7e6571e3",
+  "job_id": "173dec99-e10a-4579-9e9d-41fbe7f9fca3",
   "filename": "nnm_mnist_vae-0.1.0-py3-none-any.whl",
   "distribution": "nnm_mnist_vae",
-  "module": "nnmodel_job_1856e337_b103_4f4e_a29b_4a8c7e6571e3",
-  "sha256": "5f54b83442c55371a9e2052964c241a60f289aaee07de86f586e5cae6bcfc840"
+  "module": "nnmodel_job_173dec99_e10a_4579_9e9d_41fbe7f9fca3",
+  "sha256": "ace092f8ae27d106d3192746d9f8824b6a3f239f3f4b4c9a628d7ba808941409"
 }

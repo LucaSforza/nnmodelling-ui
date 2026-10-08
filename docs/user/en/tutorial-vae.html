@@ -108,7 +108,8 @@ below stay unchanged.</p>
 <p>The <code>decoder.in</code> endpoint receives the tensor passed to the method. For this operation, the runtime replaces the incoming connection's value; the saved model graph stays intact. The <code>dataset</code> codec passes output <code>[B,784]</code> to the adapter's <code>untokenize</code> method, which returns one <code>[28,28]</code> NumPy image with pixels normalized between 0 and 1.</p>
 <p>In the list, check that both statuses say <code>Ready</code>, then press <code>Save</code>. If you see <code>Stale endpoint</code>, edit the operation to select a current node and handle, or remove it. Also save the project with <code>File &gt; Save</code>.</p>
 <h2 id="5-train-and-download-the-wheel">5. Train and download the wheel</h2>
-<p>Open <code>Training</code> and press <code>Connect / check health</code>. Use these settings for the small included dataset:</p>
+<p>Open <code>Training</code> and press <code>Connect / check health</code>. Use these settings for the
+included dataset and corrected loss:</p>
 <table>
 <thead>
 <tr>
@@ -119,11 +120,11 @@ below stay unchanged.</p>
 <tbody>
 <tr>
 <td><code>Epochs</code></td>
-<td><code>1</code></td>
+<td><code>100</code></td>
 </tr>
 <tr>
 <td><code>Batch</code></td>
-<td><code>32</code></td>
+<td><code>16</code></td>
 </tr>
 <tr>
 <td><code>Learning rate</code></td>
@@ -169,4 +170,17 @@ Image.fromarray(pixels).save("reconstruction.png")
 
 sample = model.decode(torch.randn(1, 32))   # A new image from the prior.
 </code></pre>
-<p>Use <code>model.decode(z)</code> to reconstruct the encoded image; <code>model.decode(torch.randn(1,32))</code> starts from a random point in latent space. Both use the trained wheel weights. The original <code>model.infer(...)</code> method remains available.</p></article><footer>NNModelling · English user guide · Screenshots from the real application</footer></main></body></html>
+<p>Use <code>model.decode(z)</code> to reconstruct the encoded image; <code>model.decode(torch.randn(1,32))</code> starts from a random point in latent space. Both use the trained wheel weights. The original <code>model.infer(...)</code> method remains available.</p>
+<p>The VAE objective sums squared error over each image's 784 pixels, then adds
+batch-mean KL. Do not compare new loss values with older wheels, which used a
+different reduction.</p>
+<p>Generate the requested interpolation between two real MNIST examples:</p>
+<pre><code class="language-sh">cd examples/implementation/vae
+uv run --no-project python download_wheel.py
+uv sync --locked
+uv run --locked python main.py --interpolate
+</code></pre>
+<p>The consumer encodes a 3 and a 7 from the test split to posterior-mean latents,
+linearly interpolates five intermediate vectors, and decodes all seven points.
+Individual PNGs and a labeled contact sheet are written to
+<code>output/interpolation.png</code>.</p></article><footer>NNModelling · English user guide · Screenshots from the real application</footer></main></body></html>

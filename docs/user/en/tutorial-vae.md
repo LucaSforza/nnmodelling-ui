@@ -66,12 +66,13 @@ In the list, check that both statuses say `Ready`, then press `Save`. If you see
 
 ## 5. Train and download the wheel
 
-Open `Training` and press `Connect / check health`. Use these settings for the small included dataset:
+Open `Training` and press `Connect / check health`. Use these settings for the
+included dataset and corrected loss:
 
 | Field | Value |
 | --- | --- |
-| `Epochs` | `1` |
-| `Batch` | `32` |
+| `Epochs` | `100` |
+| `Batch` | `16` |
 | `Learning rate` | `0.001` |
 | `Seed` | `0` |
 | `Publish every N steps` | `10` |
@@ -120,3 +121,21 @@ sample = model.decode(torch.randn(1, 32))   # A new image from the prior.
 ```
 
 Use `model.decode(z)` to reconstruct the encoded image; `model.decode(torch.randn(1,32))` starts from a random point in latent space. Both use the trained wheel weights. The original `model.infer(...)` method remains available.
+
+The VAE objective sums squared error over each image's 784 pixels, then adds
+batch-mean KL. Do not compare new loss values with older wheels, which used a
+different reduction.
+
+Generate the requested interpolation between two real MNIST examples:
+
+```sh
+cd examples/implementation/vae
+uv run --no-project python download_wheel.py
+uv sync --locked
+uv run --locked python main.py --interpolate
+```
+
+The consumer encodes a 3 and a 7 from the test split to posterior-mean latents,
+linearly interpolates five intermediate vectors, and decodes all seven points.
+Individual PNGs and a labeled contact sheet are written to
+`output/interpolation.png`.

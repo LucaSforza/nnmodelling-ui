@@ -26,12 +26,12 @@ The `vae.kl-divergence` branch computes one standard-normal KL value per sample:
 -0.5 * sum(1 + log_variance - mean² - exp(log_variance))
 ```
 
-`core.mse-loss` returns scalar batch-mean reconstruction MSE. The explicit
-`vae.total-loss` join adds the mean of the per-sample KL vector, preserving a
-scalar objective for the root Loss Output. Every project-owned VAE stereotype
-now has both Lua shape analysis and a Python `build(parameters, context,
-services)` implementation; Python modules do not change the saved graph or
-core package assets.
+`core.mse-loss` returns scalar MSE averaged across the batch and 784 pixels.
+`vae.total-loss` multiplies that scalar by 784 before adding mean per-sample KL,
+so objective equals batch-mean summed pixel error plus KL. This scaling matches
+the 28×28 image shape. Every project-owned VAE stereotype has both Lua shape
+analysis and a Python `build(parameters, context, services)` implementation;
+Python modules do not change the saved graph or core package assets.
 
 The project declares two wheel operations. After training and installing the
 exported wheel, `model.encode(image)` uses the dataset adapter and returns the
@@ -41,9 +41,10 @@ from the standard-normal prior by calling `model.decode(torch.randn(1,32))`.
 These operations use the same graph modules and trained weights as
 `model.infer(image)`.
 
-For a small CPU smoke job in the Training dashboard, use 1 epoch, batch size 32,
-learning rate 0.001, seed 0, and publish every 10 optimizer steps. A local run
-on 2026-10-06 completed with training loss 0.3943, validation loss 0.3310, and
-final test loss 0.3046. Its wheel was downloaded from the UI; `encode` returned
-a deterministic `[1,32]` tensor and `decode` returned a normalized `[28,28]`
-NumPy image, including when given a sample from the standard-normal prior.
+For this bounded example, use 100 epochs, batch size 16, learning rate 0.001,
+seed 0, and publish every 10 optimizer steps. The 2026-10-08 corrected run on
+64 training images completed with training loss 40.3861, validation loss
+48.6109, and final test loss 42.6717. These values use pixel-summed MSE; older
+artifacts used a different reduction. The exported wheel supports deterministic
+`encode`, `decode(encode(image))`, and decoding points from the standard-normal
+prior. The standalone consumer also generates a 3-to-7 latent interpolation.

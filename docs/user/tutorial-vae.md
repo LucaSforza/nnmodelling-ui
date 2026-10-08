@@ -66,12 +66,13 @@ Nella lista controlla che entrambi gli stati siano `Ready`, poi premi `Save`. Se
 
 ## 5. Addestrare e scaricare la wheel
 
-Apri `Training` e premi `Connect / check health`. Per il piccolo dataset incluso usa:
+Apri `Training` e premi `Connect / check health`. Per il dataset incluso e la
+loss corretta usa:
 
 | Campo | Valore |
 | --- | --- |
-| `Epochs` | `1` |
-| `Batch` | `32` |
+| `Epochs` | `100` |
+| `Batch` | `16` |
 | `Learning rate` | `0.001` |
 | `Seed` | `0` |
 | `Publish every N steps` | `10` |
@@ -120,3 +121,20 @@ sample = model.decode(torch.randn(1, 32))   # Una nuova immagine dal prior.
 ```
 
 Usa `model.decode(z)` per ricostruire l'immagine codificata; `model.decode(torch.randn(1,32))` parte invece da un punto casuale nello spazio latente. Entrambi usano i pesi addestrati nella wheel. Il metodo originale `model.infer(...)` resta disponibile.
+
+Il progetto VAE somma l'errore quadratico sui 784 pixel di ogni immagine e lo
+combina con la KL media sul batch. Non confrontare i valori di loss del nuovo
+training con quelli delle wheel precedenti, che usavano una riduzione diversa.
+
+Genera l'interpolazione richiesta fra due esempi MNIST reali:
+
+```sh
+cd examples/implementation/vae
+uv run --no-project python download_wheel.py
+uv sync --locked
+uv run --locked python main.py --interpolate
+```
+
+Il consumer codifica un 3 e un 7 del test set usando la media latente, interpola
+linearmente cinque vettori intermedi e decodifica tutti e sette i punti. Trovi
+le PNG singole e la tavola etichettata in `output/interpolation.png`.

@@ -108,7 +108,8 @@ VAE qui sotto restano invariati.</p>
 <p>L'ingresso <code>decoder.in</code> riceve il tensore fornito al metodo. Per questa operazione il runtime sostituisce il valore del collegamento in ingresso; il grafo del modello resta intatto. Il codec <code>dataset</code> passa l'uscita <code>[B,784]</code> all'adapter <code>untokenize</code>, che restituisce una singola immagine NumPy <code>[28,28]</code> con pixel normalizzati fra 0 e 1.</p>
 <p>Nella lista controlla che entrambi gli stati siano <code>Ready</code>, poi premi <code>Save</code>. Se vedi <code>Stale endpoint</code>, modifica l'operazione per selezionare un nodo e un handle attuali, oppure rimuovila. Salva anche il progetto con <code>File &gt; Save</code>.</p>
 <h2 id="5-addestrare-e-scaricare-la-wheel">5. Addestrare e scaricare la wheel</h2>
-<p>Apri <code>Training</code> e premi <code>Connect / check health</code>. Per il piccolo dataset incluso usa:</p>
+<p>Apri <code>Training</code> e premi <code>Connect / check health</code>. Per il dataset incluso e la
+loss corretta usa:</p>
 <table>
 <thead>
 <tr>
@@ -119,11 +120,11 @@ VAE qui sotto restano invariati.</p>
 <tbody>
 <tr>
 <td><code>Epochs</code></td>
-<td><code>1</code></td>
+<td><code>100</code></td>
 </tr>
 <tr>
 <td><code>Batch</code></td>
-<td><code>32</code></td>
+<td><code>16</code></td>
 </tr>
 <tr>
 <td><code>Learning rate</code></td>
@@ -169,4 +170,16 @@ Image.fromarray(pixels).save("reconstruction.png")
 
 sample = model.decode(torch.randn(1, 32))   # Una nuova immagine dal prior.
 </code></pre>
-<p>Usa <code>model.decode(z)</code> per ricostruire l'immagine codificata; <code>model.decode(torch.randn(1,32))</code> parte invece da un punto casuale nello spazio latente. Entrambi usano i pesi addestrati nella wheel. Il metodo originale <code>model.infer(...)</code> resta disponibile.</p></article><footer>NNModelling · Manuale italiano · Screenshot dell'applicazione reale</footer></main></body></html>
+<p>Usa <code>model.decode(z)</code> per ricostruire l'immagine codificata; <code>model.decode(torch.randn(1,32))</code> parte invece da un punto casuale nello spazio latente. Entrambi usano i pesi addestrati nella wheel. Il metodo originale <code>model.infer(...)</code> resta disponibile.</p>
+<p>Il progetto VAE somma l'errore quadratico sui 784 pixel di ogni immagine e lo
+combina con la KL media sul batch. Non confrontare i valori di loss del nuovo
+training con quelli delle wheel precedenti, che usavano una riduzione diversa.</p>
+<p>Genera l'interpolazione richiesta fra due esempi MNIST reali:</p>
+<pre><code class="language-sh">cd examples/implementation/vae
+uv run --no-project python download_wheel.py
+uv sync --locked
+uv run --locked python main.py --interpolate
+</code></pre>
+<p>Il consumer codifica un 3 e un 7 del test set usando la media latente, interpola
+linearmente cinque vettori intermedi e decodifica tutti e sette i punti. Trovi
+le PNG singole e la tavola etichettata in <code>output/interpolation.png</code>.</p></article><footer>NNModelling · Manuale italiano · Screenshot dell'applicazione reale</footer></main></body></html>

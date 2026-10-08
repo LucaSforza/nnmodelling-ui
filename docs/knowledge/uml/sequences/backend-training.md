@@ -106,6 +106,7 @@ backend endpoint is never managed by this launcher.
       Worker->>Worker: zero gradients
       Worker->>Graph: forward including objective
       Graph-->>Worker: prediction and scalar loss
+      Note over Graph,Worker: MNIST VAE objective rescales mean pixel MSE by 784 before adding batch-mean per-sample KL
       Worker->>Worker: backward and Adam update, increment global step
       opt publication cadence or epoch boundary
         Worker->>Worker: preserve RNG streams and switch to eval/no_grad

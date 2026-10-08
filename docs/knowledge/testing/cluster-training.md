@@ -41,8 +41,9 @@ exported wheel. HTTP downloads were SHA256 checked before consumer installation.
 | rnn-sine | `b0aab5222f2a93360b6519b43f5f118bb6567e618713e4053bffa805f10121ba` |
 | tiny-decoder-llm | `154379d2eb73fb9d3d8dc1990b11fd1d0d67bf2d7c9835452501aef1e83ab601` |
 
-LLM and VAE consumers are pinned to these final jobs, with standalone uv
-projects and lockfiles. Actual offline proofs used Python 3.13.12 and
+The LLM consumer is pinned to its final job. The VAE consumer was subsequently
+refreshed after correcting its loss reduction, as recorded below. Both use
+standalone uv projects and lockfiles. Actual offline proofs used Python 3.13.12 and
 PyTorch 2.14.1+cpu, without the public SDK or repository checkout on `sys.path`.
 Both public inference aliases and bundled/explicit weights gave identical outputs.
 VAE additionally produced a deterministic finite `(1,32)` encoding, an identical
@@ -57,6 +58,24 @@ Local proof directories:
 * All five: `/tmp/nnmodelling-all-wheels-u368d5ec`.
 * LLM: `/tmp/nnmodelling-llm-proof-jf9hilmq`.
 * VAE: `/tmp/nnm-vae-proof-1856e337.XxhY54`.
+
+## Corrected VAE retraining and latent interpolation
+
+After the original smoke result revealed near-constant gray reconstructions, the
+VAE objective was corrected to multiply pixel-mean MSE by 784 before adding
+batch-mean per-sample KL. The same bounded MNIST data (64 train, 16 validation,
+16 test) was trained for 100 epochs, batch size 16, learning rate 0.001 and seed
+0. Slurm job `1030714` completed in 15 seconds with exit `0:0`; local API job
+`173dec99-e10a-4579-9e9d-41fbe7f9fca3` reports final train/validation/test
+losses `40.3861`, `48.6109` and `42.6717`. Its wheel SHA256 is
+`ace092f8ae27d106d3192746d9f8824b6a3f239f3f4b4c9a628d7ba808941409`.
+
+The standalone consumer now encodes official MNIST test images labeled 3 and 7,
+linearly interpolates five points between their posterior means and decodes all
+seven vectors through public wheel operations. The command
+`uv run --locked python main.py --interpolate` completed and wrote seven images
+plus `output/interpolation.png`; the contact sheet visibly transitions from 3
+to 7. `uv sync --locked` verified the updated wheel hash in `uv.lock`.
 
 Local/ignored evidence lives in `.computer-use/cluster-training/report.json`,
 `.computer-use/cluster-training/wheel-proof.json` and the per-model artifact
