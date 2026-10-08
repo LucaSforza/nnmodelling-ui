@@ -147,18 +147,45 @@ private slots:
         QTemporaryDir source;
         BackendServiceManager manager(source.path());
         BackendDialog dialog(nullptr, {}, {}, nullptr, &manager);
+        const QStringList launcherControls{
+            QStringLiteral("backendExecutor"), QStringLiteral("backendJobRoot"),
+            QStringLiteral("backendDockerRuntime"), QStringLiteral("backendDockerImage"),
+            QStringLiteral("backendSlurmHost"), QStringLiteral("backendSlurmRoot"),
+            QStringLiteral("backendSlurmImage"), QStringLiteral("backendSlurmPartition"),
+            QStringLiteral("backendSlurmCpus"), QStringLiteral("backendSlurmMemory"),
+            QStringLiteral("backendSlurmTime"), QStringLiteral("backendManagedStart")};
+        for (const QString &name : launcherControls)
+            QVERIFY2(!dialog.findChild<QWidget *>(name), qPrintable(name));
         dialog.show();
         dialog.findChild<QLineEdit *>(QStringLiteral("backendToken"))->setText(QStringLiteral("session-secret"));
-        dialog.findChild<QComboBox *>(QStringLiteral("backendExecutor"))->setCurrentIndex(1);
-        dialog.findChild<QLineEdit *>(QStringLiteral("backendJobRoot"))->setText(QStringLiteral("relative/jobs"));
-        QTest::mouseClick(dialog.findChild<QPushButton *>(QStringLiteral("backendManagedStart")), Qt::LeftButton);
-        QVERIFY(dialog.findChild<QLabel *>(QStringLiteral("backendStatus"))->text().contains(QStringLiteral("absolute path")));
+        QTest::mouseClick(dialog.findChild<QPushButton *>(QStringLiteral("backendConfigure")), Qt::LeftButton);
+        auto *configuration = dialog.findChild<QDialog *>(QStringLiteral("backendConfigurationWindow"));
+        QVERIFY(configuration);
+        QVERIFY(configuration != &dialog);
+        QVERIFY(configuration->isWindow());
+        QVERIFY(!configuration->isModal());
+        QVERIFY(dialog.isEnabled());
+        QVERIFY(configuration->isVisible());
+        auto *executor = configuration->findChild<QComboBox *>(QStringLiteral("backendExecutor"));
+        auto *jobRoot = configuration->findChild<QLineEdit *>(QStringLiteral("backendJobRoot"));
+        auto *startButton = configuration->findChild<QPushButton *>(QStringLiteral("backendManagedStart"));
+        QVERIFY(executor);
+        QVERIFY(jobRoot);
+        QVERIFY(startButton);
+        QCOMPARE(executor->parentWidget(), configuration);
+        QCOMPARE(jobRoot->parentWidget(), configuration);
+        executor->setCurrentIndex(1);
+        jobRoot->setText(QStringLiteral("relative/jobs"));
+        QTest::mouseClick(startButton, Qt::LeftButton);
+        QVERIFY(configuration->findChild<QLabel *>(QStringLiteral("backendConfigurationStatus"))->text().contains(
+            QStringLiteral("absolute path")));
 
-        dialog.findChild<QLineEdit *>(QStringLiteral("backendJobRoot"))->setText(temporary.path());
-        dialog.findChild<QLineEdit *>(QStringLiteral("backendSlurmRoot"))->setText(QStringLiteral("/cluster/jobs"));
-        dialog.findChild<QLineEdit *>(QStringLiteral("backendSlurmImage"))->setText(QStringLiteral("/cluster/images/worker.sif"));
-        QTest::mouseClick(dialog.findChild<QPushButton *>(QStringLiteral("backendManagedStart")), Qt::LeftButton);
-        QVERIFY(dialog.findChild<QLabel *>(QStringLiteral("backendStatus"))->text().contains(QStringLiteral("source tree and uv workspace")));
+        jobRoot->setText(temporary.path());
+        configuration->findChild<QLineEdit *>(QStringLiteral("backendSlurmRoot"))->setText(QStringLiteral("/cluster/jobs"));
+        configuration->findChild<QLineEdit *>(QStringLiteral("backendSlurmImage"))->setText(QStringLiteral("/cluster/images/worker.sif"));
+        QTest::mouseClick(startButton, Qt::LeftButton);
+        QVERIFY(configuration->findChild<QLabel *>(QStringLiteral("backendConfigurationStatus"))->text().contains(
+            QStringLiteral("source tree and uv workspace")));
         QVERIFY(!manager.isRunning());
 
         QSettings saved;

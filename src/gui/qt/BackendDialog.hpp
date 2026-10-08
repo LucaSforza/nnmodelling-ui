@@ -13,6 +13,7 @@ class QNetworkAccessManager;
 class QComboBox;
 class QCheckBox;
 class QPushButton;
+class QDialog;
 class TrainingCurveWidget;
 class NNApplication;
 class BackendServiceManager;
@@ -33,6 +34,8 @@ private:
     void showJob(const QString &id);
     void download(const QString &kind);
     void restoreSnapshot();
+    void openBackendConfiguration();
+    void createBackendConfiguration();
     void startManagedBackend();
     void checkJobsBeforeRestart();
     void saveLauncherSettings();
@@ -52,6 +55,7 @@ private:
     QLineEdit *seed_ = nullptr;
     QLineEdit *publishEverySteps_ = nullptr;
     QLabel *status_ = nullptr;
+    QLabel *configurationStatus_ = nullptr;
     QLabel *finalTestLoss_ = nullptr;
     QTreeWidget *jobs_ = nullptr;
     QPlainTextEdit *metrics_ = nullptr;
@@ -59,6 +63,8 @@ private:
     QCheckBox *trainingCurveVisible_ = nullptr;
     QCheckBox *validationCurveVisible_ = nullptr;
     QComboBox *curveScale_ = nullptr;
+    QDialog *configurationDialog_ = nullptr;
+    QPushButton *configurationButton_ = nullptr;
     QComboBox *executor_ = nullptr;
     QLineEdit *jobRoot_ = nullptr;
     QLineEdit *dockerRuntime_ = nullptr;
