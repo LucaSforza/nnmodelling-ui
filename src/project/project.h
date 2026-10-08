@@ -30,6 +30,18 @@ typedef struct {
     size_t target_count;
 } NNDataset;
 
+typedef struct {
+    char *node;
+    char *handle;
+    char *codec;
+} NNOperationEndpoint;
+
+typedef struct {
+    char *name;
+    NNOperationEndpoint input;
+    NNOperationEndpoint output;
+} NNModelOperation;
+
 /* Returned project owns graph, catalogs, strings and resource records. */
 NNProject *nn_project_open(const char *directory, const char *core_root,
                            char *error, size_t error_capacity);
@@ -64,6 +76,11 @@ char *nn_project_dataset_definition(const NNProject *project, const char *id,
                                     const char *version, char *error, size_t capacity);
 bool nn_project_update_dataset(NNProject *project, const char *id, const char *version,
                                const char *definition_json, char *error, size_t capacity);
+/* Returns owned formatted JSON array text; release with free(). */
+char *nn_project_operations_json(const NNProject *project, char *error, size_t capacity);
+/* Optional changed result is false for rejection or unchanged metadata. */
+bool nn_project_set_operations_json(NNProject *project, const char *json, bool *changed,
+                                    char *error, size_t capacity);
 bool nn_project_create_vae(const char *parent, const char *id, const char *name,
                            const char *core_root, NNProject **result,
                            char *error, size_t capacity);

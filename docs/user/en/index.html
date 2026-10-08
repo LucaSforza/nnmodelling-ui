@@ -4,7 +4,7 @@
 <body><a class="skip" href="#content">Skip to content</a>
 <aside><a class="brand" href="index.html">NN<span>Modelling</span></a>
 <p class="edition">User guide · English<br/>Edition 6 October 2026</p><nav class="language-switch" aria-label="Guide language"><a lang="it" href="../introduction.html">Italiano</a><a lang="en" href="index.html" aria-current="page">English</a></nav>
-<nav aria-label="Chapters"><a href="index.html" aria-current="page">Introduction</a><a href="client.html">Using the client</a><a href="parameters.html">Parameter catalog</a><a href="server.html">Configure the server</a><a href="tutorial-tiny-llm.html">Tiny LLM tutorial</a></nav><div class="outline"><p>On this page</p><div class="toc">
+<nav aria-label="Chapters"><a href="index.html" aria-current="page">Introduction</a><a href="client.html">Using the client</a><a href="parameters.html">Parameter catalog</a><a href="server.html">Configure the server</a><a href="tutorial-tiny-llm.html">Tiny LLM tutorial</a><a href="tutorial-vae.html">VAE tutorial</a></nav><div class="outline"><p>On this page</p><div class="toc">
 <ul>
 <li><a href="#shape-a-network">Shape a network</a><ul>
 <li><a href="#from-diagram-to-experiment">From diagram to experiment</a></li>
@@ -73,6 +73,6 @@
 </tbody>
 </table>
 <h2 id="a-good-first-path">A good first path</h2>
-<p>To get familiar with the application, open a copy of <code>mini LLM</code>, inspect the root graph and select a few nodes. Follow the shapes in the Inspector, enter the decoder block and then its attention scope. Once the path is clear, start the backend and submit the short training run in the <a href="tutorial-tiny-llm.html">tutorial</a>. In a few steps you will have gone through the full cycle: project, checks, experiment and exported model.</p>
+<p>To get familiar with the application, open a copy of <code>mini LLM</code>, inspect the root graph and select a few nodes. Follow the shapes in the Inspector, enter the decoder block and then its attention scope. Once the path is clear, start the backend and submit the short training run in the <a href="tutorial-tiny-llm.html">LLM tutorial</a>. To work with a VAE's internal representations, follow the <a href="tutorial-vae.html">VAE tutorial</a>: create <code>encode</code> and <code>decode</code> in the UI and call them from the Python wheel.</p>
 <p>The <a href="client.html">client guide</a> walks through each area of the window; the <a href="server.html">server guide</a> covers configuration and commands; the <a href="parameters.html">parameter catalog</a> explains individual fields. Read the pages in order or keep them open beside the software as you work.</p>
 <p>This edition describes the Qt interface verified on <strong>6 October 2026</strong>. Screenshots come from the real application; arrows and numbers are editorial annotations. English labels match the buttons exactly. The language-model walkthrough uses <code>examples/models/tiny-decoder-llm</code>; other experimental models are outside the tutorial's scope.</p></article><footer>NNModelling · English user guide · Screenshots from the real application</footer></main></body></html>

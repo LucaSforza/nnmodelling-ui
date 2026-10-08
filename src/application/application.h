@@ -28,6 +28,10 @@ char *nn_app_dataset_definition(const NNApplication *app, const char *id,
                                const char *version, char *error, size_t cap);
 bool nn_app_update_dataset(NNApplication *app, const char *id, const char *version,
                            const char *definition_json, char *error, size_t cap);
+/* Returned UTF-8 text is owned; release with nn_app_free_text. */
+char *nn_app_operations_json(const NNApplication *app, char *error, size_t cap);
+bool nn_app_set_operations_json(NNApplication *app, const char *json,
+                                char *error, size_t cap);
 bool nn_app_create_vae(NNApplication *app, const char *parent, const char *id,
                       const char *name, char *error, size_t cap);
 bool nn_app_create_llm(NNApplication *app, const char *parent, const char *id,

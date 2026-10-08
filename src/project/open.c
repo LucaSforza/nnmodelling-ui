@@ -123,6 +123,8 @@ NNProject *nn_project_open(const char *directory, const char *core_root,
             if (!okay) nn_error_set(error, capacity, "out of memory selecting project dataset");
         }
     }
+    if (okay) okay = nn_project_parse_operations(project,
+        yyjson_obj_get(manifest, "operations"), error, capacity);
     if (okay) okay = nn_project_parse_graph(project, root, error, capacity);
     yyjson_doc_free(document);
     if (!okay) {

@@ -11,7 +11,7 @@ import time
 
 def main():
     ui, cli = map(Path, sys.argv[1:3])
-    with tempfile.TemporaryDirectory(prefix="nn-cli-", dir="/tmp/opencode") as directory:
+    with tempfile.TemporaryDirectory(prefix="nn-cli-", dir="/tmp") as directory:
         root = Path(directory)
         endpoint = root / "control.sock"
         env = dict(os.environ, QT_QPA_PLATFORM="offscreen")

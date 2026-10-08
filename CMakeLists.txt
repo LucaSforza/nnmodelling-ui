@@ -126,6 +126,7 @@ if(NN_BUILD_GUI)
         src/gui/qt/BackendDialog.cpp src/gui/qt/BackendDialog.hpp
         src/gui/qt/TrainingCurveWidget.cpp src/gui/qt/TrainingCurveWidget.hpp
         src/gui/qt/MainWindowProject.cpp src/gui/qt/MainWindowAutomation.cpp
+        src/gui/qt/MainWindowOperations.cpp
         src/gui/qt/MainWindowStereotypeAuthoring.cpp src/gui/qt/MainWindowDatasetAuthoring.cpp
         src/gui/qt/MainWindowRefresh.cpp src/gui/qt/MainWindowInspectorResources.cpp
         src/gui/qt/MainWindowDiagnostics.cpp src/gui/qt/MainWindowGraphActions.cpp
@@ -156,6 +157,17 @@ if(NN_BUILD_GUI)
         endif()
         add_test(NAME qt_backend COMMAND qt_backend_test)
         set_tests_properties(qt_backend PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+            ENVIRONMENT "QT_QPA_PLATFORM=offscreen" LABELS gui TIMEOUT 45)
+        add_executable(qt_operations_test tests/qt_operations_test.cpp ${QT_WINDOW_SOURCES})
+        set_target_properties(qt_operations_test PROPERTIES AUTOMOC ON)
+        target_include_directories(qt_operations_test PRIVATE src/gui/qt)
+        target_link_libraries(qt_operations_test PRIVATE nnmodelling_canvas Qt6::Network Qt6::Test)
+        target_compile_definitions(qt_operations_test PRIVATE NN_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+        if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+            target_compile_options(qt_operations_test PRIVATE -Wall -Wextra -Werror -pedantic)
+        endif()
+        add_test(NAME qt_operations COMMAND qt_operations_test)
+        set_tests_properties(qt_operations PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
             ENVIRONMENT "QT_QPA_PLATFORM=offscreen" LABELS gui TIMEOUT 45)
         add_executable(qt_canvas_test tests/qt_canvas_test.cpp)
         set_target_properties(qt_canvas_test PROPERTIES AUTOMOC ON)

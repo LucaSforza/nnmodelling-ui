@@ -30,7 +30,7 @@ At the end, you can take the model out of the editor. The **weights** are a `saf
 
 ## A good first path
 
-To get familiar with the application, open a copy of `mini LLM`, inspect the root graph and select a few nodes. Follow the shapes in the Inspector, enter the decoder block and then its attention scope. Once the path is clear, start the backend and submit the short training run in the [tutorial](tutorial-tiny-llm.md). In a few steps you will have gone through the full cycle: project, checks, experiment and exported model.
+To get familiar with the application, open a copy of `mini LLM`, inspect the root graph and select a few nodes. Follow the shapes in the Inspector, enter the decoder block and then its attention scope. Once the path is clear, start the backend and submit the short training run in the [LLM tutorial](tutorial-tiny-llm.md). To work with a VAE's internal representations, follow the [VAE tutorial](tutorial-vae.md): create `encode` and `decode` in the UI and call them from the Python wheel.
 
 The [client guide](client.md) walks through each area of the window; the [server guide](server.md) covers configuration and commands; the [parameter catalog](parameters.md) explains individual fields. Read the pages in order or keep them open beside the software as you work.
 

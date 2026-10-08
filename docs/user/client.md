@@ -37,7 +37,7 @@ Anche chiudendo la finestra principale con modifiche non salvate compare la scel
 
 `Edit` contiene `Undo` (`Ctrl+Z`) e `Redo` (`Ctrl+Y` sulla piattaforma osservata). Le voci sono abilitate solo quando la cronologia del progetto ha rispettivamente un'azione annullabile o ripristinabile. Annullare/ripristinare aggiorna canvas, selezione, inspector e problemi. Salvataggio e cronologia sono distinti: il titolo perde l'asterisco quando lo stato torna alla revisione salvata.
 
-`Model` contiene `Create stereotype…`, `Create dataset…`, `Manage datasets…` e `Training backend…`. Le prime tre operazioni richiedono un progetto: senza progetto il client mostra il suggerimento di aprirne uno. `Training backend…` apre il pannello anche senza progetto, per controllare il servizio e consultare i job.
+`Model` contiene `Create stereotype…`, `Create dataset…`, `Manage datasets…`, `Manage operations…` e `Training backend…`. Le azioni di authoring e gestione richiedono un progetto: senza progetto il client mostra il suggerimento di aprirne uno. `Training backend…` apre il pannello anche senza progetto, per controllare il servizio e consultare i job.
 
 `View` contiene `Fit graph` (`Ctrl+0`), `Zoom in` (`Ctrl++` sulla piattaforma osservata), `Zoom out` (`Ctrl+-`) e `Arrange > Vertical/Horizontal`. `Fit graph` inquadra l'ambito corrente e le sue connessioni senza spostare i nodi. Zoom usa il puntatore quando si usa la rotella; i comandi da menu e toolbar scalano intorno al centro del canvas. La rotella del mouse ingrandisce/riduce. Il tasto centrale, oppure `Space` tenuto premuto insieme al tasto sinistro, trascina il canvas. `Escape` annulla un collegamento in preparazione o un trascinamento. Le scorciatoie di zoom possono variare con la piattaforma e il layout della tastiera.
 
@@ -112,12 +112,23 @@ Un parametro di tipo `stereotype` è composto da un selettore di pacchetto e dai
 
 ## Risorse del progetto e selezione dataset
 
-`Project resources` mostra due gruppi espandibili:
+`Project resources` mostra tre gruppi espandibili:
 
 - `Datasets` elenca nome e `id@version`. Un segno `✓` indica il dataset attivo. Le righe figlie mostrano `Input: nome [dtype]` e `Target: nome [dtype]`. Selezionare la riga del dataset lo rende attivo; la selezione aggiorna l'analisi e il progetto diventa modificato. Cliccare una riga informativa figlia mostra il percorso risorsa nella barra di stato.
 - `Packages` elenca i pacchetti attivi con identità esatta. Espandere un pacchetto mostra le dipendenze nel formato `Requires id vincolo-versione`. Le righe sono informative; non attivano/disattivano risorse.
+- `Operations` elenca i metodi pubblici che saranno inclusi nella wheel e lo stato degli endpoint. Il suggerimento della riga mostra nodi e codec. Gli endpoint non più validi restano correggibili nel gestore e impediscono l'invio del training finché non vengono sistemati o rimossi.
 
-`New stereotype` apre il creatore di stereotipi; `New dataset` apre il creatore dei dataset; `Dataset…` apre il gestore. Le prime due azioni sono disponibili anche in `Model`.
+`New stereotype` apre il creatore di stereotipi; `New dataset` apre il creatore dei dataset; `Dataset…` apre il gestore. `Model > Manage operations…` apre il gestore delle operazioni.
+
+### Gestire le operazioni esportate
+
+`Model > Manage operations…` apre `Manage operations`, elenco dei metodi previsti per la wheel Python. `New…` crea un metodo; `Edit…` modifica la riga selezionata; `Remove` la elimina. La lista mostra nome, stato e nodi di ingresso e uscita. La scheda `Operation` mostra la firma corrente calcolata dall'analisi del grafo; è solo informativa: il client Qt non esegue gli operatori Python.
+
+La scheda `Operation` chiede `Method name`, endpoint e codec di ingresso e uscita, oltre a `Current signature`. I nomi devono essere identificatori Python semplici, per esempio `encode` o `decode`. Un ingresso può puntare all'uscita di un nodo `Input` radice, oppure all'handle d'ingresso di un nodo radice: in questo secondo caso l'operazione usa il tensore fornito al posto del valore prodotto dal collegamento esistente, senza modificare il grafo salvato. L'uscita seleziona un handle di uscita esistente. I codec `dataset` usano `tokenize` o `untokenize` dell'adapter attivo; `tensor` riceve o restituisce un tensore PyTorch con dimensione batch.
+
+Le operazioni si salvano in `model.json` con il progetto. Le modifiche al grafo possono rendere un endpoint non valido; `Operations` lo segnala così si può correggere o rimuovere il metodo. `Save project and submit` blocca invio finché restano riferimenti non validi. Dopo il training, la wheel esporta ogni nome come metodo: `model.encode(value)` o `model.decode(tensor)`. L'API `model.infer(value)` resta disponibile. Il [tutorial VAE](tutorial-vae.md) mostra come creare entrambe le operazioni nell'esempio MNIST.
+
+![Scheda Operation di encode con endpoint e segnatura corrente completa](assets/vae-operation-form.png)
 
 ### Gestore dei dataset
 
@@ -192,6 +203,8 @@ La sezione `Optional Lua inference` contiene l'editor sorgente. Il testo inizial
 
 `Training` nella toolbar e `Model > Training backend…` aprono `Training backend`. Il pannello è utilizzabile per collegarsi e consultare job anche senza un progetto; inviare un job richiede invece un progetto valido, che viene salvato prima dell'invio.
 
+Per provare il MNIST VAE distribuito, crea una copia della cartella `examples/models/mnist-vae`, poi apri quella copia con `File > Open project…`. I metodi `encode` e `decode` sono già elencati in `Operations`. `encode(image)` converte immagine in tensore latente `[1,32]`; in modalità inferenza il VAE restituisce la media posteriore in modo deterministico. `decode(z)` accetta un tensore `[1,32]` e restituisce immagine NumPy `28 × 28`. Per generare immagine dal prior, si può passare `torch.randn(1, 32)` a `decode`.
+
 In alto, `Endpoint` parte da `http://127.0.0.1:8765`. `Bearer token` è facoltativo e nascosto mentre si digita; rimane in memoria per la sessione. `Connect / check health` controlla servizio e runtime container; `Refresh jobs` aggiorna la cronologia. La riga di stato comunica il risultato in forma leggibile.
 
 I campi di invio sono `Epochs` (10), `Batch` (32), `Learning rate` (0.001), `Seed` (0) e `Publish every N steps` (10). Epochs: 1–10000; batch: 1–4096; learning rate: maggiore di zero e fino a 1; seed: da −2147483648 a 4294967295; pubblicazione: 1–100000. La cadenza regola pubblicazione dei punti e validazione. `Save project and submit` salva prima lo stato corrente e poi invia uno snapshot immutabile; se il salvataggio o l'invio fallisce, il messaggio appare nella riga di stato.
@@ -209,6 +222,8 @@ versione; installa le wheel in ambienti Python separati. Le wheel già archiviat
 conservano nome e contenuto originali.
 
 ![Dashboard di training](assets/training-dashboard.png)
+
+![Operazioni encode e decode pronte per l'esportazione nella wheel](assets/vae-operations-manager.png)
 
 ![Scelta della scala delle curve](assets/training-scale.png)
 

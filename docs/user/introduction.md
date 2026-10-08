@@ -12,7 +12,7 @@ NNModelling divide il lavoro fra due strumenti complementari. Il **client** è l
 
 Il **server**, chiamato anche backend, riceve una copia del progetto e ne esegue l'addestramento in un container locale. Il dataset fornisce gli input e i target; gli operatori Python eseguono il calcolo numerico; l'ottimizzatore aggiorna i pesi. Nel client segui la loss di training e di validazione, ritrovi gli esperimenti nella cronologia e scarichi i risultati. Una modifica fatta al grafo dopo l'invio prepara un esperimento futuro: il job già avviato conserva la propria copia immutabile.
 
-Alla fine puoi portare il modello fuori dall'editor. I **pesi** sono un file `safetensors`; la **wheel** è un pacchetto Python che contiene grafo, risorse necessarie all'inferenza, adapter del dataset e pesi addestrati. Una volta installata con le sue dipendenze, espone `Model.infer(...)` e `Model.inference(...)`: riceve un valore comprensibile, come una stringa, lo trasforma negli input della rete e decodifica la predizione. Il backend può essere spento.
+Alla fine puoi portare il modello fuori dall'editor. I **pesi** sono un file `safetensors`; la **wheel** è un pacchetto Python che contiene grafo, risorse necessarie all'inferenza, adapter del dataset e pesi addestrati. Una volta installata con le sue dipendenze, espone `Model.infer(...)` e `Model.inference(...)`; include anche i metodi nominati nella sezione `Operations`, per esempio `Model.encode(...)` e `Model.decode(...)`. Il backend può essere spento.
 
 ## Le parole che incontrerai
 
@@ -30,7 +30,7 @@ Alla fine puoi portare il modello fuori dall'editor. I **pesi** sono un file `sa
 
 ## Un buon primo percorso
 
-Per prendere confidenza, apri una copia di `mini LLM`, osserva il grafo radice e seleziona qualche nodo. Segui le forme nell'Inspector, entra nel blocco decoder e poi nell'attenzione. Quando il percorso ti è chiaro, avvia il backend e invia il piccolo training del [tutorial](tutorial-tiny-llm.md). In pochi passaggi avrai attraversato l'intero ciclo: progetto, controllo, esperimento e modello esportato.
+Per prendere confidenza, apri una copia di `mini LLM`, osserva il grafo radice e seleziona qualche nodo. Segui le forme nell'Inspector, entra nel blocco decoder e poi nell'attenzione. Quando il percorso ti è chiaro, avvia il backend e invia il piccolo training del [tutorial LLM](tutorial-tiny-llm.md). Per lavorare invece con le rappresentazioni interne di un VAE, segui il [tutorial VAE](tutorial-vae.md): crea `encode` e `decode` dalla UI e richiamali dalla wheel Python.
 
 La [guida al client](client.md) accompagna ogni area della finestra; la [guida al server](server.md) raccoglie configurazione e comandi; il [catalogo dei parametri](parameters.md) serve quando vuoi capire l'effetto di un campo specifico. Puoi leggere queste pagine in ordine oppure tenerle aperte accanto al software e consultarle durante il lavoro.
 

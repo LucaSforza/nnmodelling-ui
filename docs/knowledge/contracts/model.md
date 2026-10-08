@@ -49,6 +49,60 @@ its declared terminals per typed-outputs.md.
 | `node_set_parameter(id, key, value) -> Result` | Declared key and valid typed value | Change one value; invalidate dependent type analysis; no change on error. |
 | `graph_validate() -> Diagnostics` | Borrowed active model | No mutation; distinguish structural, semantic, unresolved, runtime faults. |
 
+## Exported model operations (accepted 2026-10-06)
+
+The optional `manifest.operations` array declares named, single-input,
+single-output inference entrypoints for the standalone Python wheel. Missing
+array means no named operations and remains compatible with schema-v2 projects.
+Each record is data, not executable source:
+
+```json
+{
+  "name": "decode",
+  "input": { "node": "decoder", "handle": "in", "codec": "tensor" },
+  "output": { "node": "decoder", "handle": "out", "codec": "dataset" }
+}
+```
+
+Operation names are unique safe Python identifiers; `infer`, `inference`,
+`run_operation`, Python keywords and private names are reserved. Endpoints name
+stable root-scope node and handle IDs. An input endpoint on a kind=input node
+identifies its output handle and replaces that node's dataset binding for this
+call. On another node it identifies one declared input handle; the operation
+injects its value at that handle and cuts only that incoming edge from the
+operation's dependency closure. The saved graph edge and normal model path are
+unchanged. An output endpoint identifies a declared output handle on a
+computational node. Terminals, nested-scope nodes, undeclared handles and stale
+references are invalid.
+
+`codec` is `dataset` or `tensor`. Dataset input calls the active adapter's
+`tokenize` and requires one Tensor; tensor input requires a batched
+`torch.Tensor`. Dataset output calls the adapter's `untokenize`; tensor output
+returns the selected batched Tensor. Dataset codecs own image/string or other
+application-value conversion. Operation execution evaluates only the backward
+dependency closure of the selected output, stopping at the declared input
+boundary, under inference mode. It uses same graph modules and weights as full
+inference. The first contract supports one input and one output per operation;
+multi-input/output operations are deferred.
+
+The C project owner parses, validates, copies and persists operation metadata
+inside `manifest.operations`; it never runs adapter or PyTorch code. Qt exposes
+a project-level Operations manager; it uses stable node/handle selectors and
+current C shape-analysis results to display signatures. Changes mark project
+dirty and save with ordinary project persistence. Graph edits that leave stale
+operation endpoints stay visible and block training/export until corrected or
+removed. UI/runtime do not infer operations from package IDs.
+
+The wheel exposes each declared name directly (`model.encode(value)`) and also
+provides `model.run_operation(name, value)`. `model.infer` and `model.inference`
+remain unchanged. For MNIST VAE, `encode` uses dataset tokenization and returns
+the reparameterization node output; in eval mode this package deterministically
+returns posterior mean. `decode` accepts latent Tensor `[B,32]`, bypasses the
+existing edge into the decoder subflow, and applies dataset untokenization to
+its reconstructed pixels. Prior sampling is ordinary caller code, for example
+`model.decode(torch.randn(1, 32))`; the wheel does not add a second sampling
+engine.
+
 The application C ABI is specified below. UI and local automation call it
 without reimplementing validation.
 
@@ -120,6 +174,22 @@ existing handles in numeric order plus first free slot, with in-1/in-2 for an
 empty join; no allocation proportional to a potentially large suffix.
 `nn_app_node_is_subflow` reads package kind. All string arguments are borrowed
 for the call; model copies committed data. IDs stay stable strings.
+
+Accepted 2026-10-06: `nn_app_operations_json(app,error,capacity)` returns owned
+JSON array text released with `nn_app_free_text`. `nn_app_set_operations_json`
+accepts borrowed JSON text, validates list shape, safe unique method names and
+codec values, copies it into project-owned manifest state, and marks project
+dirty only on success. Syntactically valid but stale node/handle references are
+preserved for UI repair; operation status is derived from current graph/catalog
+and analysis. Project open never loses a graph just because an old operation
+reference is stale.
+
+Accepted 2026-10-08: a changed operation list creates an unsaved graph-history
+barrier, like dataset selection, because graph snapshots do not contain manifest
+metadata. Failed and semantically unchanged setters preserve dirty state,
+undo/redo and saved revisions. `nn_project_set_operations_json` accepts an
+optional `bool *changed` out parameter, initialized false and set true only on
+committed replacement; the application ABI remains unchanged.
 
 Scope display follows editor contract. New non-root scopes require a subflow
 owner; existing imported scope strings are preserved. Nonempty subflow deletion

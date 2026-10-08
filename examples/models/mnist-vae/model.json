@@ -15,7 +15,19 @@
     "customDatasets": [
       { "id": "mnist-reconstruction", "version": "0.1.0", "path": "datasets/mnist" }
     ],
-    "activeDataset": { "id": "mnist-reconstruction", "version": "0.1.0" }
+    "activeDataset": { "id": "mnist-reconstruction", "version": "0.1.0" },
+    "operations": [
+      {
+        "name": "encode",
+        "input": { "node": "image", "handle": "out", "codec": "dataset" },
+        "output": { "node": "sample", "handle": "out", "codec": "tensor" }
+      },
+      {
+        "name": "decode",
+        "input": { "node": "decoder", "handle": "in", "codec": "tensor" },
+        "output": { "node": "decoder", "handle": "out", "codec": "dataset" }
+      }
+    ]
   },
   "layoutDirection": "vertical",
   "nodes": [

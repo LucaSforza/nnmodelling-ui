@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import keyword
 import shutil
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -221,7 +222,48 @@ def validate_project(project: Any, files: dict[str, bytes], core_packages: dict[
     for node_id in node_map:
         if _cycle_reachable(node_id, adjacency):
             raise HTTPException(422, "Graph contains a directed cycle.")
+    _validate_operations(manifest.get("operations", []), node_map, kinds, scopes, output_types)
     return project
+
+
+def _validate_operations(operations: Any, nodes, kinds, scopes, output_types) -> None:
+    if not isinstance(operations, list):
+        raise HTTPException(422, "manifest.operations must be an array.")
+    names: set[str] = set()
+    for operation in operations:
+        if not isinstance(operation, dict):
+            raise HTTPException(422, "Each manifest operation must be an object.")
+        name = operation.get("name")
+        if (not isinstance(name, str) or not name.isidentifier() or keyword.iskeyword(name)
+                or name.startswith("_") or name in {"infer", "inference", "run_operation"}):
+            raise HTTPException(422, f"Invalid or reserved operation name {name!r}.")
+        if name in names:
+            raise HTTPException(422, f"Duplicate operation name {name!r}.")
+        names.add(name)
+        endpoints = {}
+        for role in ("input", "output"):
+            endpoint = operation.get(role)
+            if not isinstance(endpoint, dict) or not all(isinstance(endpoint.get(key), str) and endpoint[key] for key in ("node", "handle")):
+                raise HTTPException(422, f"Operation {name!r} has an invalid {role} endpoint.")
+            codec = endpoint.get("codec")
+            if not isinstance(codec, str) or codec not in {"dataset", "tensor"}:
+                raise HTTPException(422, f"Operation {name!r} has an invalid {role} codec.")
+            node_id, handle = endpoint["node"], endpoint["handle"]
+            if node_id not in nodes or scopes[node_id]:
+                raise HTTPException(422, f"Operation {name!r} references a missing or non-root {role} node.")
+            kind = kinds[node_id]
+            if role == "input":
+                if kind == "input":
+                    valid = handle in output_types[node_id]
+                elif kind == "join":
+                    valid = handle.startswith("in-") and handle[3:].isdigit() and int(handle[3:]) > 0
+                else:
+                    valid = kind not in {"output", "loss-output"} and handle == "in"
+            else:
+                valid = kind not in {"input", "output", "loss-output"} and handle in output_types[node_id]
+            if not valid:
+                raise HTTPException(422, f"Operation {name!r} references undeclared {role} handle {node_id!r}.{handle}.")
+            endpoints[role] = endpoint
 
 
 def _validate_package_dependencies(packages: dict[tuple[str, str], dict[str, Any]]) -> None:

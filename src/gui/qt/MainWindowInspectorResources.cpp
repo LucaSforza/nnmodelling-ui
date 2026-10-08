@@ -29,6 +29,8 @@
 #include <cstring>
 #include <string>
 
+extern "C" char *nn_app_operations_json(const NNApplication *app, char *error, size_t capacity);
+
 using namespace MainWindowUtils;
 
 void MainWindow::refreshInspector() {
@@ -371,6 +373,49 @@ void MainWindow::refreshResources() {
             new QTreeWidgetItem(item, {QStringLiteral("Requires %1 %2").arg(
                 QString::fromUtf8(dependency.id), QString::fromUtf8(dependency.version_constraint))});
         }
+    }
+    auto *operations = new QTreeWidgetItem(resources_, {tr("Operations")});
+    operations->setExpanded(true);
+    char error[ErrorCapacity] = {};
+    char *operationText = nn_app_operations_json(application_.get(), error, sizeof(error));
+    if (operationText) {
+        const QJsonDocument operationDocument = QJsonDocument::fromJson(QByteArray(operationText));
+        nn_app_free_text(operationText);
+        if (operationDocument.isArray()) {
+            const NNModel *model = nn_app_model(application_.get());
+            for (const QJsonValue &value : operationDocument.array()) {
+                const QJsonObject operation = value.toObject();
+                QString state = tr("Ready");
+                for (const QString &direction : {QStringLiteral("input"), QStringLiteral("output")}) {
+                    const QJsonObject endpoint = operation.value(direction).toObject();
+                    const QByteArray nodeId = endpoint.value(QStringLiteral("node")).toString().toUtf8();
+                    const NNNode *node = nn_model_find_node(model, nodeId.constData());
+                    bool found = false;
+                    const bool output = direction == QStringLiteral("output");
+                    const NNPackage *nodePackage = node
+                        ? nn_catalog_find(catalog, node->package_id, node->package_version) : nullptr;
+                    const bool inputNode = nodePackage && nodePackage->kind &&
+                        std::strcmp(nodePackage->kind, "input") == 0;
+                    const bool portOutput = output || (direction == QStringLiteral("input") && inputNode);
+                    for (size_t p = 0; node && p < nn_app_port_count(application_.get(), node->id, portOutput); ++p) {
+                        char port[256] = {};
+                        if (nn_app_port_id(application_.get(), node->id, portOutput, p, port, sizeof(port)) &&
+                            endpoint.value(QStringLiteral("handle")).toString() == QString::fromUtf8(port))
+                            found = true;
+                    }
+                    if (!node || (node->scope_id && node->scope_id[0]) || !found) state = tr("Stale endpoint");
+                }
+                auto *item = new QTreeWidgetItem(operations, {QStringLiteral("%1  ·  %2")
+                    .arg(operation.value(QStringLiteral("name")).toString(), state)});
+                const QJsonObject input = operation.value(QStringLiteral("input")).toObject();
+                const QJsonObject output = operation.value(QStringLiteral("output")).toObject();
+                item->setToolTip(0, QStringLiteral("%1 (%2) → %3 (%4)")
+                    .arg(input.value(QStringLiteral("node")).toString(), input.value(QStringLiteral("codec")).toString(),
+                         output.value(QStringLiteral("node")).toString(), output.value(QStringLiteral("codec")).toString()));
+            }
+        }
+    } else {
+        new QTreeWidgetItem(operations, {tr("Unable to read operations: %1").arg(QString::fromUtf8(error))});
     }
     resources_->expandAll();
 }

@@ -211,6 +211,11 @@ also creates a barrier in this initial graph-history implementation. Neither bar
 pretends to undo filesystem/resource operations. Failure preserves history.
 History lives in memory only; schema v2 and package semantics stay unchanged.
 
+Accepted 2026-10-08: changing exported operation metadata also creates an
+unsaved history barrier. Reapplying an identical list or rejecting invalid JSON
+preserves history and dirty state. Later graph undo/redo cannot clear these
+unsaved manifest edits; normal save or close persists them.
+
 ## Stereotype reference inspector (accepted 2026-10-05)
 
 Stereotype parameters expose an active-catalog package selector filtered by the

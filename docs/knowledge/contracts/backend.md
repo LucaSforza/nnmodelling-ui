@@ -302,12 +302,45 @@ also fails clearly until authored. This is initialization of uv project metadata
 not dependency installation from inside C. Resource transaction includes files
 and manifest entrypoints atomically; existing metadata-only resources still open.
 
+## Named project operations in exported wheels (accepted 2026-10-06)
+
+`model.md` defines optional `manifest.operations` records and endpoint/codec
+validation. `GraphModule.run_operation(name, tensor)` binds one batched Tensor
+at a root Input output or a root node input handle, cuts that boundary's
+incoming edge only for this call, then evaluates the requested output's
+backward dependency closure. Exported `Model.run_operation` applies the
+operation's dataset/tensor codec before and after this graph call. Normal
+`forward()` remains unchanged.
+Calls run with the same registered modules and loaded `state_dict`; loss targets
+are not fabricated or evaluated.
+Each operation call starts a fresh subflow invocation budget, as `forward()`
+does; the 256-invocation bound applies within one execution, not across calls.
+Codec metadata must be a string equal to `dataset` or `tensor`; other JSON
+types fail validation with HTTP 422 on submission and ValueError in the runtime.
+
+Wheel `Model` exposes declared safe operation names as methods and retains
+`run_operation(name, value)` for generic callers. The operation table is frozen
+in the saved project snapshot and validated before job submission/export.
+`dataset` codecs reuse active `tokenize`/`untokenize`; `tensor` codecs accept or
+return batched PyTorch tensors. Only one input and one output are supported per
+operation in this release. Operation records contain no code, filesystem paths,
+or secrets and do not activate packages beyond the graph's existing package
+closure. Wheels remain independent of the backend and source project.
+
+The MNIST VAE example declares `encode` (dataset image -> `sample.out` Tensor)
+and `decode` (`decoder.in` Tensor -> `decoder.out` dataset image). Evaluation
+mode makes its reparameterization module return posterior mean, so `encode` is
+deterministic. Generating a prior sample uses an ordinary tensor supplied to
+`decode`, such as `torch.randn(1, 32)`. No VAE package-ID branch or extra random
+sampling API is added to the runtime.
+
 ## Verification
 
 Tests under tests: API auth/errors and bundle confinement, immutable restore,
 job lifecycle/cancel/restart, actual worker training metrics, nested/branch/join
 multi-output execution, standalone wheel install/inference and alternate weights,
-generic adapter, resource rollback and Qt HTTP behavior. Run just test,
+generic adapter, named operation slicing and wheel methods, operation metadata
+round-trip/validation and Qt manager flows, resource rollback and Qt HTTP behavior. Run just test,
 just test-ui, Python/backend recipes and git diff --check. Exercise actual
 container job when runtime available; report environment blockers separately.
 Repository skill `.agents/skills/nnmodelling-backend/SKILL.md` documents actual

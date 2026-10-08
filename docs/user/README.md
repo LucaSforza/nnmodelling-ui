@@ -11,13 +11,13 @@ Choose an edition / Scegli un'edizione:
 
 The complete guide works offline in a browser without a web server, JavaScript, remote fonts or a CDN. Click an image to inspect it at its original size; red arrows and numbers correspond to the adjacent captions. On narrow screens, captions move below the image. Printing uses a dedicated stylesheet.
 
-Sources: [introduction](en/introduction.md), [client](en/client.md), [parameters](en/parameters.md), [server](en/server.md), [tiny LLM tutorial](en/tutorial-tiny-llm.md), and [verification notes](en/verification.md).
+Sources: [introduction](en/introduction.md), [client](en/client.md), [parameters](en/parameters.md), [server](en/server.md), [tiny LLM tutorial](en/tutorial-tiny-llm.md), [VAE operations tutorial](en/tutorial-vae.md), and [verification notes](en/verification.md).
 
 ## Italiano
 
 Apri [introduction.html](introduction.html) nel browser: il manuale completo funziona offline, senza server web, JavaScript, font remoti o CDN. Le immagini sono cliccabili per leggere il dettaglio originale; frecce rosse e numeri corrispondono alle legende affiancate. Su schermi stretti la legenda passa sotto l'immagine. La stampa usa un foglio di stile dedicato.
 
-Sorgenti: [introduzione](introduction.md), [client](client.md), [parametri](parameters.md), [server](server.md), [tutorial tiny LLM](tutorial-tiny-llm.md) e [verifica](verification.md).
+Sorgenti: [introduzione](introduction.md), [client](client.md), [parametri](parameters.md), [server](server.md), [tutorial tiny LLM](tutorial-tiny-llm.md), [tutorial VAE e operazioni](tutorial-vae.md) e [verifica](verification.md).
 
 ## Online publication
 

@@ -193,7 +193,7 @@ static int remove_temp_path(const char *path, const struct stat *info,
 
 static void sweep_multi_output_analysis(void)
 {
-    char temporary[] = "/tmp/opencode/nn-multi-inference-XXXXXX";
+    char temporary[] = "/tmp/nn-multi-inference-XXXXXX";
     char *parent = mkdtemp(temporary);
     assert(parent);
     NNApplication *app = nn_app_new("stereotype-packages/core");
@@ -572,7 +572,7 @@ static char *read_file_text(const char *path)
 
 static void sweep_dataset_update(void)
 {
-    char temporary[] = "/tmp/opencode/nn-dataset-update-XXXXXX";
+    char temporary[] = "/tmp/nn-dataset-update-XXXXXX";
     char *parent = mkdtemp(temporary); assert(parent);
     NNApplication *app = nn_app_new("stereotype-packages/core"); assert(app);
     char error[512] = "";

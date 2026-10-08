@@ -2,7 +2,7 @@
 
 Open [index.html](index.html) in a browser. The complete guide works offline without a web server, JavaScript, remote fonts or a CDN. Click images to inspect them at their original size; red arrows and numbers correspond to the adjacent captions. On narrow screens, captions move below the image. Printing uses a dedicated stylesheet.
 
-Sources: [introduction](introduction.md), [client](client.md), [parameters](parameters.md), [server](server.md), [tiny LLM tutorial](tutorial-tiny-llm.md), and [verification notes](verification.md).
+Sources: [introduction](introduction.md), [client](client.md), [parameters](parameters.md), [server](server.md), [tiny LLM tutorial](tutorial-tiny-llm.md), [VAE operations tutorial](tutorial-vae.md), and [verification notes](verification.md).
 
 To regenerate and verify the HTML from the repository root:
 

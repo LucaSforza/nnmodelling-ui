@@ -56,7 +56,7 @@ static void remove_tree(const char *root)
 
 int main(void)
 {
-    char temporary[] = "/tmp/opencode/nn-resources-XXXXXX";
+    char temporary[] = "/tmp/nn-resources-XXXXXX";
     char *root = mkdtemp(temporary); assert(root);
     NNApplication *app = nn_app_new("stereotype-packages/core"); assert(app);
     char error[512] = "";

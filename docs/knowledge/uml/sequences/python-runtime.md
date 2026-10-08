@@ -158,3 +158,45 @@ using bundled weights by default. The backend and editable projects under
 `examples/models/` are not accessed during inference. Its optional greedy loop
 feeds the final decoded character back through that same public boundary, with
 the latest 128 characters as context.
+
+## Named operation methods
+
+```mermaid
+  sequenceDiagram
+    participant User as Wheel caller
+    participant Model as Exported Model
+    participant Adapter as DatasetAdapter
+    participant Graph as GraphModule
+    participant Node as Registered graph modules
+    User->>Model: encode(raw image)
+    Model->>Adapter: tokenize(raw image)
+    Adapter-->>Model: one batched Tensor
+    Model->>Graph: run_operation(encode, Tensor)
+    Graph->>Graph: resolve root Input boundary and output dependency closure
+    Graph->>Node: evaluate only image-to-selected-handle path in eval/inference mode
+    Node-->>Graph: selected latent Tensor
+    Graph-->>Model: batched latent Tensor
+    Model-->>User: Tensor
+    User->>Model: decode(latent Tensor)
+    Model->>Graph: run_operation(decode, Tensor)
+    Graph->>Graph: reset per-call subflow invocation budget
+    Graph->>Graph: inject at selected node input and cut upstream edge for this call
+    Graph->>Node: evaluate decoder-to-selected-handle closure
+    Node-->>Graph: reconstructed Tensor
+    Graph-->>Model: batched reconstructed Tensor
+    Model->>Adapter: untokenize(Tensor)
+    Adapter-->>Model: typed image value
+    Model-->>User: image value
+```
+
+The optional operation table comes from saved `manifest.operations`; names are
+validated Python identifiers and wrappers contain no model-supplied code. Each
+operation has one input and one output. A dataset codec reuses the adapter's
+existing conversion; a tensor codec passes batched PyTorch tensors directly.
+An input endpoint on an Input node overrides its dataset binding for this call;
+an input endpoint on another root node replaces that one incoming handle only
+for dependency traversal. The immutable graph edges and model `forward()` path
+remain unchanged. `Model.encode` and `Model.decode` reuse modules and weights
+already loaded by the same graph instance. For the VAE example, eval-time
+reparameterization returns posterior mean; a standard-normal sample can be
+passed to `decode` by caller code.

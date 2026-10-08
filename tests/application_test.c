@@ -280,11 +280,32 @@ int main(void)
     assert(!nn_app_move_node(app, "a", NAN, 0, error, sizeof(error)));
     assert(!nn_app_open(app, error_project, error, sizeof(error)));
     assert(nn_app_project(app) == project && nn_project_dirty(project));
+    char *operations = nn_app_operations_json(app, error, sizeof(error));
+    assert(operations && !strcmp(operations, "[]"));
+    nn_app_free_text(operations);
+    assert(!nn_app_set_operations_json(app, "{\"operations\":[]}", error, sizeof(error)));
+    assert(!nn_app_set_operations_json(app,
+        "[{\"name\":\"run_operation\",\"input\":{},\"output\":{}}]", error, sizeof(error)));
+    assert(!nn_app_set_operations_json(app,
+        "[{\"name\":\"encode\",\"input\":{\"node\":\"n\",\"handle\":\"in\",\"codec\":\"bad\"},\"output\":{\"node\":\"n\",\"handle\":\"out\",\"codec\":\"tensor\"}}]",
+        error, sizeof(error)));
+    assert(nn_app_set_operations_json(app,
+        "[{\"name\":\"decode\",\"input\":{\"node\":\"missing\",\"handle\":\"in\",\"codec\":\"tensor\"},\"output\":{\"node\":\"missing\",\"handle\":\"out\",\"codec\":\"dataset\"}}]",
+        error, sizeof(error)));
+    operations = nn_app_operations_json(app, error, sizeof(error));
+    assert(operations && strstr(operations, "missing"));
+    nn_app_free_text(operations);
+    assert(nn_app_set_operations_json(app,
+        "[{\"name\":\"decode\",\"input\":{\"node\":\"missing\",\"handle\":\"in\",\"codec\":\"tensor\"},\"output\":{\"node\":\"missing\",\"handle\":\"out\",\"codec\":\"dataset\"}}]",
+        error, sizeof(error)));
     assert(nn_app_save(app, error, sizeof(error)));
     assert(!nn_project_dirty(project));
     assert(nn_app_close(app, false, error, sizeof(error)));
     assert(nn_app_project(app) == NULL);
     assert(nn_app_open(app, saved_directory, error, sizeof(error)));
+    operations = nn_app_operations_json(app, error, sizeof(error));
+    assert(operations && strstr(operations, "missing") && strstr(operations, "decode"));
+    nn_app_free_text(operations);
     assert(nn_model_find_node(nn_app_model(app), "linear"));
     assert(nn_model_find_node(nn_app_model(app), "join"));
     assert(nn_model_find_node(nn_app_model(app), "persist-flow-input"));

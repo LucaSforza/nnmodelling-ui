@@ -379,7 +379,7 @@ QUrl BackendDialog::endpointUrl(const QString &path) const
     QString root = base.path();
     while (root.endsWith('/')) root.chop(1);
     base.setPath(root + path);
-    base.setQuery({});
+    base.setQuery(QString());
     base.setFragment({});
     return base;
 }

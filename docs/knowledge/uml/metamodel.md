@@ -32,6 +32,18 @@ is retained as a current alternative.
         +PackageRef[] customPackages
         +DatasetRef[] customDatasets
         +DatasetIdentity activeDataset
+        +ModelOperation[] operations optional
+      }
+      class ModelOperation {
+        +string name safe Python identifier
+        +OperationEndpoint input
+        +Codec inputCodec dataset or tensor
+        +OperationEndpoint output
+        +Codec outputCodec dataset or tensor
+      }
+      class OperationEndpoint {
+        +NodeId nodeId
+        +HandleId handleId
       }
       class Graph {
         +Node[] nodes
@@ -120,6 +132,10 @@ is retained as a current alternative.
       }
       NNModel "1" *-- "1" Graph : root
       NNModel "1" *-- "1" ModelManifest
+      ModelManifest "1" *-- "0..*" ModelOperation : exported inference API
+      ModelOperation --> OperationEndpoint : input/output
+      OperationEndpoint --> Node : stable root-scope ID
+      OperationEndpoint --> Handle : declared direction and identity
       Graph "1" *-- "0..*" Node
       Node *-- Position : normalized integer grid
       Graph "1" *-- "0..*" Connection
@@ -159,6 +175,15 @@ unresolved, or fault. Application owns cached result values per diagnostics.md;
 graph owns committed nodes/edges.
 Project/resource ownership, dataset slots and package dependency resolution
 are normative in [project UML](project.md).
+
+Accepted 2026-10-06: optional project operations bind one public input to a
+root Input output or one root computational input handle, and one result to a
+root computational output handle. Input-handle binding cuts its existing
+incoming edge only while evaluating that named operation; it never mutates the
+saved graph. Dataset codecs reuse the selected adapter, tensor codecs expose a
+batched PyTorch tensor. The project/editor validates and displays references;
+the Python wheel evaluates the backward dependency closure. See
+[model contract](../contracts/model.md) and the Python runtime sequence.
 
 ## Constraints
 
