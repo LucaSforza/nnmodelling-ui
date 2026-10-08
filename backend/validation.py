@@ -245,7 +245,8 @@ def _validate_operations(operations: Any, nodes, kinds, scopes, output_types) ->
             endpoint = operation.get(role)
             if not isinstance(endpoint, dict) or not all(isinstance(endpoint.get(key), str) and endpoint[key] for key in ("node", "handle")):
                 raise HTTPException(422, f"Operation {name!r} has an invalid {role} endpoint.")
-            if endpoint.get("codec") not in {"dataset", "tensor"}:
+            codec = endpoint.get("codec")
+            if not isinstance(codec, str) or codec not in {"dataset", "tensor"}:
                 raise HTTPException(422, f"Operation {name!r} has an invalid {role} codec.")
             node_id, handle = endpoint["node"], endpoint["handle"]
             if node_id not in nodes or scopes[node_id]:

@@ -184,6 +184,13 @@ preserved for UI repair; operation status is derived from current graph/catalog
 and analysis. Project open never loses a graph just because an old operation
 reference is stale.
 
+Accepted 2026-10-08: a changed operation list creates an unsaved graph-history
+barrier, like dataset selection, because graph snapshots do not contain manifest
+metadata. Failed and semantically unchanged setters preserve dirty state,
+undo/redo and saved revisions. `nn_project_set_operations_json` accepts an
+optional `bool *changed` out parameter, initialized false and set true only on
+committed replacement; the application ABI remains unchanged.
+
 Scope display follows editor contract. New non-root scopes require a subflow
 owner; existing imported scope strings are preserved. Nonempty subflow deletion
 is rejected rather than silently orphaning children. Coordinate rules below

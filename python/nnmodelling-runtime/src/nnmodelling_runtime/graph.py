@@ -40,7 +40,8 @@ def _operation_table(model: dict[str, Any], nodes: Mapping[str, dict[str, Any]],
             endpoint = operation.get(role)
             if not isinstance(endpoint, dict) or not all(isinstance(endpoint.get(key), str) and endpoint[key] for key in ("node", "handle")):
                 raise ValueError(f"operation {name!r} has an invalid {role} endpoint")
-            if endpoint.get("codec") not in {"dataset", "tensor"}:
+            codec = endpoint.get("codec")
+            if not isinstance(codec, str) or codec not in {"dataset", "tensor"}:
                 raise ValueError(f"operation {name!r} has an invalid {role} codec")
             node = nodes.get(endpoint["node"])
             if node is None or node.get("data", {}).get("scope", ""):
@@ -674,6 +675,7 @@ class GraphModule(torch.nn.Module):
             raise TypeError("operation input must be a batched torch.Tensor")
         operation = self.operations[name]
         source, target = operation["input"], operation["output"]
+        self._runtime_invocations = 0
         was_training = self.training
         self.eval()
         try:

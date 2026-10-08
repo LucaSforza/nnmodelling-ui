@@ -160,6 +160,69 @@ static void test_commands_groups_and_revisions(NNApplication *app, const char *r
     assert(!nn_app_can_undo(app) && !nn_app_can_redo(app));
 }
 
+static void test_operation_history_barrier(NNApplication *app, const char *root,
+                                           char *error)
+{
+    const char *operations = "[{\"name\":\"decode\","
+        "\"input\":{\"node\":\"layer\",\"handle\":\"in\",\"codec\":\"tensor\"},"
+        "\"output\":{\"node\":\"layer\",\"handle\":\"out\",\"codec\":\"tensor\"}}]";
+    assert(nn_app_create(app, root, "operations", "Operations", false, error, 512));
+    add(app, "layer", "core.relu", "", error);
+    assert(nn_app_save(app, error, 512));
+    const NNProject *project = nn_app_project(app);
+    assert(nn_app_move_node(app, "layer", 200, 80, error, 512));
+    assert(nn_app_undo(app, error, 512));
+    assert(nn_app_can_redo(app) && !nn_project_dirty(project));
+
+    assert(!nn_app_set_operations_json(app, "{}", error, 512));
+    assert(nn_app_set_operations_json(app, " [ ] ", error, 512));
+    assert(nn_app_can_redo(app) && !nn_project_dirty(project));
+    assert(nn_app_begin_edit(app, error, 512));
+    assert(!nn_app_set_operations_json(app, operations, error, 512));
+    assert(nn_app_end_edit(app, false, error, 512));
+    assert(nn_app_can_redo(app) && !nn_project_dirty(project));
+
+    assert(nn_app_set_operations_json(app, operations, error, 512));
+    assert(nn_project_dirty(project));
+    assert(!nn_app_can_undo(app) && !nn_app_can_redo(app));
+    assert(nn_app_move_node(app, "layer", 200, 80, error, 512));
+    assert(nn_app_set_operations_json(app, operations, error, 512));
+    assert(nn_app_can_undo(app));
+    assert(nn_app_undo(app, error, 512));
+    assert(nn_project_dirty(project) && nn_app_can_redo(app));
+    assert(nn_app_set_operations_json(app, operations, error, 512));
+    assert(nn_app_can_redo(app) && nn_project_dirty(project));
+    assert(nn_app_move_node(app, "layer", 40, 80, error, 512));
+    assert(nn_project_dirty(project));
+
+    assert(nn_app_save(app, error, 512));
+    assert(!nn_project_dirty(project));
+    assert(nn_app_set_operations_json(app, operations, error, 512));
+    assert(nn_app_can_redo(app) && !nn_project_dirty(project));
+    assert(nn_app_redo(app, error, 512));
+    assert(nn_project_dirty(project));
+    assert(nn_app_undo(app, error, 512));
+    assert(!nn_project_dirty(project));
+
+    assert(nn_app_set_operations_json(app, "[]", error, 512));
+    assert(nn_project_dirty(project) && !nn_app_can_redo(app));
+    assert(nn_app_set_operations_json(app, operations, error, 512));
+    assert(!nn_app_set_operations_json(app, "{}", error, 512));
+    assert(nn_app_move_node(app, "layer", 200, 80, error, 512));
+    assert(nn_app_undo(app, error, 512));
+    assert(nn_project_dirty(project));
+
+    /* Ordinary close must persist manifest edits after graph undo. */
+    assert(nn_app_close(app, false, error, 512));
+    char *directory = path_join(root, "operations");
+    assert(nn_app_open(app, directory, error, 512));
+    free(directory);
+    char *saved = nn_app_operations_json(app, error, 512);
+    assert(saved && strstr(saved, "decode"));
+    nn_app_free_text(saved);
+    assert(!nn_project_dirty(nn_app_project(app)));
+}
+
 int main(void)
 {
     char cwd[4096];
@@ -193,6 +256,7 @@ int main(void)
                                  error, sizeof(error)));
     assert(!nn_app_can_undo(app) && !nn_app_can_redo(app));
     assert(!nn_project_dirty(nn_app_project(app)));
+    test_operation_history_barrier(app, root, error);
     nn_app_free(app);
     free(core);
     puts("graph history invariants: ok");

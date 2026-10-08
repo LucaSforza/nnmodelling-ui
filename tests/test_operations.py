@@ -77,6 +77,54 @@ def _operations():
     ]
 
 
+def _subflow_fixture(root: Path, *, calls=1):
+    project, core = _fixture(root, operations=_operations())
+    proxy = core / "proxy"
+    _json(proxy / "manifest.json", {"id": "test.proxy", "version": "1.0.0", "entrypoints": {"definition": "stereotype.json", "pytorch": {"language": "python", "file": "pytorch.py"}}})
+    _json(proxy / "stereotype.json", {"kind": "subflow", "outputs": [{"id": "out", "type": "output"}]})
+    (proxy / "pytorch.py").write_text(
+        "from torch import nn\n"
+        "class Proxy(nn.Module):\n"
+        " def __init__(self, body): super().__init__(); self.body=body\n"
+        " def forward(self, value):\n"
+        f"  for _ in range({calls}): value=self.body(value)\n"
+        "  return value\n"
+        "def build(parameters, context, services): return Proxy(services.build_subflow())\n",
+        encoding="utf-8",
+    )
+    model = json.loads((project / "model.json").read_text(encoding="utf-8"))
+    decoder = next(node for node in model["nodes"] if node["id"] == "decoder")
+    decoder["data"].update(package={"id": "test.proxy", "version": "1.0.0"}, params={})
+    for node_id, package_id, params in (("nested-input", "core.input", {}),
+                                         ("nested-scale", "test.scale", {"factor": 3}),
+                                         ("nested-output", "core.output", {})):
+        model["nodes"].append({"id": node_id, "data": {"scope": "decoder", "package": {"id": package_id, "version": "1.0.0"}, "params": params}})
+    model["edges"].extend([
+        {"id": "nested-a", "source": "nested-input", "sourceHandle": "out", "target": "nested-scale", "targetHandle": "in"},
+        {"id": "nested-b", "source": "nested-scale", "sourceHandle": "out", "target": "nested-output", "targetHandle": "in"},
+    ])
+    _json(project / "model.json", model)
+    return project, core
+
+
+def test_subflow_operation_budget_is_per_call(tmp_path):
+    project, core = _subflow_fixture(tmp_path)
+    graph = GraphModule(project, core)
+    for _ in range(257):
+        torch.testing.assert_close(graph.run_operation("decode", torch.tensor([4.0])), torch.tensor([12.0]))
+    assert graph.training
+    torch.testing.assert_close(graph(torch.tensor([2.0]))["prediction"], torch.tensor([30.0]))
+
+
+def test_subflow_operation_still_enforces_per_call_budget(tmp_path):
+    project, core = _subflow_fixture(tmp_path, calls=257)
+    graph = GraphModule(project, core)
+    for _ in range(2):
+        with pytest.raises(ValueError, match="subflow execution exceeds 256 invocations"):
+            graph.run_operation("decode", torch.zeros(1))
+        assert graph.training
+
+
 def test_operation_slices_at_injected_handle_and_keeps_regular_forward(tmp_path):
     project, core = _fixture(tmp_path, operations=_operations())
     graph = GraphModule(project, core)
@@ -129,3 +177,21 @@ def test_backend_rejects_stale_operation_metadata_before_queueing(tmp_path):
     files = {path.relative_to(project_dir).as_posix(): path.read_bytes() for path in project_dir.rglob("*") if path.is_file() and path.name != "model.json"}
     with pytest.raises(HTTPException):
         validate_project(model, files, {folder.name: folder for folder in core_dir.iterdir()})
+
+
+@pytest.mark.parametrize("role", ["input", "output"])
+@pytest.mark.parametrize("codec", [None, 0, True, [], {}, "", "python"])
+def test_runtime_and_backend_reject_invalid_operation_codecs(tmp_path, role, codec):
+    from fastapi import HTTPException
+    from backend.validation import validate_project
+
+    operations = _operations()
+    operations[0][role]["codec"] = codec
+    project, core = _fixture(tmp_path, operations=operations)
+    with pytest.raises(ValueError, match="invalid .* codec"):
+        GraphModule(project, core)
+    model = json.loads((project / "model.json").read_text(encoding="utf-8"))
+    files = {path.relative_to(project).as_posix(): path.read_bytes() for path in project.rglob("*") if path.is_file() and path.name != "model.json"}
+    with pytest.raises(HTTPException) as failure:
+        validate_project(model, files, {folder.name: folder for folder in core.iterdir()})
+    assert failure.value.status_code == 422

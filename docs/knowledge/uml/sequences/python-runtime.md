@@ -179,7 +179,8 @@ the latest 128 characters as context.
     Model-->>User: Tensor
     User->>Model: decode(latent Tensor)
     Model->>Graph: run_operation(decode, Tensor)
-    Graph->>Graph: inject at selected node input; cut upstream edge for this call
+    Graph->>Graph: reset per-call subflow invocation budget
+    Graph->>Graph: inject at selected node input and cut upstream edge for this call
     Graph->>Node: evaluate decoder-to-selected-handle closure
     Node-->>Graph: reconstructed Tensor
     Graph-->>Model: batched reconstructed Tensor

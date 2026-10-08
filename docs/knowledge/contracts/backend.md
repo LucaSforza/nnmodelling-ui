@@ -313,6 +313,10 @@ operation's dataset/tensor codec before and after this graph call. Normal
 `forward()` remains unchanged.
 Calls run with the same registered modules and loaded `state_dict`; loss targets
 are not fabricated or evaluated.
+Each operation call starts a fresh subflow invocation budget, as `forward()`
+does; the 256-invocation bound applies within one execution, not across calls.
+Codec metadata must be a string equal to `dataset` or `tensor`; other JSON
+types fail validation with HTTP 422 on submission and ValueError in the runtime.
 
 Wheel `Model` exposes declared safe operation names as methods and retains
 `run_operation(name, value)` for generic callers. The operation table is frozen

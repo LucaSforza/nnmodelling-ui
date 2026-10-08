@@ -141,17 +141,22 @@ int main(void)
     assert(operations && !strcmp(operations, "[]"));
     free(operations);
     assert(!nn_project_dirty(project));
-    assert(!nn_project_set_operations_json(project, "{\"name\":\"bad\"}", error, sizeof(error)));
+    bool operations_changed = true;
+    assert(!nn_project_set_operations_json(project, "{\"name\":\"bad\"}", &operations_changed, error, sizeof(error)));
+    assert(!operations_changed);
     assert(!nn_project_set_operations_json(project,
-        "[{\"name\":\"class\",\"input\":{},\"output\":{}}]", error, sizeof(error)));
+        "[{\"name\":\"class\",\"input\":{},\"output\":{}}]", NULL, error, sizeof(error)));
     assert(!nn_project_set_operations_json(project,
-        "[{\"name\":\"infer\",\"input\":{},\"output\":{}}]", error, sizeof(error)));
+        "[{\"name\":\"infer\",\"input\":{},\"output\":{}}]", NULL, error, sizeof(error)));
     assert(!nn_project_set_operations_json(project,
         "[{\"name\":\"encode\",\"input\":{\"node\":\"gone\",\"handle\":\"in\",\"codec\":\"image\"},\"output\":{\"node\":\"gone\",\"handle\":\"out\",\"codec\":\"tensor\"}}]",
-        error, sizeof(error)));
+        NULL, error, sizeof(error)));
     assert(!nn_project_dirty(project));
     const char *stale_operation = "[{\"name\":\"encode\",\"input\":{\"node\":\"deleted-node\",\"handle\":\"missing-in\",\"codec\":\"dataset\"},\"output\":{\"node\":\"deleted-node\",\"handle\":\"missing-out\",\"codec\":\"tensor\"}}]";
-    assert(nn_project_set_operations_json(project, stale_operation, error, sizeof(error)));
+    assert(nn_project_set_operations_json(project, stale_operation, &operations_changed, error, sizeof(error)));
+    assert(operations_changed);
+    assert(nn_project_set_operations_json(project, stale_operation, &operations_changed, error, sizeof(error)));
+    assert(!operations_changed);
     assert(nn_project_dirty(project));
     operations = nn_project_operations_json(project, error, sizeof(error));
     assert(operations && strstr(operations, "deleted-node") && strstr(operations, "encode"));

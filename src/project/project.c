@@ -124,9 +124,10 @@ static bool same_operations(const NNProject *project, const NNModelOperation *it
     return true;
 }
 
-bool nn_project_set_operations_json(NNProject *project, const char *json,
+bool nn_project_set_operations_json(NNProject *project, const char *json, bool *changed,
                                     char *error, size_t capacity)
 {
+    if (changed) *changed = false;
     if (error && capacity) error[0] = '\0';
     if (!project || !json) return nn_fail(error, capacity, "invalid operation JSON");
     yyjson_doc *document = yyjson_read(json, strlen(json), 0);
@@ -142,6 +143,7 @@ bool nn_project_set_operations_json(NNProject *project, const char *json,
         parsed.operations = NULL;
         parsed.operation_count = 0;
         project->dirty = true;
+        if (changed) *changed = true;
     }
     nn_project_operations_dispose(parsed.operations, parsed.operation_count);
     return true;

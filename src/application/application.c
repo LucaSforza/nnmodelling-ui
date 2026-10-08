@@ -123,7 +123,11 @@ bool nn_app_set_operations_json(NNApplication *app, const char *json,
     if (!app || !app->project) return nn_fail(error, cap, "no active project");
     if (app->history.group_active)
         return nn_fail(error, cap, "cannot edit operations during an edit group");
-    return nn_project_set_operations_json(app->project, json, error, cap);
+    bool changed = false;
+    if (!nn_project_set_operations_json(app->project, json, &changed, error, cap)) return false;
+    /* Graph-only snapshots cannot restore manifest metadata. */
+    if (changed) nn_app_history_barrier(app, false);
+    return true;
 }
 
 const NNProject *nn_app_project(const NNApplication *app)

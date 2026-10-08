@@ -244,7 +244,7 @@ camera, selection, expansion and direction are not restored by undo.
     App->>Project: validate safe name, codec and root endpoint references
     alt valid operation list
       Project->>Project: atomically replace owned operation metadata
-      App->>App: mark project dirty
+      App->>App: create unsaved graph-history barrier only if metadata changed
       App-->>Qt: committed list
       Qt->>Qt: refresh Operations group and project title
     else malformed or invalid new endpoint
@@ -259,3 +259,5 @@ camera, selection, expansion and direction are not restored by undo.
 The UI authors only data. A graph edit may make an existing endpoint stale;
 preserve it for repair and display its invalid status. Backend submission rejects
 stale declarations before queueing a job. No adapter or PyTorch code runs in Qt.
+Changed metadata clears graph-only history without marking it saved; rejected
+and unchanged lists retain existing undo/redo and dirty revisions.

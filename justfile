@@ -38,7 +38,7 @@ test-backend:
     uv run --package nnmodelling-backend --group dev pytest -q tests/test_backend.py tests/backend
 
 test-runtime:
-    uv run --group dev pytest -q tests/test_runtime.py
+    uv run --group dev pytest -q tests/test_runtime.py tests/test_operations.py
 
 test-examples:
     uv run --group dev --group examples python -m pytest -q tests/test_examples.py tests/test_example_datasets.py tests/test_example_stereotypes.py tests/test_full_llm_preparation.py tests/test_llm_wheel_consumer.py
