@@ -1,5 +1,12 @@
 # Verification strategy
 
+Accepted 2026-10-08: GitHub Actions runs the existing core, sanitizer, offscreen
+Qt/CLI and Python backend/runtime/example gates on pushes and pull requests.
+Use Linux hosted runners, read-only repository permissions, bounded job timeouts
+and the committed uv lockfile with dev/examples groups. Named-operation tests
+belong to the runtime recipe. CI does not download a trained consumer wheel or
+claim an actual container-training or visible desktop trial.
+
 Local backend (accepted 2026-10-05): [backend contract](../contracts/backend.md)
 adds Python API/worker/runtime/wheel tests, Qt HTTP tests, resource uv scaffolds
 and actual container training gate. A direct worker test is diagnostic evidence;

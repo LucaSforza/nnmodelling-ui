@@ -1,0 +1,83 @@
+name: Tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  core:
+    name: Core and sanitizers
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y build-essential cmake clang just
+
+      - name: Run core tests
+        run: just test
+
+      - name: Run ASan and UBSan tests
+        run: just test-sanitize
+
+  qt:
+    name: Qt offscreen and CLI
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Qt build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y build-essential cmake just qt6-base-dev qt6-base-dev-tools
+
+      - name: Run offscreen Qt and CLI tests
+        run: just test-ui
+
+  python:
+    name: Backend, runtime, and examples
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      OPENBLAS_NUM_THREADS: "2"
+      OMP_NUM_THREADS: "2"
+      MKL_NUM_THREADS: "2"
+      NUMEXPR_NUM_THREADS: "2"
+      UV_LOCKED: "true"
+      UV_PYTHON: "3.12"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install just
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y just
+
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+
+      - name: Install Python
+        run: uv python install 3.12
+
+      - name: Sync locked workspace
+        run: uv sync --locked --all-packages --group dev --group examples
+
+      - name: Run backend tests
+        run: just test-backend
+
+      - name: Run runtime tests
+        run: just test-runtime
+
+      - name: Run example tests
+        run: just test-examples
