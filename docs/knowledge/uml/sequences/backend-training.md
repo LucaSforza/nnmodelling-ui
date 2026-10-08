@@ -46,6 +46,35 @@ The snapshot includes selected dataset resources and submitted data. It is
 read-only to the worker. Later UI edits cannot change a queued or running job.
 The resolved core directory is frozen under `snapshot/core/<package-folder>`.
 
+## Configure and launch the local service
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant UI as Qt Training backend dialog
+    participant Settings as Per-user Qt settings
+    participant Process as Local service child process
+    participant API as Local FastAPI
+    User->>UI: choose Docker or Slurm and enter service paths
+    UI->>Settings: save non-secret launch profile
+    User->>UI: start or restart managed backend
+    UI->>API: inspect jobs if existing managed process is running
+    alt queued/running jobs exist
+        UI-->>User: refuse restart so jobs are not interrupted
+    else safe to launch
+        UI->>Process: spawn uv/uvicorn on loopback with validated environment
+        Process->>API: start FastAPI and select executor
+        UI->>API: GET /health
+        API-->>UI: executor/runtime availability
+        UI-->>User: show readiness or startup error
+    end
+```
+
+The child is a separate local Python process, not embedded in Qt. Closing the
+Training dialog leaves it running. Application shutdown warns that active jobs
+will be interrupted; user must explicitly confirm stopping it. An external
+backend endpoint is never managed by this launcher.
+
 ## Queue, container and worker lifecycle
 
 ```mermaid

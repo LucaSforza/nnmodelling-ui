@@ -7,6 +7,8 @@ kept in the [backend sequence](sequences/backend-training.md).
 ```mermaid
   flowchart TD
     UI[Qt backend panel] -->|async HTTP v1| API[FastAPI local service]
+    UI -->|explicit config and process lifecycle| Launcher[Local backend launcher]
+    Launcher -->|spawn with validated env| API
     UI -->|save/open| C[C application and project authority]
     API --> Store[Persistent jobs and immutable snapshots]
     API --> Runner[Local queue and Docker or SSH Slurm lifecycle]
@@ -31,9 +33,11 @@ kept in the [backend sequence](sequences/backend-training.md).
 `GraphModule` owns registered runtime modules and derives its topological
 execution order from frozen graph metadata. The worker owns optimizer, random seeds and metrics. `JobStore` owns
 persisted job state, immutable request bytes and published output files. The
-Qt panel owns transient controls and asynchronous replies; C still owns the
-active native project. Exported `Model` owns a private dataset adapter, graph
-runtime and weights, without training payloads.
+Qt panel owns transient controls and asynchronous replies; the main window owns
+the optional local backend child process, and per-user Qt settings own its
+non-secret launch profile. C still owns the active native project. Exported
+`Model` owns a private dataset adapter, graph runtime and weights, without
+training payloads.
 
 Wheel export separates readable distribution identity (`nnm_<normalized-project-id>`)
 from the existing job-specific Python import package (`nnmodel_<normalized-job-id>`).

@@ -203,6 +203,14 @@ La sezione `Optional Lua inference` contiene l'editor sorgente. Il testo inizial
 
 `Training` nella toolbar e `Model > Training backend…` aprono `Training backend`. Il pannello è utilizzabile per collegarsi e consultare job anche senza un progetto; inviare un job richiede invece un progetto valido, che viene salvato prima dell'invio.
 
+### Configurare e avviare il backend locale
+
+Nel riquadro `Local backend service configuration`, scegli `Docker-compatible runtime` oppure `SSH / Slurm`. La UI mostra solo i campi dell'esecutore scelto. Inserisci i percorsi e le risorse; per Slurm usa l'alias SSH già configurato sul computer, una directory remota scrivibile e il percorso di un'immagine Singularity `.sif` già preparata. `Partition`, `CPUs`, `Memory` e `Time limit` iniziano con i valori predefiniti del backend. L'app non raccoglie password SSH né prepara immagini o dipendenze.
+
+Premi `Save settings and start local backend`. La UI avvia FastAPI su loopback in un processo locale separato; con `SSH / Slurm`, soltanto i worker vengono inviati al cluster. `uv` e il workspace del repository devono essere disponibili, e l'immagine worker va preparata prima. La riga di stato e `Connect / check health` mostrano errori di avvio, autenticazione o prerequisiti. Le impostazioni non segrete vengono salvate per l'utente corrente; `Bearer token` resta in memoria per la sessione. Se colleghi un servizio avviato manualmente o un endpoint remoto, la UI non lo controlla.
+
+Se il servizio gestito è già attivo, il pulsante diventa `Restart local backend safely`. La UI rifiuta il riavvio finché la cronologia contiene job `queued` o `running`, così non interrompe training. Chiudere il pannello Training lascia il servizio attivo. Chiudere l'app con servizio gestito attivo mostra un avviso: confermare arresta il backend e interrompe eventuali job Slurm; annullare mantiene l'app aperta.
+
 Per provare il MNIST VAE distribuito, crea una copia della cartella `examples/models/mnist-vae`, poi apri quella copia con `File > Open project…`. I metodi `encode` e `decode` sono già elencati in `Operations`. `encode(image)` converte immagine in tensore latente `[1,32]`; in modalità inferenza il VAE restituisce la media posteriore in modo deterministico. `decode(z)` accetta un tensore `[1,32]` e restituisce immagine NumPy `28 × 28`. Per generare immagine dal prior, si può passare `torch.randn(1, 32)` a `decode`.
 
 In alto, `Endpoint` parte da `http://127.0.0.1:8765`. `Bearer token` è facoltativo e nascosto mentre si digita; rimane in memoria per la sessione. `Connect / check health` controlla servizio e runtime container; `Refresh jobs` aggiorna la cronologia. La riga di stato comunica il risultato in forma leggibile.

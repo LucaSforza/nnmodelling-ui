@@ -201,6 +201,14 @@ The metadata fields have distinct meanings in both the stereotype and dataset fo
 
 `Training` on the toolbar and `Model > Training backend…` open `Training backend`. You can connect and inspect jobs without a project; submitting a job requires a valid project, which is saved before submission.
 
+### Configure and start the local backend
+
+In `Local backend service configuration`, choose `Docker-compatible runtime` or `SSH / Slurm`. The UI shows fields for the selected executor only. Enter its paths and resources. For Slurm, use an SSH alias already configured on this computer, a writable remote directory and the path to a prepared Singularity `.sif` image. `Partition`, `CPUs`, `Memory` and `Time limit` start with the backend defaults. The app does not collect SSH passwords or build images and dependencies.
+
+Press `Save settings and start local backend`. The UI starts FastAPI on loopback as a separate local process; with `SSH / Slurm`, only workers are sent to the cluster. `uv` and the repository workspace must be available, and the worker image must be prepared first. The status line and `Connect / check health` show startup, authentication or prerequisite errors. Non-secret settings are saved for the current user; `Bearer token` stays in memory for the session. When connected to a manually started service or remote endpoint, the UI does not manage it.
+
+When the managed service is already running, the button changes to `Restart local backend safely`. The UI refuses to restart while job history contains `queued` or `running` jobs, avoiding training interruption. Closing the Training panel leaves the service running. Closing the app while its managed service is active shows a warning: confirming stops the backend and interrupts any Slurm jobs; canceling keeps the app open.
+
 At the top, `Endpoint` starts at `http://127.0.0.1:8765`. `Bearer token` is optional, hidden as you type and kept in memory for the session. `Connect / check health` checks the service and container runtime; `Refresh jobs` updates history. The status line reports the result in readable form.
 
 Submission fields are `Epochs` (10), `Batch` (32), `Learning rate` (0.001), `Seed` (0) and `Publish every N steps` (10). Epochs: 1–10000; batch: 1–4096; learning rate: greater than zero and at most 1; seed: −2147483648 to 4294967295; publish interval: 1–100000. The interval controls metric publication and validation. `Save project and submit` saves the current state first, then submits an immutable snapshot; a save or submission error appears in the status line.

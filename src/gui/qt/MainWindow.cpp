@@ -5,6 +5,7 @@
 #include "NodeItem.hpp"
 #include "MainWindowUtils.hpp"
 #include "BackendDialog.hpp"
+#include "BackendServiceManager.hpp"
 #include "application/application.h"
 #include "automation/automation.h"
 #include "project/project.h"
@@ -43,6 +44,10 @@
 #include <QWidgetAction>
 
 #include <cmath>
+
+#ifndef NN_SOURCE_DIR
+#define NN_SOURCE_DIR "."
+#endif
 
 using namespace MainWindowUtils;
 
@@ -103,6 +108,7 @@ public:
 
 MainWindow::MainWindow(NNApplication *application, QWidget *parent)
     : QMainWindow(parent), application_(application, nn_app_free) {
+    backendService_ = new BackendServiceManager(QStringLiteral(NN_SOURCE_DIR), this);
     QPalette palette = QApplication::palette();
     palette.setColor(QPalette::Window, QColor("#eceff3"));
     palette.setColor(QPalette::WindowText, QColor("#202c3b"));
@@ -153,6 +159,17 @@ void MainWindow::closeEvent(QCloseEvent *event) {
             event->ignore();
             return;
         }
+    }
+    if (backendService_ && backendService_->isRunning()) {
+        const auto choice = QMessageBox::warning(
+            this, tr("Stop managed training backend?"),
+            tr("Closing NNModelling will stop its local backend. Any queued or running training jobs may be interrupted. Stop the backend and continue?"),
+            QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+        if (choice != QMessageBox::Yes) {
+            event->ignore();
+            return;
+        }
+        backendService_->stop();
     }
     if (project) {
         char error[ErrorCapacity] = {};
@@ -259,7 +276,7 @@ void MainWindow::buildUi() {
     addAction(modelMenu, tr("Manage operations…"), {}, [this] { manageOperations(); }, "manageOperationsAction");
     QAction *backendPanelAction = addAction(modelMenu, tr("Training backend…"), {}, [this] {
         BackendDialog dialog(application_.get(), [this] { return saveProject(); },
-            [this](const QString &directory) { return openProject(directory); }, this);
+            [this](const QString &directory) { return openProject(directory); }, this, backendService_);
         dialog.exec();
     }, "backendPanelAction");
 

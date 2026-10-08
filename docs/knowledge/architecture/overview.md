@@ -21,7 +21,8 @@ Accepted 2026-09-29: Qt 6 Widgets replaces the SDL3 graphical frontend.
       Inference --> Utils
       IPC --> Utils
       GUI --> HTTP[Qt Network asynchronous backend client]
-      HTTP --> Backend[backend - local FastAPI and persistent jobs]
+      GUI --> Launch[Explicit local FastAPI process launcher]
+      Launch --> Backend[backend - local FastAPI and persistent jobs]
       Backend --> Container[Local Docker or SSH Slurm Singularity training containers]
       Container --> Python[python/nnmodelling-runtime - PyTorch DAG and dataset SDK]
 ```

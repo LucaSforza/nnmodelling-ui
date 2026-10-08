@@ -2,6 +2,7 @@
 
 #include "application/application.h"
 #include "project/project.h"
+#include "BackendServiceManager.hpp"
 
 #include <QDir>
 #include <QCheckBox>
@@ -29,6 +30,9 @@
 #include <QRegularExpression>
 #include <QSaveFile>
 #include <QScrollBar>
+#include <QSettings>
+#include <QStandardPaths>
+#include <QGroupBox>
 #include <QSplitter>
 #include <QSignalBlocker>
 #include <QSet>
@@ -198,13 +202,18 @@ QString backendError(const QByteArray &body, int status, const QString &fallback
 }
 
 BackendDialog::BackendDialog(NNApplication *application, std::function<bool()> saveProject,
-                             std::function<bool(const QString &)> openProject, QWidget *parent)
+                             std::function<bool(const QString &)> openProject, QWidget *parent,
+                             BackendServiceManager *serviceManager)
     : QDialog(parent), application_(application), saveProject_(std::move(saveProject)),
-      openProject_(std::move(openProject)), network_(new QNetworkAccessManager(this))
+      openProject_(std::move(openProject)), serviceManager_(serviceManager),
+      network_(new QNetworkAccessManager(this))
 {
     setWindowTitle(tr("Training backend"));
     resize(1120, 850);
     setMinimumSize(920, 680);
+    QFont dialogFont = font();
+    dialogFont.setPointSize(qMax(dialogFont.pointSize(), 10));
+    setFont(dialogFont);
     auto *layout = new QVBoxLayout(this);
     auto *connection = new QHBoxLayout;
     connection->addWidget(new QLabel(tr("Endpoint"), this));
@@ -228,6 +237,93 @@ BackendDialog::BackendDialog(NNApplication *application, std::function<bool()> s
     status_->setObjectName(QStringLiteral("backendStatus"));
     status_->setWordWrap(true);
     layout->addWidget(status_);
+
+    auto *launcher = new QGroupBox(tr("Local backend service configuration"), this);
+    auto *launcherLayout = new QVBoxLayout(launcher);
+    auto *launcherForm = new QFormLayout;
+    launcherForm->setHorizontalSpacing(12);
+    launcherForm->setVerticalSpacing(7);
+    executor_ = new QComboBox(launcher);
+    executor_->setObjectName(QStringLiteral("backendExecutor"));
+    executor_->addItem(tr("Docker-compatible runtime"), QStringLiteral("docker"));
+    executor_->addItem(tr("SSH / Slurm"), QStringLiteral("slurm"));
+    jobRoot_ = new QLineEdit(launcher);
+    jobRoot_->setObjectName(QStringLiteral("backendJobRoot"));
+    dockerRuntime_ = new QLineEdit(QStringLiteral("docker"), launcher);
+    dockerRuntime_->setObjectName(QStringLiteral("backendDockerRuntime"));
+    dockerImage_ = new QLineEdit(QStringLiteral("nnmodelling-worker:local"), launcher);
+    dockerImage_->setObjectName(QStringLiteral("backendDockerImage"));
+    slurmHost_ = new QLineEdit(QStringLiteral("cluster"), launcher);
+    slurmHost_->setObjectName(QStringLiteral("backendSlurmHost"));
+    slurmRoot_ = new QLineEdit(launcher);
+    slurmRoot_->setObjectName(QStringLiteral("backendSlurmRoot"));
+    slurmImage_ = new QLineEdit(launcher);
+    slurmImage_->setObjectName(QStringLiteral("backendSlurmImage"));
+    slurmPartition_ = new QLineEdit(QStringLiteral("students"), launcher);
+    slurmPartition_->setObjectName(QStringLiteral("backendSlurmPartition"));
+    slurmCpus_ = new QLineEdit(QStringLiteral("2"), launcher);
+    slurmCpus_->setObjectName(QStringLiteral("backendSlurmCpus"));
+    slurmMemory_ = new QLineEdit(QStringLiteral("4G"), launcher);
+    slurmMemory_->setObjectName(QStringLiteral("backendSlurmMemory"));
+    slurmTime_ = new QLineEdit(QStringLiteral("00:30:00"), launcher);
+    slurmTime_->setObjectName(QStringLiteral("backendSlurmTime"));
+    const QString appData = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
+    const QString defaultRoot = appData.isEmpty()
+        ? QDir::homePath() + QStringLiteral("/.local/share/nnmodelling/jobs")
+        : QDir(appData).filePath(QStringLiteral("jobs"));
+    jobRoot_->setText(defaultRoot);
+    launcherForm->addRow(tr("Executor"), executor_);
+    launcherForm->addRow(tr("Local job root"), jobRoot_);
+    launcherForm->addRow(tr("Docker runtime"), dockerRuntime_);
+    launcherForm->addRow(tr("Docker worker image"), dockerImage_);
+    launcherForm->addRow(tr("Slurm SSH alias"), slurmHost_);
+    launcherForm->addRow(tr("Remote job root"), slurmRoot_);
+    launcherForm->addRow(tr("Prebuilt SIF image"), slurmImage_);
+    launcherForm->addRow(tr("Partition"), slurmPartition_);
+    launcherForm->addRow(tr("CPUs"), slurmCpus_);
+    launcherForm->addRow(tr("Memory"), slurmMemory_);
+    launcherForm->addRow(tr("Time limit"), slurmTime_);
+    launcherLayout->addLayout(launcherForm);
+    for (QLineEdit *field : {jobRoot_, dockerRuntime_, dockerImage_, slurmHost_, slurmRoot_,
+                             slurmImage_, slurmPartition_, slurmCpus_, slurmMemory_, slurmTime_})
+        field->setMinimumHeight(27);
+    executor_->setMinimumHeight(27);
+    auto setRowVisible = [launcherForm](QWidget *field, bool visible) {
+        field->setVisible(visible);
+        if (QWidget *label = launcherForm->labelForField(field)) label->setVisible(visible);
+    };
+    auto updateExecutorFields = [this, setRowVisible] {
+        const bool docker = executor_->currentData().toString() == QStringLiteral("docker");
+        setRowVisible(dockerRuntime_, docker);
+        setRowVisible(dockerImage_, docker);
+        setRowVisible(slurmHost_, !docker);
+        setRowVisible(slurmRoot_, !docker);
+        setRowVisible(slurmImage_, !docker);
+        setRowVisible(slurmPartition_, !docker);
+        setRowVisible(slurmCpus_, !docker);
+        setRowVisible(slurmMemory_, !docker);
+        setRowVisible(slurmTime_, !docker);
+    };
+    connect(executor_, &QComboBox::currentIndexChanged, this, updateExecutorFields);
+    updateExecutorFields();
+    managedBackendButton_ = new QPushButton(tr("Save settings and start local backend"), launcher);
+    managedBackendButton_->setObjectName(QStringLiteral("backendManagedStart"));
+    managedBackendButton_->setEnabled(serviceManager_ != nullptr);
+    launcherLayout->addWidget(managedBackendButton_);
+    layout->addWidget(launcher);
+    QSettings launcherSettings;
+    launcherSettings.beginGroup(QStringLiteral("backendLauncher"));
+    executor_->setCurrentIndex(qMax(0, executor_->findData(launcherSettings.value(QStringLiteral("executor"), QStringLiteral("docker")))));
+    jobRoot_->setText(launcherSettings.value(QStringLiteral("jobRoot"), jobRoot_->text()).toString());
+    dockerRuntime_->setText(launcherSettings.value(QStringLiteral("dockerRuntime"), dockerRuntime_->text()).toString());
+    dockerImage_->setText(launcherSettings.value(QStringLiteral("dockerImage"), dockerImage_->text()).toString());
+    slurmHost_->setText(launcherSettings.value(QStringLiteral("slurmHost"), slurmHost_->text()).toString());
+    slurmRoot_->setText(launcherSettings.value(QStringLiteral("slurmRoot")).toString());
+    slurmImage_->setText(launcherSettings.value(QStringLiteral("slurmImage")).toString());
+    slurmPartition_->setText(launcherSettings.value(QStringLiteral("slurmPartition"), slurmPartition_->text()).toString());
+    slurmCpus_->setText(launcherSettings.value(QStringLiteral("slurmCpus"), slurmCpus_->text()).toString());
+    slurmMemory_->setText(launcherSettings.value(QStringLiteral("slurmMemory"), slurmMemory_->text()).toString());
+    slurmTime_->setText(launcherSettings.value(QStringLiteral("slurmTime"), slurmTime_->text()).toString());
 
     auto *training = new QHBoxLayout;
     training->addWidget(new QLabel(tr("Epochs"), this));
@@ -353,6 +449,18 @@ BackendDialog::BackendDialog(NNApplication *application, std::function<bool()> s
     connect(connectButton, &QPushButton::clicked, this, &BackendDialog::connectBackend);
     connect(refreshButton, &QPushButton::clicked, this, &BackendDialog::refreshJobs);
     connect(submitButton, &QPushButton::clicked, this, &BackendDialog::submitJob);
+    connect(managedBackendButton_, &QPushButton::clicked, this, &BackendDialog::startManagedBackend);
+    if (serviceManager_) {
+        connect(serviceManager_, &BackendServiceManager::processError, this, [this](const QString &message) {
+            setMessage(message, true);
+        });
+        if (serviceManager_->isRunning()) {
+            endpoint_->setText(serviceManager_->endpoint().toString());
+            token_->setText(serviceManager_->bearerToken());
+            managedBackendButton_->setText(tr("Restart local backend safely"));
+            QTimer::singleShot(500, this, &BackendDialog::connectBackend);
+        }
+    }
     connect(trainingCurveVisible_, &QCheckBox::toggled, curve_, &TrainingCurveWidget::setTrainingVisible);
     connect(validationCurveVisible_, &QCheckBox::toggled, curve_, &TrainingCurveWidget::setValidationVisible);
     connect(curveScale_, &QComboBox::currentIndexChanged, this, [this](int index) {
@@ -478,6 +586,128 @@ void BackendDialog::request(const QString &path, const QByteArray &method, const
 void BackendDialog::connectBackend()
 {
     request(QStringLiteral("/health"));
+}
+
+void BackendDialog::saveLauncherSettings()
+{
+    QSettings settings;
+    settings.beginGroup(QStringLiteral("backendLauncher"));
+    settings.setValue(QStringLiteral("executor"), executor_->currentData().toString());
+    settings.setValue(QStringLiteral("jobRoot"), QDir::cleanPath(jobRoot_->text().trimmed()));
+    settings.setValue(QStringLiteral("dockerRuntime"), dockerRuntime_->text().trimmed());
+    settings.setValue(QStringLiteral("dockerImage"), dockerImage_->text().trimmed());
+    settings.setValue(QStringLiteral("slurmHost"), slurmHost_->text().trimmed());
+    settings.setValue(QStringLiteral("slurmRoot"), slurmRoot_->text().trimmed());
+    settings.setValue(QStringLiteral("slurmImage"), slurmImage_->text().trimmed());
+    settings.setValue(QStringLiteral("slurmPartition"), slurmPartition_->text().trimmed());
+    settings.setValue(QStringLiteral("slurmCpus"), slurmCpus_->text().trimmed());
+    settings.setValue(QStringLiteral("slurmMemory"), slurmMemory_->text().trimmed());
+    settings.setValue(QStringLiteral("slurmTime"), slurmTime_->text().trimmed());
+}
+
+void BackendDialog::startManagedBackend()
+{
+    if (!serviceManager_) return;
+    const QString root = QDir::cleanPath(jobRoot_->text().trimmed());
+    if (!QDir::isAbsolutePath(root) || root.contains(QChar::Null) || root.contains(QChar::LineFeed)) {
+        setMessage(tr("Local job root must be an absolute path."), true);
+        return;
+    }
+    QStringList environment;
+    environment << QStringLiteral("NNMODELLING_EXECUTOR=") + executor_->currentData().toString()
+                << QStringLiteral("NNMODELLING_JOB_ROOT=") + root;
+    if (!token_->text().isEmpty())
+        environment << QStringLiteral("NNMODELLING_BEARER_TOKEN=") + token_->text();
+    if (executor_->currentData().toString() == QStringLiteral("docker")) {
+        const QString runtime = dockerRuntime_->text().trimmed();
+        const QString image = dockerImage_->text().trimmed();
+        static const QRegularExpression runtimePattern(QStringLiteral("^[A-Za-z0-9_./+-]+$"));
+        static const QRegularExpression imagePattern(QStringLiteral("^[A-Za-z0-9][A-Za-z0-9._/:@+-]{0,254}$"));
+        if (!runtimePattern.match(runtime).hasMatch() || !imagePattern.match(image).hasMatch()) {
+            setMessage(tr("Docker runtime and worker image must be valid executable and image names."), true);
+            return;
+        }
+        environment << QStringLiteral("NNMODELLING_CONTAINER_RUNTIME=") + runtime
+                    << QStringLiteral("NNMODELLING_WORKER_IMAGE=") + image;
+    } else {
+        const QString host = slurmHost_->text().trimmed();
+        const QString remoteRoot = slurmRoot_->text().trimmed();
+        const QString image = slurmImage_->text().trimmed();
+        const QString partition = slurmPartition_->text().trimmed();
+        bool cpusOk = false;
+        const int cpus = slurmCpus_->text().trimmed().toInt(&cpusOk);
+        static const QRegularExpression aliasPattern(QStringLiteral("^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$"));
+        static const QRegularExpression remotePathPattern(QStringLiteral("^/(?:[^\\n\\r]+)$"));
+        static const QRegularExpression tokenPattern(QStringLiteral("^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$"));
+        static const QRegularExpression memoryPattern(QStringLiteral("^[1-9][0-9]*[KMGTP]?$"));
+        static const QRegularExpression timePattern(QStringLiteral("^[0-9]{1,3}(?:-[0-9]{1,2})?:[0-9]{2}:[0-9]{2}$"));
+        const QString memory = slurmMemory_->text().trimmed();
+        const QString time = slurmTime_->text().trimmed();
+        if (!aliasPattern.match(host).hasMatch() || !QDir::isAbsolutePath(remoteRoot) ||
+            remoteRoot.split(QLatin1Char('/')).contains(QStringLiteral("..")) ||
+            !remotePathPattern.match(image).hasMatch() || image.split(QLatin1Char('/')).contains(QStringLiteral("..")) ||
+            !tokenPattern.match(partition).hasMatch() || !cpusOk || cpus < 1 || cpus > 256 ||
+            !memoryPattern.match(memory).hasMatch() || !timePattern.match(time).hasMatch()) {
+            setMessage(tr("Slurm needs an SSH alias, absolute remote root and SIF path, valid partition, CPUs, memory and time limit."), true);
+            return;
+        }
+        environment << QStringLiteral("NNMODELLING_SLURM_HOST=") + host
+                    << QStringLiteral("NNMODELLING_SLURM_ROOT=") + remoteRoot
+                    << QStringLiteral("NNMODELLING_SLURM_IMAGE=") + image
+                    << QStringLiteral("NNMODELLING_SLURM_PARTITION=") + partition
+                    << QStringLiteral("NNMODELLING_SLURM_CPUS=") + QString::number(cpus)
+                    << QStringLiteral("NNMODELLING_SLURM_MEMORY=") + memory
+                    << QStringLiteral("NNMODELLING_SLURM_TIME=") + time;
+    }
+    saveLauncherSettings();
+    if (serviceManager_->isRunning()) {
+        checkJobsBeforeRestart();
+        return;
+    }
+    QString error;
+    if (!serviceManager_->start(environment, &error)) {
+        setMessage(error, true);
+        return;
+    }
+    endpoint_->setText(serviceManager_->endpoint().toString());
+    managedBackendButton_->setText(tr("Restart local backend safely"));
+    setMessage(tr("Starting local backend on loopback…"));
+    QTimer::singleShot(750, this, &BackendDialog::connectBackend);
+}
+
+void BackendDialog::checkJobsBeforeRestart()
+{
+    const QUrl url = serviceManager_->endpoint().resolved(QUrl(QStringLiteral("/v1/jobs")));
+    QNetworkRequest request(url);
+    request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
+    const QString token = token_->text();
+    if (!token.isEmpty()) request.setRawHeader("Authorization", QByteArrayLiteral("Bearer ") + token.toUtf8());
+    QNetworkReply *reply = network_->get(request);
+    auto *timeout = new QTimer(reply);
+    timeout->setSingleShot(true);
+    connect(timeout, &QTimer::timeout, reply, [reply] { reply->abort(); });
+    timeout->start(RequestTimeoutMs);
+    connect(reply, &QNetworkReply::finished, this, [this, reply] {
+        const QByteArray bytes = reply->readAll();
+        const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        const auto networkError = reply->error();
+        const QString networkMessage = reply->errorString();
+        reply->deleteLater();
+        const QJsonDocument document = QJsonDocument::fromJson(bytes);
+        if (networkError != QNetworkReply::NoError || status < 200 || status >= 300 || !document.isObject()) {
+            setMessage(backendError(bytes, status, networkMessage), true);
+            return;
+        }
+        for (const QJsonValue &entry : document.object().value(QStringLiteral("jobs")).toArray()) {
+            const QString state = entry.toObject().value(QStringLiteral("status")).toString();
+            if (state == QStringLiteral("queued") || state == QStringLiteral("running")) {
+                setMessage(tr("The managed backend cannot restart while jobs are queued or running."), true);
+                return;
+            }
+        }
+        serviceManager_->stop();
+        startManagedBackend();
+    });
 }
 
 void BackendDialog::refreshJobs()

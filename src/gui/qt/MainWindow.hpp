@@ -17,6 +17,7 @@ class NNApplication;
 struct NNAutomation;
 class GraphScene;
 class GraphView;
+class BackendServiceManager;
 enum class FlowDirection;
 
 class MainWindow final : public QMainWindow {
@@ -74,6 +75,7 @@ private:
     QAction *redoAction_ = nullptr;
     QTimer *automationTimer_ = nullptr;
     NNAutomation *automation_ = nullptr;
+    BackendServiceManager *backendService_ = nullptr;
     QString selectedPaletteId_;
     bool refreshing_ = false;
 };

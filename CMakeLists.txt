@@ -124,6 +124,7 @@ if(NN_BUILD_GUI)
     set(QT_WINDOW_SOURCES
         src/gui/qt/MainWindow.cpp src/gui/qt/MainWindow.hpp
         src/gui/qt/BackendDialog.cpp src/gui/qt/BackendDialog.hpp
+        src/gui/qt/BackendServiceManager.cpp src/gui/qt/BackendServiceManager.hpp
         src/gui/qt/TrainingCurveWidget.cpp src/gui/qt/TrainingCurveWidget.hpp
         src/gui/qt/MainWindowProject.cpp src/gui/qt/MainWindowAutomation.cpp
         src/gui/qt/MainWindowOperations.cpp
@@ -147,6 +148,7 @@ if(NN_BUILD_GUI)
         find_package(Qt6 REQUIRED COMPONENTS Test)
         add_executable(qt_backend_test tests/qt_backend_test.cpp
             src/gui/qt/BackendDialog.cpp src/gui/qt/BackendDialog.hpp
+            src/gui/qt/BackendServiceManager.cpp src/gui/qt/BackendServiceManager.hpp
             src/gui/qt/TrainingCurveWidget.cpp src/gui/qt/TrainingCurveWidget.hpp)
         set_target_properties(qt_backend_test PROPERTIES AUTOMOC ON)
         target_include_directories(qt_backend_test PRIVATE src/gui/qt)

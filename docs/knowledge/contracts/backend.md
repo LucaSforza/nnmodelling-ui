@@ -11,8 +11,10 @@ snapshots. First deployment is this computer, loopback by default.
 and training worker. `python/nnmodelling-runtime/` owns reusable dataset SDK,
 stereotype_runtime compatibility ABI, generic PyTorch graph and wheel export.
 uv workspace at repository root manages both packages and lockfile. Qt Network
-in `src/gui/qt/` owns asynchronous HTTP presentation only. C project module
-continues owning local resource creation. Python never runs inside native UI.
+in `src/gui/qt/` owns asynchronous HTTP presentation. The Training backend
+dialog may explicitly launch and supervise the local FastAPI service as a
+separate child process; Python never runs inside the native UI process. C project
+module continues owning local resource creation.
 
 ## HTTP protocol v1
 
@@ -123,6 +125,32 @@ scheduler exit and existing local result validation. Cancellation uses scancel;
 service shutdown/restart cancels only its own recorded jobs and makes interrupted
 work visibly failed. Do not cancel unrelated cluster jobs. Transport failure must
 attempt cancellation and retain scheduler identity/error for diagnosis.
+
+## Qt local backend configuration (accepted 2026-10-08)
+
+The Training backend dialog may configure and launch the local FastAPI service.
+Its executor choices are local Docker-compatible runtime and SSH/Slurm; selecting
+Slurm configures only this local service to submit workers remotely. The dialog
+never launches a backend on the cluster and always binds a UI-launched service
+to loopback. Existing arbitrary endpoint/token connection remains supported.
+
+Persist non-secret launcher settings per user through Qt settings: executor,
+local job root, Docker runtime/image, or Slurm SSH alias, absolute remote job
+root, absolute prebuilt SIF image and Slurm resource limits. The UI uses existing
+SSH agent/configuration and host-key checks; it never collects SSH passwords or
+stores credentials. Bearer token remains session-only. `uv` and the repository
+workspace are required to launch the service; worker images are prepared
+separately. Missing prerequisites and child startup/health errors are visible.
+Configuration is passed to the child process environment, not written into
+project files or sent through training HTTP routes.
+
+The local service process survives closing the Training dialog, but is owned by
+the main application. Application shutdown while that process is active warns
+that running Slurm jobs will be interrupted and requires explicit confirmation.
+Restarting a managed service is allowed only when its job list has no queued or
+running jobs. Manually launched services and arbitrary remote endpoints are never
+stopped or reconfigured by the UI. This is lifecycle control for the supported
+repository workspace, not a general Python/backend installer or remote daemon.
 
 The standalone `examples/implementation/llm/` consumer may be repinned to a new
 verified cluster-produced wheel; recorded full-corpus historical proof remains.

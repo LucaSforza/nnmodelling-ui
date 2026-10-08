@@ -1,9 +1,11 @@
 #include "BackendDialog.hpp"
+#include "BackendServiceManager.hpp"
 #include "TrainingCurveWidget.hpp"
 
 #include "application/application.h"
 
 #include <QDir>
+#include <QComboBox>
 #include <QImage>
 #include <QFile>
 #include <QJsonArray>
@@ -17,6 +19,7 @@
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QTemporaryDir>
+#include <QSettings>
 #include <QTest>
 #include <QTreeWidget>
 
@@ -135,6 +138,36 @@ public:
 class BackendDialogTest final : public QObject {
     Q_OBJECT
 private slots:
+    void localBackendConfigurationValidationAndPersistence()
+    {
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        QSettings::setDefaultFormat(QSettings::IniFormat);
+        QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, temporary.path());
+        QTemporaryDir source;
+        BackendServiceManager manager(source.path());
+        BackendDialog dialog(nullptr, {}, {}, nullptr, &manager);
+        dialog.show();
+        dialog.findChild<QLineEdit *>(QStringLiteral("backendToken"))->setText(QStringLiteral("session-secret"));
+        dialog.findChild<QComboBox *>(QStringLiteral("backendExecutor"))->setCurrentIndex(1);
+        dialog.findChild<QLineEdit *>(QStringLiteral("backendJobRoot"))->setText(QStringLiteral("relative/jobs"));
+        QTest::mouseClick(dialog.findChild<QPushButton *>(QStringLiteral("backendManagedStart")), Qt::LeftButton);
+        QVERIFY(dialog.findChild<QLabel *>(QStringLiteral("backendStatus"))->text().contains(QStringLiteral("absolute path")));
+
+        dialog.findChild<QLineEdit *>(QStringLiteral("backendJobRoot"))->setText(temporary.path());
+        dialog.findChild<QLineEdit *>(QStringLiteral("backendSlurmRoot"))->setText(QStringLiteral("/cluster/jobs"));
+        dialog.findChild<QLineEdit *>(QStringLiteral("backendSlurmImage"))->setText(QStringLiteral("/cluster/images/worker.sif"));
+        QTest::mouseClick(dialog.findChild<QPushButton *>(QStringLiteral("backendManagedStart")), Qt::LeftButton);
+        QVERIFY(dialog.findChild<QLabel *>(QStringLiteral("backendStatus"))->text().contains(QStringLiteral("source tree and uv workspace")));
+        QVERIFY(!manager.isRunning());
+
+        QSettings saved;
+        saved.beginGroup(QStringLiteral("backendLauncher"));
+        QCOMPARE(saved.value(QStringLiteral("executor")).toString(), QStringLiteral("slurm"));
+        QVERIFY(!saved.contains(QStringLiteral("token")));
+        QVERIFY(!saved.contains(QStringLiteral("bearerToken")));
+    }
+
     void curvePathsDoNotFillBetweenSeries()
     {
         TrainingCurveWidget curve;
