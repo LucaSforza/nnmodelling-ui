@@ -6,8 +6,9 @@
 <p class="edition">Manuale utente · Italiano<br/>Edizione 6 ottobre 2026</p><nav class="language-switch" aria-label="Lingua del manuale"><a lang="it" href="server.html" aria-current="page">Italiano</a><a lang="en" href="en/server.html">English</a></nav>
 <nav aria-label="Capitoli"><a href="introduction.html">Introduzione</a><a href="client.html">Usare il client</a><a href="parameters.html">Catalogo dei parametri</a><a href="server.html" aria-current="page">Configurare il server</a><a href="tutorial-tiny-llm.html">Tutorial tiny LLM</a><a href="tutorial-vae.html">Tutorial VAE</a></nav><div class="outline"><p>In questa pagina</p><div class="toc">
 <ul>
-<li><a href="#addestramento-locale">Addestramento locale</a><ul>
-<li><a href="#preparare-e-avviare-il-servizio">Preparare e avviare il servizio</a><ul>
+<li><a href="#backend-locale-e-job-su-slurm">Backend locale e job su Slurm</a><ul>
+<li><a href="#preparare-e-avviare-il-servizio">Preparare e avviare il servizio</a></li>
+<li><a href="#eseguire-i-job-sul-cluster-sapienza">Eseguire i job sul cluster Sapienza</a><ul>
 <li><a href="#esempio-porta-8766-e-archivio-dedicato">Esempio: porta 8766 e archivio dedicato</a></li>
 </ul>
 </li>
@@ -25,12 +26,13 @@
 </div>
 <p class="offline">Consultabile offline.<br/><a href="README.md">Sorgenti e verifica</a></p></aside>
 <main id="content"><header><span class="eyebrow">DAL GRAFO AL MODELLO</span><span class="chapter">Configurare il server</span></header>
-<article><h1 id="addestramento-locale">Addestramento locale</h1>
+<article><h1 id="backend-locale-e-job-su-slurm">Backend locale e job su Slurm</h1>
 <p>NNModelling può inviare una copia immutabile del progetto al servizio FastAPI
-locale. Il servizio accoda il lavoro, lo esegue in un container senza rete e
-conserva snapshot, metriche e risultati sul computer. La finestra <strong>Training</strong>
-mostra il collegamento, la cronologia dei job, le curve e i comandi per annullare,
-ripristinare lo snapshot e scaricare i risultati.</p>
+locale. Il servizio, l'API e la cronologia restano su questo computer. Puoi
+eseguire i job in un container locale oppure inviarli a Slurm via SSH: in quel
+caso solo il worker gira sul cluster; snapshot, metriche, log e risultati tornano
+al backend locale. La finestra <strong>Training</strong> mostra collegamento, cronologia,
+curve e comandi per annullare, ripristinare snapshot e scaricare risultati.</p>
 <figure class="annotated"><a href="assets/training-connect.png" class="image-link" title="Apri screenshot a dimensione originale"><img alt="Pannello di connessione al backend" src="assets/training-connect.png" loading="lazy"></a><figcaption><strong>Pannello di connessione al backend</strong><p class="image-hint">Clic sull'immagine per leggere i dettagli a dimensione originale.</p><ol class="callouts"><li><span class="badge" aria-hidden="true">1</span><span>Indirizzo del backend</span></li><li><span class="badge" aria-hidden="true">2</span><span>Connetti e verifica lo stato del servizio</span></li></ol></figcaption></figure><figure class="annotated"><a href="assets/training-dashboard.png" class="image-link" title="Apri screenshot a dimensione originale"><img alt="Cronologia, curve di apprendimento e risultati" src="assets/training-dashboard.png" loading="lazy"></a><figcaption><strong>Cronologia, curve di apprendimento e risultati</strong><p class="image-hint">Clic sull'immagine per leggere i dettagli a dimensione originale.</p><ol class="callouts"><li><span class="badge" aria-hidden="true">1</span><span>Connessione al backend</span></li><li><span class="badge" aria-hidden="true">2</span><span>Configurazione dell’addestramento</span></li><li><span class="badge" aria-hidden="true">3</span><span>Cronologia e stato delle attività</span></li><li><span class="badge" aria-hidden="true">4</span><span>Curve della perdita di addestramento e validazione</span></li><li><span class="badge" aria-hidden="true">5</span><span>Visibilità e scala delle curve</span></li><li><span class="badge" aria-hidden="true">6</span><span>Perdita finale sul test</span></li><li><span class="badge" aria-hidden="true">7</span><span>Registro dell’addestramento e del worker</span></li><li><span class="badge" aria-hidden="true">8</span><span>Azioni per scaricare, ripristinare, annullare e chiudere</span></li></ol></figcaption></figure><h2 id="preparare-e-avviare-il-servizio">Preparare e avviare il servizio</h2>
 <p>Esegui questi comandi in <strong>Bash</strong>, dalla directory principale del repository.
 Gli esempi con <code>read -s</code> e array <code>AUTH</code> usano la sintassi di questa shell. Servono <code>uv</code>,
@@ -45,6 +47,41 @@ just backend-run
 <code>http://127.0.0.1:8765</code>; apri un altro terminale per interrogare l'API e usa
 <strong>Ctrl-C</strong> per fermare il servizio. Seleziona <strong>Training</strong> nell'app e premi
 <strong>Connect / check health</strong>. Il campo endpoint usa già l'indirizzo predefinito.</p>
+<h2 id="eseguire-i-job-sul-cluster-sapienza">Eseguire i job sul cluster Sapienza</h2>
+<p>Il backend continua a girare su questo computer. Prepara sul cluster una
+directory remota scrivibile e un'immagine Singularity (<code>.sif</code>) già pronta con
+Python, PyTorch, NumPy, safetensors e tutte le dipendenze dichiarate dai dataset
+e dai pacchetti del progetto. Il cluster deve offrire via SSH <code>sbatch</code>, <code>squeue</code>,
+<code>sacct</code>, <code>scancel</code>, <code>singularity</code> e <code>python3</code>; il job non ha accesso alla rete.
+Usa l'alias SSH già configurato (<code>cluster</code> nell'esempio), con la normale
+autenticazione e verifica delle chiavi host.</p>
+<p>Sostituisci <code>utente_cluster</code> e il percorso dell'immagine con quelli disponibili
+nel tuo account. Crea la directory una volta:</p>
+<pre><code class="language-sh">ssh cluster 'mkdir -p /home/utente_cluster/nnmodelling-jobs &amp;&amp; chmod 700 /home/utente_cluster/nnmodelling-jobs'
+</code></pre>
+<p>Dalla root del repository, configura il servizio e avvialo:</p>
+<pre><code class="language-sh">export NNMODELLING_SLURM_HOST=cluster
+export NNMODELLING_SLURM_ROOT=/home/utente_cluster/nnmodelling-jobs
+export NNMODELLING_SLURM_IMAGE=/percorso/cluster/nnmodelling-worker.sif
+just backend-slurm
+</code></pre>
+<p><code>backend-slurm</code> avvia soltanto FastAPI in locale (<code>127.0.0.1:8765</code>). La
+configurazione predefinita richiede partizione <code>students</code>, 2 CPU, 4 GB e 30
+minuti; se il tuo account usa limiti diversi, imposta prima di <code>just
+backend-slurm</code> <code>NNMODELLING_SLURM_PARTITION</code>, <code>NNMODELLING_SLURM_CPUS</code>,
+<code>NNMODELLING_SLURM_MEMORY</code> e <code>NNMODELLING_SLURM_TIME</code>.</p>
+<p>In un secondo terminale controlla <code>/health</code>. Per inviare job, usa nell'app lo
+stesso endpoint locale <code>http://127.0.0.1:8765</code>, premi <strong>Connect / check
+health</strong>, poi invia il progetto come al solito. Il campo <code>executor</code> nella
+risposta deve essere <code>slurm</code> e <code>container.available</code> deve essere <code>true</code>:</p>
+<pre><code class="language-sh">curl -fsS http://127.0.0.1:8765/health
+</code></pre>
+<p>Gli esperimenti dei <a href="tutorial-tiny-llm.html">tutorial LLM</a> e
+<a href="tutorial-vae.html">VAE</a> useranno Slurm senza cambiare i parametri nel pannello
+Training. La copia del progetto viene trasferita via SSH in una directory
+isolata per job. Se l'immagine non contiene una dipendenza richiesta, il job
+fallisce: aggiungila e ricostruisci la <code>.sif</code> prima di riprovare. Per tornare
+all'esecuzione locale, ferma il servizio e avvia <code>just backend-run</code>.</p>
 <p>L'esportatore wheel è incluso nell'immagine worker. Dopo aver aggiornato il
 repository per usare i nuovi nomi leggibili, ricostruisci l'immagine e riavvia
 il backend prima di inviare altri job:</p>
@@ -123,9 +160,11 @@ risponde; per addestrare, anche <code>container.available</code> deve essere <co
 <code>null</code> oppure il motivo per cui il runtime non è disponibile.</p>
 <pre><code class="language-sh">curl -fsS http://127.0.0.1:8765/health
 </code></pre>
-<p>Esempio di risposta:</p>
+<p>Esempio di risposta con runtime Docker:</p>
 <pre><code class="language-json">{"status":"ok","container":{"available":true,"runtime":"docker","error":null}}
 </code></pre>
+<p>Con Slurm, il blocco <code>container</code> riporta anche <code>"executor":"slurm"</code> e
+<code>"runtime":"singularity"</code>.</p>
 <p>La documentazione OpenAPI è disponibile da <code>http://127.0.0.1:8765/docs</code>.</p>
 <h2 id="inviare-un-progetto">Inviare un progetto</h2>
 <p>Salva il progetto nell'app prima dell'invio. Nella finestra Training imposta

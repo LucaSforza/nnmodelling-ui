@@ -34,6 +34,12 @@ just backend-run
 <p>Se il backend era già installato e attivo prima dell'aggiornamento, ricostruisci
 l'immagine con <code>just backend-image</code>, arresta il servizio con Ctrl-C e avvialo di
 nuovo con <code>just backend-run</code> prima di inviare il job.</p>
+<p>Per eseguire questo stesso job sul cluster Sapienza, segui la sezione
+<a href="server.html#eseguire-i-job-sul-cluster-sapienza">Eseguire i job sul cluster Sapienza</a>
+e avvia <code>just backend-slurm</code> al posto di <code>just backend-run</code>. Il client continua
+a collegarsi all'endpoint locale; lascia invariati i parametri Training qui
+sotto. La guida server spiega immagine <code>.sif</code>, directory remota e controllo
+<code>/health</code>.</p>
 <p>Lascia il terminale del server aperto. In un secondo terminale avvia il client:</p>
 <pre><code class="language-sh">./build/qt/nnmodelling-ui
 </code></pre>

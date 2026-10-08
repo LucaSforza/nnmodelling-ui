@@ -17,6 +17,13 @@ Se il backend era già installato e attivo prima dell'aggiornamento, ricostruisc
 l'immagine con `just backend-image`, arresta il servizio con Ctrl-C e avvialo di
 nuovo con `just backend-run` prima di inviare il job.
 
+Per eseguire questo stesso job sul cluster Sapienza, segui la sezione
+[Eseguire i job sul cluster Sapienza](server.md#eseguire-i-job-sul-cluster-sapienza)
+e avvia `just backend-slurm` al posto di `just backend-run`. Il client continua
+a collegarsi all'endpoint locale; lascia invariati i parametri Training qui
+sotto. La guida server spiega immagine `.sif`, directory remota e controllo
+`/health`.
+
 Lascia il terminale del server aperto. In un secondo terminale avvia il client:
 
 ```sh

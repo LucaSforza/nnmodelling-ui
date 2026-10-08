@@ -1,6 +1,6 @@
-# Local training
+# Local backend and Slurm jobs
 
-NNModelling can submit an immutable copy of a project to the local FastAPI service. The service queues the work, runs it in an offline container, and stores snapshots, metrics and results on the computer. The **Training** window shows the connection, job history, curves and controls to cancel jobs, restore snapshots and download results.
+NNModelling submits an immutable project copy to the local FastAPI service. The service, API and job history stay on this computer. Jobs can run in a local container or be sent to Slurm over SSH; in the latter case only the worker runs on the cluster, while snapshots, metrics, logs and results return to the local backend. The **Training** window shows the connection, history, curves and controls to cancel jobs, restore snapshots and download results.
 
 ![Backend connection panel](../assets/training-connect.png)
 
@@ -17,6 +17,53 @@ just backend-run
 ```
 
 `backend-run` stays in the foreground. The default address is `http://127.0.0.1:8765`; use another terminal to query the API and press **Ctrl-C** to stop the service. Select **Training** in the app and press **Connect / check health**. The endpoint field already contains the default address.
+
+## Run jobs on the Sapienza cluster
+
+The backend continues to run on this computer. Prepare a writable remote
+directory and a ready-to-use Singularity (`.sif`) image containing Python,
+PyTorch, NumPy, safetensors and every dependency declared by the project's
+datasets and packages. The cluster must provide `sbatch`, `squeue`, `sacct`,
+`scancel`, `singularity` and `python3` over SSH. Jobs have no network access.
+Use your configured SSH alias (`cluster` below), with normal authentication and
+host-key verification.
+
+Replace `cluster_user` and the image path with paths available to your account.
+Create the directory once:
+
+```sh
+ssh cluster 'mkdir -p /home/cluster_user/nnmodelling-jobs && chmod 700 /home/cluster_user/nnmodelling-jobs'
+```
+
+From the repository root, configure and start the service:
+
+```sh
+export NNMODELLING_SLURM_HOST=cluster
+export NNMODELLING_SLURM_ROOT=/home/cluster_user/nnmodelling-jobs
+export NNMODELLING_SLURM_IMAGE=/cluster/path/nnmodelling-worker.sif
+just backend-slurm
+```
+
+`backend-slurm` starts only FastAPI locally (`127.0.0.1:8765`). Defaults request
+the `students` partition, 2 CPUs, 4 GB and 30 minutes. If your account has
+different limits, set `NNMODELLING_SLURM_PARTITION`,
+`NNMODELLING_SLURM_CPUS`, `NNMODELLING_SLURM_MEMORY` and
+`NNMODELLING_SLURM_TIME` before running `just backend-slurm`.
+
+In another terminal, check `/health`. In the app, use the same local endpoint,
+`http://127.0.0.1:8765`, press **Connect / check health**, then submit as usual.
+The response must show `executor` as `slurm` and `container.available` as
+`true`:
+
+```sh
+curl -fsS http://127.0.0.1:8765/health
+```
+
+The [LLM](tutorial-tiny-llm.md) and [VAE](tutorial-vae.md) tutorial jobs use
+Slurm without changing their Training settings. The project copy is transferred
+over SSH into a per-job directory. If the image lacks a required dependency,
+the job fails; add it and rebuild the `.sif` before retrying. To return to local
+execution, stop the service and run `just backend-run`.
 
 The wheel exporter is included in the worker image. After updating the
 repository to use the readable filenames, rebuild the image and restart the
@@ -104,11 +151,14 @@ The service keeps the token in memory only. The Qt client keeps it only in the c
 curl -fsS http://127.0.0.1:8765/health
 ```
 
-Example response:
+Example response with the Docker runtime:
 
 ```json
 {"status":"ok","container":{"available":true,"runtime":"docker","error":null}}
 ```
+
+With Slurm, the `container` object also reports `"executor":"slurm"` and
+`"runtime":"singularity"`.
 
 OpenAPI documentation is available at `http://127.0.0.1:8765/docs`.
 

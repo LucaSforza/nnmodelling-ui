@@ -15,6 +15,11 @@ just backend-run
 
 Lascia il terminale del backend aperto. In un secondo terminale avvia `./build/qt/nnmodelling-ui`. Il backend predefinito usa `http://127.0.0.1:8765`; per token e altre opzioni consulta la [guida al server](server.md).
 
+Per eseguire il training sul cluster Sapienza, segui la sezione
+[Eseguire i job sul cluster Sapienza](server.md#eseguire-i-job-sul-cluster-sapienza)
+e avvia `just backend-slurm` al posto di `just backend-run`. L'API resta locale;
+il client usa lo stesso endpoint e i parametri VAE qui sotto non cambiano.
+
 ## 2. Aprire una copia del VAE
 
 Dalla root del repository copia l'intero progetto, incluso dataset e pacchetti Python:

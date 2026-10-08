@@ -17,6 +17,12 @@ If the backend was already installed and running before this update, rebuild
 the image with `just backend-image`, stop the service with Ctrl-C, and start it
 again with `just backend-run` before submitting the job.
 
+To run this same job on the Sapienza cluster, follow [Run jobs on the Sapienza
+cluster](server.md#run-jobs-on-the-sapienza-cluster) and use
+`just backend-slurm` instead of `just backend-run`. The client still connects to
+the local endpoint; keep the Training settings below unchanged. The server
+guide covers the `.sif` image, remote directory and `/health` check.
+
 Leave the server terminal open. In a second terminal, start the client:
 
 ```sh
