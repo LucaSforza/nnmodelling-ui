@@ -63,7 +63,8 @@ opens while the dashboard with its endpoint, training controls, history and
 curves remains available. Set <code>Executor</code> to <code>SSH / Slurm</code>, then enter the SSH
 alias, local directory, remote directory, <code>.sif</code> image, partition, CPUs, memory
 and time limit. Resource defaults are <code>students</code>, <code>2</code>, <code>4G</code> and <code>00:30:00</code>; use
-the limits assigned to your account.</p>
+the limits assigned to your account. <code>Time limit</code> applies to each Slurm
+allocation, not to the total training duration.</p>
 <figure class="annotated"><a href="../assets/slurm-configure.png" class="image-link" title="Open screenshot at original size"><img alt="Configure the Slurm executor, paths and resources" src="../assets/slurm-configure.png" loading="lazy"></a><figcaption><strong>Configure the Slurm executor, paths and resources</strong><p class="image-hint">Click the image to inspect it at its original size.</p><ol class="callouts"><li><span class="badge" aria-hidden="true">1</span><span>Executor selection</span></li><li><span class="badge" aria-hidden="true">2</span><span>Slurm SSH alias</span></li><li><span class="badge" aria-hidden="true">3</span><span>Absolute remote job root</span></li><li><span class="badge" aria-hidden="true">4</span><span>Prebuilt Singularity image</span></li><li><span class="badge" aria-hidden="true">5</span><span>Partition and resource limits</span></li><li><span class="badge" aria-hidden="true">6</span><span>Runtime readiness status</span></li><li><span class="badge" aria-hidden="true">7</span><span>Safely restart the local backend</span></li></ol></figcaption></figure><h3 id="3-start-fastapi-locally">3. Start FastAPI locally</h3>
 <p>In the configuration window, press <strong>Save settings and start local backend</strong>.
 The screenshot shows a running service, so its button offers a safe restart; on
@@ -79,6 +80,14 @@ address chosen by the service. Press <strong>Connect / check health</strong> to 
 check if needed. Submit the project and parameters as with the local runtime:
 the project needs no Slurm flags and model configuration stays the same.
 Snapshots and results remain local; only the worker runs on the cluster.</p>
+<p>As an allocation approaches its limit, the worker automatically saves a safe
+checkpoint and submits another Slurm job that resumes from that point. The UI
+continues to show one job and its metrics while the Slurm allocation IDs change.
+Keep the local backend service running through these handoffs. If the cluster
+ends an allocation before its warning signal or before the checkpoint is
+complete, the job is marked failed and cannot resume automatically. Custom
+training iterators must be repeatable so the worker can restore the saved
+position.</p>
 <figure class="annotated"><a href="../assets/slurm-dashboard.png" class="image-link" title="Open screenshot at original size"><img alt="Training dashboard with separate Slurm configuration" src="../assets/slurm-dashboard.png" loading="lazy"></a><figcaption><strong>Training dashboard with separate Slurm configuration</strong><p class="image-hint">Click the image to inspect it at its original size.</p><ol class="callouts"><li><span class="badge" aria-hidden="true">1</span><span>Backend address</span></li><li><span class="badge" aria-hidden="true">2</span><span>Connect and check service health</span></li><li><span class="badge" aria-hidden="true">3</span><span>Open separate backend configuration</span></li></ol></figcaption></figure><p>The <a href="tutorial-tiny-llm.html">LLM</a> and <a href="tutorial-vae.html">VAE</a> tutorials follow the
 same path. If a dependency is missing from the <code>.sif</code>, the job fails visibly;
 rebuild the image before retrying. To return to local Docker execution, open

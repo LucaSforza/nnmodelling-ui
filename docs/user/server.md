@@ -62,7 +62,8 @@ separata: il dashboard con endpoint, controlli di training, cronologia e curve
 resta disponibile. Imposta `Executor` su `SSH / Slurm` e compila alias SSH,
 directory locale, directory remota, immagine `.sif`, partizione, CPU, memoria e
 limite di tempo. I valori iniziali delle risorse sono `students`, `2`, `4G` e
-`00:30:00`; usa i limiti assegnati dal tuo account.
+`00:30:00`; usa i limiti assegnati dal tuo account. `Time limit` è il limite
+di ogni singola allocazione Slurm, non la durata massima del training.
 
 ![Configurare esecutore, percorsi e risorse Slurm](assets/slurm-configure.png)
 
@@ -85,6 +86,16 @@ scelto dal servizio. Premi **Connect / check health** se vuoi aggiornare la
 verifica. Invia progetto e parametri come per il runtime locale: non servono
 flag Slurm nel progetto e la configurazione del modello non cambia. Snapshot e
 risultati restano locali; solo il worker viene eseguito dal cluster.
+
+Quando un'allocazione si avvicina al limite, il worker salva automaticamente un
+checkpoint sicuro e invia un nuovo job Slurm che riparte da quel punto. La UI
+continua a mostrare un solo job e le sue metriche; gli ID Slurm delle singole
+allocazioni cambiano. Il servizio backend locale deve restare attivo durante
+questi passaggi. Se il cluster termina il job prima del segnale di preavviso o
+prima che il checkpoint sia completo, il job viene mostrato come fallito e non
+può riprendere automaticamente. Gli iteratori di training personalizzati devono
+poter essere ricreati in modo ripetibile per permettere il ripristino del punto
+salvato.
 
 ![Dashboard Training con configurazione Slurm separata](assets/slurm-dashboard.png)
 

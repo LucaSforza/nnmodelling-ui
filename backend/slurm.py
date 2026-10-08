@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import io
+import hashlib
+import json
 import os
 import re
 import shlex
@@ -26,6 +28,7 @@ _JOB_ID = re.compile(r"^[0-9]+$")
 _POLL_SECONDS = 5.0
 _SSH_TIMEOUT = 30
 _MAX_TRANSFER_BYTES = 1024 * 1024 * 1024
+_MAX_CHECKPOINT_MANIFEST_BYTES = config.MAX_METRICS_BYTES
 
 
 class SlurmError(RuntimeError):
@@ -121,6 +124,8 @@ class SlurmJobRunner(JobRunner):
         raw = self.store.internal(job_id)
         remote = raw.get("slurm") if raw else None
         scheduler_id = remote.get("scheduler_id") if isinstance(remote, dict) else None
+        if isinstance(remote, dict) and remote.get("attempt_active") is False:
+            return None
         execution = remote.get("configuration") if isinstance(remote, dict) else None
         stage = remote.get("remote_path") if isinstance(remote, dict) else None
         if not isinstance(execution, dict) or not isinstance(stage, str):
@@ -148,6 +153,9 @@ class SlurmJobRunner(JobRunner):
             if not scheduler_id:
                 return "The remote Slurm scheduler receipt is empty."
             remote["scheduler_id"] = scheduler_id
+            scheduler_ids = remote.setdefault("scheduler_ids", [])
+            if scheduler_id not in scheduler_ids:
+                scheduler_ids.append(scheduler_id)
             self.store.update(job_id, slurm=remote)
         if not _JOB_ID.fullmatch(str(scheduler_id)):
             return "Recorded Slurm scheduler ID is invalid; refusing to cancel an unrelated job."
@@ -173,7 +181,7 @@ class SlurmJobRunner(JobRunner):
         cancel_error: str | None = None
         try:
             stage = self._remote_path(job_id)
-            remote_record = {"scheduler_id": None, "remote_path": stage,
+            remote_record = {"scheduler_id": None, "scheduler_ids": [], "attempt_active": False, "remote_path": stage,
                              "configuration": self._execution_configuration()}
             self.store.update(job_id, slurm=remote_record)
             self._stage(job_id)
@@ -182,6 +190,9 @@ class SlurmJobRunner(JobRunner):
                 self.store.transition(job_id, "running", status="cancelled", finished_at=utc_now())
                 return
 
+            remote_record["attempt_active"] = True
+            remote_record["scheduler_id"] = None
+            self.store.update(job_id, slurm=remote_record)
             result = self._ssh_run(self._submit_command(job_id, stage),
                                    input=self._batch_script(job_id, stage), timeout=_SSH_TIMEOUT)
             if result.returncode:
@@ -191,42 +202,66 @@ class SlurmJobRunner(JobRunner):
             if not _JOB_ID.fullmatch(scheduler_id):
                 raise SlurmError(f"sbatch returned an invalid scheduler identity: {result.stdout.strip()!r}")
             remote_record["scheduler_id"] = scheduler_id
+            remote_record["scheduler_ids"] = [scheduler_id]
             self.store.update(job_id, slurm=remote_record)
 
-            deadline = time.monotonic() + self._job_timeout_seconds()
-            cancellation_sent = False
+            prior_step = int(remote_record.get("global_step", 0))
             while True:
-                raw = self.store.internal(job_id)
-                if not cancellation_sent and (self._stopping.is_set() or (raw and raw.get("cancel_requested"))):
-                    cancel_error = self._stop_container(job_id)
-                    cancellation_sent = True
-                if time.monotonic() >= deadline:
-                    cancel_error = self._stop_container(job_id) or cancel_error
-                    message = "Slurm training exceeded its configured time limit plus 5 minutes."
-                    if cancel_error:
-                        message += " " + cancel_error
-                    raise SlurmError(message)
-                state, exit_code = self._scheduler_state(scheduler_id)
-                self._publish_metrics(job_id, stage)
-                if state in {"COMPLETED", "FAILED", "CANCELLED", "TIMEOUT", "OUT_OF_MEMORY",
-                             "NODE_FAIL", "PREEMPTED", "BOOT_FAIL", "DEADLINE"}:
-                    break
-                time.sleep(_POLL_SECONDS)
+                cancellation_sent = False
+                while True:
+                    raw = self.store.internal(job_id)
+                    if not cancellation_sent and (self._stopping.is_set() or (raw and raw.get("cancel_requested"))):
+                        cancel_error = self._stop_container(job_id)
+                        cancellation_sent = True
+                    state, exit_code = self._scheduler_state(scheduler_id)
+                    self._publish_metrics(job_id, stage)
+                    if state in {"COMPLETED", "FAILED", "CANCELLED", "TIMEOUT", "OUT_OF_MEMORY",
+                                 "NODE_FAIL", "PREEMPTED", "BOOT_FAIL", "DEADLINE"}:
+                        break
+                    time.sleep(_POLL_SECONDS)
 
-            self._retrieve_output(job_id, stage)
-            raw = self.store.internal(job_id)
-            if self._stopping.is_set():
-                self.store.transition(job_id, "running", status="failed",
-                                      error="Backend shutdown interrupted this Slurm job." + (f" {cancel_error}" if cancel_error else ""),
-                                      finished_at=utc_now())
-            elif raw and (raw.get("cancel_requested") or raw.get("status") == "cancelled"):
-                self.store.transition(job_id, "running", status="cancelled", finished_at=utc_now())
-            elif state != "COMPLETED" or exit_code != "0:0":
+                self._retrieve_output(job_id, stage)
+                remote_record["attempt_active"] = False
+                self.store.update(job_id, slurm=remote_record)
+                raw = self.store.internal(job_id)
+                if self._stopping.is_set():
+                    self.store.transition(job_id, "running", status="failed",
+                                          error="Backend shutdown interrupted this Slurm job." + (f" {cancel_error}" if cancel_error else ""),
+                                          finished_at=utc_now())
+                    break
+                if raw and (raw.get("cancel_requested") or raw.get("status") == "cancelled"):
+                    self.store.transition(job_id, "running", status="cancelled", finished_at=utc_now())
+                    break
+                if state == "FAILED" and exit_code == "75:0":
+                    prior_step = self._validate_checkpoint(job_id, scheduler_id, prior_step)
+                    remote_record["global_step"] = prior_step
+                    self.store.update(job_id, slurm=remote_record)
+                    raw = self.store.internal(job_id)
+                    if self._stopping.is_set() or (raw and raw.get("cancel_requested")):
+                        self.store.transition(job_id, "running", status="cancelled", finished_at=utc_now())
+                        break
+                    remote_record["attempt_active"] = True
+                    remote_record["scheduler_id"] = None
+                    self.store.update(job_id, slurm=remote_record)
+                    result = self._ssh_run(self._submit_command(job_id, stage),
+                                           input=self._batch_script(job_id, stage), timeout=_SSH_TIMEOUT)
+                    if result.returncode:
+                        raise SlurmError(f"sbatch failed: {(result.stderr or result.stdout).strip()[-2000:]}")
+                    submitted = result.stdout.strip().splitlines()
+                    scheduler_id = submitted[-1].split(";", 1)[0] if submitted else ""
+                    if not _JOB_ID.fullmatch(scheduler_id):
+                        raise SlurmError(f"sbatch returned an invalid scheduler identity: {result.stdout.strip()!r}")
+                    remote_record["scheduler_id"] = scheduler_id
+                    remote_record.setdefault("scheduler_ids", []).append(scheduler_id)
+                    self.store.update(job_id, slurm=remote_record)
+                    continue
+                if state == "COMPLETED" and exit_code == "0:0":
+                    self._finish(job_id)
+                    break
                 detail = self._local_log_tail(job_id)
                 status = f"Slurm job {scheduler_id} finished in state {state or 'UNKNOWN'} with exit code {exit_code or 'unknown'}."
                 self.store.transition(job_id, "running", status="failed", error=(detail or status)[-3000:], finished_at=utc_now())
-            else:
-                self._finish(job_id)
+                break
         except (OSError, subprocess.TimeoutExpired, SlurmError, tarfile.TarError, ValueError) as error:
             if remote_record is not None:
                 cancel_error = self._stop_container(job_id) or cancel_error
@@ -304,31 +339,79 @@ class SlurmJobRunner(JobRunner):
                     archive.addfile(info, source)
 
     def _sbatch_arguments(self, job_id: str, stage: str) -> str:
+        seconds = self._allocation_seconds()
+        reserve = min(60, max(1, seconds // 10))
         values = ["--partition", config.SLURM_PARTITION, "--time", config.SLURM_TIME,
                   "--mem", config.SLURM_MEMORY, "--cpus-per-task", str(config.SLURM_CPUS),
-                  "--job-name", f"nnm-{job_id[:8]}", "--output", stage + "/output/worker.log",
-                  "--error", stage + "/output/worker.log"]
+                  "--signal", f"B:USR1@{reserve}",
+                  "--job-name", f"nnm-{job_id[:8]}", "--output", stage + "/output/worker-%j.log",
+                  "--error", stage + "/output/worker-%j.log"]
         return " ".join(shlex.quote(value) for value in values)
 
     def _submit_command(self, job_id: str, stage: str) -> str:
         receipt = shlex.quote(stage + "/scheduler.id")
         temporary = shlex.quote(stage + "/scheduler.id.tmp")
-        return (f"scheduler_id=$(sbatch --parsable {self._sbatch_arguments(job_id, stage)}) && "
+        return (f"scheduler_id=$(rm -f -- {receipt} {temporary} && "
+                f"sbatch --parsable {self._sbatch_arguments(job_id, stage)}) && "
                 f"printf '%s\\n' \"$scheduler_id\" > {temporary} && "
                 f"mv -- {temporary} {receipt} && printf '%s\\n' \"$scheduler_id\"")
 
     def _batch_script(self, job_id: str, stage: str) -> str:
         snapshot, source, output = (stage + "/snapshot", stage + "/source", stage + "/output")
         return "\n".join((
-            "#!/bin/sh", "set -eu",
-            "exec singularity exec --cleanenv --containall --no-home --net --network none "
+                "#!/bin/bash", "set -eu",
+            f"output={shlex.quote(output)}",
+            'trap \'tmp="$output/.checkpoint-request.${SLURM_JOB_ID}.tmp"; '
+            'printf "%s\\n" "$SLURM_JOB_ID" > "$tmp"; '
+            'mv -f -- "$tmp" "$output/checkpoint-request.${SLURM_JOB_ID}"\' USR1',
+            "set +e",
+            "singularity exec --cleanenv --containall --no-home --net --network none "
             "--env OMP_NUM_THREADS=2 --env MKL_NUM_THREADS=2 --env OPENBLAS_NUM_THREADS=2 "
             "--env PYTHONPATH=/app:/app/python/nnmodelling-runtime/src "
+            '--env NNMODELLING_SCHEDULER_ID=${SLURM_JOB_ID} '
+            '--env NNMODELLING_CHECKPOINT_REQUEST=/output/checkpoint-request.${SLURM_JOB_ID} '
             f"--bind {shlex.quote(snapshot + ':/job:ro')} "
             f"--bind {shlex.quote(source + ':/app:ro')} "
             f"--bind {shlex.quote(output + ':/output:rw')} {shlex.quote(config.SLURM_IMAGE)} "
-            f"python -m backend.worker --snapshot /job --output /output --job-id {shlex.quote(job_id)}",
+            f"python -m backend.worker --snapshot /job --output /output --job-id {shlex.quote(job_id)} &",
+            "worker_pid=$!", "worker_status=0",
+            'while kill -0 "$worker_pid" 2>/dev/null; do wait "$worker_pid"; worker_status=$?; done',
+            'exit "$worker_status"',
             ""))
+
+    def _allocation_seconds(self) -> int:
+        value = config.SLURM_TIME
+        days = 0
+        if "-" in value:
+            day_text, value = value.split("-", 1)
+            days = int(day_text)
+        hours, minutes, seconds = (int(part) for part in value.split(":"))
+        return days * 86400 + hours * 3600 + minutes * 60 + seconds
+
+    def _validate_checkpoint(self, job_id: str, scheduler_id: str, prior_step: int) -> int:
+        output = self.store.job_dir(job_id) / "output"
+        manifest_path = output / "checkpoint.json"
+        payload_path = output / "checkpoint.safetensors"
+        try:
+            if manifest_path.stat().st_size > _MAX_CHECKPOINT_MANIFEST_BYTES:
+                raise SlurmError("Checkpoint manifest exceeds its size limit.")
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            payload_size = payload_path.stat().st_size
+            if payload_size > _MAX_TRANSFER_BYTES:
+                raise SlurmError("Checkpoint payload exceeds the transfer limit.")
+            with payload_path.open("rb") as payload:
+                digest = hashlib.file_digest(payload, "sha256").hexdigest()
+        except (OSError, UnicodeError, json.JSONDecodeError) as error:
+            raise SlurmError(f"Slurm handoff checkpoint is missing or invalid: {error}") from error
+        if (not isinstance(manifest, dict) or type(manifest.get("version")) is not int or manifest["version"] != 1
+                or manifest.get("job_id") != job_id or manifest.get("scheduler_id") != scheduler_id
+                or type(manifest.get("global_step")) is not int or manifest["global_step"] <= prior_step
+                or type(manifest.get("tensor_size")) is not int or manifest["tensor_size"] != payload_size
+                or not isinstance(manifest.get("tensor_sha256"), str)
+                or not re.fullmatch(r"[0-9a-f]{64}", manifest["tensor_sha256"])
+                or manifest["tensor_sha256"] != digest):
+            raise SlurmError("Slurm handoff checkpoint failed identity, progress, size, or hash validation.")
+        return manifest["global_step"]
 
     def _ssh_argv(self, host: str | None = None, ssh_executable: str | None = None) -> list[str]:
         ssh_executable = ssh_executable or config.SLURM_SSH
@@ -409,7 +492,7 @@ class SlurmJobRunner(JobRunner):
         output = shlex.quote(stage + "/output")
         command = (
             f"cd {output} && total=0 && set -- && "
-            "for f in metrics.json metrics.tmp weights.safetensors worker.log *.whl; do "
+            "for f in metrics.json metrics.tmp weights.safetensors checkpoint.safetensors checkpoint.json worker-*.log worker.log *.whl; do "
             "if [ -e \"$f\" ] || [ -L \"$f\" ]; then "
             "[ ! -L \"$f\" ] || { echo 'linked output rejected' >&2; exit 43; }; "
             "size=$(stat -c %s -- \"$f\") || exit $?; total=$((total + size)); set -- \"$@\" \"$f\"; "
@@ -446,7 +529,8 @@ class SlurmJobRunner(JobRunner):
                     if member.size < 0 or member.size > config.MAX_METRICS_BYTES:
                         raise SlurmError("Remote transient metrics exceed the 64 MiB publication limit.")
                     continue
-                if name not in {"metrics.json", "weights.safetensors", "worker.log"} and not name.endswith(".whl"):
+                if (name not in {"metrics.json", "weights.safetensors", "worker.log", "checkpoint.json", "checkpoint.safetensors"}
+                        and not re.fullmatch(r"worker-[0-9]+\.log", name) and not name.endswith(".whl")):
                     raise SlurmError(f"Remote output archive contains an unexpected file: {name!r}")
                 if name in seen or member.size < 0 or member.size > _MAX_TRANSFER_BYTES:
                     raise SlurmError(f"Remote output archive contains a duplicate or oversized file: {name!r}")
@@ -464,19 +548,14 @@ class SlurmJobRunner(JobRunner):
                 seen.add(name)
 
     def _local_log_tail(self, job_id: str) -> str:
-        path = self.store.safe_output_file(job_id, "worker.log")
+        raw = self.store.internal(job_id) or {}
+        slurm = raw.get("slurm") if isinstance(raw.get("slurm"), dict) else {}
+        scheduler_id = slurm.get("scheduler_id")
+        name = f"worker-{scheduler_id}.log" if isinstance(scheduler_id, str) and _JOB_ID.fullmatch(scheduler_id) else "worker.log"
+        path = self.store.safe_output_file(job_id, name)
         if path is None:
             return ""
         try:
             return path.read_text(encoding="utf-8", errors="replace")[-2000:].strip()
         except OSError:
             return ""
-
-    def _job_timeout_seconds(self) -> int:
-        value = config.SLURM_TIME
-        days = 0
-        if "-" in value:
-            day_text, value = value.split("-", 1)
-            days = int(day_text)
-        hours, minutes, seconds = (int(part) for part in value.split(":"))
-        return days * 86400 + hours * 3600 + minutes * 60 + seconds + 300

@@ -75,7 +75,8 @@ separata: il dashboard con endpoint, controlli di training, cronologia e curve
 resta disponibile. Imposta <code>Executor</code> su <code>SSH / Slurm</code> e compila alias SSH,
 directory locale, directory remota, immagine <code>.sif</code>, partizione, CPU, memoria e
 limite di tempo. I valori iniziali delle risorse sono <code>students</code>, <code>2</code>, <code>4G</code> e
-<code>00:30:00</code>; usa i limiti assegnati dal tuo account.</p>
+<code>00:30:00</code>; usa i limiti assegnati dal tuo account. <code>Time limit</code> è il limite
+di ogni singola allocazione Slurm, non la durata massima del training.</p>
 <figure class="annotated"><a href="assets/slurm-configure.png" class="image-link" title="Apri screenshot a dimensione originale"><img alt="Configurare esecutore, percorsi e risorse Slurm" src="assets/slurm-configure.png" loading="lazy"></a><figcaption><strong>Configurare esecutore, percorsi e risorse Slurm</strong><p class="image-hint">Clic sull'immagine per leggere i dettagli a dimensione originale.</p><ol class="callouts"><li><span class="badge" aria-hidden="true">1</span><span>Selezione dell’esecutore</span></li><li><span class="badge" aria-hidden="true">2</span><span>Alias SSH di Slurm</span></li><li><span class="badge" aria-hidden="true">3</span><span>Directory remota assoluta delle attività</span></li><li><span class="badge" aria-hidden="true">4</span><span>Immagine Singularity precompilata</span></li><li><span class="badge" aria-hidden="true">5</span><span>Partizione e limiti delle risorse</span></li><li><span class="badge" aria-hidden="true">6</span><span>Stato di disponibilità del runtime</span></li><li><span class="badge" aria-hidden="true">7</span><span>Riavvia in sicurezza il backend locale</span></li></ol></figcaption></figure><h3 id="3-avvia-fastapi-in-locale">3. Avvia FastAPI in locale</h3>
 <p>Nella finestra di configurazione premi <strong>Save settings and start local
 backend</strong>. Nello screenshot il servizio è già attivo, quindi il pulsante propone
@@ -90,6 +91,15 @@ scelto dal servizio. Premi <strong>Connect / check health</strong> se vuoi aggio
 verifica. Invia progetto e parametri come per il runtime locale: non servono
 flag Slurm nel progetto e la configurazione del modello non cambia. Snapshot e
 risultati restano locali; solo il worker viene eseguito dal cluster.</p>
+<p>Quando un'allocazione si avvicina al limite, il worker salva automaticamente un
+checkpoint sicuro e invia un nuovo job Slurm che riparte da quel punto. La UI
+continua a mostrare un solo job e le sue metriche; gli ID Slurm delle singole
+allocazioni cambiano. Il servizio backend locale deve restare attivo durante
+questi passaggi. Se il cluster termina il job prima del segnale di preavviso o
+prima che il checkpoint sia completo, il job viene mostrato come fallito e non
+può riprendere automaticamente. Gli iteratori di training personalizzati devono
+poter essere ricreati in modo ripetibile per permettere il ripristino del punto
+salvato.</p>
 <figure class="annotated"><a href="assets/slurm-dashboard.png" class="image-link" title="Apri screenshot a dimensione originale"><img alt="Dashboard Training con configurazione Slurm separata" src="assets/slurm-dashboard.png" loading="lazy"></a><figcaption><strong>Dashboard Training con configurazione Slurm separata</strong><p class="image-hint">Clic sull'immagine per leggere i dettagli a dimensione originale.</p><ol class="callouts"><li><span class="badge" aria-hidden="true">1</span><span>Indirizzo del backend</span></li><li><span class="badge" aria-hidden="true">2</span><span>Connetti e verifica lo stato del servizio</span></li><li><span class="badge" aria-hidden="true">3</span><span>Apri la configurazione separata del backend</span></li></ol></figcaption></figure><p>I tutorial <a href="tutorial-tiny-llm.html">LLM</a> e <a href="tutorial-vae.html">VAE</a> seguono lo
 stesso percorso. Se manca una dipendenza nella <code>.sif</code>, il job fallisce in modo
 visibile: ricostruisci l'immagine prima di riprovare. Per tornare all'esecuzione

@@ -230,6 +230,7 @@ sequenceDiagram
     participant Runner as SlurmJobRunner
     participant SSH as Cluster SSH
     participant Slurm as Slurm scheduler
+    participant Batch as Slurm batch wrapper
     participant SIF as Singularity worker
     API->>Store: Freeze request
     API->>Runner: Queue local job ID
@@ -243,10 +244,38 @@ sequenceDiagram
         SSH-->>Runner: State and metrics bytes
         Runner->>Store: Atomically publish local metrics
     end
-    Runner->>SSH: Retrieve safe output files
-    Runner->>Store: Validate metrics weights wheel and commit completion
+    alt warning signal before per-allocation walltime
+        Slurm->>Batch: SIGUSR1 warning
+        Batch->>Batch: Create attempt-scoped checkpoint request file
+        Batch->>SIF: Expose request path to worker
+        SIF->>SIF: Check request after optimizer step
+        SIF->>SIF: Save model, Adam, RNG, cursor and metric windows
+        SIF-->>Slurm: Exit with checkpoint handoff status
+        Runner->>SSH: Retrieve and validate checkpoint and logs
+        Runner->>Store: Preserve same logical job and latest scheduler ID
+        Runner->>SSH: Submit next allocation in same remote job directory
+        SSH-->>Runner: New scheduler job ID
+        Runner->>Store: Record new scheduler attempt
+        Slurm->>SIF: Resume from private safetensors/JSON checkpoint
+    else final allocation completed
+        Runner->>SSH: Retrieve safe output files
+        Runner->>Store: Validate final metrics weights wheel and commit completion
+    else no valid checkpoint or explicit interruption
+        Runner->>Store: Record visible failed or cancelled job
+    end
     opt Cancel shutdown restart or transport failure
         Runner->>SSH: scancel recorded owned scheduler job
         Runner->>Store: Record cancellation or visible interruption/error
     end
 ```
+
+Each local job keeps one ID across allocation attempts. Its Slurm ID changes and
+the active ID alone is targeted by cancellation. Checkpoints are written in the
+remote job output and transferred to local private output after each handoff;
+they use safetensors plus JSON, never pickle, and remain unavailable from the
+artifact API. The training adapter must replay an epoch deterministically from
+the captured Python, NumPy and torch RNG states so the worker can skip batches
+already covered by a checkpoint. A signal is honored at the next optimizer-step
+boundary; a hard walltime kill before that boundary fails visibly without
+automatic continuation. Final weights and wheel are created only after test
+evaluation on the last allocation.

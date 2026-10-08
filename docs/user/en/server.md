@@ -50,7 +50,8 @@ opens while the dashboard with its endpoint, training controls, history and
 curves remains available. Set `Executor` to `SSH / Slurm`, then enter the SSH
 alias, local directory, remote directory, `.sif` image, partition, CPUs, memory
 and time limit. Resource defaults are `students`, `2`, `4G` and `00:30:00`; use
-the limits assigned to your account.
+the limits assigned to your account. `Time limit` applies to each Slurm
+allocation, not to the total training duration.
 
 ![Configure the Slurm executor, paths and resources](../assets/slurm-configure.png)
 
@@ -74,6 +75,15 @@ address chosen by the service. Press **Connect / check health** to refresh the
 check if needed. Submit the project and parameters as with the local runtime:
 the project needs no Slurm flags and model configuration stays the same.
 Snapshots and results remain local; only the worker runs on the cluster.
+
+As an allocation approaches its limit, the worker automatically saves a safe
+checkpoint and submits another Slurm job that resumes from that point. The UI
+continues to show one job and its metrics while the Slurm allocation IDs change.
+Keep the local backend service running through these handoffs. If the cluster
+ends an allocation before its warning signal or before the checkpoint is
+complete, the job is marked failed and cannot resume automatically. Custom
+training iterators must be repeatable so the worker can restore the saved
+position.
 
 ![Training dashboard with separate Slurm configuration](../assets/slurm-dashboard.png)
 

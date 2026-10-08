@@ -44,5 +44,10 @@ from the existing job-specific Python import package (`nnmodel_<normalized-job-i
 The API serves the stored artifact filename; old wheels remain unchanged.
 
 Slurm execution keeps Store/API local. UUID job directories receive frozen snapshots
-and worker source; scheduler identity is persisted for scancel/recovery. Metrics and
-artifacts return through bounded SSH transfers and existing local result validation.
+and worker source; per-allocation scheduler IDs are persisted for cancellation.
+Warning signals checkpoint model, Adam, RNG, cursor and metric-window state as
+safetensors plus JSON in remote output. Runner retrieves and validates handoff,
+then submits another allocation against same logical job and remote directory.
+Only final weights and wheel are served as artifacts after test evaluation.
+Metrics and outputs return through bounded SSH transfers and existing local result
+validation.

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
+import os
 import random
 import shutil
 import tempfile
@@ -13,6 +15,8 @@ from . import config
 
 
 MAX_METRICS_BYTES = config.MAX_METRICS_BYTES
+MAX_CHECKPOINT_JSON_BYTES = MAX_METRICS_BYTES
+CHECKPOINT_EXIT_CODE = 75
 
 
 def _write_json(path: Path, value: Any) -> None:
@@ -90,6 +94,145 @@ def _validation_loss(model: Any, adapter: Any, batch_size: int) -> float:
         model.train(was_training)
 
 
+def _rng_state() -> dict[str, Any]:
+    import numpy as np
+    import torch
+
+    numpy = np.random.get_state()
+    return {
+        "python": random.getstate(),
+        "numpy": [numpy[0], numpy[1].tolist(), int(numpy[2]), int(numpy[3]), float(numpy[4])],
+        "torch": torch.random.get_rng_state(),
+    }
+
+
+def _tuplify(value: Any) -> Any:
+    return tuple(_tuplify(item) for item in value) if isinstance(value, list) else value
+
+
+def _restore_rng(state: dict[str, Any]) -> None:
+    import numpy as np
+    import torch
+
+    random.setstate(_tuplify(state["python"]))
+    numpy = state["numpy"]
+    np.random.set_state((numpy[0], np.asarray(numpy[1], dtype=np.uint32), *numpy[2:]))
+    torch.random.set_rng_state(state["torch"])
+
+
+def _pack_value(value: Any, tensors: dict[str, Any], prefix: str) -> Any:
+    import torch
+
+    if isinstance(value, torch.Tensor):
+        key = f"{prefix}.{len(tensors)}"
+        tensors[key] = value.detach().cpu().contiguous().clone()
+        return {"tensor": key}
+    if isinstance(value, dict):
+        return {"__dict__": [[key, _pack_value(item, tensors, f"{prefix}.{key}")] for key, item in value.items()]}
+    if isinstance(value, (list, tuple)):
+        return [_pack_value(item, tensors, f"{prefix}.{index}") for index, item in enumerate(value)]
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    raise ValueError(f"Checkpoint contains unsupported state value: {type(value).__name__}.")
+
+
+def _unpack_value(value: Any, tensors: dict[str, Any]) -> Any:
+    if isinstance(value, dict) and set(value) == {"tensor"}:
+        try:
+            return tensors[value["tensor"]]
+        except KeyError as error:
+            raise ValueError("Checkpoint references a missing tensor.") from error
+    if isinstance(value, dict) and set(value) == {"__dict__"}:
+        return {key: _unpack_value(item, tensors) for key, item in value["__dict__"]}
+    if isinstance(value, dict):
+        return {key: _unpack_value(item, tensors) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_unpack_value(item, tensors) for item in value]
+    return value
+
+
+def _atomic_bytes(path: Path, data: bytes) -> None:
+    temporary = path.with_name(path.name + ".tmp")
+    temporary.write_bytes(data)
+    os.replace(temporary, path)
+
+
+def _checkpoint_request_path() -> Path | None:
+    value = os.environ.get("NNMODELLING_CHECKPOINT_REQUEST")
+    return Path(value) if value else None
+
+
+def _save_checkpoint(
+    output: Path, job_id: str, scheduler_job_id: str, state: dict[str, Any], model: Any, optimizer: Any,
+) -> None:
+    from safetensors.torch import save_file
+
+    output.mkdir(parents=True, exist_ok=True)
+    tensors = {f"model.{key}": value.detach().cpu().contiguous().clone() for key, value in model.state_dict().items()}
+    optimizer_state = _pack_value(optimizer.state_dict(), tensors, "optimizer")
+    rng_state = _pack_value(_rng_state(), tensors, "rng")
+    packed_state = {
+        key: (_pack_value(value, tensors, f"cursor.{key}") if key == "epoch_start_rng" else value)
+        for key, value in state.items()
+    }
+    tensor_path = output / "checkpoint.safetensors"
+    temporary_tensor = output / "checkpoint.safetensors.tmp"
+    save_file(tensors, str(temporary_tensor))
+    os.replace(temporary_tensor, tensor_path)
+    manifest = {
+        "version": 1,
+        "job_id": job_id,
+        "scheduler_id": scheduler_job_id,
+        "tensor_size": tensor_path.stat().st_size,
+        "tensor_sha256": hashlib.sha256(tensor_path.read_bytes()).hexdigest(),
+        "model_keys": list(model.state_dict()),
+        "optimizer": optimizer_state,
+        "rng": rng_state,
+        **packed_state,
+    }
+    data = json.dumps(manifest, separators=(",", ":"), allow_nan=False).encode("utf-8")
+    if len(data) > MAX_CHECKPOINT_JSON_BYTES:
+        raise ValueError(f"Training checkpoint metadata exceeds the {MAX_CHECKPOINT_JSON_BYTES}-byte limit.")
+    _atomic_bytes(output / "checkpoint.json", data)
+
+
+def _load_checkpoint(output: Path, job_id: str) -> dict[str, Any] | None:
+    json_path = output / "checkpoint.json"
+    tensor_path = output / "checkpoint.safetensors"
+    if not json_path.exists() and not tensor_path.exists():
+        return None
+    if not json_path.is_file() or not tensor_path.is_file():
+        raise ValueError("Training checkpoint is incomplete.")
+    import torch
+    from safetensors.torch import load_file
+
+    data = json_path.read_bytes()
+    if len(data) > MAX_CHECKPOINT_JSON_BYTES:
+        raise ValueError("Training checkpoint metadata exceeds the size limit.")
+    manifest = json.loads(data)
+    scheduler_id = manifest.get("scheduler_id")
+    if manifest.get("version") != 1 or manifest.get("job_id") != job_id or not str(scheduler_id).isdigit():
+        raise ValueError("Training checkpoint identity or version is invalid.")
+    required = {"global_step", "epoch", "batch_index", "epoch_start_rng", "epoch_total", "epoch_count", "window_total", "window_count", "metrics", "model_keys", "optimizer", "rng", "tensor_sha256", "tensor_size"}
+    if not required.issubset(manifest):
+        raise ValueError("Training checkpoint metadata is incomplete.")
+    tensor_bytes = tensor_path.read_bytes()
+    if len(tensor_bytes) != manifest.get("tensor_size") or hashlib.sha256(tensor_bytes).hexdigest() != manifest.get("tensor_sha256"):
+        raise ValueError("Training checkpoint tensor digest does not match its manifest.")
+    tensors = load_file(str(tensor_path), device="cpu")
+    model_state = {key.removeprefix("model."): value for key, value in tensors.items() if key.startswith("model.")}
+    if set(model_state) != set(manifest.get("model_keys", [])):
+        raise ValueError("Training checkpoint model tensors do not match its manifest.")
+    manifest["model_state"] = model_state
+    manifest["optimizer_state"] = _unpack_value(manifest["optimizer"], tensors)
+    manifest["rng_state"] = _unpack_value(manifest["rng"], tensors)
+    del manifest["optimizer"], manifest["rng"]
+    for key in ("epoch_start_rng",):
+        if key in manifest:
+            manifest[key] = _unpack_value(manifest[key], tensors)
+    return manifest
+
+
 def _train_epochs(
     model: Any,
     adapter: Any,
@@ -99,16 +242,37 @@ def _train_epochs(
     publish_every_steps: int,
     metrics: dict[str, Any],
     publish: Any,
+    *,
+    resume: dict[str, Any] | None = None,
+    checkpoint_request: Path | None = None,
+    checkpoint_output: Path | None = None,
+    job_id: str | None = None,
+    scheduler_job_id: str | None = None,
 ) -> None:
-    global_step = 0
-    last_published_step = 0
-    for epoch in range(1, epochs + 1):
+    global_step = int(resume["global_step"]) if resume else 0
+    last_published_step = int(metrics["steps"][-1]["step"]) if metrics["steps"] else 0
+    first_epoch = int(resume["epoch"]) if resume else 1
+    for epoch in range(first_epoch, epochs + 1):
+        if resume and epoch == first_epoch:
+            epoch_state = resume
+            epoch_start_rng = epoch_state["epoch_start_rng"]
+            _restore_rng(epoch_start_rng)
+        else:
+            epoch_start_rng = _rng_state()
+            epoch_state = None
         model.train()
-        epoch_total = 0.0
-        epoch_count = 0
-        window_total = 0.0
-        window_count = 0
-        for batch in adapter.load("train", batch_size):
+        epoch_total = float(epoch_state["epoch_total"]) if epoch_state else 0.0
+        epoch_count = int(epoch_state["epoch_count"]) if epoch_state else 0
+        window_total = float(epoch_state["window_total"]) if epoch_state else 0.0
+        window_count = int(epoch_state["window_count"]) if epoch_state else 0
+        completed_batches = int(epoch_state["batch_index"]) if epoch_state else 0
+        checkpoint_rng_restored = False
+        for batch_index, batch in enumerate(adapter.load("train", batch_size), start=1):
+            if batch_index <= completed_batches:
+                continue
+            if epoch_state and not checkpoint_rng_restored:
+                _restore_rng(epoch_state["rng_state"])
+                checkpoint_rng_restored = True
             size = _batch_size(batch.inputs)
             optimizer.zero_grad(set_to_none=True)
             values = model(batch.inputs, targets=batch.targets, include_loss=True)
@@ -136,6 +300,26 @@ def _train_epochs(
                 window_count = 0
                 publish()
 
+            if checkpoint_request is not None and checkpoint_request.is_file():
+                publish()
+                if checkpoint_output is None or job_id is None or scheduler_job_id is None:
+                    raise ValueError("Checkpoint request is set without checkpoint identity and output.")
+                _save_checkpoint(checkpoint_output, job_id, scheduler_job_id, {
+                    "global_step": global_step,
+                    "epoch": epoch,
+                    "batch_index": batch_index,
+                    "epoch_start_rng": epoch_start_rng,
+                    "epoch_total": epoch_total,
+                    "epoch_count": epoch_count,
+                    "window_total": window_total,
+                    "window_count": window_count,
+                    "metrics": metrics,
+                }, model, optimizer)
+                raise SystemExit(CHECKPOINT_EXIT_CODE)
+
+        if epoch_state and not checkpoint_rng_restored:
+            _restore_rng(epoch_state["rng_state"])
+
         if epoch_count == 0:
             raise ValueError("Dataset split 'train' yielded no batches.")
         train_loss = epoch_total / epoch_count
@@ -156,6 +340,7 @@ def _train_epochs(
             "validation_loss": metrics["steps"][-1]["validation_loss"],
         })
         publish()
+        resume = None
 
 
 def run(snapshot: Path, output: Path, job_id: str) -> None:
@@ -181,13 +366,21 @@ def run(snapshot: Path, output: Path, job_id: str) -> None:
         adapter = load_dataset(project)
         model = GraphModule(project, core_dir=core_dir)
         optimizer = torch.optim.Adam(model.parameters(), lr=float(training["learning_rate"]))
-        metrics: dict[str, Any] = {"epochs": [], "steps": [], "test_loss": None}
+        checkpoint = _load_checkpoint(output, job_id)
+        if checkpoint:
+            model.load_state_dict(checkpoint["model_state"], strict=True)
+            optimizer.load_state_dict(checkpoint["optimizer_state"])
+        metrics: dict[str, Any] = checkpoint.get("metrics", {"epochs": [], "steps": [], "test_loss": None}) if checkpoint else {"epochs": [], "steps": [], "test_loss": None}
         metrics_path = output / "metrics.json"
         _write_json(metrics_path, metrics)
+        checkpoint_request = _checkpoint_request_path()
+        scheduler_job_id = os.environ.get("NNMODELLING_SCHEDULER_ID")
         _train_epochs(
             model, adapter, optimizer, int(training["epochs"]), int(training["batch_size"]),
             int(training.get("publish_every_steps", 10)), metrics,
             lambda: _write_json(metrics_path, metrics),
+            resume=checkpoint, checkpoint_request=checkpoint_request, checkpoint_output=output,
+            job_id=job_id, scheduler_job_id=scheduler_job_id,
         )
         test_loss = _epoch(model, adapter, "test", int(training["batch_size"]), None)
         metrics["test_loss"] = test_loss

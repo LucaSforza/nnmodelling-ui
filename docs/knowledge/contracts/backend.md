@@ -126,6 +126,46 @@ service shutdown/restart cancels only its own recorded jobs and makes interrupte
 work visibly failed. Do not cancel unrelated cluster jobs. Transport failure must
 attempt cancellation and retain scheduler identity/error for diagnosis.
 
+### Slurm walltime checkpoint and continuation (accepted 2026-10-08)
+
+`SLURM_TIME` is a per-allocation limit, not a total training deadline. Each batch
+allocation requests an early `SIGUSR1` warning. The batch wrapper turns that
+signal into an attempt-scoped request file in the persistent remote job output;
+the wrapper exports its absolute path as `NNMODELLING_CHECKPOINT_REQUEST` and
+its allocation ID as `NNMODELLING_SCHEDULER_ID`, and
+the worker notices `checkpoint-request.<scheduler-id>` at the next
+optimizer-step boundary, publishes current metrics, and atomically writes
+`checkpoint.safetensors` plus `checkpoint.json` capped at 64 MiB before exiting with
+reserved handoff exit code 75. Signal reserve is at most 60 seconds and reduced
+for shorter allocations. Checkpoints use safetensors plus JSON metadata, never
+pickle. They include local job and scheduler IDs, model and Adam state,
+Python/NumPy/torch RNG states, global step, epoch/batch cursor, and in-progress
+weighted metric windows. The manifest has `version`, `job_id`, `scheduler_id`,
+`global_step`, `tensor_size` and `tensor_sha256`; it is committed last and hashes
+the tensor payload. Incomplete or mismatched pairs are rejected.
+
+The next Slurm allocation reuses the same UUID-specific remote job directory and
+loads that checkpoint. It recreates the current training iterator from the saved
+epoch-start RNG state, skips already-consumed batches, then restores checkpoint
+RNG state before continuing. Dataset `load("train", batch_size)` must therefore
+be repeatable from the seeded Python, NumPy and torch RNG streams within an epoch;
+custom adapters with external or non-replayable iterator state are not resumable.
+Successful continuation preserves the original local job ID and accumulated
+metrics. Each scheduler allocation gets its own recorded Slurm ID; the UI shows
+one logical job. Weights and wheel are still produced only after final test
+evaluation and successful completion. Checkpoint files are internal and never
+served as completed artifacts.
+
+Automatic continuation occurs only after a complete checkpoint is validated and
+the current worker exits with Slurm state `FAILED` and exit code `75:0`. A walltime kill before
+that safe boundary, manual cancellation, backend shutdown/restart, missing or
+invalid checkpoint, or non-replayable dataset failure remains visible as failed
+or cancelled and is never silently reported as resumed. The local backend must
+remain running between allocations; application restart recovery remains the
+existing interruption behavior. A checkpoint is saved on the warning signal,
+not periodically, and may lose at most the current in-flight batch before that
+boundary.
+
 ## Qt local backend configuration (accepted 2026-10-08)
 
 The Training dashboard and local-service configuration are separate windows.

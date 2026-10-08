@@ -105,3 +105,88 @@ def test_metrics_publication_has_an_explicit_size_limit(tmp_path, monkeypatch):
     with pytest.raises(ValueError, match="publication limit"):
         worker._write_json(path, {"steps": ["payload too large"]})
     assert path.read_text() == '{"previous":true}'
+
+
+def _seed_training():
+    random.seed(25)
+    np.random.seed(25)
+    torch.manual_seed(25)
+
+
+def _adam_training(model, metrics, **kwargs):
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+    worker._train_epochs(model, TinyAdapter(), optimizer, 2, 2, 4, metrics, lambda: None, **kwargs)
+    return optimizer
+
+
+def test_checkpoint_resume_matches_uninterrupted_training(tmp_path):
+    _seed_training()
+    expected_model = StochasticLoss()
+    expected_metrics = {"epochs": [], "steps": [], "test_loss": None}
+    _adam_training(expected_model, expected_metrics)
+    expected_rng = worker._rng_state()
+
+    _seed_training()
+    interrupted_model = StochasticLoss()
+    interrupted_metrics = {"epochs": [], "steps": [], "test_loss": None}
+    marker = tmp_path / "checkpoint-request.123"
+    marker.touch()
+    with pytest.raises(SystemExit) as stopped:
+        optimizer = torch.optim.Adam(interrupted_model.parameters(), lr=0.01)
+        worker._train_epochs(
+            interrupted_model, TinyAdapter(), optimizer, 2, 2, 4, interrupted_metrics, lambda: None,
+            checkpoint_request=marker, checkpoint_output=tmp_path, job_id="logical-job",
+            scheduler_job_id="123",
+        )
+    assert stopped.value.code == 75
+    marker.unlink()
+
+    checkpoint = worker._load_checkpoint(tmp_path, "logical-job")
+    assert checkpoint["scheduler_id"] == "123"
+    assert checkpoint["global_step"] == 1
+    resumed_model = StochasticLoss()
+    resumed_optimizer = torch.optim.Adam(resumed_model.parameters(), lr=0.01)
+    resumed_model.load_state_dict(checkpoint["model_state"])
+    resumed_optimizer.load_state_dict(checkpoint["optimizer_state"])
+    resumed_metrics = checkpoint["metrics"]
+    worker._train_epochs(
+        resumed_model, TinyAdapter(), resumed_optimizer, 2, 2, 4, resumed_metrics, lambda: None,
+        resume=checkpoint,
+    )
+
+    assert torch.equal(resumed_model.weight, expected_model.weight)
+    assert resumed_metrics == expected_metrics
+    actual_rng = worker._rng_state()
+    assert actual_rng["python"] == expected_rng["python"]
+    assert actual_rng["numpy"][0] == expected_rng["numpy"][0]
+    assert np.array_equal(actual_rng["numpy"][1], expected_rng["numpy"][1])
+    assert torch.equal(actual_rng["torch"], expected_rng["torch"])
+
+
+def test_checkpoint_request_uses_attempt_marker_path(tmp_path, monkeypatch):
+    marker = tmp_path / "checkpoint-request.456"
+    monkeypatch.setenv("NNMODELLING_CHECKPOINT_REQUEST", str(marker))
+    assert worker._checkpoint_request_path() == marker
+    marker.touch()
+    assert worker._checkpoint_request_path().is_file()
+
+
+@pytest.mark.parametrize("damage", ["manifest", "tensor", "partial"])
+def test_incomplete_or_corrupt_checkpoint_is_rejected(tmp_path, damage):
+    if damage == "partial":
+        (tmp_path / "checkpoint.safetensors").write_bytes(b"orphan")
+    elif damage == "manifest":
+        (tmp_path / "checkpoint.safetensors").write_bytes(b"tensor")
+        (tmp_path / "checkpoint.json").write_text("{broken")
+    else:
+        model = StochasticLoss()
+        optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+        worker._save_checkpoint(tmp_path, "logical-job", "123", {
+            "global_step": 1, "epoch": 1, "batch_index": 1, "epoch_start_rng": worker._rng_state(),
+            "epoch_total": 1.0, "epoch_count": 1, "window_total": 1.0, "window_count": 1,
+            "metrics": {"epochs": [], "steps": [], "test_loss": None},
+        }, model, optimizer)
+        with (tmp_path / "checkpoint.safetensors").open("ab") as stream:
+            stream.write(b"tampered")
+    with pytest.raises((ValueError, OSError)):
+        worker._load_checkpoint(tmp_path, "logical-job")

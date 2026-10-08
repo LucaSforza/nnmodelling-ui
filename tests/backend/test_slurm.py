@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import hashlib
 import json
 import tarfile
 import asyncio
@@ -77,7 +78,13 @@ def test_stage_and_batch_command_freeze_source_and_quote_remote_paths(tmp_path, 
     assert "singularity exec --cleanenv --containall --no-home --net --network none" in script
     assert "--bind '/cluster/job root/" in script
     assert "--env PYTHONPATH=/app:/app/python/nnmodelling-runtime/src" in script
-    assert "--partition students --time 00:30:00 --mem 4G --cpus-per-task 2" in runner._sbatch_arguments(job["id"], stage)
+    args = runner._sbatch_arguments(job["id"], stage)
+    assert "--partition students --time 00:30:00 --mem 4G --cpus-per-task 2" in args
+    assert "--signal B:USR1@60" in args and "worker-%j.log" in args
+    script = runner._batch_script(job["id"], stage)
+    assert "checkpoint-request.${SLURM_JOB_ID}" in script
+    assert "NNMODELLING_SCHEDULER_ID=${SLURM_JOB_ID}" in script
+    assert "NNMODELLING_CHECKPOINT_REQUEST=/output/checkpoint-request.${SLURM_JOB_ID}" in script
     with pytest.raises(SlurmError, match="Invalid job identity"):
         runner._remote_path("12345")
 
@@ -93,7 +100,7 @@ def test_successful_remote_job_publishes_metrics_and_retrieves_safe_artifacts(tm
 
     def fake_ssh(command, *, input=None, timeout=30, binary_output=False):
         stdout = ""
-        if command.startswith("scheduler_id=$(sbatch "):
+        if command.startswith("scheduler_id=$(rm -f "):
             stdout = "12345\n"
         elif command.startswith("squeue "):
             stdout = next(states)
@@ -162,7 +169,7 @@ def test_lost_sbatch_response_recovers_receipt_and_cancels(tmp_path, monkeypatch
     commands = []
 
     def fake_ssh(command, **kwargs):
-        if command.startswith("scheduler_id=$(sbatch "):
+        if command.startswith("scheduler_id=$(rm -f "):
             raise SlurmError("SSH command timed out after 30 seconds.")
         return type("Result", (), {"returncode": 0, "stdout": "", "stderr": ""})()
 
@@ -206,26 +213,143 @@ def test_health_marks_cluster_unavailable_on_remote_probe_failure(monkeypatch):
     assert "image unreadable" in health["error"]
 
 
-def test_timeout_cancels_persisted_scheduler_and_fails_visibly(tmp_path, monkeypatch):
+def test_allocation_walltime_does_not_expire_during_queue_or_execution(tmp_path, monkeypatch):
     _configure(monkeypatch)
+    monkeypatch.setattr(config, "SLURM_TIME", "00:00:01")
     store, job = _store_job(tmp_path)
     runner = SlurmJobRunner(store)
-    monkeypatch.setattr(runner, "_job_timeout_seconds", lambda: 0)
-    commands = []
+    submitted = []
+    states = iter([("PENDING", ""), ("RUNNING", ""), ("COMPLETED", "0:0")])
 
     def fake_ssh(command, **_kwargs):
-        commands.append(command)
-        stdout = "12345\n" if command.startswith("scheduler_id=$(sbatch ") else ""
+        stdout = "12345\n" if command.startswith("scheduler_id=$(rm -f ") else ""
+        if stdout:
+            submitted.append(command)
         return type("Result", (), {"returncode": 0, "stdout": stdout, "stderr": ""})()
 
     monkeypatch.setattr(runner, "_ssh_run", fake_ssh)
-    monkeypatch.setattr(runner, "_ssh_run_at", lambda command, *_args, **_kwargs: (commands.append(command) or type(
-        "Result", (), {"returncode": 0, "stdout": "12345\n" if command.startswith("cat -- ") else "", "stderr": ""})()))
+    monkeypatch.setattr(runner, "_scheduler_state", lambda _sid: next(states))
+    monkeypatch.setattr(runner, "_publish_metrics", lambda *_args: None)
+    monkeypatch.setattr(runner, "_retrieve_output", lambda *_args: None)
+    monkeypatch.setattr(runner, "_finish", lambda job_id: store.complete(job_id, {
+        "epochs": [{"epoch": 1, "training_loss": 1.0, "validation_loss": 0.5}],
+        "steps": [], "test_loss": 0.25}))
+    monkeypatch.setattr(slurm, "_POLL_SECONDS", 0)
     runner._execute(job["id"])
     record = store.internal(job["id"])
+    assert record["status"] == "completed"
+    assert len(submitted) == 1
+
+
+def _checkpoint_files(output, job_id, scheduler_id, global_step, payload=b"checkpoint", overrides=None):
+    payload_path = output / "checkpoint.safetensors"
+    payload_path.write_bytes(payload)
+    manifest = {"version": 1, "job_id": job_id, "scheduler_id": scheduler_id,
+                "global_step": global_step, "tensor_size": len(payload),
+                "tensor_sha256": hashlib.sha256(payload).hexdigest()}
+    manifest.update(overrides or {})
+    (output / "checkpoint.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+
+def _scripted_handoff(tmp_path, monkeypatch, *, manifest_changes=None, checkpoint=True, cancel=False,
+                      first_state=("FAILED", "75:0"), second_state=("COMPLETED", "0:0")):
+    _configure(monkeypatch)
+    store, job = _store_job(tmp_path)
+    runner = SlurmJobRunner(store)
+    monkeypatch.setattr(slurm, "_POLL_SECONDS", 0)
+    submits = []
+    current = {"scheduler_id": None}
+    attempt_states = {"101": first_state, "102": second_state}
+
+    def fake_ssh(command, **_kwargs):
+        if command.startswith("scheduler_id=$(rm -f "):
+            scheduler_id = "101" if not submits else "102"
+            submits.append((command, current["scheduler_id"]))
+            current["scheduler_id"] = scheduler_id
+            return type("Result", (), {"returncode": 0, "stdout": scheduler_id + "\n", "stderr": ""})()
+        return type("Result", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+
+    def fake_retrieve(job_id, _stage):
+        output = store.job_dir(job_id) / "output"
+        if current["scheduler_id"] == "101" and checkpoint:
+            _checkpoint_files(output, job_id, "101", 10, overrides=manifest_changes)
+        if cancel and current["scheduler_id"] == "101":
+            store.update(job_id, cancel_requested=True)
+
+    monkeypatch.setattr(runner, "_stage", lambda _job: "/cluster/jobs/" + job["id"])
+    monkeypatch.setattr(runner, "_ssh_run", fake_ssh)
+    monkeypatch.setattr(runner, "_scheduler_state", lambda sid: attempt_states[sid])
+    monkeypatch.setattr(runner, "_publish_metrics", lambda *_args: None)
+    monkeypatch.setattr(runner, "_retrieve_output", fake_retrieve)
+    monkeypatch.setattr(runner, "_finish", lambda job_id: store.complete(job_id, {
+        "epochs": [{"epoch": 1, "training_loss": 1.0, "validation_loss": 0.5}],
+        "steps": [], "test_loss": 0.25}))
+    runner._execute(job["id"])
+    return store, job, runner, submits
+
+
+def test_checkpoint_handoff_resubmits_same_logical_job_and_completes(tmp_path, monkeypatch):
+    store, job, _runner, submits = _scripted_handoff(tmp_path, monkeypatch)
+    record = store.internal(job["id"])
+    assert record["status"] == "completed"
+    assert record["slurm"]["scheduler_ids"] == ["101", "102"]
+    assert record["slurm"]["scheduler_id"] == "102"
+    assert record["slurm"]["global_step"] == 10
+    assert len(submits) == 2
+    assert all(f"/cluster/jobs/{job['id']}" in command for command, _ in submits)
+
+
+def test_handoff_accepts_bounded_rng_manifest_over_four_kibibytes(tmp_path, monkeypatch):
+    store, job, _runner, submits = _scripted_handoff(
+        tmp_path, monkeypatch, manifest_changes={"rng_state_metadata": "x" * 5000})
+    assert store.internal(job["id"])["status"] == "completed"
+    assert len(submits) == 2
+
+
+@pytest.mark.parametrize("manifest_changes", [
+    {"scheduler_id": "stale"},
+    {"tensor_sha256": "0" * 64},
+    {"tensor_size": 1},
+    {"global_step": 0},
+])
+def test_handoff_rejects_stale_or_invalid_checkpoint(tmp_path, monkeypatch, manifest_changes):
+    store, job, _runner, submits = _scripted_handoff(
+        tmp_path, monkeypatch, manifest_changes=manifest_changes)
+    record = store.internal(job["id"])
     assert record["status"] == "failed"
-    assert "time limit" in record["error"]
-    assert "scancel 12345" in commands
+    assert "checkpoint" in record["error"].lower()
+    assert len(submits) == 1
+
+
+def test_walltime_failure_without_checkpoint_fails_without_resubmission(tmp_path, monkeypatch):
+    store, job, _runner, submits = _scripted_handoff(
+        tmp_path, monkeypatch, checkpoint=False, first_state=("TIMEOUT", "0:0"))
+    record = store.internal(job["id"])
+    assert record["status"] == "failed"
+    assert len(submits) == 1
+    assert "TIMEOUT" in record["error"]
+
+
+def test_cancellation_between_attempts_prevents_resubmission(tmp_path, monkeypatch):
+    store, job, _runner, submits = _scripted_handoff(tmp_path, monkeypatch, cancel=True)
+    record = store.internal(job["id"])
+    assert record["status"] == "cancelled"
+    assert len(submits) == 1
+
+
+def test_cancel_targets_latest_active_scheduler_id_only(tmp_path, monkeypatch):
+    _configure(monkeypatch)
+    store, job = _store_job(tmp_path)
+    store.transition(job["id"], "queued", status="running", cancel_requested=True,
+                     slurm={"scheduler_id": "102", "scheduler_ids": ["101", "102"],
+                            "attempt_active": True, "remote_path": f"/cluster/jobs/{job['id']}",
+                            "configuration": {"host": "cluster", "ssh_executable": "ssh",
+                                              "root": "/cluster/jobs"}})
+    commands = []
+    monkeypatch.setattr(SlurmJobRunner, "_ssh_run_at", lambda self, command, *_args, **_kwargs: (commands.append(command) or type(
+        "Result", (), {"returncode": 0, "stdout": "", "stderr": ""})()))
+    SlurmJobRunner(store).cancel(job["id"])
+    assert commands == ["scancel 102"]
 
 
 def test_docker_runner_and_health_object_remain_compatible(tmp_path, monkeypatch):
