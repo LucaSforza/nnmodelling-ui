@@ -6,6 +6,8 @@ Use Linux hosted runners, read-only repository permissions, bounded job timeouts
 and the committed uv lockfile with dev/examples groups. Named-operation tests
 belong to the runtime recipe. CI does not download a trained consumer wheel or
 claim an actual container-training or visible desktop trial.
+Temporary test projects and sockets use unique directories under `/tmp`, without
+requiring a developer-specific parent directory to exist.
 
 Local backend (accepted 2026-10-05): [backend contract](../contracts/backend.md)
 adds Python API/worker/runtime/wheel tests, Qt HTTP tests, resource uv scaffolds

@@ -393,7 +393,7 @@ int main(void)
     nn_inference_free(report);
     nn_project_close(project);
 
-    char temporary[] = "/tmp/opencode/nn-inference-diagnostics-XXXXXX";
+    char temporary[] = "/tmp/nn-inference-diagnostics-XXXXXX";
     char *root = mkdtemp(temporary);
     assert(root);
     NNProject *diagnostic_project = nn_project_create(root, "diagnostics", "Diagnostics",

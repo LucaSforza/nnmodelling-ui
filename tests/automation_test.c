@@ -44,7 +44,7 @@ int main(void)
     dispatch(app, "{\"operation\":\"unknown\",\"args\":{}}", false);
     dispatch(app, "{\"operation\":\"project.snapshot\",\"args\":{}}", true);
     dispatch(app, "{\"operation\":\"ui.inspect\",\"args\":{}}", false);
-    char root[] = "/tmp/opencode/nn-automation-XXXXXX"; assert(mkdtemp(root));
+    char root[] = "/tmp/nn-automation-XXXXXX"; assert(mkdtemp(root));
     char request[4096];
     snprintf(request, sizeof(request), "{\"operation\":\"project.create\",\"args\":{\"parent\":\"%s\",\"id\":\"test\",\"name\":\"Test\"}}", root);
     dispatch(app, request, true);
