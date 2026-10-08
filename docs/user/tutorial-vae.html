@@ -29,11 +29,11 @@ just backend-sync
 just backend-image
 just backend-run
 </code></pre>
-<p>Lascia il terminale del backend aperto. In un secondo terminale avvia <code>./build/qt/nnmodelling-ui</code>. Il backend predefinito usa <code>http://127.0.0.1:8765</code>; per token e altre opzioni consulta la <a href="server.html">guida al server</a>.</p>
-<p>Per eseguire il training sul cluster Sapienza, segui la sezione
-<a href="server.html#eseguire-i-job-sul-cluster-sapienza">Eseguire i job sul cluster Sapienza</a>
-e avvia <code>just backend-slurm</code> al posto di <code>just backend-run</code>. L'API resta locale;
-il client usa lo stesso endpoint e i parametri VAE qui sotto non cambiano.</p>
+<p>Lascia il terminale del backend aperto. In un secondo terminale avvia <code>./build/qt/nnmodelling-ui</code>. Il backend avviato manualmente usa <code>http://127.0.0.1:8765</code>; se lo avvii da <code>Configure backend…</code>, l'app sceglie una porta loopback libera e aggiorna <code>Endpoint</code>. Per token e altre opzioni consulta la <a href="server.html">guida al server</a>.</p>
+<p>Per eseguire il training sul cluster Sapienza, segui gli illustrati
+<a href="server.html#eseguire-i-job-sul-cluster-sapienza-dalla-ui">passaggi Slurm dalla UI</a>.
+Scegli l'esecutore con <code>Configure backend…</code>; API, endpoint locale e parametri
+VAE qui sotto restano invariati.</p>
 <h2 id="2-aprire-una-copia-del-vae">2. Aprire una copia del VAE</h2>
 <p>Dalla root del repository copia l'intero progetto, incluso dataset e pacchetti Python:</p>
 <pre><code class="language-sh">cp -a examples/models/mnist-vae my-vae

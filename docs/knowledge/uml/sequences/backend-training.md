@@ -51,22 +51,28 @@ The resolved core directory is frozen under `snapshot/core/<package-folder>`.
 ```mermaid
 sequenceDiagram
     actor User
-    participant UI as Qt Training backend dialog
+    participant Dashboard as Qt Training dashboard
+    participant Config as Separate modeless backend configuration window
     participant Settings as Per-user Qt settings
     participant Process as Local service child process
     participant API as Local FastAPI
-    User->>UI: choose Docker or Slurm and enter service paths
-    UI->>Settings: save non-secret launch profile
-    User->>UI: start or restart managed backend
-    UI->>API: inspect jobs if existing managed process is running
+    User->>Dashboard: open backend configuration
+    Dashboard->>Config: show separate movable window
+    Note over Dashboard,Config: Dashboard remains usable with endpoint, jobs and curves visible
+    User->>Config: choose Docker or Slurm and enter service paths
+    Config->>Settings: save non-secret launch profile
+    User->>Config: start or restart managed backend
+    Config->>API: inspect jobs if existing managed process is running
     alt queued/running jobs exist
-        UI-->>User: refuse restart so jobs are not interrupted
+        Config-->>User: refuse restart so jobs are not interrupted
     else safe to launch
-        UI->>Process: spawn uv/uvicorn on loopback with validated environment
+        Config->>Config: reserve available loopback port
+        Config->>Process: spawn uv/uvicorn on loopback with validated environment
         Process->>API: start FastAPI and select executor
-        UI->>API: GET /health
-        API-->>UI: executor/runtime availability
-        UI-->>User: show readiness or startup error
+        Config->>Dashboard: set Endpoint to managed loopback address
+        Config->>API: GET /health
+        API-->>Config: executor/runtime availability
+        Config-->>User: show readiness or startup error
     end
 ```
 

@@ -18,65 +18,76 @@ just backend-run
 
 `backend-run` stays in the foreground. The default address is `http://127.0.0.1:8765`; use another terminal to query the API and press **Ctrl-C** to stop the service. Select **Training** in the app and press **Connect / check health**. The endpoint field already contains the default address.
 
-## Run jobs on the Sapienza cluster
+## Run jobs on the Sapienza cluster from the UI
 
-The backend continues to run on this computer. Prepare a writable remote
-directory and a ready-to-use Singularity (`.sif`) image containing Python,
-PyTorch, NumPy, safetensors and every dependency declared by the project's
-datasets and packages. The cluster must provide `sbatch`, `squeue`, `sacct`,
-`scancel`, `singularity` and `python3` over SSH. Jobs have no network access.
-Use your configured SSH alias (`cluster` below), with normal authentication and
-host-key verification.
+FastAPI, the Training dashboard and the job archive stay on this computer. The
+**Local backend service configuration** window selects Slurm; only workers are
+sent to the cluster over SSH. First prepare a writable remote directory and a
+ready-to-use Singularity (`.sif`) image containing Python, PyTorch, NumPy,
+safetensors and every dependency declared by project datasets and packages. The
+cluster must provide `sbatch`, `squeue`, `sacct`, `scancel`, `singularity` and
+`python3` over SSH. Jobs have no network access. Use an SSH alias already
+configured on this computer, with normal authentication and host-key checks.
 
-Replace `cluster_user` and the image path with paths available to your account.
-Create the directory once:
+### 1. Prepare the image and remote directory
+
+Replace `cluster_user` and the image path with values for your account. Create
+the directory once:
 
 ```sh
 ssh cluster 'mkdir -p /home/cluster_user/nnmodelling-jobs && chmod 700 /home/cluster_user/nnmodelling-jobs'
 ```
 
-From the repository root, configure and start the service:
+The image must already contain every Python dependency required by the
+project; jobs do not install packages. The local job directory stores snapshots,
+metrics, logs and artifacts. The remote directory contains temporary execution
+files for each job.
 
-```sh
-export NNMODELLING_SLURM_HOST=cluster
-export NNMODELLING_SLURM_ROOT=/home/cluster_user/nnmodelling-jobs
-export NNMODELLING_SLURM_IMAGE=/cluster/path/nnmodelling-worker.sif
-just backend-slurm
-```
+### 2. Open backend configuration and choose Slurm
 
-`backend-slurm` starts only FastAPI locally (`127.0.0.1:8765`). Defaults request
-the `students` partition, 2 CPUs, 4 GB and 30 minutes. If your account has
-different limits, set `NNMODELLING_SLURM_PARTITION`,
-`NNMODELLING_SLURM_CPUS`, `NNMODELLING_SLURM_MEMORY` and
-`NNMODELLING_SLURM_TIME` before running `just backend-slurm`.
+In the **Training** dashboard, press **Configure backend…**. A separate window
+opens while the dashboard with its endpoint, training controls, history and
+curves remains available. Set `Executor` to `SSH / Slurm`, then enter the SSH
+alias, local directory, remote directory, `.sif` image, partition, CPUs, memory
+and time limit. Resource defaults are `students`, `2`, `4G` and `00:30:00`; use
+the limits assigned to your account.
 
-In another terminal, check `/health`. In the app, use the same local endpoint,
-`http://127.0.0.1:8765`, press **Connect / check health**, then submit as usual.
-The response must show `executor` as `slurm` and `container.available` as
-`true`:
+![Configure the Slurm executor, paths and resources](../assets/slurm-configure.png)
 
-```sh
-curl -fsS http://127.0.0.1:8765/health
-```
+### 3. Start FastAPI locally
 
-The [LLM](tutorial-tiny-llm.md) and [VAE](tutorial-vae.md) tutorial jobs use
-Slurm without changing their Training settings. The project copy is transferred
-over SSH into a per-job directory. If the image lacks a required dependency,
-the job fails; add it and rebuild the `.sif` before retrying. To return to local
-execution, stop the service and run `just backend-run`.
+In the configuration window, press **Save settings and start local backend**.
+The screenshot shows a running service, so its button offers a safe restart; on
+first launch it offers the start action instead.
+Only the local service starts, bound to loopback. The app chooses an available
+port and fills `Endpoint` in the dashboard automatically. The status line
+confirms startup and Singularity availability; SSH, image and prerequisite
+errors appear there. Non-secret preferences are saved for your user. The app
+never asks for or copies an SSH password.
 
-The wheel exporter is included in the worker image. After updating the
-repository to use the readable filenames, rebuild the image and restart the
-backend before submitting more jobs:
+![Slurm configuration ready in the local backend](../assets/slurm-configure.png)
 
-```sh
-just backend-image
-# Stop an already running backend with Ctrl-C, then:
-just backend-run
-```
+### 4. Connect the dashboard and submit
 
-Rebuilding does not alter wheels already stored: they remain downloadable with
-their original names and contents. Do not rename them manually.
+Return to the **Training** dashboard: `Endpoint` already contains the loopback
+address chosen by the service. Press **Connect / check health** to refresh the
+check if needed. Submit the project and parameters as with the local runtime:
+the project needs no Slurm flags and model configuration stays the same.
+Snapshots and results remain local; only the worker runs on the cluster.
+
+![Training dashboard with separate Slurm configuration](../assets/slurm-dashboard.png)
+
+The [LLM](tutorial-tiny-llm.md) and [VAE](tutorial-vae.md) tutorials follow the
+same path. If a dependency is missing from the `.sif`, the job fails visibly;
+rebuild the image before retrying. To return to local Docker execution, open
+**Configure backend…**, select **Docker-compatible runtime** and start the
+service.
+
+The worker image includes the wheel exporter. After updating the repository to
+use readable filenames, rebuild the worker image and restart the managed
+backend before submitting more jobs. Rebuilding does not alter stored wheels;
+they remain downloadable with their original names and contents. Do not rename
+them manually.
 
 ### Example: port 8766 and a dedicated job store
 

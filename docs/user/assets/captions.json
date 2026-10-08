@@ -228,7 +228,7 @@
     ]
   },
   "training-connect.png": {
-    "caption": "Connessione al backend locale di addestramento",
+    "caption": "Connessione e configurazione del backend di addestramento",
     "callouts": [
       {
         "number": 1,
@@ -237,6 +237,10 @@
       {
         "number": 2,
         "region": "Connetti e verifica lo stato del servizio"
+      },
+      {
+        "number": 3,
+        "region": "Apri la configurazione separata del backend"
       }
     ]
   },
@@ -245,14 +249,64 @@
     "callouts": [
       {
         "number": 1,
-        "region": "Epoche, dimensione del batch, tasso di apprendimento e seme"
+        "region": "Impostazioni correnti dell’addestramento"
       },
       {
         "number": 2,
         "region": "Salva il progetto e invia l’attività"
       }
     ],
-    "details": "3 epoche; batch 16; tasso di apprendimento 0,001; seme 0; pubblicazione a ogni passaggio."
+    "details": "10 epoche; batch 32; tasso di apprendimento 0,001; seme 0; pubblicazione ogni 10 passaggi."
+  },
+  "slurm-configure.png": {
+    "caption": "Configurazione dell’esecutore SSH/Slurm",
+    "callouts": [
+      {
+        "number": 1,
+        "region": "Selezione dell’esecutore"
+      },
+      {
+        "number": 2,
+        "region": "Alias SSH di Slurm"
+      },
+      {
+        "number": 3,
+        "region": "Directory remota assoluta delle attività"
+      },
+      {
+        "number": 4,
+        "region": "Immagine Singularity precompilata"
+      },
+      {
+        "number": 5,
+        "region": "Partizione e limiti delle risorse"
+      },
+      {
+        "number": 6,
+        "region": "Stato di disponibilità del runtime"
+      },
+      {
+        "number": 7,
+        "region": "Riavvia in sicurezza il backend locale"
+      }
+    ]
+  },
+  "slurm-dashboard.png": {
+    "caption": "Dashboard di addestramento con backend Slurm connesso",
+    "callouts": [
+      {
+        "number": 1,
+        "region": "Indirizzo del backend"
+      },
+      {
+        "number": 2,
+        "region": "Connetti e verifica lo stato del servizio"
+      },
+      {
+        "number": 3,
+        "region": "Apri la configurazione separata del backend"
+      }
+    ]
   },
   "training-dashboard.png": {
     "caption": "Dashboard al termine dell’addestramento in 12 passaggi",

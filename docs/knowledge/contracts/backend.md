@@ -128,11 +128,21 @@ attempt cancellation and retain scheduler identity/error for diagnosis.
 
 ## Qt local backend configuration (accepted 2026-10-08)
 
-The Training backend dialog may configure and launch the local FastAPI service.
-Its executor choices are local Docker-compatible runtime and SSH/Slurm; selecting
-Slurm configures only this local service to submit workers remotely. The dialog
-never launches a backend on the cluster and always binds a UI-launched service
-to loopback. Existing arbitrary endpoint/token connection remains supported.
+The Training dashboard and local-service configuration are separate windows.
+The dashboard keeps its endpoint, connection status, training controls, job
+history, curves and artifact actions visible without service-launch fields
+occupying its workspace. A dedicated modeless configuration window is opened
+from the dashboard and can be moved independently while the dashboard remains
+usable. Its executor choices are local Docker-compatible runtime and
+SSH/Slurm; selecting Slurm configures only the local service to submit workers
+remotely. The configuration window never launches a backend on the cluster and
+always binds a UI-launched service to loopback. Existing arbitrary endpoint/token
+connection remains supported from the dashboard.
+
+On managed startup, the service manager reserves an available loopback port and
+sets `Endpoint` to that address automatically. Users do not need to guess or
+enter the managed service port; manually launched services keep the configured
+backend default unless changed explicitly.
 
 Persist non-secret launcher settings per user through Qt settings: executor,
 local job root, Docker runtime/image, or Slurm SSH alias, absolute remote job

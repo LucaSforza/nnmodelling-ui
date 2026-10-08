@@ -30,66 +30,75 @@ just backend-run
 **Ctrl-C** per fermare il servizio. Seleziona **Training** nell'app e premi
 **Connect / check health**. Il campo endpoint usa già l'indirizzo predefinito.
 
-## Eseguire i job sul cluster Sapienza
+## Eseguire i job sul cluster Sapienza dalla UI
 
-Il backend continua a girare su questo computer. Prepara sul cluster una
-directory remota scrivibile e un'immagine Singularity (`.sif`) già pronta con
-Python, PyTorch, NumPy, safetensors e tutte le dipendenze dichiarate dai dataset
-e dai pacchetti del progetto. Il cluster deve offrire via SSH `sbatch`, `squeue`,
-`sacct`, `scancel`, `singularity` e `python3`; il job non ha accesso alla rete.
-Usa l'alias SSH già configurato (`cluster` nell'esempio), con la normale
-autenticazione e verifica delle chiavi host.
+Il servizio FastAPI, il dashboard Training e l'archivio dei job restano su
+questo computer. La finestra **Local backend service configuration** sceglie
+Slurm come esecutore; solo i worker vengono inviati al cluster via SSH. Prima
+prepara una directory remota scrivibile e un'immagine Singularity (`.sif`) con
+Python, PyTorch, NumPy, safetensors e tutte le dipendenze dichiarate da dataset
+e pacchetti. Il cluster deve offrire `sbatch`, `squeue`, `sacct`, `scancel`,
+`singularity` e `python3` via SSH. I job non accedono alla rete. Usa un alias SSH
+già configurato sul computer, con autenticazione e verifica delle chiavi host.
 
-Sostituisci `utente_cluster` e il percorso dell'immagine con quelli disponibili
-nel tuo account. Crea la directory una volta:
+### 1. Prepara immagine e directory remota
+
+Sostituisci `utente_cluster` e il percorso dell'immagine con valori validi per il
+tuo account. Crea la directory una volta:
 
 ```sh
 ssh cluster 'mkdir -p /home/utente_cluster/nnmodelling-jobs && chmod 700 /home/utente_cluster/nnmodelling-jobs'
 ```
 
-Dalla root del repository, configura il servizio e avvialo:
+L'immagine deve già contenere ogni dipendenza Python richiesta dal progetto:
+durante il job non vengono installati pacchetti. La directory locale dei job
+conterrà snapshot, metriche, log e artefatti; quella sul cluster contiene solo
+file temporanei di esecuzione per singolo job.
 
-```sh
-export NNMODELLING_SLURM_HOST=cluster
-export NNMODELLING_SLURM_ROOT=/home/utente_cluster/nnmodelling-jobs
-export NNMODELLING_SLURM_IMAGE=/percorso/cluster/nnmodelling-worker.sif
-just backend-slurm
-```
+### 2. Apri configurazione backend e scegli Slurm
 
-`backend-slurm` avvia soltanto FastAPI in locale (`127.0.0.1:8765`). La
-configurazione predefinita richiede partizione `students`, 2 CPU, 4 GB e 30
-minuti; se il tuo account usa limiti diversi, imposta prima di `just
-backend-slurm` `NNMODELLING_SLURM_PARTITION`, `NNMODELLING_SLURM_CPUS`,
-`NNMODELLING_SLURM_MEMORY` e `NNMODELLING_SLURM_TIME`.
+Nel dashboard **Training**, premi **Configure backend…**. Si apre una finestra
+separata: il dashboard con endpoint, controlli di training, cronologia e curve
+resta disponibile. Imposta `Executor` su `SSH / Slurm` e compila alias SSH,
+directory locale, directory remota, immagine `.sif`, partizione, CPU, memoria e
+limite di tempo. I valori iniziali delle risorse sono `students`, `2`, `4G` e
+`00:30:00`; usa i limiti assegnati dal tuo account.
 
-In un secondo terminale controlla `/health`. Per inviare job, usa nell'app lo
-stesso endpoint locale `http://127.0.0.1:8765`, premi **Connect / check
-health**, poi invia il progetto come al solito. Il campo `executor` nella
-risposta deve essere `slurm` e `container.available` deve essere `true`:
+![Configurare esecutore, percorsi e risorse Slurm](assets/slurm-configure.png)
 
-```sh
-curl -fsS http://127.0.0.1:8765/health
-```
+### 3. Avvia FastAPI in locale
 
-Gli esperimenti dei [tutorial LLM](tutorial-tiny-llm.md) e
-[VAE](tutorial-vae.md) useranno Slurm senza cambiare i parametri nel pannello
-Training. La copia del progetto viene trasferita via SSH in una directory
-isolata per job. Se l'immagine non contiene una dipendenza richiesta, il job
-fallisce: aggiungila e ricostruisci la `.sif` prima di riprovare. Per tornare
-all'esecuzione locale, ferma il servizio e avvia `just backend-run`.
+Nella finestra di configurazione premi **Save settings and start local
+backend**. Nello screenshot il servizio è già attivo, quindi il pulsante propone
+un riavvio sicuro; al primo avvio mostra invece l’azione di avvio. Viene avviato solo il servizio locale su loopback. L'app sceglie una
+porta libera e aggiorna automaticamente `Endpoint` nel dashboard. La riga di
+stato conferma avvio e disponibilità di Singularity; errori SSH, immagine o
+prerequisiti appaiono qui. Le preferenze non segrete vengono salvate per
+l'utente. Password SSH non vengono richieste o copiate.
+
+![Configurazione Slurm pronta nel backend locale](assets/slurm-configure.png)
+
+### 4. Connetti dashboard e invia job
+
+Torna al dashboard **Training**: `Endpoint` contiene già l'indirizzo loopback
+scelto dal servizio. Premi **Connect / check health** se vuoi aggiornare la
+verifica. Invia progetto e parametri come per il runtime locale: non servono
+flag Slurm nel progetto e la configurazione del modello non cambia. Snapshot e
+risultati restano locali; solo il worker viene eseguito dal cluster.
+
+![Dashboard Training con configurazione Slurm separata](assets/slurm-dashboard.png)
+
+I tutorial [LLM](tutorial-tiny-llm.md) e [VAE](tutorial-vae.md) seguono lo
+stesso percorso. Se manca una dipendenza nella `.sif`, il job fallisce in modo
+visibile: ricostruisci l'immagine prima di riprovare. Per tornare all'esecuzione
+Docker locale, apri **Configure backend…**, seleziona **Docker-compatible
+runtime** e avvia il servizio.
 
 L'esportatore wheel è incluso nell'immagine worker. Dopo aver aggiornato il
-repository per usare i nuovi nomi leggibili, ricostruisci l'immagine e riavvia
-il backend prima di inviare altri job:
-
-```sh
-just backend-image
-# Ferma con Ctrl-C l'eventuale backend già attivo, poi:
-just backend-run
-```
-
-La ricostruzione non modifica wheel già archiviate: restano scaricabili con
-nome e contenuto originali. Non rinominarle manualmente.
+repository per usare i nomi leggibili, ricostruisci l'immagine worker e riavvia
+il backend gestito prima di inviare altri job. La ricostruzione non modifica
+wheel già archiviate: restano scaricabili con nome e contenuto originali. Non
+rinominarle manualmente.
 
 ### Esempio: porta 8766 e archivio dedicato
 

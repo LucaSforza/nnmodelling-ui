@@ -17,11 +17,11 @@ If the backend was already installed and running before this update, rebuild
 the image with `just backend-image`, stop the service with Ctrl-C, and start it
 again with `just backend-run` before submitting the job.
 
-To run this same job on the Sapienza cluster, follow [Run jobs on the Sapienza
-cluster](server.md#run-jobs-on-the-sapienza-cluster) and use
-`just backend-slurm` instead of `just backend-run`. The client still connects to
-the local endpoint; keep the Training settings below unchanged. The server
-guide covers the `.sif` image, remote directory and `/health` check.
+To run this same job on the Sapienza cluster, follow the illustrated [Slurm UI
+steps](server.md#run-jobs-on-the-sapienza-cluster-from-the-ui). Choose the
+executor with `Configure backend…`; keep the Training endpoint and settings
+below unchanged. The server guide also shows how to prepare the `.sif` image and
+remote directory.
 
 Leave the server terminal open. In a second terminal, start the client:
 
@@ -29,7 +29,7 @@ Leave the server terminal open. In a second terminal, start the client:
 ./build/qt/nnmodelling-ui
 ```
 
-The default backend listens at `http://127.0.0.1:8765`. The screenshots in this tutorial show **8766**, chosen to isolate the walkthrough from a port that was already occupied. To reproduce that address, start the server with:
+Manually started backend listens at `http://127.0.0.1:8765`. The screenshots in this tutorial show **8766**, chosen to isolate the walkthrough from a port that was already occupied. If you start the backend from `Configure backend…`, the app chooses an available loopback port and updates `Endpoint` automatically. To reproduce the illustrated address with a manual server, start it with:
 
 ```sh
 NNMODELLING_BACKEND_PORT=8766 just backend-run
