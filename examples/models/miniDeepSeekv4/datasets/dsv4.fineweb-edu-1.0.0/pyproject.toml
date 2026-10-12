@@ -1,0 +1,5 @@
+[project]
+name = "nnm-dsv4-fineweb-edu"
+version = "1.0.0"
+requires-python = ">=3.11"
+dependencies = ["torch>=2.6", "pyarrow>=19", "tokenizers>=0.21", "nnmodelling-runtime"]

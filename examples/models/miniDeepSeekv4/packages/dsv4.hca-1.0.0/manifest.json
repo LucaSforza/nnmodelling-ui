@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "dsv4.hca",
+  "version": "1.0.0",
+  "entrypoints": {
+    "definition": "definition.json",
+    "inference": {
+      "language": "lua",
+      "file": "inference.lua"
+    },
+    "pytorch": {
+      "language": "python",
+      "file": "pytorch.py"
+    },
+    "parameters": {
+      "language": "lua",
+      "file": "parameters.lua"
+    }
+  },
+  "dependencies": {
+    "dsv4.attention": "1.0.0"
+  }
+}

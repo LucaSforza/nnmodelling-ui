@@ -1,0 +1,11 @@
+{
+  "name": "V4 Next Token",
+  "description": "Scaled DeepSeek-V4 reference math; see paper sections 2 and 4.",
+  "kind": "layer",
+  "view": {
+    "color": "#476e91",
+    "width": 220,
+    "height": 120
+  },
+  "parameters": {}
+}

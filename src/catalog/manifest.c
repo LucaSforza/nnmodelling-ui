@@ -5,7 +5,7 @@
 #include <string.h>
 bool nn_catalog_parse_manifest(Package *p, yyjson_val *root,
                            const char *directory) {
-  yyjson_val *sv, *deps, *entry, *inf;
+  yyjson_val *sv, *deps, *entry, *inf, *parameters;
   const char *s;
   if (!yyjson_is_obj(root) ||
       !yyjson_is_uint(sv = nn_catalog_get(root, "schemaVersion")) ||
@@ -68,5 +68,17 @@ bool nn_catalog_parse_manifest(Package *p, yyjson_val *root,
   s = nn_catalog_strval(nn_catalog_get(inf, "file"));
   if (!s || !nn_catalog_safe_rel(s) || !(p->pub.inference_file = nn_text_copy(s)))
     return false;
+  parameters = nn_catalog_get(entry, "parameters");
+  if (parameters) {
+    if (!yyjson_is_obj(parameters) ||
+        strcmp(nn_catalog_strval(nn_catalog_get(parameters, "language"))
+                   ? nn_catalog_strval(nn_catalog_get(parameters, "language")) : "",
+               "lua") != 0)
+      return false;
+    s = nn_catalog_strval(nn_catalog_get(parameters, "file"));
+    if (!s || !nn_catalog_safe_rel(s) ||
+        !(p->pub.parameters_file = nn_text_copy(s)))
+      return false;
+  }
   return true;
 }

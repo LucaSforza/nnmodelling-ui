@@ -1,22 +1,24 @@
 from __future__ import annotations
 
-import io
 import hashlib
+import io
 import json
 import os
 import re
 import shlex
 import shutil
 import subprocess
+import tempfile
 import tarfile
 import threading
 import time
 import uuid
 from pathlib import Path, PurePosixPath
-from typing import Any
+from typing import Any, BinaryIO
 
 from . import config
 from .runner import JobRunner
+from .remote_data import records_from_snapshot
 from .store import JobStore, _read_metrics, utc_now
 
 
@@ -27,12 +29,29 @@ _TIME = re.compile(r"^(?:[0-9]+-)?[0-9]{1,2}:[0-5][0-9]:[0-5][0-9]$")
 _JOB_ID = re.compile(r"^[0-9]+$")
 _POLL_SECONDS = 5.0
 _SSH_TIMEOUT = 30
-_MAX_TRANSFER_BYTES = 1024 * 1024 * 1024
+_ARTIFACT_TRANSFER_TIMEOUT = 24 * 60 * 60
+_MAX_TRANSFER_BYTES = config.MAX_ARTIFACT_BYTES
+_MAX_ARCHIVE_BYTES = config.MAX_ARTIFACT_BYTES + 64 * 1024 * 1024
 _MAX_CHECKPOINT_MANIFEST_BYTES = config.MAX_METRICS_BYTES
+_REMOTE_METRICS_MISSING = 44
 
 
 class SlurmError(RuntimeError):
     pass
+
+
+class _BoundedReader:
+    def __init__(self, source: BinaryIO, limit: int) -> None:
+        self.source = source
+        self.limit = limit
+        self.read_bytes = 0
+
+    def read(self, size: int = -1) -> bytes:
+        value = self.source.read(size)
+        self.read_bytes += len(value)
+        if self.read_bytes > self.limit:
+            raise SlurmError("Remote output archive exceeds the configured artifact transfer limit.")
+        return value
 
 
 def slurm_configuration() -> dict[str, Any]:
@@ -48,6 +67,8 @@ def slurm_configuration() -> dict[str, Any]:
         errors.append("NNMODELLING_SLURM_PARTITION contains unsupported characters.")
     if config.SLURM_CPUS < 1 or config.SLURM_CPUS > 256:
         errors.append("NNMODELLING_SLURM_CPUS must be between 1 and 256.")
+    if not 0 <= config.SLURM_GPUS <= 8:
+        errors.append("NNMODELLING_SLURM_GPUS must be between 0 and 8.")
     if not _MEMORY.fullmatch(config.SLURM_MEMORY):
         errors.append("NNMODELLING_SLURM_MEMORY must be a Slurm memory value such as 4G.")
     if not _TIME.fullmatch(config.SLURM_TIME):
@@ -190,7 +211,15 @@ class SlurmJobRunner(JobRunner):
                 self.store.transition(job_id, "running", status="cancelled", finished_at=utc_now())
                 return
 
+            if records_from_snapshot(self.store.job_dir(job_id) / "snapshot"):
+                self._prepare_remote_data(job_id, stage, remote_record)
+                raw = self.store.internal(job_id)
+                if self._stopping.is_set() or (raw and raw.get("cancel_requested")):
+                    self.store.transition(job_id, "running", status="cancelled", finished_at=utc_now())
+                    return
+
             remote_record["attempt_active"] = True
+            remote_record["phase"] = "training"
             remote_record["scheduler_id"] = None
             self.store.update(job_id, slurm=remote_record)
             result = self._ssh_run(self._submit_command(job_id, stage),
@@ -202,7 +231,7 @@ class SlurmJobRunner(JobRunner):
             if not _JOB_ID.fullmatch(scheduler_id):
                 raise SlurmError(f"sbatch returned an invalid scheduler identity: {result.stdout.strip()!r}")
             remote_record["scheduler_id"] = scheduler_id
-            remote_record["scheduler_ids"] = [scheduler_id]
+            remote_record.setdefault("scheduler_ids", []).append(scheduler_id)
             self.store.update(job_id, slurm=remote_record)
 
             prior_step = int(remote_record.get("global_step", 0))
@@ -220,7 +249,6 @@ class SlurmJobRunner(JobRunner):
                         break
                     time.sleep(_POLL_SECONDS)
 
-                self._retrieve_output(job_id, stage)
                 remote_record["attempt_active"] = False
                 self.store.update(job_id, slurm=remote_record)
                 raw = self.store.internal(job_id)
@@ -233,7 +261,7 @@ class SlurmJobRunner(JobRunner):
                     self.store.transition(job_id, "running", status="cancelled", finished_at=utc_now())
                     break
                 if state == "FAILED" and exit_code == "75:0":
-                    prior_step = self._validate_checkpoint(job_id, scheduler_id, prior_step)
+                    prior_step = self._validate_checkpoint(stage, job_id, scheduler_id, prior_step)
                     remote_record["global_step"] = prior_step
                     self.store.update(job_id, slurm=remote_record)
                     raw = self.store.internal(job_id)
@@ -255,6 +283,7 @@ class SlurmJobRunner(JobRunner):
                     remote_record.setdefault("scheduler_ids", []).append(scheduler_id)
                     self.store.update(job_id, slurm=remote_record)
                     continue
+                self._retrieve_output(job_id, stage)
                 if state == "COMPLETED" and exit_code == "0:0":
                     self._finish(job_id)
                     break
@@ -279,7 +308,8 @@ class SlurmJobRunner(JobRunner):
         return {"host": config.SLURM_HOST, "ssh_executable": config.SLURM_SSH,
                 "root": config.SLURM_ROOT, "image": config.SLURM_IMAGE,
                 "partition": config.SLURM_PARTITION, "cpus": config.SLURM_CPUS,
-                "memory": config.SLURM_MEMORY, "time": config.SLURM_TIME}
+                "memory": config.SLURM_MEMORY, "time": config.SLURM_TIME,
+                "gpus": config.SLURM_GPUS}
 
     def _remote_path(self, job_id: str) -> str:
         try:
@@ -296,7 +326,8 @@ class SlurmJobRunner(JobRunner):
         stage = self._remote_path(job_id)
         root = str(PurePosixPath(stage).parent)
         mkdir = (f"umask 077; mkdir -p -- {shlex.quote(root)} && mkdir -- {shlex.quote(stage)} && "
-                 f"mkdir -- {shlex.quote(stage + '/output')} {shlex.quote(stage + '/source')}")
+                 f"mkdir -- {shlex.quote(stage + '/output')} {shlex.quote(stage + '/source')} "
+                 f"{shlex.quote(stage + '/dataset-data')}")
         self._checked_remote(mkdir, "Could not prepare remote job directory.")
         archive = self._source_archive(job_id)
         command = f"tar -xf - -C {shlex.quote(stage)} --no-same-owner --no-same-permissions"
@@ -304,6 +335,56 @@ class SlurmJobRunner(JobRunner):
         if result.returncode:
             raise SlurmError(f"Could not stage immutable job snapshot and worker source: {(result.stderr or result.stdout).strip()[-1500:]}")
         return stage
+
+    def _prepare_remote_data(self, job_id: str, stage: str, record: dict[str, Any]) -> None:
+        """Acquire pinned corpus files in a separately tracked networked allocation."""
+        record.update(phase="preparing-data", scheduler_id=None, attempt_active=True)
+        preparation = record.setdefault("preparation", {"scheduler_id": None, "scheduler_ids": []})
+        self.store.update(job_id, slurm=record)
+        result = self._ssh_run(self._submit_command(job_id, stage, preparation=True),
+                               input=self._preparation_script(stage), timeout=_SSH_TIMEOUT)
+        if result.returncode:
+            raise SlurmError(f"Dataset preparation sbatch failed: {(result.stderr or result.stdout).strip()[-2000:]}")
+        lines = result.stdout.strip().splitlines()
+        scheduler_id = lines[-1].split(";", 1)[0] if lines else ""
+        if not _JOB_ID.fullmatch(scheduler_id):
+            raise SlurmError(f"Dataset preparation returned an invalid scheduler identity: {result.stdout.strip()!r}")
+        record["scheduler_id"] = scheduler_id
+        preparation["scheduler_id"] = scheduler_id
+        preparation.setdefault("scheduler_ids", []).append(scheduler_id)
+        record.setdefault("scheduler_ids", []).append(scheduler_id)
+        self.store.update(job_id, slurm=record)
+        cancelled = False
+        while True:
+            raw = self.store.internal(job_id)
+            if not cancelled and (self._stopping.is_set() or (raw and raw.get("cancel_requested"))):
+                error = self._stop_container(job_id)
+                if error:
+                    raise SlurmError(error)
+                cancelled = True
+            state, exit_code = self._scheduler_state(scheduler_id)
+            if state in {"COMPLETED", "FAILED", "CANCELLED", "TIMEOUT", "OUT_OF_MEMORY",
+                         "NODE_FAIL", "PREEMPTED", "BOOT_FAIL", "DEADLINE"}:
+                break
+            time.sleep(_POLL_SECONDS)
+        record["attempt_active"] = False
+        preparation["state"] = state
+        preparation["exit_code"] = exit_code
+        self.store.update(job_id, slurm=record)
+        if cancelled:
+            return
+        if state != "COMPLETED" or exit_code != "0:0":
+            raise SlurmError(f"Dataset preparation allocation {scheduler_id} finished in state {state or 'UNKNOWN'} with exit code {exit_code or 'unknown'}.")
+
+    def _preparation_script(self, stage: str) -> str:
+        snapshot, source, data_root = stage + "/snapshot", stage + "/source", stage + "/dataset-data"
+        return "\n".join((
+            "#!/bin/bash", "set -eu",
+            f"singularity exec --cleanenv --containall --no-home --bind {shlex.quote(snapshot + ':/job:ro')} "
+            f"--bind {shlex.quote(source + ':/app:ro')} --bind {shlex.quote(data_root + ':/dataset-data:rw')} "
+            f"{shlex.quote(config.SLURM_IMAGE)} env PYTHONPATH=/app "
+            "python -m backend.remote_data --snapshot /job --data-root /dataset-data",
+            ""))
 
     def _source_archive(self, job_id: str) -> bytes:
         repo = config.REPOSITORY_ROOT
@@ -340,19 +421,29 @@ class SlurmJobRunner(JobRunner):
 
     def _sbatch_arguments(self, job_id: str, stage: str) -> str:
         seconds = self._allocation_seconds()
-        reserve = min(60, max(1, seconds // 10))
+        reserve = (min(300, max(1, seconds // 4)) if config.SLURM_GPUS else
+                   min(60, max(1, seconds // 10)))
         values = ["--partition", config.SLURM_PARTITION, "--time", config.SLURM_TIME,
                   "--mem", config.SLURM_MEMORY, "--cpus-per-task", str(config.SLURM_CPUS),
                   "--signal", f"B:USR1@{reserve}",
                   "--job-name", f"nnm-{job_id[:8]}", "--output", stage + "/output/worker-%j.log",
                   "--error", stage + "/output/worker-%j.log"]
+        if config.SLURM_GPUS:
+            values.extend(["--gres", f"gpu:{config.SLURM_GPUS}"])
         return " ".join(shlex.quote(value) for value in values)
 
-    def _submit_command(self, job_id: str, stage: str) -> str:
+    def _submit_command(self, job_id: str, stage: str, *, preparation: bool = False) -> str:
         receipt = shlex.quote(stage + "/scheduler.id")
         temporary = shlex.quote(stage + "/scheduler.id.tmp")
+        arguments = self._sbatch_arguments(job_id, stage)
+        if preparation:
+            args = ["--partition", config.SLURM_PARTITION, "--time", config.SLURM_TIME,
+                    "--mem", config.SLURM_MEMORY, "--cpus-per-task", str(config.SLURM_CPUS),
+                    "--job-name", f"nnm-data-{job_id[:8]}", "--output", stage + "/output/preparation-%j.log",
+                    "--error", stage + "/output/preparation-%j.log"]
+            arguments = " ".join(shlex.quote(value) for value in args)
         return (f"scheduler_id=$(rm -f -- {receipt} {temporary} && "
-                f"sbatch --parsable {self._sbatch_arguments(job_id, stage)}) && "
+                f"sbatch --parsable {arguments}) && "
                 f"printf '%s\\n' \"$scheduler_id\" > {temporary} && "
                 f"mv -- {temporary} {receipt} && printf '%s\\n' \"$scheduler_id\"")
 
@@ -366,10 +457,14 @@ class SlurmJobRunner(JobRunner):
             'mv -f -- "$tmp" "$output/checkpoint-request.${SLURM_JOB_ID}"\' USR1',
             "set +e",
             "singularity exec --cleanenv --containall --no-home --net --network none "
+            + ("--nv " if config.SLURM_GPUS else "") +
             "--env OMP_NUM_THREADS=2 --env MKL_NUM_THREADS=2 --env OPENBLAS_NUM_THREADS=2 "
             "--env PYTHONPATH=/app:/app/python/nnmodelling-runtime/src "
             '--env NNMODELLING_SCHEDULER_ID=${SLURM_JOB_ID} '
             '--env NNMODELLING_CHECKPOINT_REQUEST=/output/checkpoint-request.${SLURM_JOB_ID} '
+            '--env NNMODELLING_DATASET_DATA_ROOT=/dataset-data '
+            + ("--env NNMODELLING_WORKER_DEVICE=cuda " if config.SLURM_GPUS else "") +
+            f"--bind {shlex.quote(stage + '/dataset-data:/dataset-data:ro')} "
             f"--bind {shlex.quote(snapshot + ':/job:ro')} "
             f"--bind {shlex.quote(source + ':/app:ro')} "
             f"--bind {shlex.quote(output + ':/output:rw')} {shlex.quote(config.SLURM_IMAGE)} "
@@ -388,30 +483,30 @@ class SlurmJobRunner(JobRunner):
         hours, minutes, seconds = (int(part) for part in value.split(":"))
         return days * 86400 + hours * 3600 + minutes * 60 + seconds
 
-    def _validate_checkpoint(self, job_id: str, scheduler_id: str, prior_step: int) -> int:
-        output = self.store.job_dir(job_id) / "output"
-        manifest_path = output / "checkpoint.json"
-        payload_path = output / "checkpoint.safetensors"
+    def _validate_checkpoint(self, stage: str, job_id: str, scheduler_id: str, prior_step: int) -> int:
+        output = shlex.quote(stage + "/output")
+        code = (
+            "import hashlib,json,os,pathlib,sys; "
+            "root=pathlib.Path(sys.argv[1]); m=root/'checkpoint.json'; t=root/'checkpoint.safetensors'; "
+            "assert not m.is_symlink() and not t.is_symlink() and m.is_file() and t.is_file(); "
+            f"assert m.stat().st_size <= {_MAX_CHECKPOINT_MANIFEST_BYTES}; "
+            "v=json.loads(m.read_text()); "
+            f"assert type(v.get('version')) is int and v.get('version') == 1 and v.get('job_id') == {job_id!r} and v.get('scheduler_id') == {scheduler_id!r}; "
+            f"assert type(v.get('global_step')) is int and v['global_step'] > {prior_step}; "
+            f"assert type(v.get('tensor_size')) is int and v['tensor_size'] == t.stat().st_size <= {_MAX_TRANSFER_BYTES}; "
+            "h=hashlib.sha256(); f=t.open('rb'); "
+            "[h.update(b) for b in iter(lambda:f.read(1048576),b'')]; "
+            "assert h.hexdigest() == v.get('tensor_sha256'); print(v['global_step'])"
+        )
+        result = self._ssh_run(f"python3 -c {shlex.quote(code)} {output}", timeout=180)
+        if result.returncode:
+            detail = (result.stderr or result.stdout).strip()[-1500:]
+            raise SlurmError(f"Slurm handoff checkpoint failed remote validation: {detail or 'missing or invalid files'}")
         try:
-            if manifest_path.stat().st_size > _MAX_CHECKPOINT_MANIFEST_BYTES:
-                raise SlurmError("Checkpoint manifest exceeds its size limit.")
-            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-            payload_size = payload_path.stat().st_size
-            if payload_size > _MAX_TRANSFER_BYTES:
-                raise SlurmError("Checkpoint payload exceeds the transfer limit.")
-            with payload_path.open("rb") as payload:
-                digest = hashlib.file_digest(payload, "sha256").hexdigest()
-        except (OSError, UnicodeError, json.JSONDecodeError) as error:
-            raise SlurmError(f"Slurm handoff checkpoint is missing or invalid: {error}") from error
-        if (not isinstance(manifest, dict) or type(manifest.get("version")) is not int or manifest["version"] != 1
-                or manifest.get("job_id") != job_id or manifest.get("scheduler_id") != scheduler_id
-                or type(manifest.get("global_step")) is not int or manifest["global_step"] <= prior_step
-                or type(manifest.get("tensor_size")) is not int or manifest["tensor_size"] != payload_size
-                or not isinstance(manifest.get("tensor_sha256"), str)
-                or not re.fullmatch(r"[0-9a-f]{64}", manifest["tensor_sha256"])
-                or manifest["tensor_sha256"] != digest):
-            raise SlurmError("Slurm handoff checkpoint failed identity, progress, size, or hash validation.")
-        return manifest["global_step"]
+            step = int(result.stdout.strip())
+        except ValueError as error:
+            raise SlurmError("Slurm handoff checkpoint validation returned invalid progress.") from error
+        return step
 
     def _ssh_argv(self, host: str | None = None, ssh_executable: str | None = None) -> list[str]:
         ssh_executable = ssh_executable or config.SLURM_SSH
@@ -461,26 +556,29 @@ class SlurmJobRunner(JobRunner):
     def _publish_metrics(self, job_id: str, stage: str) -> None:
         path = shlex.quote(stage + "/output/metrics.json")
         command = (f"[ ! -L {path} ] || {{ echo 'metrics symlink rejected' >&2; exit 45; }}; "
-                   f"[ -f {path} ] || exit 1; size=$(wc -c < {path}) || exit $?; "
+                   f"[ -f {path} ] || exit {_REMOTE_METRICS_MISSING}; size=$(wc -c < {path}) || exit $?; "
                    f"[ \"$size\" -le {config.MAX_METRICS_BYTES} ] || {{ echo 'metrics exceed limit' >&2; exit 42; }}; "
                    f"cat -- {path}")
         result = self._ssh_run(command, timeout=_SSH_TIMEOUT)
+        if result.returncode == _REMOTE_METRICS_MISSING:
+            return
         if result.returncode == 42:
             raise SlurmError("Remote metrics exceed the 64 MiB publication limit.")
         if result.returncode == 45:
             raise SlurmError("Remote metrics file is a symbolic link; refusing retrieval.")
         if result.returncode:
-            if result.returncode == 1 and not result.stderr:
-                return
             detail = (result.stderr or result.stdout).strip()[-1000:]
             raise SlurmError(f"Could not read remote metrics: {detail or f'exit {result.returncode}'}")
         data = result.stdout.encode("utf-8")
         if len(data) > config.MAX_METRICS_BYTES:
             raise SlurmError("Remote metrics exceed the 64 MiB publication limit.")
         output = self.store.job_dir(job_id) / "output"
-        temporary = output / "metrics.remote.tmp"
         destination = output / "metrics.json"
-        temporary.write_bytes(data)
+        with tempfile.NamedTemporaryFile(dir=output, prefix=".metrics-", delete=False) as target:
+            temporary = Path(target.name)
+            target.write(data)
+            target.flush()
+            os.fsync(target.fileno())
         try:
             if _read_metrics(temporary) is None:
                 raise SlurmError("Remote metrics file is not a complete valid publication.")
@@ -491,31 +589,47 @@ class SlurmJobRunner(JobRunner):
     def _retrieve_output(self, job_id: str, stage: str) -> None:
         output = shlex.quote(stage + "/output")
         command = (
-            f"cd {output} && total=0 && set -- && "
-            "for f in metrics.json metrics.tmp weights.safetensors checkpoint.safetensors checkpoint.json worker-*.log worker.log *.whl; do "
+            f"cd {output} && total=0 && count=0 && set -- && "
+            "for f in metrics.json metrics.tmp weights.safetensors worker-*.log worker.log preparation-*.log *.whl; do "
             "if [ -e \"$f\" ] || [ -L \"$f\" ]; then "
             "[ ! -L \"$f\" ] || { echo 'linked output rejected' >&2; exit 43; }; "
+            f"count=$((count + 1)); [ \"$count\" -le {config.MAX_FILES} ] || {{ echo 'too many output files' >&2; exit 46; }}; "
             "size=$(stat -c %s -- \"$f\") || exit $?; total=$((total + size)); set -- \"$@\" \"$f\"; "
             f"fi; done && [ \"$total\" -le {_MAX_TRANSFER_BYTES} ] || "
             "{ echo 'output exceeds transfer limit' >&2; exit 44; }; "
             "if [ \"$#\" -gt 0 ]; then tar -cf - -- \"$@\"; else tar -cf - --files-from /dev/null; fi")
-        result = self._ssh_run(command, timeout=180, binary_output=True)
-        if result.returncode:
-            if result.returncode == 44:
-                raise SlurmError("Remote output files exceed the 1 GiB transfer limit.")
-            raise SlurmError(f"Could not retrieve Slurm output: {(result.stderr or result.stdout).strip()[-1500:]}")
-        archive = result.stdout if isinstance(result.stdout, bytes) else result.stdout.encode()
-        if len(archive) > _MAX_TRANSFER_BYTES:
-            raise SlurmError("Remote output archive exceeds the 1 GiB transfer limit.")
-        self._extract_output_archive(job_id, archive)
+        with tempfile.TemporaryFile() as errors:
+            process = subprocess.Popen(self._ssh_argv() + [command], stdin=subprocess.DEVNULL,
+                                       stdout=subprocess.PIPE, stderr=errors)
+            try:
+                if process.stdout is None:
+                    raise SlurmError("SSH output stream was not available.")
+                self._extract_output_archive(job_id, process.stdout, streaming=True)
+                status = process.wait(timeout=_ARTIFACT_TRANSFER_TIMEOUT)
+            except Exception:
+                if process.poll() is None:
+                    process.kill()
+                process.wait()
+                raise
+            if status:
+                errors.seek(0)
+                detail = errors.read().decode("utf-8", errors="replace").strip()[-1500:]
+                if status == 44:
+                    raise SlurmError("Remote output files exceed the configured 64 GiB artifact limit.")
+                if status == 46:
+                    raise SlurmError("Remote output contains too many files.")
+                raise SlurmError(f"Could not retrieve Slurm output: {detail or f'exit {status}'}")
 
-    def _extract_output_archive(self, job_id: str, archive: bytes) -> None:
-        if len(archive) > _MAX_TRANSFER_BYTES:
-            raise SlurmError("Remote output archive exceeds the 1 GiB transfer limit.")
+    def _extract_output_archive(self, job_id: str, archive: bytes | BinaryIO, *, streaming: bool = False) -> None:
+        if isinstance(archive, bytes) and len(archive) > _MAX_ARCHIVE_BYTES:
+            raise SlurmError("Remote output archive exceeds the configured artifact limit.")
         output = self.store.job_dir(job_id) / "output"
         seen: set[str] = set()
         total = 0
-        with tarfile.open(fileobj=io.BytesIO(archive), mode="r:*") as source:
+        stream = archive if not isinstance(archive, bytes) else io.BytesIO(archive)
+        if streaming:
+            stream = _BoundedReader(stream, _MAX_ARCHIVE_BYTES)
+        with tarfile.open(fileobj=stream, mode="r|*" if streaming else "r:*") as source:
             for member in source:
                 if member.isdir() and member.name in {".", "./"}:
                     continue
@@ -529,22 +643,29 @@ class SlurmJobRunner(JobRunner):
                     if member.size < 0 or member.size > config.MAX_METRICS_BYTES:
                         raise SlurmError("Remote transient metrics exceed the 64 MiB publication limit.")
                     continue
-                if (name not in {"metrics.json", "weights.safetensors", "worker.log", "checkpoint.json", "checkpoint.safetensors"}
-                        and not re.fullmatch(r"worker-[0-9]+\.log", name) and not name.endswith(".whl")):
+                if (name not in {"metrics.json", "weights.safetensors", "worker.log"}
+                        and not re.fullmatch(r"(?:worker|preparation)-[0-9]+\.log", name) and not name.endswith(".whl")):
                     raise SlurmError(f"Remote output archive contains an unexpected file: {name!r}")
                 if name in seen or member.size < 0 or member.size > _MAX_TRANSFER_BYTES:
                     raise SlurmError(f"Remote output archive contains a duplicate or oversized file: {name!r}")
+                if len(seen) >= config.MAX_FILES:
+                    raise SlurmError("Remote output archive contains too many files.")
                 total += member.size
                 if total > _MAX_TRANSFER_BYTES:
-                    raise SlurmError("Remote output files exceed the 1 GiB transfer limit.")
+                    raise SlurmError("Remote output files exceed the configured 64 GiB artifact limit.")
                 data = source.extractfile(member)
                 if data is None:
                     raise SlurmError(f"Could not read remote output file {name!r}.")
                 destination = output / name
-                temporary = output / f".{name}.remote.tmp"
-                with temporary.open("wb") as target:
+                with tempfile.NamedTemporaryFile(dir=output, prefix=f".{name}.", delete=False) as target:
+                    temporary = Path(target.name)
                     shutil.copyfileobj(data, target, length=1024 * 1024)
-                os.replace(temporary, destination)
+                    target.flush()
+                    os.fsync(target.fileno())
+                try:
+                    os.replace(temporary, destination)
+                finally:
+                    temporary.unlink(missing_ok=True)
                 seen.add(name)
 
     def _local_log_tail(self, job_id: str) -> str:

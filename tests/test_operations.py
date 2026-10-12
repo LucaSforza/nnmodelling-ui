@@ -147,10 +147,12 @@ def test_wheel_exposes_codec_methods_and_generic_operation(tmp_path):
     code = (
         "import sys,zipfile,tempfile,importlib; "
         f"z=zipfile.ZipFile({str(wheel)!r}); d=tempfile.mkdtemp(); z.extractall(d); sys.path.insert(0,d); "
-        "m=importlib.import_module('nnmodel_operation_test').Model(); import torch; "
+        "m=importlib.import_module('nnm_op_fixture').Model(); import torch; "
+        "legacy=importlib.import_module('nnmodel_operation_test').Model(); "
         "assert m.encode([2]).tolist()==[10.0]; assert m.decode(torch.tensor([4.0]))==[12.0]; "
         "assert m.run_operation('decode', torch.tensor([2.0]))==[6.0]; "
-        "assert m.infer([2])==[30.0] and m.inference([2])==[30.0]"
+        "assert m.infer([2])==[30.0] and m.inference([2])==[30.0]; "
+        "assert legacy.infer([2])==[30.0]"
     )
     subprocess.run([sys.executable, "-c", code], check=True, env=env)
 

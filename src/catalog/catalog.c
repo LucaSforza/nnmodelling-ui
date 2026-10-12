@@ -19,6 +19,7 @@ static void package_dispose(Package *p) {
   free((char *)p->pub.kind);
   free((char *)p->pub.color);
   free((char *)p->pub.inference_file);
+  free((char *)p->pub.parameters_file);
   for (i = 0; p->outputs && i < p->pub.output_count; ++i) {
     free((char *)p->outputs[i].id);
     free((char *)p->outputs[i].type);
@@ -63,7 +64,7 @@ static bool load_package(NNCatalog *cat, const char *root, const char *rel,
                          const char *expected_id, const char *expected_version,
                          char *err, size_t cap) {
   char dir[PATH_MAX], manifest_path[PATH_MAX], def_path[PATH_MAX],
-      inference_path[PATH_MAX];
+      inference_path[PATH_MAX], parameters_path[PATH_MAX];
   char manifest_rel[PATH_MAX], def_rel[PATH_MAX], inf_rel[PATH_MAX];
   char *buf = NULL;
   size_t len;
@@ -111,6 +112,21 @@ static bool load_package(NNCatalog *cat, const char *root, const char *rel,
       ok = false;
       nn_errorf(err, cap, "invalid package entrypoint path: %s", rel);
       goto done;
+    }
+    if (item.pub.parameters_file) {
+      struct stat parameters_info;
+      char parameters_rel[PATH_MAX];
+      if (snprintf(parameters_rel, sizeof(parameters_rel), "%s/%s", rel,
+                   item.pub.parameters_file) >= (int)sizeof(parameters_rel) ||
+          !nn_catalog_checked_path(root, parameters_rel, false, parameters_path) ||
+          !nn_catalog_under_path(root, parameters_path) ||
+          lstat(parameters_path, &parameters_info) != 0 ||
+          parameters_info.st_size < 0 ||
+          (size_t)parameters_info.st_size > 1024u * 1024u) {
+        ok = false;
+        nn_errorf(err, cap, "invalid parameter count entrypoint path: %s", rel);
+        goto done;
+      }
     }
   }
   {

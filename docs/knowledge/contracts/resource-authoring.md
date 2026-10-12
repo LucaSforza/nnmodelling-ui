@@ -156,3 +156,87 @@ are rejected. Successful update saves current graph edits, clears dirty state,
 invalidates analysis and creates the same history barrier as resource creation.
 The two-file operation has runtime rollback; no new crash-recovery/file schema.
 Native client edits metadata only and never executes or edits Python/sample files.
+
+## miniDeepSeekv4 1B checkpoint (accepted 2026-10-08)
+
+The previous miniDeepSeekv4 directory was a tiny-decoder copy, not V4. Replace
+its example resources with an explicitly scaled V4 architecture following
+supplied arXiv 2606.19348v1 sections 2 and 4 plus official inference reference.
+Principal authors these model-specific resources; GPT-6 Luna owns software fixes.
+GUI composes editable subflows and individual embedding, normalization, mHC,
+attention, MoE, head and MTP nodes. A single opaque DeepSeek decoder stereotype
+is rejected by the user. Generic graph services execute this topology; there is
+no DeepSeek package-ID switch in C or Python graph runtime.
+
+Keep four residual streams and 20 Sinkhorn iterations, sigmoid pre/2*sigmoid
+post, RMS-normalized dynamic mHC mappings, shared-KV MQA, low-rank queries and
+grouped output projection, sliding window 128, partial RoPE and inverse output
+RoPE, learnable sinks, CSA overlap compression ratio4 plus lightning indexer,
+HCA non-overlap ratio128, and early token-ID hash MoE followed by learned
+sqrt(softplus) routing. MoE has one shared and fine-grained routed SwiGLU experts,
+bias-only auxiliary-loss-free balancing update .001 and sequence balance loss
+weight .0001. MTP depth1 shares embedding/head with main path, weight .3.
+
+Scale width/layers/expert counts to approximately 1 billion registered model
+parameters; publish exact total/trainable count from Lua and actual PyTorch
+without padding or unused trainable tensors. Original 128K-family tokenizer is
+an immutable inference asset. FP32/BF16 reference math replaces FP8/FP4 kernels
+because available Quadro hardware lacks these formats. No claim of 1M context,
+production kernel efficiency, original 32T-token data mixture or original-model
+quality. Training context is selected explicitly for available GPU memory.
+CSA indexer receives a detached attention-distribution distillation objective
+so top-k selection does not leave it untrained. Causality masks allow only fully
+completed prior compression blocks and current/recent window tokens. Tests
+must perturb future tokens and verify unchanged earlier logits.
+
+The shared vocabulary-head node returns [B,T,2,V] (main and one-step MTP
+logits). Explicit joins sum balance/indexer auxiliary losses from visible
+subflows. Next-token projection selects main logits;
+objective joins head logits and aggregated auxiliary loss plus declared target tensor,
+computing main CE + .3*MTP CE on valid shifted positions + auxiliary loss.
+Prediction omits objective targets. Only one owner registers shared embedding
+and head parameters; MTP reuses them without duplicate counts.
+
+Dataset: public HuggingFaceFW/fineweb-edu sample/10BT, immutable revision
+87f09149ef4734204d70ed1d046ddc9ca3f2b8f9, size/hash-pinned Parquet files acquired
+on Slurm. Adapter reads row batches lazily and creates nonoverlapping token
+windows within individual documents, so unrelated documents never attend across
+boundaries. Deterministic SHA256(document id) partitions train/validation/test;
+held-out evaluation uses explicit bounded document budgets. Training budget
+chosen by user is 100 million processed training tokens, first checkpoint;
+report actual tokens and updates, never call it complete 10BT pretraining.
+Inference code belongs under user-requested examples/implmentation/miniDeepSeekv4.
+
+The first 100M-token miniDeepSeekv4 checkpoint acquires the first two pinned
+Parquet shards of FineWeb-Edu sample/10BT (about 4 GiB), sufficient source
+material beyond its budget. The manifest records this explicit subset;
+additional corpus shards can be declared without an aggregate download cap.
+
+## Editable V4 subflows (user refinement 2026-10-08)
+
+Root embedding is computed once and fanned out to main/MTP paths. Stream-expand
+produces [B,T,4,D]. Main depth is: two SWA/hash blocks, one CSA/hash block, one
+HCA/learned block, and five editable pairs of CSA/learned + HCA/learned blocks.
+Each repeated owner is a project-owned two-output subflow: normal residual
+state and explicitly summed scalar auxiliary loss. Its body is a real graph
+with Input, mHC pre/select/merge, RMSNorm, attention, MoE, loss join, Output and
+Loss Output nodes. Repeat owns independent built subflow copies; Lua counts
+body parameters multiplied by times. Users can enter/expand all bodies.
+
+mHC-pre owns dynamic/base/scale parameters and emits one ordinary float tensor
+packing original residual streams, mixed sublayer input, post weights and
+residual matrix. These are tensor values, not Python hidden state. Stateless
+mHC-select exposes mixed input; mHC-merge joins that pack and the sublayer
+output and implements residual mixing. The format is local to these resources
+and validated by dimension/stream parameters. Norms remain separate visible
+nodes. Token IDs for hash routing are declared batch.inputs.tokens bindings,
+retaining integer dtype; tokens are never encoded in floating residual state.
+
+Main and MTP each have visible mHC-head collapse and final RMSNorm. MTP uses
+shifted original embeddings and previous residual streams, separate visible
+RMSNorm and linear projections, a stateless fusion join, and one editable
+CSA/learned block. A feature-stack join pads the MTP tail with zeros and stacks
+main/MTP hidden vectors; one vocabulary projection applies shared weights to
+both, without duplicate ownership. Embedding/head use AdamW; block projection
+matrices use the accepted Muon policy. Existing obsolete decoder resources are
+not activated or used as an alternative execution path.

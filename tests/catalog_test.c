@@ -15,6 +15,10 @@ static void write_text(const char *path, const char *text) {
     assert(fclose(f) == 0);
 }
 
+static void make_path(char *out, size_t capacity, const char *left, const char *right) {
+    assert(snprintf(out, capacity, "%s/%s", left, right) < (int)capacity);
+}
+
 static void make_package(const char *root, const char *folder, const char *id,
                          const char *deps) {
     char path[1024];
@@ -47,6 +51,11 @@ int main(void) {
     char project[1024], packages[2048];
     assert(catalog && error[0] == '\0');
     assert(nn_catalog_count(catalog) == 26);
+    for (size_t i = 0; i < nn_catalog_count(catalog); ++i) {
+        package = nn_catalog_at(catalog, i);
+        assert(package && package->parameters_file &&
+               !strcmp(package->parameters_file, "parameters.lua"));
+    }
     package = nn_catalog_find(catalog, "core.horizontal-repeat", "0.1.0");
     assert(package && package->dependency_count == 1);
     assert(strcmp(package->dependencies[0].id, "core.concat") == 0);
@@ -70,6 +79,8 @@ int main(void) {
     assert(package && package->parameter_count == 1);
     assert(!strcmp(package->parameters[0].key, "times"));
     assert(package->parameters[0].position && !strcmp(package->parameters[0].position, "top"));
+    package = nn_catalog_find(catalog, "core.linear", "0.1.0");
+    assert(package && !strcmp(package->parameters_file, "parameters.lua"));
     nn_catalog_free(catalog);
 
     assert(mkdtemp(temp));
@@ -81,6 +92,39 @@ int main(void) {
         catalog = nn_catalog_load("stereotype-packages/core", project, &good, 1, error, sizeof(error));
         assert(catalog && nn_catalog_find(catalog, good.id, good.version));
         nn_catalog_free(catalog);
+        char package_dir[8192], manifest_path[8192], parameter_path[8192];
+        make_path(package_dir, sizeof(package_dir), packages, "custom");
+        make_path(manifest_path, sizeof(manifest_path), package_dir, "manifest.json");
+        make_path(parameter_path, sizeof(parameter_path), package_dir, "parameters.lua");
+        write_text(manifest_path,
+            "{\"schemaVersion\":1,\"id\":\"custom.fixture\",\"version\":\"1.0.0\","
+            "\"dependencies\":{},\"entrypoints\":{\"definition\":\"stereotype.json\","
+            "\"inference\":{\"language\":\"lua\",\"file\":\"inference.lua\"},"
+            "\"parameters\":{\"language\":\"lua\",\"file\":\"parameters.lua\"}}}");
+        write_text(parameter_path, "return function() return {status='success',total=0,trainable=0} end");
+        catalog = nn_catalog_load("stereotype-packages/core", project, &good, 1, error, sizeof(error));
+        assert(catalog && !strcmp(nn_catalog_find(catalog, good.id, good.version)->parameters_file,
+                                   "parameters.lua"));
+        nn_catalog_free(catalog);
+        write_text(manifest_path,
+            "{\"schemaVersion\":1,\"id\":\"custom.fixture\",\"version\":\"1.0.0\","
+            "\"dependencies\":{},\"entrypoints\":{\"definition\":\"stereotype.json\","
+            "\"inference\":{\"language\":\"lua\",\"file\":\"inference.lua\"},"
+            "\"parameters\":{\"language\":\"lua\",\"file\":\"../outside.lua\"}}}");
+        expect_invalid(project, good);
+        write_text(manifest_path,
+            "{\"schemaVersion\":1,\"id\":\"custom.fixture\",\"version\":\"1.0.0\","
+            "\"dependencies\":{},\"entrypoints\":{\"definition\":\"stereotype.json\","
+            "\"inference\":{\"language\":\"lua\",\"file\":\"inference.lua\"},"
+            "\"parameters\":{\"language\":\"lua\",\"file\":\"parameters.lua\"}}}");
+        assert(unlink(parameter_path) == 0);
+        char outside_path[2048];
+        snprintf(outside_path, sizeof(outside_path), "%s/outside.lua", project);
+        write_text(outside_path, "return function() end");
+        assert(symlink(outside_path, parameter_path) == 0);
+        expect_invalid(project, good);
+        assert(unlink(parameter_path) == 0);
+        write_text(parameter_path, "return function() return {status='success',total=0,trainable=0} end");
         NNResourceRef bad_identity = {"custom.wrong", "1.0.0", "packages/custom"};
         expect_invalid(project, bad_identity);
         NNResourceRef traversal = {"custom.fixture", "1.0.0", "../outside"};

@@ -8,6 +8,10 @@
     "inference": {
       "language": "lua",
       "file": "inference.lua"
+    },
+    "parameters": {
+      "language": "lua",
+      "file": "parameters.lua"
     }
   }
 }

@@ -1,0 +1,9 @@
+[project]
+name = "nnmodelling-minideepseekv4-inference"
+version = "0.1.0"
+description = "Greedy inference consumer for an exported miniDeepSeekv4 model wheel"
+requires-python = ">=3.11"
+dependencies = ["torch>=2.6", "tokenizers>=0.21"]
+
+[tool.uv]
+package = false

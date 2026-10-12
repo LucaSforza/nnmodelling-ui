@@ -51,3 +51,35 @@ then submits another allocation against same logical job and remote directory.
 Only final weights and wheel are served as artifacts after test evaluation.
 Metrics and outputs return through bounded SSH transfers and existing local result
 validation.
+
+Accepted 2026-10-08: Slurm runner owns a separately recorded public HF corpus
+preparation allocation before the isolated training allocation. Preparation
+streams revision/size/hash-pinned files into a job-owned data root; training
+binds it read-only and DatasetAdapter.data_directory resolves this root.
+Cancellation covers the current recorded preparation or training scheduler ID.
+GPU count flows Qt profile -> local service configuration -> sbatch GRES ->
+Singularity --nv -> CUDA worker; unavailable CUDA is an error. Final artifacts
+stream atomically; checkpoint tensors remain remote between allocations.
+Worker owns mixed Muon/AdamW, device/autocast, accumulation, token count and CUDA
+RNG; graph packages annotate optimizer exclusions without model-ID coupling.
+
+GPU handoff reserve is min(300 seconds, allocation/4); CPU handoff retains
+min(60 seconds, allocation/10), with a one-second lower bound.
+
+MiniDeepSeek is an editable graph of repeated block subflows and component
+nodes; no monolithic decoder owns the trainable model. Root batch-input context
+serves declared input bindings through nested subflows, while their boundary
+tensors and explicitly mapped outputs retain ordinary graph ownership.
+
+Slurm startup publication: `SlurmRunner` polls the remote metrics file. A dedicated
+missing-file status keeps the job running until the first atomic publication.
+Transport errors and validation failures still fail the job; informational SSH
+stderr is not used to decide whether the remote file exists.
+
+
+Accepted 2026-10-09: new exports use project identity for both distribution and
+public Python import; a thin job-specific alias preserves compatibility.
+Worker owns epoch-based early stopping, minimum-validation tensor selection
+and patience state. Checkpoint owns the same best state across Slurm handoff;
+final test/export uses restored best weights. Qt presents frozen controls and
+selection evidence, while JobStore validates optional early-stopping metrics.

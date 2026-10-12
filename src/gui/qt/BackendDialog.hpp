@@ -54,6 +54,16 @@ private:
     QLineEdit *learningRate_ = nullptr;
     QLineEdit *seed_ = nullptr;
     QLineEdit *publishEverySteps_ = nullptr;
+    QComboBox *device_ = nullptr;
+    QComboBox *precision_ = nullptr;
+    QComboBox *optimizer_ = nullptr;
+    QLineEdit *weightDecay_ = nullptr;
+    QLineEdit *gradientClip_ = nullptr;
+    QLineEdit *warmupSteps_ = nullptr;
+    QLineEdit *maxSteps_ = nullptr;
+    QLineEdit *gradientAccumulationSteps_ = nullptr;
+    QLineEdit *earlyStoppingPatience_ = nullptr;
+    QLineEdit *earlyStoppingMinDelta_ = nullptr;
     QLabel *status_ = nullptr;
     QLabel *configurationStatus_ = nullptr;
     QLabel *finalTestLoss_ = nullptr;
@@ -76,6 +86,7 @@ private:
     QLineEdit *slurmCpus_ = nullptr;
     QLineEdit *slurmMemory_ = nullptr;
     QLineEdit *slurmTime_ = nullptr;
+    QLineEdit *slurmGpus_ = nullptr;
     QPushButton *managedBackendButton_ = nullptr;
     QString selectedJob_;
     QString jobsEndpointInFlight_;

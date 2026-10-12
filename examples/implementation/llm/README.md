@@ -20,14 +20,30 @@ installing it:
 ```sh
 uv run --no-project python download_wheel.py
 uv sync --locked
+uv run --locked python install_wheel.py wheels/nnm_tiny_decoder_llm-0.1.0-py3-none-any.whl
 uv run --locked python main.py --tokens 200
 ```
 
 The downloader defaults to `http://127.0.0.1:8765`; use `--base-url` if the
 local service listens elsewhere. It keeps the wheel under the ignored
-`wheels/` directory and rejects a mismatched hash. To use the compatible
-safetensors file from the same job, pass `--weights /path/to/weights.safetensors`.
-The default uses weights bundled in the wheel.
+`wheels/` directory and rejects a mismatched hash. `install_wheel.py` accepts any
+local wheel path with the expected `nnm-tiny-decoder-llm` distribution identity
+and reinstalls it into the active uv environment, including when its version
+matches the installed wheel. New wheels import as `nnm_tiny_decoder_llm`; the consumer also discovers the
+legacy job-named import from installed wheel metadata. To use the
+compatible safetensors file from the same job, pass
+`--weights /path/to/weights.safetensors`. The default uses weights bundled in
+the wheel.
+
+To fetch a wheel from a newer job, select its ID and optionally pin its hash:
+
+```sh
+uv run --no-project python download_wheel.py --job-id JOB_ID --sha256 SHA256
+uv run --locked python install_wheel.py wheels/nnm_tiny_decoder_llm-0.1.0-py3-none-any.whl
+```
+
+When `--sha256` is omitted for a nonhistorical job, the downloader still checks
+that the artifact is a wheel for `nnm_tiny_decoder_llm`.
 
 Try a different prompt or generation length with:
 

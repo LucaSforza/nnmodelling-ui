@@ -280,3 +280,18 @@ already covered by a checkpoint. A signal is honored at the next optimizer-step
 boundary; a hard walltime kill before that boundary fails visibly without
 automatic continuation. Final weights and wheel are created only after test
 evaluation on the last allocation.
+
+Accepted 2026-10-08: after staging metadata, optional remoteFiles triggers an
+owned Slurm preparation job. It downloads directly from pinned public HF
+revision and validates size/SHA256 before publish. Runner observes success,
+then submits network-isolated GPU training with read-only data binding. On
+checkpoint handoff, validate manifest and tensor hash remotely and submit next
+allocation without retrieving optimizer tensors. Final weights/wheel stream
+back to local JobStore. CUDA requests never fall back to CPU.
+
+
+Accepted 2026-10-09: at each completed epoch, when early stopping is enabled,
+worker compares full validation loss with prior best, captures every strict
+minimum and updates patience. A checkpoint carries best tensors and counters.
+On patience exhaustion or configured training end, restore best weights, run
+held-out test once, then publish final weights/wheel and completed status.

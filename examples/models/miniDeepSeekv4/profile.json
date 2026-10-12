@@ -1,0 +1,18 @@
+{
+  "vocab_size": 129280,
+  "dim": 512,
+  "layers": 14,
+  "streams": 4,
+  "hidden": 1120,
+  "experts": 32,
+  "active_experts": 4,
+  "heads": 8,
+  "head_dim": 128,
+  "q_rank": 128,
+  "o_groups": 2,
+  "o_rank": 128,
+  "index_heads": 4,
+  "index_dim": 64,
+  "topk": 64,
+  "window": 128
+}

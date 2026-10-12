@@ -1,49 +1,48 @@
-# Tiny Decoder LLM
+# miniDeepSeek V4: first 1B checkpoint
 
-A compact, executable decoder-only language model built from a blank native
-project. It keeps the decoder `Repeat` and its four-head `HorizontalRepeat`
-editable while expressing attention as ordinary graph nodes.
+Scaled implementation of the supplied DeepSeek-V4 report (`2606.19348v1`).
+Verified registered parameter total: **997,982,444**, all trainable.
+The editable component graph was composed through the native Qt application.
+Recursive Lua counts, meta-device construction and actual CUDA construction agree.
 
-The model uses a 65-token vocabulary, context length 128, model width 64, two
-decoder blocks, four attention heads of width 16, and a 256-wide feed-forward
-layer. Each attention head projects Q, K, and V separately, transposes K,
-computes `Q × Kᵀ / √16`, masks future positions, applies softmax, and multiplies
-by V. The four head outputs concatenate to width 64. A project-owned token
-cross-entropy module accepts logits `[B,T,V]` and targets `[B,T]` and reduces
-them to a scalar mean loss.
+Visible repeated subflows implement 14 blocks, width 512, four mHC residual streams, 32 routed
+experts (four active) plus one shared expert, SwiGLU width 1120, and one MTP
+block sharing token embedding and output weights. Attention uses shared KV,
+low-rank query and grouped output projections, attention sinks, partial RoPE,
+128-token sliding windows, CSA ratio 4 with overlap and a sparse indexer, and
+HCA ratio 128. First three MoE layers use token hashes; later layers use learned
+routing, load-bias updates and sequence balancing. The objective combines main
+cross-entropy, 0.3-weighted MTP loss and auxiliary losses. See each resource's
+`pytorch.py` and `parameters.lua` for executable mathematics.
 
-The project-owned causal-mask, token-loss, and legacy causal-attention
-resources each include PyTorch entrypoints and standalone `pyproject.toml`
-metadata. Attention scaling uses the preserved `core.scale` resource. The
-graph's explicit attention uses the generic core MatMul join; its build context
-receives the number of connected input edges, so each QK and attention-value
-multiplication constructs the correct two-input executor.
+This is a scaled research implementation. It uses FP32 parameters with BF16
+CUDA autocast and Muon/AdamW; it does not reproduce the paper's FP8/FP4 kernels,
+1M context, 32T-token corpus or reported model quality. This run is a first
+checkpoint, not a completed original-scale pretraining.
 
-The dataset is responsible for mapping raw text to token IDs and producing
-next-token targets. Its manifest carries the vocabulary as an inference asset;
-training samples stay separate from exported model resources. The graph is
-untrained until a backend training job writes weights.
+Corpus: [FineWeb-Edu sample/10BT](https://huggingface.co/datasets/HuggingFaceFW/fineweb-edu),
+revision `87f09149ef4734204d70ed1d046ddc9ca3f2b8f9`. The manifest acquires its
+first two Parquet shards directly on Slurm and verifies byte size and SHA256.
+Original [DeepSeek-V4 tokenizer](https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro/tree/main/inference),
+revision `b5968e9190ef611bbf34a7229255be88a0e937c1`, vocabulary 129,280.
+Document-ID SHA256 chooses deterministic held-out splits; 512-token windows
+never join documents. Training budget is **99,999,744** input tokens (100M
+rounded down to complete windows), with 128 validation and 128 test windows.
+Atomic token caches survive allocation handoffs without exporting corpus data.
 
-## Reproduce the full-corpus follow-up
+GPU calibration of the saved modular graph on Slurm job 1031863: Quadro RTX
+6000, CUDA PyTorch 2.6.0+cu124, BF16, sequence 512, batch 1, two real
+forward/backward/Muon updates. Parameter count 997,982,444; peak allocated
+12,876,547,072 bytes, reserved 13,698,596,864 bytes; second step 6.26 seconds.
+Losses 15.7616 and 15.8077 used synthetic tokens; this is not a trained
+checkpoint. Successful pretraining provenance will record the actual job
+and exported artifact after completion.
 
-After the first implementation commit, prepare a separate project copy using
-the verified cached Tiny Shakespeare source:
+Open this project in Qt, inspect **Model > Parameter counts**, then use
+**Training** with Slurm GPU allocation. Standalone inference consumer lives at
+`examples/implmentation/miniDeepSeekv4` (requested spelling).
 
-```sh
-uv run --group examples python tools/prepare_full_llm.py \
-  --output-project .computer-use/full-llm-project
-```
-
-The output path must not already exist. The command verifies the complete
-1,115,394-character source and its pinned SHA256, copies this project without
-environment/cache folders, and writes full-corpus splits, vocabulary and
-`training.json` into the new directory. The checked-in bounded fixture and this
-source project remain unchanged. It records the frozen 20-epoch configuration
-(batch 64, learning rate 0.001, seed 0, publish cadence 100), contiguous 80/10/10
-character offsets, complete 129-character windows at stride 128, and omitted
-tail counts. Expected windows: 6,971 train, 871 validation and 871 test. The
-full corpus, trained weights and wheel belong in local job artifacts, not Git.
-To train the generated project in the Qt application, open that new project,
-choose **Training**, and enter the values from its `training.json`: 20 epochs,
-batch size 64, learning rate 0.001, seed 0 and publish cadence 100. The dialog
-does not load that file automatically.
+Dataset preparation verified on Slurm: download job 1031849 and token probe
+1031852 both completed with exit 0:0. Actual split counts: 195,312 train windows
+(99,999,744 tokens), and 128 windows (65,536 tokens) each for validation/test.
+Both Parquet sizes and SHA256 hashes match the pinned manifest.

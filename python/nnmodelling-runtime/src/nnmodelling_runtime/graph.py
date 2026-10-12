@@ -19,6 +19,7 @@ from ._imports import resource_module
 
 _CURRENT_TARGETS = contextvars.ContextVar("nnmodelling_targets", default={})
 _CURRENT_INCLUDE_LOSS = contextvars.ContextVar("nnmodelling_include_loss", default=False)
+_CURRENT_ROOT_INPUTS = contextvars.ContextVar("nnmodelling_root_inputs", default=None)
 
 
 def _operation_table(model: dict[str, Any], nodes: Mapping[str, dict[str, Any]], catalog: _Catalog | None = None):
@@ -230,7 +231,17 @@ class _SubflowRunner(torch.nn.Module):
             raise ValueError("subflow execution exceeds 256 invocations")
         nested_targets = _CURRENT_TARGETS.get() if targets is None else targets
         nested_loss = _CURRENT_INCLUDE_LOSS.get() if include_loss is None else include_loss
-        result = graph._evaluate_scope(self.scope, {"": value}, nested_targets, include_loss=nested_loss, module_overrides=self.node_modules, override_keys=self._module_keys, depth=self.depth)
+        root_inputs = _CURRENT_ROOT_INPUTS.get() or {}
+        result = graph._evaluate_scope(
+            self.scope,
+            {"": value},
+            nested_targets,
+            include_loss=nested_loss,
+            module_overrides=self.node_modules,
+            override_keys=self._module_keys,
+            depth=self.depth,
+            root_inputs=root_inputs,
+        )
         return next(iter(result.values())) if len(result) == 1 else result
 
 
@@ -535,7 +546,19 @@ class GraphModule(torch.nn.Module):
             return (suffix, "")
         raise ValueError(f"unsupported input handle {handle!r}")
 
-    def _evaluate_scope(self, scope: str, bindings: Mapping[str, torch.Tensor], targets: Mapping[str, torch.Tensor], include_loss: bool, module_overrides=None, override_keys=None, depth: int = 0, selected_output: tuple[str, str] | None = None, injected: tuple[str, str, torch.Tensor] | None = None) -> dict[str, torch.Tensor]:
+    def _evaluate_scope(
+        self,
+        scope: str,
+        bindings: Mapping[str, torch.Tensor],
+        targets: Mapping[str, torch.Tensor],
+        include_loss: bool,
+        module_overrides=None,
+        override_keys=None,
+        depth: int = 0,
+        selected_output: tuple[str, str] | None = None,
+        injected: tuple[str, str, torch.Tensor] | None = None,
+        root_inputs: Mapping[str, torch.Tensor] | None = None,
+    ) -> dict[str, torch.Tensor]:
         if depth > 32:
             raise ValueError("subflow execution exceeds depth 32")
         terminals = [selected_output[0]] if selected_output else self._terminal_nodes(scope, include_loss)
@@ -586,11 +609,13 @@ class GraphModule(torch.nn.Module):
             directory, manifest, definition = self._definition(node)
             for external in definition.get("objective", {}).get("externalInputs", []):
                 parts = external.get("source", "").split(".")
-                if len(parts) != 3 or parts[0] != "batch" or parts[1] != "targets":
+                if len(parts) != 3 or parts[0] != "batch" or parts[1] not in {"inputs", "targets"}:
                     raise ValueError(f"unsupported objective external input source {external.get('source')!r}")
-                if parts[2] not in targets:
-                    raise ValueError(f"missing objective target {parts[2]!r}")
-                value = targets[parts[2]]
+                batch_values = root_inputs if parts[1] == "inputs" else targets
+                if batch_values is None or parts[2] not in batch_values:
+                    section = "input" if parts[1] == "inputs" else "target"
+                    raise ValueError(f"missing objective {section} {parts[2]!r}")
+                value = batch_values[parts[2]]
                 transform = external.get("transform")
                 if transform == "flatten_batch":
                     value = value.reshape(value.shape[0], -1)
@@ -642,17 +667,19 @@ class GraphModule(torch.nn.Module):
 
     def forward(self, inputs: Mapping[str, torch.Tensor] | torch.Tensor, targets: Mapping[str, torch.Tensor] | None = None, include_loss: bool = False) -> dict[str, torch.Tensor]:
         self._runtime_invocations = 0
+        if isinstance(inputs, torch.Tensor):
+            inputs = self.single_input_mapping(inputs)
+        if not isinstance(inputs, Mapping) or any(not isinstance(value, torch.Tensor) for value in inputs.values()):
+            raise TypeError("model inputs must be a tensor or a named tensor mapping")
+        if any(not isinstance(value, torch.Tensor) for value in (targets or {}).values()):
+            raise TypeError("model targets must be a named tensor mapping")
+        root_inputs_token = _CURRENT_ROOT_INPUTS.set(inputs)
         targets_token = _CURRENT_TARGETS.set(targets or {})
         loss_token = _CURRENT_INCLUDE_LOSS.set(include_loss)
         try:
-            if isinstance(inputs, torch.Tensor):
-                inputs = self.single_input_mapping(inputs)
-            if not isinstance(inputs, Mapping) or any(not isinstance(value, torch.Tensor) for value in inputs.values()):
-                raise TypeError("model inputs must be a tensor or a named tensor mapping")
-            if any(not isinstance(value, torch.Tensor) for value in (targets or {}).values()):
-                raise TypeError("model targets must be a named tensor mapping")
-            return self._evaluate_scope("", inputs, targets or {}, include_loss)
+            return self._evaluate_scope("", inputs, targets or {}, include_loss, root_inputs=inputs)
         finally:
+            _CURRENT_ROOT_INPUTS.reset(root_inputs_token)
             _CURRENT_TARGETS.reset(targets_token)
             _CURRENT_INCLUDE_LOSS.reset(loss_token)
 
@@ -678,13 +705,25 @@ class GraphModule(torch.nn.Module):
         self._runtime_invocations = 0
         was_training = self.training
         self.eval()
+        root_inputs = {}
+        if self._kind(source["node"]) == "input":
+            binding = self.nodes[source["node"]].get("data", {}).get("params", {}).get("binding", "")
+            if binding:
+                root_inputs[binding] = tensor
+        root_inputs_token = _CURRENT_ROOT_INPUTS.set(root_inputs)
+        targets_token = _CURRENT_TARGETS.set({})
+        loss_token = _CURRENT_INCLUDE_LOSS.set(False)
         try:
             with torch.inference_mode():
                 result = self._evaluate_scope(
                     "", {}, {}, False,
                     selected_output=(target["node"], target["handle"]),
                     injected=(source["node"], source["handle"], tensor),
+                    root_inputs=root_inputs,
                 )
                 return result["operation"]
         finally:
             self.train(was_training)
+            _CURRENT_ROOT_INPUTS.reset(root_inputs_token)
+            _CURRENT_TARGETS.reset(targets_token)
+            _CURRENT_INCLUDE_LOSS.reset(loss_token)

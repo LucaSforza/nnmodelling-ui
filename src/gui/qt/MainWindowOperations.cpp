@@ -310,17 +310,25 @@ void MainWindow::manageOperations() {
     auto editSelected = [&] {
         const int index = list->currentRow();
         if (index < 0 || index >= operations.size()) return;
-        OperationForm form(application_.get(), operations.at(index).toObject(), &dialog);
-        if (form.exec() == QDialog::Accepted) {
-            operations.replace(index, form.value());
+        auto *form = new OperationForm(application_.get(), operations.at(index).toObject(), &dialog);
+        const int result = form->exec();
+        const QJsonObject updated = form->value();
+        // Keep the transient window alive until the parent dialog's event loop
+        // resumes; the Qt VNC screen may still include it in a queued redraw.
+        form->deleteLater();
+        if (result == QDialog::Accepted) {
+            operations.replace(index, updated);
             refreshList();
             list->setCurrentRow(index);
         }
     };
     connect(newButton, &QPushButton::clicked, &dialog, [&] {
-        OperationForm form(application_.get(), {}, &dialog);
-        if (form.exec() == QDialog::Accepted) {
-            operations.append(form.value());
+        auto *form = new OperationForm(application_.get(), {}, &dialog);
+        const int result = form->exec();
+        const QJsonObject created = form->value();
+        form->deleteLater();
+        if (result == QDialog::Accepted) {
+            operations.append(created);
             refreshList();
             list->setCurrentRow(list->count() - 1);
         }

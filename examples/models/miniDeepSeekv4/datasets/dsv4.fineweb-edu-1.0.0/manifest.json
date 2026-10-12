@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "id": "dsv4.fineweb-edu",
+  "version": "1.0.0",
+  "entrypoints": {
+    "definition": "dataset.json",
+    "python": {
+      "language": "python",
+      "file": "dataset.py"
+    }
+  },
+  "inferenceAssets": [
+    "datasets/dsv4.fineweb-edu-1.0.0/tokenizer.json",
+    "datasets/dsv4.fineweb-edu-1.0.0/config.json"
+  ],
+  "remoteFiles": {
+    "repo": "HuggingFaceFW/fineweb-edu",
+    "revision": "87f09149ef4734204d70ed1d046ddc9ca3f2b8f9",
+    "files": [
+      {
+        "path": "sample/10BT/000_00000.parquet",
+        "destination": "000_00000.parquet",
+        "size": 2152819114,
+        "sha256": "b1ba7b2ce4cb5ea6ef42dca40263eabb85f37700d01693a68e9b30a31d78e871"
+      },
+      {
+        "path": "sample/10BT/001_00000.parquet",
+        "destination": "001_00000.parquet",
+        "size": 2152222432,
+        "sha256": "3fcf2dc69cd52503986276d3d2d26a8c356d0f2ea28a0de4fdbda8cf87755693"
+      }
+    ]
+  }
+}

@@ -239,6 +239,13 @@ exploration, flight, Fit/Home, picking and transient camera. Existing scope-loca
 
 ## Dataset manager (accepted 2026-10-05)
 
+Accepted 2026-10-08: Model > Parameter counts opens a read-only network total
+and per-node total/trainable breakdown from the C application query specified
+in lua.md. Unknown/error rows stay visible and incomplete totals are explicitly
+labelled. Subflow owner totals include replicated descendants, with no double
+addition into the network total. Refresh uses current graph, including unsaved
+parameter edits; closing the dialog writes nothing.
+
 Project resources retains New dataset and adds Dataset, opening the manager in
 resource-authoring.md. Exact dataset identity is stable while a shared prefilled
 form edits metadata/tensor slots. C validates, persists and refreshes analysis;

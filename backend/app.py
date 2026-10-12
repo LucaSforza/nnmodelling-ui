@@ -18,6 +18,7 @@ from .runner import JobRunner, container_status
 from .slurm import SlurmJobRunner, slurm_status
 from .store import JobStore, utc_now
 from .validation import resolve_core_packages, safe_relative_path, validate_project, validate_training
+from .remote_data import remote_records
 
 
 class TrainingConfig(BaseModel):
@@ -27,6 +28,17 @@ class TrainingConfig(BaseModel):
     learning_rate: StrictFloat = Field(gt=0, le=1, allow_inf_nan=False)
     seed: StrictInt = Field(ge=-(2**31), lt=2**32)
     publish_every_steps: StrictInt = Field(default=10, ge=1, le=100000)
+    device: Literal["cpu", "cuda"] | None = None
+    precision: Literal["float32", "bfloat16"] | None = None
+    optimizer: Literal["adam", "deepseek-muon"] | None = None
+    weight_decay: StrictFloat | None = Field(default=None, ge=0, le=1)
+    gradient_clip: StrictFloat | None = Field(default=None, gt=0, le=1_000_000)
+    warmup_steps: StrictInt | None = Field(default=None, ge=0, le=10_000_000)
+    max_steps: StrictInt | None = Field(default=None, ge=0, le=100_000_000)
+    gradient_accumulation_steps: StrictInt | None = Field(default=None, ge=1, le=1024)
+    early_stopping_patience: StrictInt = Field(default=0, ge=0, le=10000)
+    # validate_training rejects non-finite values with a serializable 422 detail.
+    early_stopping_min_delta: StrictFloat | StrictInt = Field(default=0.0, ge=0)
 
 
 class JobRequest(BaseModel):
@@ -47,12 +59,25 @@ class StepMetric(BaseModel):
     epoch: int
     training_loss: float
     validation_loss: float
+    optimizer_updates: int | None = None
+    processed_tokens: int | None = None
+
+
+class EarlyStoppingMetric(BaseModel):
+    best_epoch: int | None
+    best_validation_loss: float | None
+    non_improving_epochs: int
+    stopped_epoch: int | None
 
 
 class Metrics(BaseModel):
     epochs: list[EpochMetric]
     test_loss: float | None
     steps: list[StepMetric] = Field(default_factory=list)
+    optimizer_updates: int | None = None
+    processed_tokens: int | None = None
+    max_steps: int | None = None
+    early_stopping: EarlyStoppingMetric | None = None
 
 
 class JobResponse(BaseModel):
@@ -160,10 +185,10 @@ async def health() -> dict[str, Any]:
     return {"status": "ok", "container": runtime}
 
 
-@app.post("/v1/jobs", status_code=202, response_model=JobResponse)
+@app.post("/v1/jobs", status_code=202, response_model=JobResponse, response_model_exclude_unset=True)
 async def create_job(body: JobRequest, owner: str = Depends(current_owner)) -> dict[str, Any]:
     project = body.project
-    training = validate_training(body.training.model_dump())
+    training = validate_training(body.training.model_dump(exclude_none=True))
     if len(body.files) > config.MAX_FILES:
         raise HTTPException(413, f"At most {config.MAX_FILES} files may be submitted.")
     files: dict[str, bytes] = {}
@@ -195,12 +220,18 @@ async def create_job(body: JobRequest, owner: str = Depends(current_owner)) -> d
         raise HTTPException(413, "Project model exceeds the configured size limit.")
     core_packages = resolve_core_packages(project, files)
     project = validate_project(project, files, core_packages)
+    try:
+        has_remote_data = bool(remote_records(project, files))
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from None
+    if has_remote_data and config.EXECUTOR != "slurm":
+        raise HTTPException(422, "Remote dataset files require the Slurm executor.")
     record = store.create(project, files, training, core_packages, owner)
     runner.submit(record["id"])
     return record
 
 
-@app.get("/v1/jobs", response_model=dict[str, list[JobResponse]])
+@app.get("/v1/jobs", response_model=dict[str, list[JobResponse]], response_model_exclude_unset=True)
 async def list_jobs(owner: str = Depends(current_owner)) -> dict[str, Any]:
     return {"jobs": store.list(owner)}
 
@@ -212,7 +243,7 @@ def _job(job_id: str, owner: str) -> dict[str, Any]:
     return record
 
 
-@app.get("/v1/jobs/{job_id}", response_model=JobResponse)
+@app.get("/v1/jobs/{job_id}", response_model=JobResponse, response_model_exclude_unset=True)
 async def get_job(job_id: str, owner: str = Depends(current_owner)) -> dict[str, Any]:
     return _job(job_id, owner)
 
@@ -243,7 +274,7 @@ async def get_wheel(job_id: str, owner: str = Depends(current_owner)) -> FileRes
     return FileResponse(path, media_type="application/zip", filename=path.name)
 
 
-@app.post("/v1/jobs/{job_id}/cancel", response_model=JobResponse)
+@app.post("/v1/jobs/{job_id}/cancel", response_model=JobResponse, response_model_exclude_unset=True)
 async def cancel_job(job_id: str, owner: str = Depends(current_owner)) -> dict[str, Any]:
     record = _job(job_id, owner)
     if record["status"] == "queued":

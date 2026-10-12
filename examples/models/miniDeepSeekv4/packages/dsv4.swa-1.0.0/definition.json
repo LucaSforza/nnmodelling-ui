@@ -1,0 +1,77 @@
+{
+  "name": "V4 Sliding Window Attention",
+  "description": "Editable scaled DeepSeek-V4 component; paper sections 2 and 4.",
+  "kind": "layer",
+  "view": {
+    "color": "#476e91",
+    "width": 220,
+    "height": 120
+  },
+  "parameters": {
+    "dim": {
+      "type": "integer",
+      "default": 512,
+      "minimum": 1
+    },
+    "heads": {
+      "type": "integer",
+      "default": 8,
+      "minimum": 1
+    },
+    "head_dim": {
+      "type": "integer",
+      "default": 128,
+      "minimum": 1
+    },
+    "q_rank": {
+      "type": "integer",
+      "default": 128,
+      "minimum": 1
+    },
+    "o_groups": {
+      "type": "integer",
+      "default": 2,
+      "minimum": 1
+    },
+    "o_rank": {
+      "type": "integer",
+      "default": 128,
+      "minimum": 1
+    },
+    "ratio": {
+      "type": "integer",
+      "default": 0,
+      "minimum": 0
+    },
+    "index_heads": {
+      "type": "integer",
+      "default": 4,
+      "minimum": 1
+    },
+    "index_dim": {
+      "type": "integer",
+      "default": 64,
+      "minimum": 1
+    },
+    "topk": {
+      "type": "integer",
+      "default": 64,
+      "minimum": 1
+    },
+    "window": {
+      "type": "integer",
+      "default": 128,
+      "minimum": 1
+    }
+  },
+  "outputs": [
+    {
+      "id": "out",
+      "type": "output"
+    },
+    {
+      "id": "loss",
+      "type": "loss"
+    }
+  ]
+}

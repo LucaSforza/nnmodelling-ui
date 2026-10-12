@@ -1,0 +1,22 @@
+{
+  "name": "V4 mHC Merge",
+  "description": "Editable scaled DeepSeek-V4 component; paper sections 2 and 4.",
+  "kind": "join",
+  "view": {
+    "color": "#476e91",
+    "width": 220,
+    "height": 120
+  },
+  "parameters": {
+    "dim": {
+      "type": "integer",
+      "default": 512,
+      "minimum": 1
+    },
+    "streams": {
+      "type": "integer",
+      "default": 4,
+      "minimum": 1
+    }
+  }
+}

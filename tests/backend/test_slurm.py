@@ -30,6 +30,7 @@ def _configure(monkeypatch):
     monkeypatch.setattr(config, "SLURM_CPUS", 2)
     monkeypatch.setattr(config, "SLURM_MEMORY", "4G")
     monkeypatch.setattr(config, "SLURM_TIME", "00:30:00")
+    monkeypatch.setattr(config, "SLURM_GPUS", 0)
     monkeypatch.setattr(config, "SLURM_SSH", "ssh")
 
 
@@ -85,8 +86,92 @@ def test_stage_and_batch_command_freeze_source_and_quote_remote_paths(tmp_path, 
     assert "checkpoint-request.${SLURM_JOB_ID}" in script
     assert "NNMODELLING_SCHEDULER_ID=${SLURM_JOB_ID}" in script
     assert "NNMODELLING_CHECKPOINT_REQUEST=/output/checkpoint-request.${SLURM_JOB_ID}" in script
+    assert "--env NNMODELLING_DATASET_DATA_ROOT=/dataset-data" in script
     with pytest.raises(SlurmError, match="Invalid job identity"):
         runner._remote_path("12345")
+
+
+def test_gpu_configuration_requests_slurm_resource_and_cuda(monkeypatch):
+    _configure(monkeypatch)
+    monkeypatch.setattr(config, "SLURM_GPUS", 2)
+    runner = SlurmJobRunner(JobStore())
+    assert slurm_configuration()["valid"]
+    arguments = runner._sbatch_arguments("12345678-1234-1234-1234-123456789abc", "/jobs/x")
+    assert "--gres gpu:2" in arguments
+    assert "--signal B:USR1@300" in arguments
+    script = runner._batch_script("12345678-1234-1234-1234-123456789abc", "/jobs/x")
+    assert "singularity exec --cleanenv --containall --no-home --net --network none --nv" in script
+    assert "--env NNMODELLING_WORKER_DEVICE=cuda" in script
+
+
+def test_handoff_signal_reserve_scales_by_cpu_or_gpu_allocation(monkeypatch):
+    _configure(monkeypatch)
+    monkeypatch.setattr(config, "SLURM_TIME", "00:00:30")
+    runner = SlurmJobRunner(JobStore())
+    job_id = "12345678-1234-1234-1234-123456789abc"
+
+    assert "--signal B:USR1@3" in runner._sbatch_arguments(job_id, "/jobs/x")
+    monkeypatch.setattr(config, "SLURM_GPUS", 1)
+    assert "--signal B:USR1@7" in runner._sbatch_arguments(job_id, "/jobs/x")
+
+
+def test_remote_dataset_uses_separate_tracked_networked_allocation(tmp_path, monkeypatch):
+    _configure(monkeypatch)
+    manifest = {"id": "public.dataset", "version": "1.0.0", "entrypoints": {"definition": "dataset.json"},
+                "remoteFiles": {"repo": "owner/data", "revision": "a" * 40, "files": [
+                    {"path": "train.bin", "destination": "train.bin", "size": 7,
+                     "sha256": hashlib.sha256(b"dataset").hexdigest()}]}}
+    project = {"manifest": {"activeDataset": {"id": "public.dataset", "version": "1.0.0"},
+                            "customDatasets": [{"id": "public.dataset", "version": "1.0.0",
+                                                "path": "datasets/public.dataset-1.0.0"}]},
+               "nodes": [], "edges": []}
+    files = {"datasets/public.dataset-1.0.0/manifest.json": json.dumps(manifest).encode()}
+    store = JobStore(tmp_path / "jobs")
+    job = store.create(project, files, {}, {}, "owner")
+    runner = SlurmJobRunner(store)
+    monkeypatch.setattr(slurm, "_POLL_SECONDS", 0)
+    monkeypatch.setattr(runner, "_ssh_run", lambda *_args, **_kwargs: type(
+        "Result", (), {"returncode": 0, "stdout": "44001\n", "stderr": ""})())
+    monkeypatch.setattr(runner, "_scheduler_state", lambda _scheduler_id: ("COMPLETED", "0:0"))
+    record = {"scheduler_id": None, "scheduler_ids": [], "attempt_active": False,
+              "configuration": runner._execution_configuration()}
+    runner._prepare_remote_data(job["id"], f"/cluster/jobs/{job['id']}", record)
+    assert record["phase"] == "preparing-data"
+    assert record["preparation"]["scheduler_id"] == "44001"
+    assert record["scheduler_ids"] == ["44001"]
+    script = runner._preparation_script(f"/cluster/jobs/{job['id']}")
+    assert "--bind" in script and "backend.remote_data" in script
+    assert "--network none" not in script and "--net" not in script
+
+
+def test_missing_remote_metrics_with_ssh_warning_keeps_job_running(tmp_path, monkeypatch):
+    _configure(monkeypatch)
+    store, job = _store_job(tmp_path)
+    runner = SlurmJobRunner(store)
+    store.transition(job["id"], "queued", status="running")
+    warning = "** WARNING: connection is not using a post-quantum key exchange algorithm."
+    monkeypatch.setattr(runner, "_ssh_run", lambda *_args, **_kwargs: type(
+        "Result", (), {"returncode": 44, "stdout": "", "stderr": warning})())
+
+    runner._publish_metrics(job["id"], f"/cluster/jobs/{job['id']}")
+
+    assert store.internal(job["id"])["status"] == "running"
+    assert not (store.job_dir(job["id"]) / "output" / "metrics.json").exists()
+
+
+@pytest.mark.parametrize(("stderr", "message"), [
+    ("remote permission denied", "remote permission denied"),
+    ("", "exit 1"),
+])
+def test_remote_metrics_command_failure_is_not_treated_as_missing(tmp_path, monkeypatch, stderr, message):
+    _configure(monkeypatch)
+    store, job = _store_job(tmp_path)
+    runner = SlurmJobRunner(store)
+    monkeypatch.setattr(runner, "_ssh_run", lambda *_args, **_kwargs: type(
+        "Result", (), {"returncode": 1, "stdout": "", "stderr": stderr})())
+
+    with pytest.raises(SlurmError, match=message):
+        runner._publish_metrics(job["id"], f"/cluster/jobs/{job['id']}")
 
 
 def test_successful_remote_job_publishes_metrics_and_retrieves_safe_artifacts(tmp_path, monkeypatch):
@@ -115,6 +200,19 @@ def test_successful_remote_job_publishes_metrics_and_retrieves_safe_artifacts(tm
     monkeypatch.setattr(runner, "_ssh_run", fake_ssh)
     monkeypatch.setattr(runner, "_ssh_run_at", lambda command, *_args, **_kwargs: type(
         "Result", (), {"returncode": 0, "stdout": "", "stderr": ""})())
+    class FakeProcess:
+        stdout = io.BytesIO(_output_tar(metrics))
+
+        def wait(self, timeout=None):
+            return 0
+
+        def poll(self):
+            return 0
+
+        def kill(self):
+            pass
+
+    monkeypatch.setattr(slurm.subprocess, "Popen", lambda *_args, **_kwargs: FakeProcess())
     runner._execute(job["id"])
     record = store.internal(job["id"])
     assert record["status"] == "completed", record.get("error")
@@ -270,17 +368,29 @@ def _scripted_handoff(tmp_path, monkeypatch, *, manifest_changes=None, checkpoin
         return type("Result", (), {"returncode": 0, "stdout": "", "stderr": ""})()
 
     def fake_retrieve(job_id, _stage):
+        pass
+
+    def fake_validate(_stage, job_id, scheduler_id, prior_step):
+        assert scheduler_id == "101" and prior_step == 0
+        if not checkpoint:
+            raise SlurmError("Slurm handoff checkpoint missing")
         output = store.job_dir(job_id) / "output"
-        if current["scheduler_id"] == "101" and checkpoint:
-            _checkpoint_files(output, job_id, "101", 10, overrides=manifest_changes)
-        if cancel and current["scheduler_id"] == "101":
+        _checkpoint_files(output, job_id, scheduler_id, 10, overrides=manifest_changes)
+        manifest = json.loads((output / "checkpoint.json").read_text())
+        payload = (output / "checkpoint.safetensors").read_bytes()
+        if (manifest.get("scheduler_id") != scheduler_id or manifest.get("tensor_sha256") != hashlib.sha256(payload).hexdigest()
+                or manifest.get("tensor_size") != len(payload) or manifest.get("global_step", 0) <= prior_step):
+            raise SlurmError("Slurm handoff checkpoint failed remote validation")
+        if cancel:
             store.update(job_id, cancel_requested=True)
+        return manifest["global_step"]
 
     monkeypatch.setattr(runner, "_stage", lambda _job: "/cluster/jobs/" + job["id"])
     monkeypatch.setattr(runner, "_ssh_run", fake_ssh)
     monkeypatch.setattr(runner, "_scheduler_state", lambda sid: attempt_states[sid])
     monkeypatch.setattr(runner, "_publish_metrics", lambda *_args: None)
     monkeypatch.setattr(runner, "_retrieve_output", fake_retrieve)
+    monkeypatch.setattr(runner, "_validate_checkpoint", fake_validate)
     monkeypatch.setattr(runner, "_finish", lambda job_id: store.complete(job_id, {
         "epochs": [{"epoch": 1, "training_loss": 1.0, "validation_loss": 0.5}],
         "steps": [], "test_loss": 0.25}))

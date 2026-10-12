@@ -69,6 +69,7 @@ typedef struct NNPackage {
     const NNPackageDependency *dependencies;
     size_t dependency_count;
     const char *inference_file;
+    const char *parameters_file;
     const NNOutputDef *outputs;
     size_t output_count;
 } NNPackage;

@@ -264,7 +264,18 @@ def _read_metrics(path: Path) -> dict[str, Any] | None:
         test_loss = value["test_loss"]
         if not isinstance(epochs, list) or (test_loss is not None and not _finite_number(test_loss)):
             return None
-        if not isinstance(value, dict) or set(value) not in ({"epochs", "test_loss"}, {"epochs", "test_loss", "steps"}):
+        legacy_shapes = {frozenset({"epochs", "test_loss"}),
+                         frozenset({"epochs", "test_loss", "steps"}),
+                         frozenset({"epochs", "test_loss", "steps", "early_stopping"})}
+        evidence_keys = {"optimizer_updates", "processed_tokens", "max_steps"}
+        has_evidence = evidence_keys <= set(value) if isinstance(value, dict) else False
+        expected = {"epochs", "test_loss", "steps"} | evidence_keys
+        expected_with_early_stopping = expected | {"early_stopping"}
+        if not isinstance(value, dict) or (
+                frozenset(value) not in legacy_shapes | {
+                    frozenset(expected), frozenset(expected_with_early_stopping)}):
+            return None
+        if expected <= set(value) and any(type(value[name]) is not int or value[name] < 0 for name in evidence_keys):
             return None
         last_epoch = 0
         for item in epochs:
@@ -277,28 +288,74 @@ def _read_metrics(path: Path) -> dict[str, Any] | None:
                 return None
             last_epoch = number
         result = {"epochs": epochs, "test_loss": test_loss}
+        if "early_stopping" in value:
+            early = value["early_stopping"]
+            fields = {"best_epoch", "best_validation_loss", "non_improving_epochs", "stopped_epoch"}
+            if not isinstance(early, dict) or set(early) != fields:
+                return None
+            best_epoch = early["best_epoch"]
+            best_loss = early["best_validation_loss"]
+            misses = early["non_improving_epochs"]
+            stopped_epoch = early["stopped_epoch"]
+            if (best_epoch is not None and (type(best_epoch) is not int or best_epoch < 1)):
+                return None
+            if (best_loss is not None and not _finite_number(best_loss)):
+                return None
+            if (best_epoch is None) != (best_loss is None):
+                return None
+            if type(misses) is not int or misses < 0:
+                return None
+            if stopped_epoch is not None and (
+                    type(stopped_epoch) is not int or stopped_epoch < 1
+                    or best_epoch is None or stopped_epoch < best_epoch):
+                return None
+            if (best_epoch is not None and best_epoch > len(epochs)) or (
+                    stopped_epoch is not None and stopped_epoch > len(epochs)):
+                return None
+            result["early_stopping"] = early
         if "steps" in value:
             steps = value["steps"]
             if not isinstance(steps, list):
                 return None
             last_step = 0
             last_step_epoch = 0
+            last_tokens = 0
             for item in steps:
-                if not isinstance(item, dict) or set(item) != {"step", "epoch", "training_loss", "validation_loss"}:
+                old_step = {"step", "epoch", "training_loss", "validation_loss"}
+                new_step = old_step | {"optimizer_updates", "processed_tokens"}
+                if not isinstance(item, dict) or set(item) not in (old_step, new_step):
                     return None
                 step, epoch = item["step"], item["epoch"]
                 if (isinstance(step, bool) or not isinstance(step, int) or step <= last_step
                         or isinstance(epoch, bool) or not isinstance(epoch, int) or epoch < 1
                         or epoch < last_step_epoch or epoch > last_step_epoch + 1):
                     return None
+                if set(item) == new_step:
+                    if (type(item["optimizer_updates"]) is not int or item["optimizer_updates"] != step
+                            or type(item["processed_tokens"]) is not int
+                            or item["processed_tokens"] < last_tokens):
+                        return None
+                    last_tokens = item["processed_tokens"]
                 if not _finite_number(item["training_loss"]) or not _finite_number(item["validation_loss"]):
                     return None
                 last_step, last_step_epoch = step, epoch
             result["steps"] = steps
+        if has_evidence:
+            if "steps" in value and value["steps"]:
+                last = value["steps"][-1]
+                if (last.get("optimizer_updates") != value["optimizer_updates"]
+                        or last.get("processed_tokens") != value["processed_tokens"]):
+                    return None
+            result.update({name: value[name] for name in evidence_keys})
         return result
     except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError):
         return None
 
 
 def _finite_number(value: Any) -> bool:
-    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return False
+    try:
+        return math.isfinite(value)
+    except OverflowError:
+        return False

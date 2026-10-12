@@ -1,0 +1,9 @@
+{
+  "context": 512,
+  "train_token_budget": 100000000,
+  "validation_windows": 128,
+  "test_windows": 128,
+  "tokenizer_repo": "deepseek-ai/DeepSeek-V4-Pro",
+  "tokenizer_revision": "b5968e9190ef611bbf34a7229255be88a0e937c1",
+  "eos_token": "<\uff5cend\u2581of\u2581sentence\uff5c>"
+}

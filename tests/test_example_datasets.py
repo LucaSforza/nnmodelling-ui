@@ -170,7 +170,8 @@ def test_tiny_shakespeare_adapter_has_full_vocabulary_and_disjoint_windows():
     raw = "To be, or not to be."
     tokens = dataset.tokenize(raw)
     assert tokens.shape == (1, len(raw)) and tokens.dtype == torch.int64
-    logits = torch.nn.functional.one_hot(tokens, num_classes=65).float()
+    # Decoding samples logits; a concentrated distribution proves the codec round trip.
+    logits = torch.full((*tokens.shape, 65), -100.0).scatter_(-1, tokens.unsqueeze(-1), 0.0)
     assert dataset.untokenize(logits) == raw
     nonfinite_logits = logits.clone()
     nonfinite_logits[0, 0, 0] = float("nan")
@@ -182,3 +183,25 @@ def test_tiny_shakespeare_adapter_has_full_vocabulary_and_disjoint_windows():
         dataset.tokenize("x" * 129)
     with pytest.raises(ValueError, match="outside the bundled vocabulary"):
         dataset.tokenize("😀")
+
+
+def test_tiny_training_order_replays_seed_and_preserves_eval_order():
+    dataset = adapter("examples/models/tiny-decoder-llm", "datasets/llm.tokens-1.0.0")
+    def inputs(split):
+        return torch.cat([batch.inputs["tokens"] for batch in dataset.load(split, 7)])
+    state = torch.get_rng_state()
+    try:
+        torch.manual_seed(17)
+        first = inputs("train")
+        torch.manual_seed(17)
+        assert torch.equal(first, inputs("train"))
+        torch.manual_seed(18)
+        second = inputs("train")
+        assert not torch.equal(first, second)
+        assert sorted(map(tuple, first.tolist())) == sorted(map(tuple, second.tolist()))
+        before = torch.get_rng_state()
+        validation = inputs("validation")
+        assert torch.equal(before, torch.get_rng_state())
+        assert torch.equal(validation, inputs("validation"))
+    finally:
+        torch.set_rng_state(state)

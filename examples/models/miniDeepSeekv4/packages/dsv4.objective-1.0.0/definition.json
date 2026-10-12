@@ -1,0 +1,25 @@
+{
+  "name": "V4 Pretraining Loss",
+  "description": "Scaled DeepSeek-V4 reference math; see paper sections 2 and 4.",
+  "kind": "join",
+  "view": {
+    "color": "#b85c5c",
+    "width": 220,
+    "height": 120
+  },
+  "parameters": {},
+  "outputs": [
+    {
+      "id": "loss",
+      "type": "loss"
+    }
+  ],
+  "objective": {
+    "externalInputs": [
+      {
+        "name": "target",
+        "source": "batch.targets.target"
+      }
+    ]
+  }
+}

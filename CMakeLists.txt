@@ -41,6 +41,7 @@ set(NN_PROJECT_SOURCES
     src/project/resources.c src/project/project_utils.c)
 set(NN_INFERENCE_SOURCES
     src/inference/results.c src/inference/evaluation_utils.c src/inference/scope.c src/inference/lua_rule.c
+    src/inference/parameter_counts.c
     src/inference/lua_runtime.c src/inference/lua_sandbox.c
     src/inference/lua_tensor_ops.c src/inference/owned_tensors.c
     src/inference/result_extraction.c src/inference/report.c src/inference/status.c)
@@ -67,12 +68,13 @@ if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 
 if(BUILD_TESTING)
-    foreach(name IN ITEMS model catalog inference application resources automation history stereotype_reference)
+    foreach(name IN ITEMS model catalog inference application resources automation history stereotype_reference parameter_count)
         add_executable(${name}_test tests/${name}_test.c)
         target_link_libraries(${name}_test PRIVATE nnmodelling_core)
         add_test(NAME ${name} COMMAND ${name}_test)
         set_tests_properties(${name} PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}" LABELS core)
     endforeach()
+    target_include_directories(parameter_count_test PRIVATE third_party/yyjson)
     add_executable(utils_test tests/utils_test.c)
     target_link_libraries(utils_test PRIVATE nn_utils)
     add_test(NAME utils COMMAND utils_test)
@@ -99,7 +101,7 @@ if(BUILD_TESTING)
     add_test(NAME lua COMMAND lua_smoke)
     set_tests_properties(lua PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}" LABELS core)
     # Existing tests use assert for their checks, including in Release builds.
-    foreach(name IN ITEMS model_test catalog_test inference_test application_test resources_test automation_test history_test project_test lua_smoke utils_test stereotype_reference_test)
+    foreach(name IN ITEMS model_test catalog_test inference_test application_test resources_test automation_test history_test project_test lua_smoke utils_test stereotype_reference_test parameter_count_test)
         if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
             target_compile_options(${name} PRIVATE -Wall -Wextra -Werror -pedantic -UNDEBUG)
         endif()
@@ -128,6 +130,7 @@ if(NN_BUILD_GUI)
         src/gui/qt/TrainingCurveWidget.cpp src/gui/qt/TrainingCurveWidget.hpp
         src/gui/qt/MainWindowProject.cpp src/gui/qt/MainWindowAutomation.cpp
         src/gui/qt/MainWindowOperations.cpp
+        src/gui/qt/MainWindowParameterCounts.cpp
         src/gui/qt/MainWindowStereotypeAuthoring.cpp src/gui/qt/MainWindowDatasetAuthoring.cpp
         src/gui/qt/MainWindowRefresh.cpp src/gui/qt/MainWindowInspectorResources.cpp
         src/gui/qt/MainWindowDiagnostics.cpp src/gui/qt/MainWindowGraphActions.cpp

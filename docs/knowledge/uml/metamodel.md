@@ -247,6 +247,13 @@ failure, not partial successful state.
 
 ## Presentation occurrences (2026-10-04)
 
+Accepted 2026-10-08: Stereotype optionally owns an independent parameter-count
+Lua rule. Application derives a disposable ParameterReport containing
+total/trainable counts, completeness and per-node results. Subflow count rules
+request one recursively counted body and express independent replication;
+referenced joins use the same active catalog. Qt displays the C-owned report.
+Counts and UI state never enter NNModel persistence.
+
 ```mermaid
   classDiagram
     NNModel --> ExpandedScene : read-only derivation
@@ -261,3 +268,7 @@ failure, not partial successful state.
 
 Occurrences are not NNModel nodes. Generic Lua plans describe body instances,
 synthetic operators, edges and owner output mapping per visualization-3d.md.
+
+Referenced parameter-count modules reuse caller graph context; package kind
+controls parameter validation, while actual graph node kind controls incoming
+handle ordering.

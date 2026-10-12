@@ -1,0 +1,59 @@
+{
+  "name": "V4 MoE",
+  "description": "Scaled DeepSeek-V4 reference math; see paper sections 2 and 4.",
+  "kind": "join",
+  "view": {
+    "color": "#476e91",
+    "width": 220,
+    "height": 120
+  },
+  "parameters": {
+    "dim": {
+      "type": "integer",
+      "default": 512,
+      "minimum": 1
+    },
+    "hidden": {
+      "type": "integer",
+      "default": 1120,
+      "minimum": 1
+    },
+    "experts": {
+      "type": "integer",
+      "default": 32,
+      "minimum": 1
+    },
+    "topk": {
+      "type": "integer",
+      "default": 4,
+      "minimum": 1
+    },
+    "hash_routing": {
+      "type": "boolean",
+      "default": false
+    },
+    "route_scale": {
+      "type": "number",
+      "default": 1.0,
+      "minimum": 0
+    }
+  },
+  "outputs": [
+    {
+      "id": "out",
+      "type": "output"
+    },
+    {
+      "id": "loss",
+      "type": "loss"
+    }
+  ],
+  "objective": {
+    "externalInputs": [
+      {
+        "name": "tokens",
+        "source": "batch.inputs.tokens"
+      }
+    ]
+  }
+}

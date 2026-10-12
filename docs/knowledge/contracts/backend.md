@@ -421,7 +421,7 @@ replace unchanged metric text. Snapshot reload uses normal C application open an
 unsaved-change confirmation; failure preserves active graph. Restore must never
 overwrite source or existing destination; reject unsafe response paths.
 Qt bounds: model JSON 8 MiB, resource bundle 256 MiB, each resource 128 MiB,
-10,000 files, JSON responses 512 MiB and streamed artifacts 1 GiB. Backend
+10,000 files, JSON responses 512 MiB and streamed artifacts default 64 GiB (configurable independently of corpus size). Backend
 configuration may impose smaller limits; failures remain visible in UI.
 
 Every newly authored dataset/stereotype includes standalone uv-compatible
@@ -474,3 +474,156 @@ just test-ui, Python/backend recipes and git diff --check. Exercise actual
 container job when runtime available; report environment blockers separately.
 Repository skill `.agents/skills/nnmodelling-backend/SKILL.md` documents actual
 uv/just startup, image, jobs, logs, shutdown and local lifecycle.
+
+## GPU and remote corpus acquisition (accepted 2026-10-08)
+
+User explicitly requires miniDeepSeekv4 training on GPU. Slurm configuration
+adds `NNMODELLING_SLURM_GPUS` (integer 0..8, default 0); nonzero requests
+`--gres=gpu:N`, enables Singularity `--nv` and sets worker default device to CUDA.
+Qt Training backend configuration exposes GPU count and persists it with the
+existing non-secret Slurm profile. CUDA requests fail if CUDA is unavailable;
+there is no silent CPU fallback. Existing CPU jobs retain their semantics.
+
+Dataset manifests may declare optional `remoteFiles` with public Hugging Face
+dataset repository `repo`, immutable 40-hex `revision`, and `files`, an ordered
+list of `{path,destination,size,sha256}` records. Paths are confined relative
+POSIX paths, destinations unique, sizes positive exact integers and hashes
+64-hex. Arbitrary URLs, credentials, branch names, symlinks and traversal are
+rejected. `destination` is relative to the acquired data root. The submission
+contains only resource code, metadata and tokenizer inference assets; corpus
+bytes are excluded from the native upload. Bundle limits remain for code and
+metadata, not remotely acquired corpus size. No corpus aggregate size cap is
+imposed. Disk space and download errors remain visible.
+
+Only Slurm supports this acquisition initially; Docker rejects it explicitly.
+Before network-isolated training, a separately recorded Slurm preparation
+allocation downloads files directly on the cluster via HTTPS Hugging Face
+resolve endpoints, streaming to sibling temporary files, validating exact size
+and SHA256, then atomically publishing. Existing verified files are reusable;
+incomplete/changed files are never consumed. Preparation never runs model or
+dataset code and never receives local credentials. Its scheduler identity is
+owned by the same backend cancellation/lifecycle machinery. Training remains
+network-isolated and reads the verified data root via a read-only bind.
+The runtime DatasetAdapter exposes `data_directory`, defaulting to the resource
+directory; a worker-provided `NNMODELLING_DATASET_DATA_ROOT` selects the confined
+remote data root. Constructor and inference still require only inference assets.
+
+Slurm artifacts and checkpoints exceed 1 GiB for a 1B model. Retrieve final
+weights/wheel with bounded-memory streaming and atomic publication. Checkpoint
+handoff validates identity/progress/size/hash remotely and retains tensors on
+cluster across allocations; do not round-trip optimizer tensors per allocation.
+Artifact safety bounds are configurable independently of corpus acquisition,
+with a default 64 GiB maximum file/aggregate, safe filenames and no links.
+Completion still requires verified metrics, safetensors and standalone wheel.
+
+Training config accepts optional `device` (cpu/cuda), `precision`
+(float32/bfloat16), `optimizer` (adam/deepseek-muon), `weight_decay`,
+`gradient_clip`, `warmup_steps`, `max_steps` (0 means all epochs) and
+`gradient_accumulation_steps`. Existing four/five-field requests retain defaults.
+Qt submission exposes these controls; GPU/backend configuration is visible.
+`max_steps` is an explicit optimizer-step budget, never labelled full-corpus
+completion. Metrics record processed tokens and optimizer updates. Validation
+and test remain independent held-out adapter splits.
+
+DeepSeek Muon follows paper Algorithm 1: momentum 0.95, Nesterov, Frobenius
+normalization, eight Newton-Schulz steps with (3.4445,-4.7750,2.0315), then two
+with (2,-1.5,0.5), update scaling sqrt(max(n,m))*0.18 and decoupled weight decay.
+Each logically independent matrix is orthogonalized separately, including each
+expert or grouped matrix slice. Embedding/head, normalization, mHC static
+biases/gates and all non-matrix parameters use AdamW. Resource modules declare
+AdamW exclusions via parameter attributes; the generic optimizer never
+branches on model/package IDs. AdamW uses betas (0.9,0.95) and epsilon 1e-20 as section 4.2.2. State dict supports checkpoint round-trips.
+CUDA RNG and accumulation cursor are retained across allocation handoffs;
+checkpoint only after an optimizer update. Data and targets move to selected
+device; BF16 uses autocast with FP32 master weights, norm, loss and optimizer
+operations as required. CPU existing tests remain supported.
+
+Accepted 2026-10-08: worker sets `NNMODELLING_DATASET_CACHE_ROOT` to a dedicated
+job-output `dataset-cache` directory. DatasetAdapter.cache_directory exposes
+this optional writable scratch root; it is derived tokenization state, never
+an inference asset or downloaded corpus. Adapters may atomically publish
+revision/config-keyed token caches there. Cache reads validate shape/dtype and
+source/config identity. Cache resumes avoid replaying expensive Parquet
+conversion across 30-minute allocations. No cache bytes are served as final
+weights/wheel, and raw acquired files remain read-only.
+
+## Exported model device (accepted 2026-10-08)
+
+`Model(weights_path=None, device="cpu")` preserves CPU defaults and accepts a
+PyTorch CPU or CUDA device. CUDA selection must fail explicitly when unavailable.
+The constructor loads safetensors, moves the registered graph to the chosen
+device and sets eval mode. Dataset-tokenized tensors and tensor operation inputs
+move to that device before execution; dataset decoding receives CPU tensors.
+Tensor-codec operation outputs remain on the selected device. No private graph
+access is required by inference examples. No dtype/compile policy is added.
+The miniDeepSeek consumer calls its declared `logits` operation, uses greedy
+last-position argmax, preserves token IDs with the frozen tokenizer, truncates
+context to 512 tokens, and stops at EOS or requested maximum. It requires an
+explicit trained wheel import identity; missing weights never fall back to
+random initialization. Consumer code lives in examples/implmentation/miniDeepSeekv4
+and final run provenance pins the successful training job and artifact digest.
+
+GPU Slurm allocations request their handoff signal up to 300 seconds before
+walltime, bounded to at most one quarter of the allocation. CPU allocations
+retain the existing up-to-60-second reserve. GPU reserve covers a full gradient
+accumulation group, validation publication and multi-GiB checkpoint persistence;
+workers still stop only after an optimizer update.
+
+## Declared external batch inputs (accepted 2026-10-08)
+
+Existing definition.objective.externalInputs may bind either batch.targets.NAME
+or batch.inputs.NAME, appending tensors after connected graph inputs in declared
+order. Submission validates the chosen map against selected dataset metadata.
+Numerical execution preserves root input bindings through nested subflows,
+separately from their immediate tensor boundary. Missing named tensors fail
+explicitly. Target-only behavior and flatten_batch remain unchanged.
+Named operations whose input endpoint is a bound root Input seed that named
+batch input for the whole call. An operation cutting an intermediate node has
+no implicit root batch binding; an external-input consumer fails clearly when
+its required binding is unavailable. Context state resets after each call and
+on error; no cross-call or cross-model tensor leakage. This generic mechanism
+supports visible hash-MoE nodes without a model-ID branch or floating token IDs.
+
+Accepted 2026-10-09: a Slurm worker may not have published `metrics.json` during
+startup or while queued. The remote publication command uses a distinct exit
+status for this absence; the runner treats it as no publication regardless of
+SSH informational stderr. Other command failures, linked files, oversized data
+and invalid JSON remain errors. SSH warnings do not change a successful remote
+command's meaning. This preserves startup without masking transport failures.
+
+
+## Stable wheel imports and early stopping (accepted 2026-10-09)
+
+Explicit user request supersedes the job-specific-import requirement above for
+new exports. New wheels expose Model from the same `nnm_<normalized-project-id>`
+Python package used by their distribution. Keep the previous job-specific name
+as a thin compatibility alias within a newly exported wheel. Existing archived
+wheels retain their original bytes and names. Installing a replacement wheel
+for the same project replaces that model without changing caller imports; use
+a fresh interpreter and force reinstall/relock when version 0.1.0 is unchanged.
+Consumers support selecting and installing a downloaded wheel without editing
+Python code or dependency source paths. Historical legacy wheels remain usable
+through distribution metadata discovery, never by hardcoding a job ID.
+
+Training accepts `early_stopping_patience` (integer 0..10000; default 0 disables)
+and `early_stopping_min_delta` (finite nonnegative number; default 0). When
+enabled, evaluate stopping once per completed epoch using the existing full
+validation result, independently of step-publication cadence. Save every strict
+new validation minimum; reset patience only for improvement greater than
+min_delta relative to the previous best. First epoch establishes the baseline.
+Stop successfully after patience consecutive epochs without such improvement.
+Restore the minimum-validation weights before the single final test and export,
+also when the epoch/step budget ends. No test result selects weights.
+Checkpoint handoff preserves best tensors, best epoch/loss and patience count;
+resume must produce the same chosen weights and stopping epoch as uninterrupted
+training. Legacy checkpoints and disabled requests retain existing behavior.
+Metrics add optional `early_stopping` with best_epoch, best_validation_loss,
+non_improving_epochs and stopped_epoch (null unless patience ended training).
+Reader validates these fields and keeps them visible; old records remain valid.
+Qt exposes patience and min delta with explicit units/defaults and displays
+selection/stopping evidence. Nonfinite or malformed settings fail visibly.
+
+Tiny Shakespeare adapter shuffles training windows with the seeded torch RNG per
+epoch, keeping validation/test ordered. Replay from epoch-start RNG recreates
+the same training order on Slurm handoff. Existing stochastic text decoding
+remains unchanged.

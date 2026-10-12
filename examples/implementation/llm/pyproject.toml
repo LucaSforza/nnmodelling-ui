@@ -1,11 +1,10 @@
 [project]
 name = "nnmodelling-llm-consumer"
 version = "0.1.0"
-description = "Standalone inference demo for the three-epoch clustered Tiny Shakespeare model"
+description = "Standalone Tiny Shakespeare inference demo using a replaceable model wheel"
 requires-python = ">=3.11,<3.14"
 dependencies = [
     "torch==2.14.1",
-    "nnm-tiny-decoder-llm==0.1.0",
 ]
 
 [tool.uv]
@@ -13,7 +12,6 @@ package = false
 
 [tool.uv.sources]
 torch = { index = "pytorch-cpu" }
-nnm-tiny-decoder-llm = { path = "wheels/nnm_tiny_decoder_llm-0.1.0-py3-none-any.whl" }
 
 [[tool.uv.index]]
 name = "pytorch-cpu"

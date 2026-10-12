@@ -1,0 +1,22 @@
+{
+  "name": "V4 Token Embedding",
+  "description": "Editable scaled DeepSeek-V4 component; paper sections 2 and 4.",
+  "kind": "layer",
+  "view": {
+    "color": "#476e91",
+    "width": 220,
+    "height": 120
+  },
+  "parameters": {
+    "dim": {
+      "type": "integer",
+      "default": 512,
+      "minimum": 1
+    },
+    "vocab_size": {
+      "type": "integer",
+      "default": 129280,
+      "minimum": 1
+    }
+  }
+}
