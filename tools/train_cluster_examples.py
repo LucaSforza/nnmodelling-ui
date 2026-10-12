@@ -125,8 +125,6 @@ def project_files(root: Path, project: dict[str, Any]) -> dict[str, str]:
 def discover_projects(models_dir: Path) -> list[tuple[str, Path, dict[str, Any]]]:
     projects = []
     for directory in sorted(models_dir.iterdir(), key=lambda item: item.name.casefold()):
-        if "deepseek" in directory.name.casefold():
-            continue
         if directory.is_symlink():
             raise TrainingError(f"Model project directory cannot be a symlink: {directory}")
         if not directory.is_dir():

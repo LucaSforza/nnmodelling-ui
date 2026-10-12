@@ -1,12 +1,12 @@
-# Sapienza Slurm training verification — 2026-10-08
+# Slurm training verification — 2026-10-08
 
 FastAPI remains on this computer at `http://127.0.0.1:8765`. Only training
-workers ran on Sapienza via SSH alias `cluster`, partition `students` and
+workers ran on an explicitly configured SSH/Slurm cluster with
 Singularity 3.9.8. The final five jobs all finished `COMPLETED`, exit `0:0`,
-on `node111`, with two CPUs and 4G allocation; recorded runtime was 10–12 seconds.
+on an allocated worker node, with two CPUs and 4G allocation; recorded runtime was 10–12 seconds.
 
 Worker SIF is the immutable copy
-`/home/sforza_2050030/nnmodelling-worker-20261008.sif`, SHA256
+a prebuilt remote worker image (account-specific path omitted), SHA256
 `be5d5a885d3525c61a8ef08fe1ec249d726d91c68a37540b24b0a7a157f88d2e`.
 It contains Python 3.11.11, torch 2.6.0+cu124 (CPU execution), NumPy 2.2.2,
 safetensors 0.8.0 and Pillow 11.0.0. Source and SDK were frozen separately per job.
@@ -19,7 +19,7 @@ The loopback-only network mode is documented by
 
 Each run used the unchanged checked-in bounded dataset, Adam, three epochs,
 batch size 16, learning rate 0.001, seed 0 and publication cadence 10.
-DeepSeek was excluded and its untracked project was preserved. These are
+These are
 bounded executable-example runs, not full-dataset convergence claims.
 
 | Model | Slurm ID | Local API job ID | Train | Validation | Test | Updates |
@@ -86,11 +86,12 @@ are recorded separately.
 
 ## Reproduce
 
-Current machine configuration is retained, without credentials, in
-`.computer-use/cluster-backend.env`. To restart the local backend:
+Configure the per-user JSON profile described in
+[the user guide](../../user/en/server.md), including executor, SSH host, writable
+remote directory, prebuilt SIF and partition. No account or cluster is supplied
+by the repository. Remote reproduction requires your own reachable cluster:
 
 ```sh
-source .computer-use/cluster-backend.env
 just backend-slurm
 ```
 

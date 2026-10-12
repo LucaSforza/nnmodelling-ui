@@ -209,15 +209,8 @@ optimizers, CUDA RNG and completed-update cursor. Metrics retain optimizer-step
 budget and processed-token evidence. DatasetAdapter.data_directory resolves
 read-only acquired corpus while tokenize/untokenize use packaged assets alone.
 
-miniDeepSeekv4 root uses visible embedding, independently repeated block
-subflows, mHC pre/select/merge, norms, attention and MoE nodes. Main and MTP
-features reach one shared vocabulary projection; subflow auxiliary losses are
-explicitly joined before the objective. Root token bindings reach hash-MoE
-through declared external inputs. Model resources own formulas and counts;
-no decoder stereotype or model-ID runtime branch is active.
-
 The worker passes a writable output-owned dataset-cache root separately from
-the read-only corpus root. FineWeb adapter derives revision/config-keyed token
+the read-only corpus root. An adapter may derive revision/config-keyed token
 windows lazily per source shard and atomically publishes them; resumed epochs
 skip already consumed cached windows without repeating tokenization.
 

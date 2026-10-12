@@ -3,7 +3,7 @@
 <title>Tiny LLM tutorial · NNModelling</title><link rel="stylesheet" href="../style.css"/></head>
 <body><a class="skip" href="#content">Skip to content</a>
 <aside><a class="brand" href="index.html">NN<span>Modelling</span></a>
-<p class="edition">User guide · English<br/>Edition 6 October 2026</p><nav class="language-switch" aria-label="Guide language"><a lang="it" href="../tutorial-tiny-llm.html">Italiano</a><a lang="en" href="tutorial-tiny-llm.html" aria-current="page">English</a></nav>
+<p class="edition">User guide · English<br/>Edition 12 October 2026</p><nav class="language-switch" aria-label="Guide language"><a lang="it" href="../tutorial-tiny-llm.html">Italiano</a><a lang="en" href="tutorial-tiny-llm.html" aria-current="page">English</a></nav>
 <nav aria-label="Chapters"><a href="index.html">Introduction</a><a href="client.html">Using the client</a><a href="parameters.html">Parameter catalog</a><a href="server.html">Configure the server</a><a href="tutorial-tiny-llm.html" aria-current="page">Tiny LLM tutorial</a><a href="tutorial-vae.html">VAE tutorial</a></nav><div class="outline"><p>On this page</p><div class="toc">
 <ul>
 <li><a href="#tutorial-train-a-tiny-llm">Tutorial: train a tiny LLM</a><ul>
@@ -34,7 +34,7 @@ just backend-run
 <p>If the backend was already installed and running before this update, rebuild
 the image with <code>just backend-image</code>, stop the service with Ctrl-C, and start it
 again with <code>just backend-run</code> before submitting the job.</p>
-<p>To run this same job on the Sapienza cluster, follow the illustrated <a href="server.html#run-jobs-on-the-sapienza-cluster-from-the-ui">Slurm UI
+<p>To run this same job on the configured Slurm cluster, follow the illustrated <a href="server.html#run-jobs-on-a-slurm-cluster-from-the-ui">Slurm UI
 steps</a>. Choose the
 executor with <code>Configure backend…</code>; keep the Training endpoint and settings
 below unchanged. The server guide also shows how to prepare the <code>.sif</code> image and
@@ -81,7 +81,7 @@ remote directory.</p>
 <figure class="annotated"><a href="../assets/attention.png" class="image-link" title="Open screenshot at original size"><img alt="Explicit attention inside HorizontalRepeat" src="../assets/attention.png" loading="lazy"></a><figcaption><strong>Explicit attention inside HorizontalRepeat</strong><p class="image-hint">Click the image to inspect it at its original size.</p><ol class="callouts"><li><span class="badge" aria-hidden="true">1</span><span>Current scope</span></li><li><span class="badge" aria-hidden="true">2</span><span>Dataset used by the project</span></li></ol></figcaption></figure><p>Return to <code>Root</code> in the Scope tree. The logits output should have shape <code>float32[B, 128, 65]</code>, while loss is scalar. <code>No model problems</code> means shape analysis is complete. Correct shapes and available Python resources are both required: the client shows the first, and the backend checks the second while running the project.</p>
 <h2 id="4-connect-and-choose-a-short-experiment">4. Connect and choose a short experiment</h2>
 <p>Press <code>Training</code>. Set the right endpoint, leave <code>Bearer token</code> blank if the server does not require one, and press <code>Connect / check health</code>. The status line should say that the runtime is ready for training.</p>
-<figure class="annotated"><a href="../assets/training-connect.png" class="image-link" title="Open screenshot at original size"><img alt="Connect to the local service" src="../assets/training-connect.png" loading="lazy"></a><figcaption><strong>Connect to the local service</strong><p class="image-hint">Click the image to inspect it at its original size.</p><ol class="callouts"><li><span class="badge" aria-hidden="true">1</span><span>Backend address</span></li><li><span class="badge" aria-hidden="true">2</span><span>Connect and check service health</span></li><li><span class="badge" aria-hidden="true">3</span><span>Open separate backend configuration</span></li></ol></figcaption></figure><p>To reproduce the illustrated run, use:</p>
+<figure class="annotated"><a href="../assets/training-connect.png" class="image-link" title="Open screenshot at original size"><img alt="Connect to the local service" src="../assets/training-connect.png" loading="lazy"></a><figcaption><strong>Connect to the local service</strong><p class="image-hint">Click the image to inspect it at its original size.</p><ol class="callouts"><li><span class="badge" aria-hidden="true">1</span><span>Backend endpoint</span></li><li><span class="badge" aria-hidden="true">2</span><span>Connect and check service health</span></li><li><span class="badge" aria-hidden="true">3</span><span>Open separate backend configuration</span></li></ol></figcaption></figure><p>To reproduce the illustrated run, use:</p>
 <table>
 <thead>
 <tr>
@@ -118,7 +118,13 @@ remote directory.</p>
 </tr>
 </tbody>
 </table>
-<figure class="annotated"><a href="../assets/training-settings.png" class="image-link" title="Open screenshot at original size"><img alt="Short training settings" src="../assets/training-settings.png" loading="lazy"></a><figcaption><strong>Short training settings</strong><p class="image-hint">Click the image to inspect it at its original size.</p><ol class="callouts"><li><span class="badge" aria-hidden="true">1</span><span>Current training settings</span></li><li><span class="badge" aria-hidden="true">2</span><span>Save the project and submit the job</span></li></ol></figcaption></figure><p>Press <strong>Save project and submit</strong> once. The client saves edits before submission, collects resources and data, and creates the job. Wait for it to appear in <code>Job history</code>, then select it; this loads curves, status and metrics. If an old submission message remains visible, <code>Connect / check health</code> refreshes the connection line; the job row status and metrics describe the experiment.</p>
+<figure class="annotated"><a href="../assets/training-settings.png" class="image-link" title="Open screenshot at original size"><img alt="Short training settings" src="../assets/training-settings.png" loading="lazy"></a><figcaption><strong>Short training settings</strong><p class="image-hint">Click the image to inspect it at its original size.</p><ol class="callouts"><li><span class="badge" aria-hidden="true">1</span><span>Epochs, batch, learning rate, seed and metric cadence</span></li><li><span class="badge" aria-hidden="true">2</span><span>Device, precision and optimizer</span></li><li><span class="badge" aria-hidden="true">3</span><span>Weight decay, clipping, warmup, step budget and accumulation</span></li><li><span class="badge" aria-hidden="true">4</span><span>Early stopping patience and minimum validation improvement</span></li></ol></figcaption></figure><p>For this short trial keep <code>Device = CPU</code>, <code>Precision = Float32</code>,
+<code>Optimizer = Adam</code>, <code>Max steps = 0</code>, <code>Accumulation = 1</code> and
+<code>Early stop patience (epochs) = 0</code>. The <a href="client.html#advanced-training-options">client guide</a>
+explains advanced controls and restoration of best validation weights.
+Completed-job screenshots are historical; advanced-control screenshots show
+the current interface without claiming a new training run.</p>
+<p>Press <strong>Save project and submit</strong> once. The client saves edits before submission, collects resources and data, and creates the job. Wait for it to appear in <code>Job history</code>, then select it; this loads curves, status and metrics. If an old submission message remains visible, <code>Connect / check health</code> refreshes the connection line; the job row status and metrics describe the experiment.</p>
 <h2 id="5-read-the-curves-and-identify-completion">5. Read the curves and identify completion</h2>
 <p>The blue series is training loss and the red series is validation loss. A lower value means a smaller mean error for this objective. Training measures the data used to update the model; validation measures separate data without updating the weights. If training keeps improving while validation gets worse, the model may be overfitting the training data.</p>
 <figure class="annotated"><a href="../assets/training-dashboard.png" class="image-link" title="Open screenshot at original size"><img alt="Completed job, curves and test loss" src="../assets/training-dashboard.png" loading="lazy"></a><figcaption><strong>Completed job, curves and test loss</strong><p class="image-hint">Click the image to inspect it at its original size.</p><ol class="callouts"><li><span class="badge" aria-hidden="true">1</span><span>Backend connection</span></li><li><span class="badge" aria-hidden="true">2</span><span>Training configuration</span></li><li><span class="badge" aria-hidden="true">3</span><span>Job history and status</span></li><li><span class="badge" aria-hidden="true">4</span><span>Training and validation loss curves</span></li><li><span class="badge" aria-hidden="true">5</span><span>Curve visibility and scale</span></li><li><span class="badge" aria-hidden="true">6</span><span>Final test loss</span></li><li><span class="badge" aria-hidden="true">7</span><span>Training and worker log</span></li><li><span class="badge" aria-hidden="true">8</span><span>Download, restore, cancel and close actions</span></li></ol></figcaption></figure><p><code>Optimizer step</code> counts global updates. This experiment has <strong>12</strong>: four in each of the three epochs. Checkboxes hide or show the series; <code>Scale &gt; Log</code> changes how loss is displayed and does not modify the job. Test loss is calculated at the end on a third, separate set.</p>
@@ -130,19 +136,19 @@ remote directory.</p>
 <pre><code class="language-sh">python3 -m venv .venv
 .venv/bin/python -m pip install /path/nnm_llm-0.1.0-py3-none-any.whl
 </code></pre>
-<p>The distribution name (<code>nnm_llm</code>) differs from the Python module, which remains job-specific and has the form <code>nnmodel_&lt;normalized-job-id&gt;</code>. Before creating <code>infer.py</code>, read the module name from your downloaded wheel with this command, without importing code:</p>
+<p>New wheels for project <code>llm</code> expose public module <code>nnm_llm</code>, matching the distribution. A <code>nnmodel_&lt;normalized-job-id&gt;</code> alias remains available. For a historical wheel or another project ID, list available modules without importing code:</p>
 <pre><code class="language-sh">python3 - /path/nnm_llm-0.1.0-py3-none-any.whl &lt;&lt;'PY'
 import sys
 import zipfile
 with zipfile.ZipFile(sys.argv[1]) as wheel:
     for name in wheel.namelist():
-        if name.startswith("nnmodel_") and name.count("/") == 1 and name.endswith("/__init__.py"):
+        if name.startswith(("nnm_", "nnmodel_")) and name.count("/") == 1 and name.endswith("/__init__.py"):
             print("Module to import:", name.split("/")[0])
 PY
 </code></pre>
-<p>The following snippet shows <strong>only the import for the historical job</strong> in the screenshots and metrics above:</p>
+<p>The following snippet uses the public import of a new wheel for project <code>llm</code>:</p>
 <pre><code class="language-python">import torch
-from nnmodel_job_86caba53_0690_4c79_b948_4273ed1426b4 import Model
+from nnm_llm import Model
 
 torch.set_num_threads(2)
 model = Model()  # Loads the weights included in the wheel.
@@ -154,9 +160,9 @@ for _ in range(40):
     text += prediction[-1]
 print(text)
 </code></pre>
-<p>Save the code as <code>infer.py</code>, replacing the historical import with the module found in your job’s wheel; do not infer it from the distribution name.</p>
+<p>Save the code as <code>infer.py</code>; for a historical wheel or another project ID, replace the import with the module found in the file.</p>
 <p>Run <code>.venv/bin/python infer.py</code>. Text passed to the adapter must contain characters from the vocabulary and a nonempty context of at most 128 characters. <code>infer</code> is an alias for <code>inference</code>. The function returns one prediction per sequence position; the loop uses the final predicted character to build a greedy continuation. To use compatible alternative weights, construct <code>Model(weights_path="/path/weights.safetensors")</code>.</p>
-<p>The wheel contains the private runtime needed to use the model: the original repository, training dataset and server are not required. Different jobs from the same project, or from projects whose IDs normalize to the same name, share a distribution name and version: install their wheels in separate environments. Artifacts remain separate by job. <code>examples/implementation/llm</code> is a consumer configured for a specific historical 20-epoch job; do not change its existing wheel.</p>
+<p>The wheel contains the private runtime needed to use the model: the original repository, training dataset and server are not required. Different jobs from the same project, or from projects whose IDs normalize to the same name, share a distribution name and version: install their wheels in separate environments. Artifacts remain separate by job. <code>examples/implementation/llm</code> contains a standalone consumer; its README explains verified wheel download/replacement, retaining the same public import for the same project ID.</p>
 <h2 id="7-move-to-the-full-corpus">7. Move to the full corpus</h2>
 <p>Once the short run works, prepare <strong>another</strong> folder for the full corpus. From the repository root:</p>
 <pre><code class="language-sh">uv run --group examples python tools/prepare_full_llm.py \

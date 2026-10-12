@@ -30,7 +30,56 @@ just backend-run
 **Ctrl-C** per fermare il servizio. Seleziona **Training** nell'app e premi
 **Connect / check health**. Il campo endpoint usa già l'indirizzo predefinito.
 
-## Eseguire i job sul cluster Sapienza dalla UI
+## Configurazione JSON per utente
+
+UI e backend leggono lo stesso file: `~/.config/nnmodelling/config.json`.
+Se `XDG_CONFIG_HOME` è definita, il percorso diventa
+`$XDG_CONFIG_HOME/nnmodelling/config.json`. `NNMODELLING_CONFIG` sceglie un file
+alternativo. La finestra **Configure backend…** mostra il percorso e salva le
+impostazioni non segrete prima dell'avvio del servizio. Non usa più le vecchie
+preferenze Qt del launcher. Nessun host, account, percorso remoto o partizione
+è preconfigurato.
+
+Puoi creare il file manualmente. Questo esempio contiene segnaposto: sostituisci
+host, percorsi assoluti e partizione con valori della tua installazione.
+
+```json
+{
+  "backend": {
+    "executor": "docker",
+    "job_root": "~/.local/share/nnmodelling/jobs",
+    "container_runtime": "docker",
+    "worker_image": "nnmodelling-worker:local"
+  },
+  "slurm": {
+    "host": "my-cluster",
+    "root": "/srv/nnmodelling/jobs",
+    "image": "/srv/nnmodelling/worker.sif",
+    "partition": "my-partition",
+    "cpus": 2,
+    "memory": "4G",
+    "time": "00:30:00",
+    "gpus": 0,
+    "ssh_executable": "ssh"
+  }
+}
+```
+
+Per Slurm imposta `"executor": "slurm"`. Il backend avviato da terminale usa
+prima le variabili `NNMODELLING_*` esplicite, poi JSON, poi i valori generici.
+La UI passa al servizio i valori scelti nei suoi campi. Il file predefinito
+assente permette l'uso locale; un file alternativo esplicito mancante o un JSON
+invalido produce un errore. Errori di lettura o salvataggio impediscono l'avvio
+gestito, senza sovrascrivere il file. Il salvataggio è atomico e conserva le
+altre impostazioni JSON. Password, chiavi SSH e bearer token non vanno nel file;
+il token resta in memoria e le credenziali SSH restano nell'agent/config SSH.
+
+`just backend-image` usa runtime e tag dalle variabili d'ambiente: quando cambi
+questi due valori nel JSON, passa gli stessi valori al comando di build.
+
+![Profilo JSON e backend Docker locale](assets/backend-config.png)
+
+## Eseguire i job su un cluster Slurm dalla UI
 
 Il servizio FastAPI, il dashboard Training e l'archivio dei job restano su
 questo computer. La finestra **Local backend service configuration** sceglie
@@ -43,11 +92,10 @@ già configurato sul computer, con autenticazione e verifica delle chiavi host.
 
 ### 1. Prepara immagine e directory remota
 
-Sostituisci `utente_cluster` e il percorso dell'immagine con valori validi per il
-tuo account. Crea la directory una volta:
+Sostituisci alias e percorsi di esempio con valori validi per il tuo account. Crea la directory una volta:
 
 ```sh
-ssh cluster 'mkdir -p /home/utente_cluster/nnmodelling-jobs && chmod 700 /home/utente_cluster/nnmodelling-jobs'
+ssh my-cluster 'mkdir -p /srv/nnmodelling/jobs && chmod 700 /srv/nnmodelling/jobs'
 ```
 
 L'immagine deve già contenere ogni dipendenza Python richiesta dal progetto:
@@ -61,8 +109,9 @@ Nel dashboard **Training**, premi **Configure backend…**. Si apre una finestra
 separata: il dashboard con endpoint, controlli di training, cronologia e curve
 resta disponibile. Imposta `Executor` su `SSH / Slurm` e compila alias SSH,
 directory locale, directory remota, immagine `.sif`, partizione, CPU, memoria e
-limite di tempo. I valori iniziali delle risorse sono `students`, `2`, `4G` e
-`00:30:00`; usa i limiti assegnati dal tuo account. `Time limit` è il limite
+limite di tempo e GPU. Host, directory remota, immagine e partizione sono
+obbligatori e inizialmente vuoti. I valori generici sono 2 CPU, `4G`,
+`00:30:00` e 0 GPU; usa i limiti assegnati dal tuo account. `Time limit` è il limite
 di ogni singola allocazione Slurm, non la durata massima del training.
 
 ![Configurare esecutore, percorsi e risorse Slurm](assets/slurm-configure.png)
@@ -70,14 +119,13 @@ di ogni singola allocazione Slurm, non la durata massima del training.
 ### 3. Avvia FastAPI in locale
 
 Nella finestra di configurazione premi **Save settings and start local
-backend**. Nello screenshot il servizio è già attivo, quindi il pulsante propone
-un riavvio sicuro; al primo avvio mostra invece l’azione di avvio. Viene avviato solo il servizio locale su loopback. L'app sceglie una
+backend**. Lo screenshot mostra i campi remoti ancora vuoti: il tentativo di avvio è
+respinto prima di qualsiasi connessione al cluster.
+Quando un servizio gestito è attivo, il pulsante propone un riavvio sicuro. Viene avviato solo il servizio locale su loopback. L'app sceglie una
 porta libera e aggiorna automaticamente `Endpoint` nel dashboard. La riga di
-stato conferma avvio e disponibilità di Singularity; errori SSH, immagine o
+stato verifica avvio e disponibilità di Singularity; errori SSH, immagine o
 prerequisiti appaiono qui. Le preferenze non segrete vengono salvate per
 l'utente. Password SSH non vengono richieste o copiate.
-
-![Configurazione Slurm pronta nel backend locale](assets/slurm-configure.png)
 
 ### 4. Connetti dashboard e invia job
 
@@ -97,7 +145,7 @@ può riprendere automaticamente. Gli iteratori di training personalizzati devono
 poter essere ricreati in modo ripetibile per permettere il ripristino del punto
 salvato.
 
-![Dashboard Training con configurazione Slurm separata](assets/slurm-dashboard.png)
+![Controlli Training attuali](assets/slurm-dashboard.png)
 
 I tutorial [LLM](tutorial-tiny-llm.md) e [VAE](tutorial-vae.md) seguono lo
 stesso percorso. Se manca una dipendenza nella `.sif`, il job fallisce in modo
@@ -230,7 +278,8 @@ viene pubblicata anche l'eventuale finestra residua.
 
 L'API accetta questi intervalli: epoche `1–10000`, batch `1–4096`, learning rate
 finito maggiore di `0` e minore o uguale a `1`, seed da `-2147483648` a
-`4294967295`, cadenza `1–100000`. I campi JSON aggiuntivi vengono rifiutati.
+`4294967295`, cadenza `1–100000`. I campi JSON non previsti dal protocollo vengono rifiutati; le opzioni avanzate
+elencate nella guida client sono supportate.
 Il job registra la configurazione usata e lo snapshot dei file: le modifiche
 successive al progetto non cambiano un job già inviato.
 
@@ -438,9 +487,9 @@ nuovi job, il nome della distribuzione è `nnm_<id-progetto-normalizzato>`; ad
 esempio, ID `llm` produce `nnm_llm-0.1.0-py3-none-any.whl`. Per normalizzare,
 sequenze diverse da lettere e cifre ASCII diventano `_`, gli underscore iniziali
 e finali sono rimossi e il risultato è minuscolo. Il client Qt conserva il nome
-completo inviato dal server, che include distribuzione, versione e tag. Il nome
-del modulo Python resta invece specifico del job: `nnmodel_<id-job-normalizzato>`.
-Non ricavare l'import dal nome della wheel; leggi il modulo al suo interno. Job
+completo inviato dal server, che include distribuzione, versione e tag. Il modulo Python delle nuove wheel è `nnm_<id-progetto-normalizzato>`:
+per ID `llm`, usa `from nnm_llm import Model`. Un alias specifico del job
+resta disponibile per compatibilità. Per wheel storiche, leggi il modulo al loro interno. Job
 generati dallo stesso progetto, o da progetti con lo stesso ID normalizzato,
 condividono distribuzione e versione:
 installali in ambienti Python separati. Le wheel archiviate prima della modifica
@@ -455,6 +504,12 @@ Le variabili seguenti si impostano prima di avviare `just backend-run`.
 
 | Variabile | Predefinito | Funzione e limiti effettivi |
 | --- | --- | --- |
+| `NNMODELLING_CONFIG` | percorso XDG o `~/.config/nnmodelling/config.json` | File JSON condiviso; un percorso esplicito mancante produce errore. |
+| `NNMODELLING_EXECUTOR` | `docker` | `docker` oppure `slurm`; sovrascrive `backend.executor`. |
+| `NNMODELLING_SLURM_HOST`, `NNMODELLING_SLURM_ROOT`, `NNMODELLING_SLURM_IMAGE`, `NNMODELLING_SLURM_PARTITION` | vuoti | Alias SSH, root remota, SIF e partizione: obbligatori per Slurm. |
+| `NNMODELLING_SLURM_CPUS`, `NNMODELLING_SLURM_MEMORY`, `NNMODELLING_SLURM_TIME`, `NNMODELLING_SLURM_GPUS` | `2`, `4G`, `00:30:00`, `0` | Risorse per allocazione; GPU da 0 a 8. |
+| `NNMODELLING_SSH_EXECUTABLE` | `ssh` | Comando SSH usato dal servizio. |
+| `NNMODELLING_MAX_ARTIFACT_BYTES` | `64 GiB` | Limite configurabile degli artifact, separato da bundle e corpus. |
 | `NNMODELLING_BACKEND_HOST` | `127.0.0.1` | Indirizzo di bind passato a Uvicorn. Mantienilo su loopback per uso locale. |
 | `NNMODELLING_BACKEND_PORT` | `8765` | Porta passata a Uvicorn. |
 | `NNMODELLING_JOB_ROOT` | `~/.local/share/nnmodelling/jobs` | Directory persistente di job, snapshot, log e risultati. |
@@ -467,7 +522,7 @@ Le variabili seguenti si impostano prima di avviare `just backend-run`.
 | `NNMODELLING_MAX_FILES` | `10000` | Numero massimo di file nel bundle. |
 | `NNMODELLING_MAX_FILE_BYTES` | `128 MiB` | Dimensione massima di un singolo file. |
 
-I quattro limiti `MAX_*` sono convertiti da stringa a intero all'avvio; il
+I limiti del bundle `MAX_*` sono convertiti da stringa a intero all'avvio; il
 servizio non applica un ulteriore intervallo o valore minimo a queste
 impostazioni. I valori standard sono allineati ai controlli dell'API; il client
 Qt applica inoltre un massimo complessivo di `256 MiB` ai file locali prima della

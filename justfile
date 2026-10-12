@@ -36,7 +36,7 @@ backend-run:
 
 # Backend stays local; only isolated workers run on the configured Slurm cluster.
 backend-slurm:
-    NNMODELLING_EXECUTOR=slurm NNMODELLING_SLURM_HOST="${NNMODELLING_SLURM_HOST:-cluster}" uv run --package nnmodelling-backend --no-sync uvicorn backend.app:app --host "${NNMODELLING_BACKEND_HOST:-127.0.0.1}" --port "${NNMODELLING_BACKEND_PORT:-8765}"
+    NNMODELLING_EXECUTOR=slurm uv run --package nnmodelling-backend --no-sync uvicorn backend.app:app --host "${NNMODELLING_BACKEND_HOST:-127.0.0.1}" --port "${NNMODELLING_BACKEND_PORT:-8765}"
 
 train-cluster-examples:
     uv run --no-project python tools/train_cluster_examples.py --wait

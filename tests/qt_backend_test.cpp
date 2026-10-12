@@ -19,7 +19,7 @@
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QTemporaryDir>
-#include <QSettings>
+#include <QFileInfo>
 #include <QTest>
 #include <QTreeWidget>
 
@@ -147,10 +147,24 @@ private slots:
     {
         QTemporaryDir temporary;
         QVERIFY(temporary.isValid());
-        QSettings::setDefaultFormat(QSettings::IniFormat);
-        QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, temporary.path());
-        QTemporaryDir source;
-        BackendServiceManager manager(source.path());
+        const QByteArray priorConfig = qgetenv("NNMODELLING_CONFIG");
+        const bool hadConfig = qEnvironmentVariableIsSet("NNMODELLING_CONFIG");
+        struct RestoreConfigEnvironment {
+            QByteArray value;
+            bool wasSet;
+            ~RestoreConfigEnvironment() { if (wasSet) qputenv("NNMODELLING_CONFIG", value); else qunsetenv("NNMODELLING_CONFIG"); }
+        } restore{priorConfig, hadConfig};
+        const QString profilePath = QDir(temporary.path()).filePath(QStringLiteral("config.json"));
+        QFile initialProfile(profilePath);
+        QVERIFY(initialProfile.open(QIODevice::WriteOnly));
+        const QByteArray initialProfileBytes = QJsonDocument(QJsonObject{
+            {QStringLiteral("backend"), QJsonObject{{QStringLiteral("executor"), QStringLiteral("docker")}}},
+            {QStringLiteral("unrelated"), QJsonObject{{QStringLiteral("nested"), QJsonArray{1, 2, 3}}}}
+        }).toJson(QJsonDocument::Indented);
+        QCOMPARE(initialProfile.write(initialProfileBytes), qint64(initialProfileBytes.size()));
+        initialProfile.close();
+        qputenv("NNMODELLING_CONFIG", profilePath.toUtf8());
+        BackendServiceManager manager(NN_SOURCE_DIR);
         BackendDialog dialog(nullptr, {}, {}, nullptr, &manager);
         const QStringList launcherControls{
             QStringLiteral("backendExecutor"), QStringLiteral("backendJobRoot"),
@@ -159,6 +173,7 @@ private slots:
             QStringLiteral("backendSlurmImage"), QStringLiteral("backendSlurmPartition"),
             QStringLiteral("backendSlurmCpus"), QStringLiteral("backendSlurmMemory"),
             QStringLiteral("backendSlurmTime"), QStringLiteral("backendSlurmGpus"),
+            QStringLiteral("backendSlurmSshExecutable"),
             QStringLiteral("backendManagedStart")};
         for (const QString &name : launcherControls)
             QVERIFY2(!dialog.findChild<QWidget *>(name), qPrintable(name));
@@ -178,29 +193,54 @@ private slots:
         QVERIFY(executor);
         QVERIFY(jobRoot);
         QVERIFY(startButton);
+        QVERIFY2(startButton->isEnabled(), qPrintable(configuration->findChild<QLabel *>(QStringLiteral("backendConfigurationStatus"))->text()));
+        QVERIFY(configuration->findChild<QLabel *>(QStringLiteral("backendConfigurationPath")));
+        QVERIFY(configuration->findChild<QLabel *>(QStringLiteral("backendConfigurationPath"))->text().contains(profilePath));
         QCOMPARE(executor->parentWidget(), configuration);
         QCOMPARE(jobRoot->parentWidget(), configuration);
+        QCOMPARE(configuration->findChild<QLineEdit *>(QStringLiteral("backendSlurmHost"))->text(), QString());
+        QCOMPARE(configuration->findChild<QLineEdit *>(QStringLiteral("backendSlurmPartition"))->text(), QString());
         executor->setCurrentIndex(1);
         jobRoot->setText(QStringLiteral("relative/jobs"));
         QTest::mouseClick(startButton, Qt::LeftButton);
         QVERIFY(configuration->findChild<QLabel *>(QStringLiteral("backendConfigurationStatus"))->text().contains(
             QStringLiteral("absolute path")));
 
-        jobRoot->setText(temporary.path());
-        configuration->findChild<QLineEdit *>(QStringLiteral("backendSlurmRoot"))->setText(QStringLiteral("/cluster/jobs"));
-        configuration->findChild<QLineEdit *>(QStringLiteral("backendSlurmImage"))->setText(QStringLiteral("/cluster/images/worker.sif"));
-        configuration->findChild<QLineEdit *>(QStringLiteral("backendSlurmGpus"))->setText(QStringLiteral("3"));
-        QTest::mouseClick(startButton, Qt::LeftButton);
-        QVERIFY(configuration->findChild<QLabel *>(QStringLiteral("backendConfigurationStatus"))->text().contains(
-            QStringLiteral("source tree and uv workspace")));
         QVERIFY(!manager.isRunning());
-
-        QSettings saved;
-        saved.beginGroup(QStringLiteral("backendLauncher"));
-        QCOMPARE(saved.value(QStringLiteral("executor")).toString(), QStringLiteral("slurm"));
-        QVERIFY(!saved.contains(QStringLiteral("token")));
-        QVERIFY(!saved.contains(QStringLiteral("bearerToken")));
-        QCOMPARE(saved.value(QStringLiteral("slurmGpus")).toString(), QStringLiteral("3"));
+        QJsonObject profile{
+            {QStringLiteral("backend"), QJsonObject{
+                {QStringLiteral("executor"), QStringLiteral("slurm")},
+                {QStringLiteral("job_root"), temporary.path()},
+                {QStringLiteral("container_runtime"), QStringLiteral("docker")},
+                {QStringLiteral("worker_image"), QStringLiteral("nnmodelling-worker:local")}}},
+            {QStringLiteral("slurm"), QJsonObject{
+                {QStringLiteral("host"), QStringLiteral("test-cluster")},
+                {QStringLiteral("root"), QStringLiteral("/cluster/jobs")},
+                {QStringLiteral("image"), QStringLiteral("/cluster/images/worker.sif")},
+                {QStringLiteral("partition"), QStringLiteral("test")},
+                {QStringLiteral("cpus"), 2}, {QStringLiteral("memory"), QStringLiteral("4G")},
+                {QStringLiteral("time"), QStringLiteral("00:30:00")},
+                {QStringLiteral("gpus"), 3}, {QStringLiteral("ssh_executable"), QStringLiteral("ssh")}}}
+        };
+        QString savedPath;
+        QString saveError;
+        QVERIFY2(manager.saveUserConfig(profile, &savedPath, &saveError), qPrintable(saveError));
+        QCOMPARE(savedPath, profilePath);
+        QVERIFY(QFileInfo::exists(profilePath));
+        QFile savedProfile(profilePath);
+        QVERIFY(savedProfile.open(QIODevice::ReadOnly));
+        const QJsonObject saved = QJsonDocument::fromJson(savedProfile.readAll()).object();
+        QCOMPARE(saved.value(QStringLiteral("unrelated")).toObject().value(QStringLiteral("nested")).toArray(), QJsonArray({1, 2, 3}));
+        QCOMPARE(saved.value(QStringLiteral("backend")).toObject().value(QStringLiteral("executor")).toString(), QStringLiteral("slurm"));
+        QCOMPARE(saved.value(QStringLiteral("slurm")).toObject().value(QStringLiteral("gpus")).toInt(), 3);
+        QVERIFY(!QJsonDocument(saved).toJson().contains("session-secret"));
+        QVERIFY(!manager.isRunning());
+        QJsonObject loaded;
+        QString loadedPath;
+        QString loadError;
+        QVERIFY2(manager.loadUserConfig(&loadedPath, &loaded, &loadError), qPrintable(loadError));
+        QCOMPARE(loadedPath, profilePath);
+        QCOMPARE(loaded.value(QStringLiteral("slurm")).toObject().value(QStringLiteral("host")).toString(), QStringLiteral("test-cluster"));
     }
 
     void curvePathsDoNotFillBetweenSeries()

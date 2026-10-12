@@ -38,7 +38,6 @@ private:
     void createBackendConfiguration();
     void startManagedBackend();
     void checkJobsBeforeRestart();
-    void saveLauncherSettings();
     void setMessage(const QString &message, bool error = false);
     QUrl endpointUrl(const QString &path) const;
 
@@ -87,10 +86,13 @@ private:
     QLineEdit *slurmMemory_ = nullptr;
     QLineEdit *slurmTime_ = nullptr;
     QLineEdit *slurmGpus_ = nullptr;
+    QLineEdit *slurmSsh_ = nullptr;
+    QLabel *configurationPath_ = nullptr;
     QPushButton *managedBackendButton_ = nullptr;
     QString selectedJob_;
     QString jobsEndpointInFlight_;
     bool jobsRequestInFlight_ = false;
+    bool profileReady_ = false;
 };
 
 #endif

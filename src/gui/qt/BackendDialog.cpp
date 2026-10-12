@@ -30,8 +30,6 @@
 #include <QRegularExpression>
 #include <QSaveFile>
 #include <QScrollBar>
-#include <QSettings>
-#include <QStandardPaths>
 #include <QSplitter>
 #include <QSignalBlocker>
 #include <QSet>
@@ -498,7 +496,11 @@ BackendDialog::BackendDialog(NNApplication *application, std::function<bool()> s
 
 void BackendDialog::openBackendConfiguration()
 {
-    if (!configurationDialog_) createBackendConfiguration();
+    if (!configurationDialog_ || (!profileReady_ && !configurationDialog_->isVisible())) {
+        if (configurationDialog_) configurationDialog_->deleteLater();
+        configurationDialog_ = nullptr;
+        createBackendConfiguration();
+    }
     configurationDialog_->show();
     configurationDialog_->raise();
     configurationDialog_->activateWindow();
@@ -532,13 +534,13 @@ void BackendDialog::createBackendConfiguration()
     dockerRuntime_->setObjectName(QStringLiteral("backendDockerRuntime"));
     dockerImage_ = new QLineEdit(QStringLiteral("nnmodelling-worker:local"), configurationDialog_);
     dockerImage_->setObjectName(QStringLiteral("backendDockerImage"));
-    slurmHost_ = new QLineEdit(QStringLiteral("cluster"), configurationDialog_);
+    slurmHost_ = new QLineEdit(configurationDialog_);
     slurmHost_->setObjectName(QStringLiteral("backendSlurmHost"));
     slurmRoot_ = new QLineEdit(configurationDialog_);
     slurmRoot_->setObjectName(QStringLiteral("backendSlurmRoot"));
     slurmImage_ = new QLineEdit(configurationDialog_);
     slurmImage_->setObjectName(QStringLiteral("backendSlurmImage"));
-    slurmPartition_ = new QLineEdit(QStringLiteral("students"), configurationDialog_);
+    slurmPartition_ = new QLineEdit(configurationDialog_);
     slurmPartition_->setObjectName(QStringLiteral("backendSlurmPartition"));
     slurmCpus_ = new QLineEdit(QStringLiteral("2"), configurationDialog_);
     slurmCpus_->setObjectName(QStringLiteral("backendSlurmCpus"));
@@ -549,12 +551,8 @@ void BackendDialog::createBackendConfiguration()
     slurmGpus_ = new QLineEdit(QStringLiteral("0"), configurationDialog_);
     slurmGpus_->setObjectName(QStringLiteral("backendSlurmGpus"));
     slurmGpus_->setValidator(new QIntValidator(0, 8, slurmGpus_));
-
-    const QString appData = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
-    const QString defaultRoot = appData.isEmpty()
-        ? QDir::homePath() + QStringLiteral("/.local/share/nnmodelling/jobs")
-        : QDir(appData).filePath(QStringLiteral("jobs"));
-    jobRoot_->setText(defaultRoot);
+    slurmSsh_ = new QLineEdit(configurationDialog_);
+    slurmSsh_->setObjectName(QStringLiteral("backendSlurmSshExecutable"));
     form->addRow(tr("Executor"), executor_);
     form->addRow(tr("Local job root"), jobRoot_);
     form->addRow(tr("Docker runtime"), dockerRuntime_);
@@ -567,9 +565,10 @@ void BackendDialog::createBackendConfiguration()
     form->addRow(tr("Memory"), slurmMemory_);
     form->addRow(tr("Time limit"), slurmTime_);
     form->addRow(tr("GPUs (0–8)"), slurmGpus_);
+    form->addRow(tr("SSH executable"), slurmSsh_);
     layout->addLayout(form);
     for (QLineEdit *field : {jobRoot_, dockerRuntime_, dockerImage_, slurmHost_, slurmRoot_,
-                             slurmImage_, slurmPartition_, slurmCpus_, slurmMemory_, slurmTime_, slurmGpus_})
+                             slurmImage_, slurmPartition_, slurmCpus_, slurmMemory_, slurmTime_, slurmGpus_, slurmSsh_})
         field->setMinimumHeight(27);
     executor_->setMinimumHeight(27);
 
@@ -589,24 +588,40 @@ void BackendDialog::createBackendConfiguration()
         setRowVisible(slurmMemory_, !docker);
         setRowVisible(slurmTime_, !docker);
         setRowVisible(slurmGpus_, !docker);
+        setRowVisible(slurmSsh_, !docker);
     };
     connect(executor_, &QComboBox::currentIndexChanged, configurationDialog_, updateExecutorFields);
     updateExecutorFields();
 
-    QSettings settings;
-    settings.beginGroup(QStringLiteral("backendLauncher"));
-    executor_->setCurrentIndex(qMax(0, executor_->findData(settings.value(QStringLiteral("executor"), QStringLiteral("docker")))));
-    jobRoot_->setText(settings.value(QStringLiteral("jobRoot"), jobRoot_->text()).toString());
-    dockerRuntime_->setText(settings.value(QStringLiteral("dockerRuntime"), dockerRuntime_->text()).toString());
-    dockerImage_->setText(settings.value(QStringLiteral("dockerImage"), dockerImage_->text()).toString());
-    slurmHost_->setText(settings.value(QStringLiteral("slurmHost"), slurmHost_->text()).toString());
-    slurmRoot_->setText(settings.value(QStringLiteral("slurmRoot")).toString());
-    slurmImage_->setText(settings.value(QStringLiteral("slurmImage")).toString());
-    slurmPartition_->setText(settings.value(QStringLiteral("slurmPartition"), slurmPartition_->text()).toString());
-    slurmCpus_->setText(settings.value(QStringLiteral("slurmCpus"), slurmCpus_->text()).toString());
-    slurmMemory_->setText(settings.value(QStringLiteral("slurmMemory"), slurmMemory_->text()).toString());
-    slurmTime_->setText(settings.value(QStringLiteral("slurmTime"), slurmTime_->text()).toString());
-    slurmGpus_->setText(settings.value(QStringLiteral("slurmGpus"), slurmGpus_->text()).toString());
+    configurationPath_ = new QLabel(configurationDialog_);
+    configurationPath_->setObjectName(QStringLiteral("backendConfigurationPath"));
+    configurationPath_->setWordWrap(true);
+    layout->addWidget(configurationPath_);
+    QString profilePath;
+    QJsonObject profile;
+    QString loadError;
+    if (serviceManager_ && serviceManager_->loadUserConfig(&profilePath, &profile, &loadError)) {
+        profileReady_ = true;
+        configurationPath_->setText(tr("Profile: %1").arg(profilePath));
+        const QJsonObject backend = profile.value(QStringLiteral("backend")).toObject();
+        const QJsonObject slurm = profile.value(QStringLiteral("slurm")).toObject();
+        executor_->setCurrentIndex(qMax(0, executor_->findData(backend.value(QStringLiteral("executor")).toString())));
+        jobRoot_->setText(backend.value(QStringLiteral("job_root")).toString());
+        dockerRuntime_->setText(backend.value(QStringLiteral("container_runtime")).toString());
+        dockerImage_->setText(backend.value(QStringLiteral("worker_image")).toString());
+        slurmHost_->setText(slurm.value(QStringLiteral("host")).toString());
+        slurmRoot_->setText(slurm.value(QStringLiteral("root")).toString());
+        slurmImage_->setText(slurm.value(QStringLiteral("image")).toString());
+        slurmPartition_->setText(slurm.value(QStringLiteral("partition")).toString());
+        slurmCpus_->setText(QString::number(slurm.value(QStringLiteral("cpus")).toInt()));
+        slurmMemory_->setText(slurm.value(QStringLiteral("memory")).toString());
+        slurmTime_->setText(slurm.value(QStringLiteral("time")).toString());
+        slurmGpus_->setText(QString::number(slurm.value(QStringLiteral("gpus")).toInt()));
+        slurmSsh_->setText(slurm.value(QStringLiteral("ssh_executable")).toString());
+    } else {
+        configurationPath_->setText(profilePath.isEmpty() ? tr("Profile: unavailable") : tr("Profile: %1").arg(profilePath));
+        setMessage(loadError.isEmpty() ? tr("The shared configuration profile could not be loaded.") : loadError, true);
+    }
 
     configurationStatus_ = new QLabel(status_->text(), configurationDialog_);
     configurationStatus_->setObjectName(QStringLiteral("backendConfigurationStatus"));
@@ -614,7 +629,7 @@ void BackendDialog::createBackendConfiguration()
     layout->addWidget(configurationStatus_);
     managedBackendButton_ = new QPushButton(tr("Save settings and start local backend"), configurationDialog_);
     managedBackendButton_->setObjectName(QStringLiteral("backendManagedStart"));
-    managedBackendButton_->setEnabled(serviceManager_ != nullptr);
+    managedBackendButton_->setEnabled(serviceManager_ != nullptr && profileReady_);
     if (serviceManager_ && serviceManager_->isRunning())
         managedBackendButton_->setText(tr("Restart local backend safely"));
     layout->addWidget(managedBackendButton_);
@@ -733,35 +748,31 @@ void BackendDialog::connectBackend()
     request(QStringLiteral("/health"));
 }
 
-void BackendDialog::saveLauncherSettings()
-{
-    QSettings settings;
-    settings.beginGroup(QStringLiteral("backendLauncher"));
-    settings.setValue(QStringLiteral("executor"), executor_->currentData().toString());
-    settings.setValue(QStringLiteral("jobRoot"), QDir::cleanPath(jobRoot_->text().trimmed()));
-    settings.setValue(QStringLiteral("dockerRuntime"), dockerRuntime_->text().trimmed());
-    settings.setValue(QStringLiteral("dockerImage"), dockerImage_->text().trimmed());
-    settings.setValue(QStringLiteral("slurmHost"), slurmHost_->text().trimmed());
-    settings.setValue(QStringLiteral("slurmRoot"), slurmRoot_->text().trimmed());
-    settings.setValue(QStringLiteral("slurmImage"), slurmImage_->text().trimmed());
-    settings.setValue(QStringLiteral("slurmPartition"), slurmPartition_->text().trimmed());
-    settings.setValue(QStringLiteral("slurmCpus"), slurmCpus_->text().trimmed());
-    settings.setValue(QStringLiteral("slurmMemory"), slurmMemory_->text().trimmed());
-    settings.setValue(QStringLiteral("slurmTime"), slurmTime_->text().trimmed());
-    settings.setValue(QStringLiteral("slurmGpus"), slurmGpus_->text().trimmed());
-}
-
 void BackendDialog::startManagedBackend()
 {
-    if (!serviceManager_) return;
-    const QString root = QDir::cleanPath(jobRoot_->text().trimmed());
+    if (!serviceManager_ || !profileReady_) return;
+    QString root = jobRoot_->text().trimmed();
+    if (root == QStringLiteral("~")) root = QDir::homePath();
+    else if (root.startsWith(QStringLiteral("~/"))) root = QDir::homePath() + root.mid(1);
+    root = QDir::cleanPath(root);
     if (!QDir::isAbsolutePath(root) || root.contains(QChar::Null) || root.contains(QChar::LineFeed)) {
         setMessage(tr("Local job root must be an absolute path."), true);
         return;
     }
     QStringList environment;
     environment << QStringLiteral("NNMODELLING_EXECUTOR=") + executor_->currentData().toString()
-                << QStringLiteral("NNMODELLING_JOB_ROOT=") + root;
+                << QStringLiteral("NNMODELLING_JOB_ROOT=") + root
+                << QStringLiteral("NNMODELLING_CONTAINER_RUNTIME=") + dockerRuntime_->text().trimmed()
+                << QStringLiteral("NNMODELLING_WORKER_IMAGE=") + dockerImage_->text().trimmed()
+                << QStringLiteral("NNMODELLING_SLURM_HOST=") + slurmHost_->text().trimmed()
+                << QStringLiteral("NNMODELLING_SLURM_ROOT=") + slurmRoot_->text().trimmed()
+                << QStringLiteral("NNMODELLING_SLURM_IMAGE=") + slurmImage_->text().trimmed()
+                << QStringLiteral("NNMODELLING_SLURM_PARTITION=") + slurmPartition_->text().trimmed()
+                << QStringLiteral("NNMODELLING_SLURM_CPUS=") + slurmCpus_->text().trimmed()
+                << QStringLiteral("NNMODELLING_SLURM_MEMORY=") + slurmMemory_->text().trimmed()
+                << QStringLiteral("NNMODELLING_SLURM_TIME=") + slurmTime_->text().trimmed()
+                << QStringLiteral("NNMODELLING_SLURM_GPUS=") + slurmGpus_->text().trimmed()
+                << QStringLiteral("NNMODELLING_SSH_EXECUTABLE=") + slurmSsh_->text().trimmed();
     if (!token_->text().isEmpty())
         environment << QStringLiteral("NNMODELLING_BEARER_TOKEN=") + token_->text();
     if (executor_->currentData().toString() == QStringLiteral("docker")) {
@@ -773,8 +784,6 @@ void BackendDialog::startManagedBackend()
             setMessage(tr("Docker runtime and worker image must be valid executable and image names."), true);
             return;
         }
-        environment << QStringLiteral("NNMODELLING_CONTAINER_RUNTIME=") + runtime
-                    << QStringLiteral("NNMODELLING_WORKER_IMAGE=") + image;
     } else {
         const QString host = slurmHost_->text().trimmed();
         const QString remoteRoot = slurmRoot_->text().trimmed();
@@ -789,27 +798,45 @@ void BackendDialog::startManagedBackend()
         static const QRegularExpression tokenPattern(QStringLiteral("^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$"));
         static const QRegularExpression memoryPattern(QStringLiteral("^[1-9][0-9]*[KMGTP]?$"));
         static const QRegularExpression timePattern(QStringLiteral("^[0-9]{1,3}(?:-[0-9]{1,2})?:[0-9]{2}:[0-9]{2}$"));
+        static const QRegularExpression executablePattern(QStringLiteral("^[A-Za-z0-9_./+-]+$"));
         const QString memory = slurmMemory_->text().trimmed();
         const QString time = slurmTime_->text().trimmed();
+        const QString sshExecutable = slurmSsh_->text().trimmed();
         if (!aliasPattern.match(host).hasMatch() || !QDir::isAbsolutePath(remoteRoot) ||
             remoteRoot.split(QLatin1Char('/')).contains(QStringLiteral("..")) ||
             !remotePathPattern.match(image).hasMatch() || image.split(QLatin1Char('/')).contains(QStringLiteral("..")) ||
             !tokenPattern.match(partition).hasMatch() || !cpusOk || cpus < 1 || cpus > 256 ||
             !gpusOk || gpus < 0 || gpus > 8 ||
-            !memoryPattern.match(memory).hasMatch() || !timePattern.match(time).hasMatch()) {
+            !memoryPattern.match(memory).hasMatch() || !timePattern.match(time).hasMatch() ||
+            !executablePattern.match(sshExecutable).hasMatch()) {
             setMessage(tr("Slurm needs an SSH alias, absolute remote root and SIF path, valid partition, CPUs, memory and time limit."), true);
             return;
         }
-        environment << QStringLiteral("NNMODELLING_SLURM_HOST=") + host
-                    << QStringLiteral("NNMODELLING_SLURM_ROOT=") + remoteRoot
-                    << QStringLiteral("NNMODELLING_SLURM_IMAGE=") + image
-                    << QStringLiteral("NNMODELLING_SLURM_PARTITION=") + partition
-                    << QStringLiteral("NNMODELLING_SLURM_CPUS=") + QString::number(cpus)
-                    << QStringLiteral("NNMODELLING_SLURM_MEMORY=") + memory
-                    << QStringLiteral("NNMODELLING_SLURM_TIME=") + time
-                    << QStringLiteral("NNMODELLING_SLURM_GPUS=") + QString::number(gpus);
     }
-    saveLauncherSettings();
+    const QJsonObject profile{
+        {QStringLiteral("backend"), QJsonObject{
+            {QStringLiteral("executor"), executor_->currentData().toString()},
+            {QStringLiteral("job_root"), root},
+            {QStringLiteral("container_runtime"), dockerRuntime_->text().trimmed()},
+            {QStringLiteral("worker_image"), dockerImage_->text().trimmed()}}},
+        {QStringLiteral("slurm"), QJsonObject{
+            {QStringLiteral("host"), slurmHost_->text().trimmed()},
+            {QStringLiteral("root"), slurmRoot_->text().trimmed()},
+            {QStringLiteral("image"), slurmImage_->text().trimmed()},
+            {QStringLiteral("partition"), slurmPartition_->text().trimmed()},
+            {QStringLiteral("cpus"), slurmCpus_->text().trimmed().toInt()},
+            {QStringLiteral("memory"), slurmMemory_->text().trimmed()},
+            {QStringLiteral("time"), slurmTime_->text().trimmed()},
+            {QStringLiteral("gpus"), slurmGpus_->text().trimmed().toInt()},
+            {QStringLiteral("ssh_executable"), slurmSsh_->text().trimmed()}}}};
+    QString profilePath;
+    QString saveError;
+    if (!serviceManager_->saveUserConfig(profile, &profilePath, &saveError)) {
+        if (!profilePath.isEmpty()) configurationPath_->setText(tr("Profile: %1").arg(profilePath));
+        setMessage(saveError.isEmpty() ? tr("The shared configuration profile could not be saved.") : saveError, true);
+        return;
+    }
+    configurationPath_->setText(tr("Profile: %1").arg(profilePath));
     if (serviceManager_->isRunning()) {
         checkJobsBeforeRestart();
         return;

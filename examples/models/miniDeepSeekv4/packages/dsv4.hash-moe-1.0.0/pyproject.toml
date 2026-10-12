@@ -1,5 +1,0 @@
-[project]
-name = "nnm-dsv4-hash-moe"
-version = "1.0.0"
-requires-python = ">=3.11"
-dependencies = ["torch>=2.6", "nnmodelling-runtime"]

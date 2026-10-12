@@ -53,14 +53,16 @@ sequenceDiagram
     actor User
     participant Dashboard as Qt Training dashboard
     participant Config as Separate modeless backend configuration window
-    participant Settings as Per-user Qt settings
+    participant Settings as Per-user JSON via QJsonDocument and QSaveFile
     participant Process as Local service child process
     participant API as Local FastAPI
     User->>Dashboard: open backend configuration
     Dashboard->>Config: show separate movable window
+    Config->>Settings: load validated profile and show its path
     Note over Dashboard,Config: Dashboard remains usable with endpoint, jobs and curves visible
     User->>Config: choose Docker or Slurm and enter service paths
-    Config->>Settings: save non-secret launch profile
+    Config->>Settings: atomically save non-secret launch profile
+    Note over Config,Settings: Load/save errors prevent managed launch
     User->>Config: start or restart managed backend
     Config->>API: inspect jobs if existing managed process is running
     alt queued/running jobs exist

@@ -3,7 +3,7 @@
 <title>Tutorial tiny LLM · NNModelling</title><link rel="stylesheet" href="style.css"/></head>
 <body><a class="skip" href="#content">Vai al contenuto</a>
 <aside><a class="brand" href="introduction.html">NN<span>Modelling</span></a>
-<p class="edition">Manuale utente · Italiano<br/>Edizione 6 ottobre 2026</p><nav class="language-switch" aria-label="Lingua del manuale"><a lang="it" href="tutorial-tiny-llm.html" aria-current="page">Italiano</a><a lang="en" href="en/tutorial-tiny-llm.html">English</a></nav>
+<p class="edition">Manuale utente · Italiano<br/>Edizione 12 ottobre 2026</p><nav class="language-switch" aria-label="Lingua del manuale"><a lang="it" href="tutorial-tiny-llm.html" aria-current="page">Italiano</a><a lang="en" href="en/tutorial-tiny-llm.html">English</a></nav>
 <nav aria-label="Capitoli"><a href="introduction.html">Introduzione</a><a href="client.html">Usare il client</a><a href="parameters.html">Catalogo dei parametri</a><a href="server.html">Configurare il server</a><a href="tutorial-tiny-llm.html" aria-current="page">Tutorial tiny LLM</a><a href="tutorial-vae.html">Tutorial VAE</a></nav><div class="outline"><p>In questa pagina</p><div class="toc">
 <ul>
 <li><a href="#tutorial-addestrare-tiny-llm">Tutorial: addestrare tiny LLM</a><ul>
@@ -34,8 +34,8 @@ just backend-run
 <p>Se il backend era già installato e attivo prima dell'aggiornamento, ricostruisci
 l'immagine con <code>just backend-image</code>, arresta il servizio con Ctrl-C e avvialo di
 nuovo con <code>just backend-run</code> prima di inviare il job.</p>
-<p>Per eseguire questo stesso job sul cluster Sapienza, segui gli illustrati
-<a href="server.html#eseguire-i-job-sul-cluster-sapienza-dalla-ui">passaggi Slurm dalla UI</a>.
+<p>Per eseguire questo stesso job sul cluster Slurm configurato, segui gli illustrati
+<a href="server.html#eseguire-i-job-su-un-cluster-slurm-dalla-ui">passaggi Slurm dalla UI</a>.
 Scegli l'esecutore con <code>Configure backend…</code>; lascia invariati endpoint e
 parametri Training qui sotto. La guida mostra anche come preparare immagine
 <code>.sif</code> e directory remota.</p>
@@ -118,7 +118,13 @@ parametri Training qui sotto. La guida mostra anche come preparare immagine
 </tr>
 </tbody>
 </table>
-<figure class="annotated"><a href="assets/training-settings.png" class="image-link" title="Apri screenshot a dimensione originale"><img alt="Configurazione del training breve" src="assets/training-settings.png" loading="lazy"></a><figcaption><strong>Configurazione del training breve</strong><p class="image-hint">Clic sull'immagine per leggere i dettagli a dimensione originale.</p><ol class="callouts"><li><span class="badge" aria-hidden="true">1</span><span>Impostazioni correnti dell’addestramento</span></li><li><span class="badge" aria-hidden="true">2</span><span>Salva il progetto e invia l’attività</span></li></ol></figcaption></figure><p>Premi <strong>Save project and submit</strong> una volta. Il client salva le modifiche prima dell'invio, raccoglie risorse e dati e crea il job. Attendi che compaia in <code>Job history</code>, poi selezionalo: questa selezione carica curve, stato e metriche. Se resta visibile un vecchio messaggio di invio, <code>Connect / check health</code> aggiorna la riga di connessione; lo stato della riga del job e le metriche descrivono l'esperimento.</p>
+<figure class="annotated"><a href="assets/training-settings.png" class="image-link" title="Apri screenshot a dimensione originale"><img alt="Configurazione del training breve" src="assets/training-settings.png" loading="lazy"></a><figcaption><strong>Configurazione del training breve</strong><p class="image-hint">Clic sull'immagine per leggere i dettagli a dimensione originale.</p><ol class="callouts"><li><span class="badge" aria-hidden="true">1</span><span>Epoche, batch, tasso di apprendimento, seme e frequenza delle metriche</span></li><li><span class="badge" aria-hidden="true">2</span><span>Dispositivo, precisione e ottimizzatore</span></li><li><span class="badge" aria-hidden="true">3</span><span>Decadimento dei pesi, clipping, warmup, budget di passaggi e accumulo</span></li><li><span class="badge" aria-hidden="true">4</span><span>Pazienza e miglioramento minimo della validazione per l’arresto anticipato</span></li></ol></figcaption></figure><p>Per questa prova breve lascia <code>Device = CPU</code>, <code>Precision = Float32</code>,
+<code>Optimizer = Adam</code>, <code>Max steps = 0</code>, <code>Accumulation = 1</code> e
+<code>Early stop patience (epochs) = 0</code>. Le opzioni avanzate e il ripristino dei pesi
+migliori sono descritti nella <a href="client.html#opzioni-avanzate-di-training">guida client</a>.
+Le schermate del job completato sono storiche; i controlli avanzati mostrano
+l'interfaccia attuale e non documentano un nuovo training.</p>
+<p>Premi <strong>Save project and submit</strong> una volta. Il client salva le modifiche prima dell'invio, raccoglie risorse e dati e crea il job. Attendi che compaia in <code>Job history</code>, poi selezionalo: questa selezione carica curve, stato e metriche. Se resta visibile un vecchio messaggio di invio, <code>Connect / check health</code> aggiorna la riga di connessione; lo stato della riga del job e le metriche descrivono l'esperimento.</p>
 <h2 id="5-leggere-le-curve-e-riconoscere-il-completamento">5. Leggere le curve e riconoscere il completamento</h2>
 <p>La serie blu è la loss di training, quella rossa la loss di validazione. Un valore più basso significa un errore medio minore per questo obiettivo. Il training misura i dati su cui il modello viene aggiornato; la validazione misura dati separati senza aggiornare i pesi. Se il training continua a migliorare e la validazione peggiora, il modello potrebbe adattarsi troppo ai dati di training.</p>
 <figure class="annotated"><a href="assets/training-dashboard.png" class="image-link" title="Apri screenshot a dimensione originale"><img alt="Job reale completato, curve e test loss" src="assets/training-dashboard.png" loading="lazy"></a><figcaption><strong>Job reale completato, curve e test loss</strong><p class="image-hint">Clic sull'immagine per leggere i dettagli a dimensione originale.</p><ol class="callouts"><li><span class="badge" aria-hidden="true">1</span><span>Connessione al backend</span></li><li><span class="badge" aria-hidden="true">2</span><span>Configurazione dell’addestramento</span></li><li><span class="badge" aria-hidden="true">3</span><span>Cronologia e stato delle attività</span></li><li><span class="badge" aria-hidden="true">4</span><span>Curve della perdita di addestramento e validazione</span></li><li><span class="badge" aria-hidden="true">5</span><span>Visibilità e scala delle curve</span></li><li><span class="badge" aria-hidden="true">6</span><span>Perdita finale sul test</span></li><li><span class="badge" aria-hidden="true">7</span><span>Registro dell’addestramento e del worker</span></li><li><span class="badge" aria-hidden="true">8</span><span>Azioni per scaricare, ripristinare, annullare e chiudere</span></li></ol></figcaption></figure><p><code>Optimizer step</code> conta gli aggiornamenti globali. In questo esperimento sono <strong>12</strong>: quattro per ciascuna delle tre epoche. I checkbox nascondono o mostrano le serie; <code>Scale &gt; Log</code> cambia la rappresentazione della loss e non modifica il job. La test loss viene calcolata alla fine su un terzo insieme separato.</p>
@@ -130,19 +136,19 @@ parametri Training qui sotto. La guida mostra anche come preparare immagine
 <pre><code class="language-sh">python3 -m venv .venv
 .venv/bin/python -m pip install /percorso/nnm_llm-0.1.0-py3-none-any.whl
 </code></pre>
-<p>Il nome della distribuzione (<code>nnm_llm</code>) è diverso dal modulo Python, che resta specifico del job e ha forma <code>nnmodel_&lt;id-job-normalizzato&gt;</code>. Prima di creare <code>infer.py</code>, leggi il nome del modulo dalla wheel scaricata con questo comando, senza importare codice:</p>
+<p>Le nuove wheel del progetto <code>llm</code> espongono il modulo pubblico <code>nnm_llm</code>, uguale al nome della distribuzione. Un alias <code>nnmodel_&lt;id-job-normalizzato&gt;</code> resta disponibile. Per una wheel storica o un diverso ID progetto, leggi i moduli disponibili senza importare codice:</p>
 <pre><code class="language-sh">python3 - /percorso/nnm_llm-0.1.0-py3-none-any.whl &lt;&lt;'PY'
 import sys
 import zipfile
 with zipfile.ZipFile(sys.argv[1]) as wheel:
     for name in wheel.namelist():
-        if name.startswith("nnmodel_") and name.count("/") == 1 and name.endswith("/__init__.py"):
+        if name.startswith(("nnm_", "nnmodel_")) and name.count("/") == 1 and name.endswith("/__init__.py"):
             print("Modulo da importare:", name.split("/")[0])
 PY
 </code></pre>
-<p>Il frammento seguente mostra <strong>solo l'import del job storico</strong> nelle schermate e nelle metriche sopra:</p>
+<p>Il frammento seguente usa l’import pubblico di una nuova wheel del progetto <code>llm</code>:</p>
 <pre><code class="language-python">import torch
-from nnmodel_job_86caba53_0690_4c79_b948_4273ed1426b4 import Model
+from nnm_llm import Model
 
 torch.set_num_threads(2)
 model = Model()  # Carica i pesi inclusi nella wheel.
@@ -154,9 +160,9 @@ for _ in range(40):
     text += prediction[-1]
 print(text)
 </code></pre>
-<p>Salva il codice in <code>infer.py</code>, sostituendo l'import storico con il nome trovato nella wheel del tuo job; non dedurlo dal nome della distribuzione.</p>
+<p>Salva il codice in <code>infer.py</code>; se usi una wheel storica o un diverso ID progetto, sostituisci l’import con il modulo trovato nel file.</p>
 <p>Esegui <code>.venv/bin/python infer.py</code>. Il testo passato all'adapter deve contenere caratteri del vocabolario e un contesto non vuoto lungo al massimo 128 caratteri. <code>infer</code> è un alias di <code>inference</code>. La funzione restituisce una predizione per le posizioni della sequenza; il ciclo usa l'ultimo carattere predetto per costruire una continuazione greedy. Se vuoi pesi alternativi compatibili, costruisci <code>Model(weights_path="/percorso/weights.safetensors")</code>.</p>
-<p>La wheel contiene il runtime privato necessario: per usarla non servono il repository originale, il dataset di training o una chiamata al server. Job diversi dello stesso progetto, oppure di progetti con ID che producono lo stesso nome normalizzato, condividono distribuzione e versione: installa le rispettive wheel in ambienti separati. Gli artifact restano distinti per job. <code>examples/implementation/llm</code> è un consumer configurato per uno specifico job storico a 20 epoche; non cambiarne la wheel esistente.</p>
+<p>La wheel contiene il runtime privato necessario: per usarla non servono il repository originale, il dataset di training o una chiamata al server. Job diversi dello stesso progetto, oppure di progetti con ID che producono lo stesso nome normalizzato, condividono distribuzione e versione: installa le rispettive wheel in ambienti separati. Gli artifact restano distinti per job. <code>examples/implementation/llm</code> contiene un consumer autonomo: il suo README descrive download e sostituzione verificata della wheel, con import pubblico stabile per il medesimo ID progetto.</p>
 <h2 id="7-passare-al-corpus-completo">7. Passare al corpus completo</h2>
 <p>Quando il percorso breve funziona, prepara <strong>un'altra</strong> cartella per il corpus completo. Dalla root del repository:</p>
 <pre><code class="language-sh">uv run --group examples python tools/prepare_full_llm.py \

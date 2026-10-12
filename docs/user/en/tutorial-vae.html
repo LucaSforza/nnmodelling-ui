@@ -3,7 +3,7 @@
 <title>VAE tutorial · NNModelling</title><link rel="stylesheet" href="../style.css"/></head>
 <body><a class="skip" href="#content">Skip to content</a>
 <aside><a class="brand" href="index.html">NN<span>Modelling</span></a>
-<p class="edition">User guide · English<br/>Edition 6 October 2026</p><nav class="language-switch" aria-label="Guide language"><a lang="it" href="../tutorial-vae.html">Italiano</a><a lang="en" href="tutorial-vae.html" aria-current="page">English</a></nav>
+<p class="edition">User guide · English<br/>Edition 12 October 2026</p><nav class="language-switch" aria-label="Guide language"><a lang="it" href="../tutorial-vae.html">Italiano</a><a lang="en" href="tutorial-vae.html" aria-current="page">English</a></nav>
 <nav aria-label="Chapters"><a href="index.html">Introduction</a><a href="client.html">Using the client</a><a href="parameters.html">Parameter catalog</a><a href="server.html">Configure the server</a><a href="tutorial-tiny-llm.html">Tiny LLM tutorial</a><a href="tutorial-vae.html" aria-current="page">VAE tutorial</a></nav><div class="outline"><p>On this page</p><div class="toc">
 <ul>
 <li><a href="#tutorial-create-operations-for-a-vae">Tutorial: create operations for a VAE</a><ul>
@@ -30,7 +30,7 @@ just backend-image
 just backend-run
 </code></pre>
 <p>Leave the backend terminal open. In a second terminal, start <code>./build/qt/nnmodelling-ui</code>. A manually started backend uses <code>http://127.0.0.1:8765</code>; if you start it from <code>Configure backend…</code>, the app chooses an available loopback port and updates <code>Endpoint</code>. See the <a href="server.html">server guide</a> for tokens and other options.</p>
-<p>To train on the Sapienza cluster, follow the illustrated <a href="server.html#run-jobs-on-the-sapienza-cluster-from-the-ui">Slurm UI
+<p>To train on the configured Slurm cluster, follow the illustrated <a href="server.html#run-jobs-on-a-slurm-cluster-from-the-ui">Slurm UI
 steps</a>. Choose the
 executor with <code>Configure backend…</code>; the API, local endpoint and VAE settings
 below stay unchanged.</p>
@@ -107,6 +107,9 @@ below stay unchanged.</p>
 </table>
 <p>The <code>decoder.in</code> endpoint receives the tensor passed to the method. For this operation, the runtime replaces the incoming connection's value; the saved model graph stays intact. The <code>dataset</code> codec passes output <code>[B,784]</code> to the adapter's <code>untokenize</code> method, which returns one <code>[28,28]</code> NumPy image with pixels normalized between 0 and 1.</p>
 <p>In the list, check that both statuses say <code>Ready</code>, then press <code>Save</code>. If you see <code>Stale endpoint</code>, edit the operation to select a current node and handle, or remove it. Also save the project with <code>File &gt; Save</code>.</p>
+<p>For short trials use CPU, Float32 and Adam; keep <code>Max steps = 0</code>,
+<code>Accumulation = 1</code> and early stopping disabled. To stop automatically based on
+validation, see <a href="client.html#advanced-training-options">advanced options</a>.</p>
 <h2 id="5-train-and-download-the-wheel">5. Train and download the wheel</h2>
 <p>Open <code>Training</code> and press <code>Connect / check health</code>. Use these settings for the
 included dataset and corrected loss:</p>

@@ -39,14 +39,18 @@ only training containers through an existing SSH alias. No remote FastAPI server
 or SSH credential copy is needed. Configure absolute cluster paths first:
 
 ```sh
-export NNMODELLING_SLURM_HOST=cluster
+export NNMODELLING_SLURM_HOST=my-cluster
 export NNMODELLING_SLURM_ROOT=/absolute/remote/path/nnmodelling-jobs
 export NNMODELLING_SLURM_IMAGE=/absolute/remote/path/worker.sif
+export NNMODELLING_SLURM_PARTITION=my-partition
 just backend-slurm
 ```
 
-The existing Qt Training dashboard uses the same local endpoint. Slurm defaults
-to partition students, two CPUs, 4G memory and a 30-minute allocation. Configure
+The existing Qt Training dashboard uses the same local endpoint. UI and backend
+share ~/.config/nnmodelling/config.json (XDG_CONFIG_HOME or NNMODELLING_CONFIG
+may select another path); explicit backend environment variables override JSON.
+Host, remote paths and partition have no defaults. Generic resource defaults
+are two CPUs, 4G memory, zero GPUs and a 30-minute allocation. Configure
 `NNMODELLING_SLURM_PARTITION`, `NNMODELLING_SLURM_CPUS`,
 `NNMODELLING_SLURM_MEMORY` and `NNMODELLING_SLURM_TIME` when needed. The SIF must
 already contain Python, torch, NumPy, safetensors and all resource dependencies
@@ -60,7 +64,7 @@ artifact ownership stays local. Cancellation/shutdown/restart use scancel only
 for recorded owned scheduler jobs. Keep default Docker behavior with
 `just backend-run`; switching executor does not change model semantics.
 
-`just train-cluster-examples` submits the five bundled models, excludes DeepSeek,
+`just train-cluster-examples` submits the five bundled models,
 waits for three-epoch training and downloads verified artifacts into ignored
 `.computer-use/cluster-training`. Repeating the same command resumes its report
 without duplicating recorded jobs. Standalone public-API consumers live under

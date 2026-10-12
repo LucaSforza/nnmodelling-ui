@@ -17,8 +17,8 @@ If the backend was already installed and running before this update, rebuild
 the image with `just backend-image`, stop the service with Ctrl-C, and start it
 again with `just backend-run` before submitting the job.
 
-To run this same job on the Sapienza cluster, follow the illustrated [Slurm UI
-steps](server.md#run-jobs-on-the-sapienza-cluster-from-the-ui). Choose the
+To run this same job on the configured Slurm cluster, follow the illustrated [Slurm UI
+steps](server.md#run-jobs-on-a-slurm-cluster-from-the-ui). Choose the
 executor with `Configure backend…`; keep the Training endpoint and settings
 below unchanged. The server guide also shows how to prepare the `.sif` image and
 remote directory.
@@ -84,6 +84,13 @@ To reproduce the illustrated run, use:
 
 ![Short training settings](../assets/training-settings.png)
 
+For this short trial keep `Device = CPU`, `Precision = Float32`,
+`Optimizer = Adam`, `Max steps = 0`, `Accumulation = 1` and
+`Early stop patience (epochs) = 0`. The [client guide](client.md#advanced-training-options)
+explains advanced controls and restoration of best validation weights.
+Completed-job screenshots are historical; advanced-control screenshots show
+the current interface without claiming a new training run.
+
 Press **Save project and submit** once. The client saves edits before submission, collects resources and data, and creates the job. Wait for it to appear in `Job history`, then select it; this loads curves, status and metrics. If an old submission message remains visible, `Connect / check health` refreshes the connection line; the job row status and metrics describe the experiment.
 
 ## 5. Read the curves and identify completion
@@ -111,7 +118,7 @@ python3 -m venv .venv
 .venv/bin/python -m pip install /path/nnm_llm-0.1.0-py3-none-any.whl
 ```
 
-The distribution name (`nnm_llm`) differs from the Python module, which remains job-specific and has the form `nnmodel_<normalized-job-id>`. Before creating `infer.py`, read the module name from your downloaded wheel with this command, without importing code:
+New wheels for project `llm` expose public module `nnm_llm`, matching the distribution. A `nnmodel_<normalized-job-id>` alias remains available. For a historical wheel or another project ID, list available modules without importing code:
 
 ```sh
 python3 - /path/nnm_llm-0.1.0-py3-none-any.whl <<'PY'
@@ -119,16 +126,16 @@ import sys
 import zipfile
 with zipfile.ZipFile(sys.argv[1]) as wheel:
     for name in wheel.namelist():
-        if name.startswith("nnmodel_") and name.count("/") == 1 and name.endswith("/__init__.py"):
+        if name.startswith(("nnm_", "nnmodel_")) and name.count("/") == 1 and name.endswith("/__init__.py"):
             print("Module to import:", name.split("/")[0])
 PY
 ```
 
-The following snippet shows **only the import for the historical job** in the screenshots and metrics above:
+The following snippet uses the public import of a new wheel for project `llm`:
 
 ```python
 import torch
-from nnmodel_job_86caba53_0690_4c79_b948_4273ed1426b4 import Model
+from nnm_llm import Model
 
 torch.set_num_threads(2)
 model = Model()  # Loads the weights included in the wheel.
@@ -141,11 +148,11 @@ for _ in range(40):
 print(text)
 ```
 
-Save the code as `infer.py`, replacing the historical import with the module found in your job’s wheel; do not infer it from the distribution name.
+Save the code as `infer.py`; for a historical wheel or another project ID, replace the import with the module found in the file.
 
 Run `.venv/bin/python infer.py`. Text passed to the adapter must contain characters from the vocabulary and a nonempty context of at most 128 characters. `infer` is an alias for `inference`. The function returns one prediction per sequence position; the loop uses the final predicted character to build a greedy continuation. To use compatible alternative weights, construct `Model(weights_path="/path/weights.safetensors")`.
 
-The wheel contains the private runtime needed to use the model: the original repository, training dataset and server are not required. Different jobs from the same project, or from projects whose IDs normalize to the same name, share a distribution name and version: install their wheels in separate environments. Artifacts remain separate by job. `examples/implementation/llm` is a consumer configured for a specific historical 20-epoch job; do not change its existing wheel.
+The wheel contains the private runtime needed to use the model: the original repository, training dataset and server are not required. Different jobs from the same project, or from projects whose IDs normalize to the same name, share a distribution name and version: install their wheels in separate environments. Artifacts remain separate by job. `examples/implementation/llm` contains a standalone consumer; its README explains verified wheel download/replacement, retaining the same public import for the same project ID.
 
 ## 7. Move to the full corpus
 

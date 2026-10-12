@@ -5,6 +5,7 @@
 #include <QUrl>
 #include <QString>
 #include <QStringList>
+#include <QJsonObject>
 
 class QProcess;
 
@@ -17,6 +18,8 @@ public:
     bool isRunning() const;
     QUrl endpoint() const;
     QString bearerToken() const;
+    bool loadUserConfig(QString *path, QJsonObject *profile, QString *error = nullptr) const;
+    bool saveUserConfig(const QJsonObject &profile, QString *path, QString *error = nullptr) const;
     bool start(const QStringList &environment, QString *error = nullptr);
     void stop();
 

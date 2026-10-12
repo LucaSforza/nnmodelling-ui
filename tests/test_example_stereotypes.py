@@ -113,9 +113,9 @@ def test_total_loss_adds_mean_kl_and_backpropagates_scalar_objective():
     kl = torch.tensor([0.1, 0.3, 0.5], requires_grad=True)
     loss = module(reconstruction, kl)
     assert loss.ndim == 0
-    torch.testing.assert_close(loss, torch.tensor(0.55))
+    torch.testing.assert_close(loss, torch.tensor(196.3))
     loss.backward()
-    torch.testing.assert_close(reconstruction.grad, torch.tensor(1.0))
+    torch.testing.assert_close(reconstruction.grad, torch.tensor(784.0))
     torch.testing.assert_close(kl.grad, torch.full_like(kl, 1.0 / 3.0))
     with pytest.raises(ValueError, match="reconstruction MSE then"):
         module(reconstruction)

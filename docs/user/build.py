@@ -27,7 +27,7 @@ CHAPTERS = (
 TEXT = {
     "it": {
         "skip": "Vai al contenuto", "edition": "Manuale utente · Italiano", "outline": "In questa pagina",
-        "date": "Edizione 6 ottobre 2026",
+        "date": "Edizione 12 ottobre 2026",
         "chapters": "Capitoli", "offline": "Consultabile offline.",
         "sources": "Sorgenti e verifica", "image_title": "Apri screenshot a dimensione originale",
         "image_hint": "Clic sull'immagine per leggere i dettagli a dimensione originale.",
@@ -36,7 +36,7 @@ TEXT = {
     },
     "en": {
         "skip": "Skip to content", "edition": "User guide · English", "outline": "On this page",
-        "date": "Edition 6 October 2026",
+        "date": "Edition 12 October 2026",
         "chapters": "Chapters", "offline": "Available offline.",
         "sources": "Sources and verification", "image_title": "Open screenshot at original size",
         "image_hint": "Click the image to inspect it at its original size.",

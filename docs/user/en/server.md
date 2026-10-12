@@ -18,7 +18,55 @@ just backend-run
 
 `backend-run` stays in the foreground. The default address is `http://127.0.0.1:8765`; use another terminal to query the API and press **Ctrl-C** to stop the service. Select **Training** in the app and press **Connect / check health**. The endpoint field already contains the default address.
 
-## Run jobs on the Sapienza cluster from the UI
+## Per-user JSON configuration
+
+UI and backend read the same file: `~/.config/nnmodelling/config.json`.
+When `XDG_CONFIG_HOME` is set, the path is
+`$XDG_CONFIG_HOME/nnmodelling/config.json`. `NNMODELLING_CONFIG` selects an
+alternate file. **Configure backend…** shows its path and saves non-secret
+settings before starting the service. Old Qt launcher preferences are no longer
+used. No host, account, remote path or partition is preconfigured.
+
+You may create the file manually. This example uses placeholders: replace the
+host, absolute paths and partition with values from your installation.
+
+```json
+{
+  "backend": {
+    "executor": "docker",
+    "job_root": "~/.local/share/nnmodelling/jobs",
+    "container_runtime": "docker",
+    "worker_image": "nnmodelling-worker:local"
+  },
+  "slurm": {
+    "host": "my-cluster",
+    "root": "/srv/nnmodelling/jobs",
+    "image": "/srv/nnmodelling/worker.sif",
+    "partition": "my-partition",
+    "cpus": 2,
+    "memory": "4G",
+    "time": "00:30:00",
+    "gpus": 0,
+    "ssh_executable": "ssh"
+  }
+}
+```
+
+For Slurm set `"executor": "slurm"`. A terminal-started backend uses explicit
+`NNMODELLING_*` environment variables first, then JSON, then generic defaults.
+The UI passes its selected field values to the service. An absent default file
+allows local use; an explicitly selected missing file or invalid JSON reports
+an error. Read/save errors prevent managed startup without overwriting the file.
+Saving is atomic and preserves other JSON settings. Passwords, SSH keys and
+bearer tokens do not belong in this file; tokens remain in memory and SSH
+credentials stay in your SSH agent/configuration.
+
+`just backend-image` reads runtime and image tag from environment variables:
+pass matching values to the build command when you change them in JSON.
+
+![JSON profile and local Docker backend](../assets/backend-config.png)
+
+## Run jobs on a Slurm cluster from the UI
 
 FastAPI, the Training dashboard and the job archive stay on this computer. The
 **Local backend service configuration** window selects Slurm; only workers are
@@ -31,11 +79,11 @@ configured on this computer, with normal authentication and host-key checks.
 
 ### 1. Prepare the image and remote directory
 
-Replace `cluster_user` and the image path with values for your account. Create
+Replace the example SSH alias and paths with values for your account. Create
 the directory once:
 
 ```sh
-ssh cluster 'mkdir -p /home/cluster_user/nnmodelling-jobs && chmod 700 /home/cluster_user/nnmodelling-jobs'
+ssh my-cluster 'mkdir -p /srv/nnmodelling/jobs && chmod 700 /srv/nnmodelling/jobs'
 ```
 
 The image must already contain every Python dependency required by the
@@ -49,8 +97,9 @@ In the **Training** dashboard, press **Configure backend…**. A separate window
 opens while the dashboard with its endpoint, training controls, history and
 curves remains available. Set `Executor` to `SSH / Slurm`, then enter the SSH
 alias, local directory, remote directory, `.sif` image, partition, CPUs, memory
-and time limit. Resource defaults are `students`, `2`, `4G` and `00:30:00`; use
-the limits assigned to your account. `Time limit` applies to each Slurm
+time limit and GPU count. Host, remote root, image and partition are required
+and initially blank. Generic defaults are 2 CPUs, `4G`, `00:30:00` and 0 GPUs;
+use the limits assigned to your account. `Time limit` applies to each Slurm
 allocation, not to the total training duration.
 
 ![Configure the Slurm executor, paths and resources](../assets/slurm-configure.png)
@@ -58,15 +107,14 @@ allocation, not to the total training duration.
 ### 3. Start FastAPI locally
 
 In the configuration window, press **Save settings and start local backend**.
-The screenshot shows a running service, so its button offers a safe restart; on
-first launch it offers the start action instead.
+The screenshot shows blank remote fields: startup is rejected before any
+cluster connection.
+An active managed service changes the button to a safe restart action.
 Only the local service starts, bound to loopback. The app chooses an available
 port and fills `Endpoint` in the dashboard automatically. The status line
-confirms startup and Singularity availability; SSH, image and prerequisite
+checks startup and Singularity availability; SSH, image and prerequisite
 errors appear there. Non-secret preferences are saved for your user. The app
 never asks for or copies an SSH password.
-
-![Slurm configuration ready in the local backend](../assets/slurm-configure.png)
 
 ### 4. Connect the dashboard and submit
 
@@ -85,7 +133,7 @@ complete, the job is marked failed and cannot resume automatically. Custom
 training iterators must be repeatable so the worker can restore the saved
 position.
 
-![Training dashboard with separate Slurm configuration](../assets/slurm-dashboard.png)
+![Current Training controls](../assets/slurm-dashboard.png)
 
 The [LLM](tutorial-tiny-llm.md) and [VAE](tutorial-vae.md) tutorials follow the
 same path. If a dependency is missing from the `.sif`, the job fails visibly;
@@ -187,7 +235,7 @@ OpenAPI documentation is available at `http://127.0.0.1:8765/docs`.
 
 Save the project in the app before submission. In the Training window, set epochs, batch, learning rate, seed and **Publish every N steps**, then press **Save project and submit**. Initial values are `10`, `32`, `0.001`, `0` and `10`. The interval controls how often paired training and validation metrics are published; the remaining window is also published at the end of each epoch.
 
-The API accepts these ranges: epochs `1–10000`, batch `1–4096`, finite learning rate greater than `0` and at most `1`, seed from `-2147483648` through `4294967295`, and publish interval `1–100000`. Additional JSON fields are rejected. A job records its configuration and file snapshot: later project edits do not change a submitted job.
+The API accepts these ranges: epochs `1–10000`, batch `1–4096`, finite learning rate greater than `0` and at most `1`, seed from `-2147483648` through `4294967295`, and publish interval `1–100000`. Unknown JSON fields are rejected; the advanced options listed in the client guide are supported. A job records its configuration and file snapshot: later project edits do not change a submitted job.
 
 For a reproducible terminal submission, this example uses only the Python standard library. From the repository root, it creates an in-memory bundle of `examples/models/tiny-decoder-llm` and submits a short one-epoch configuration. File contents, order and parameters are fixed; the script creates no intermediate files. It excludes symbolic links, `env` directories, `.env`, `venv`, `.venv`, caches and bytecode, as well as application-generated folders. It also includes inference assets listed in resource manifests.
 
@@ -363,7 +411,7 @@ curl -fS --remote-name --remote-header-name --output-dir artifacts \
   "${AUTH[@]}" "http://127.0.0.1:8765/v1/jobs/$JOB_ID/wheel"
 ```
 
-The app provides the same **Download weights** and **Download wheel** commands. New jobs use distribution name `nnm_<normalized-project-id>`; for example, project ID `llm` produces `nnm_llm-0.1.0-py3-none-any.whl`. Normalization replaces runs outside ASCII letters and digits with `_`, trims leading and trailing underscores, and lowercases the result. Qt preserves the full name supplied by the server, including distribution, version and tag. The Python module remains job-specific as `nnmodel_<normalized-job-id>`. Do not derive the import from the wheel filename; inspect the module inside it. Different jobs from the same project, or from projects whose IDs normalize to the same value, share a distribution name and version, so install them in separate Python environments. Wheels stored before this change keep their original names and contents; do not rename them manually. The wheel includes the model, its inference adapter and weights. Inference does not need the service or source project, but it does need Python, PyTorch, safetensors and the dependencies declared by the resource.
+The app provides the same **Download weights** and **Download wheel** commands. New jobs use distribution name `nnm_<normalized-project-id>`; for example, project ID `llm` produces `nnm_llm-0.1.0-py3-none-any.whl`. Normalization replaces runs outside ASCII letters and digits with `_`, trims leading and trailing underscores, and lowercases the result. Qt preserves the full name supplied by the server, including distribution, version and tag. New wheels expose `nnm_<normalized-project-id>`: for project ID `llm`, use `from nnm_llm import Model`. A job-specific alias remains for compatibility. Inspect historical wheels to find their original import. Different jobs from the same project, or from projects whose IDs normalize to the same value, share a distribution name and version, so install them in separate Python environments. Wheels stored before this change keep their original names and contents; do not rename them manually. The wheel includes the model, its inference adapter and weights. Inference does not need the service or source project, but it does need Python, PyTorch, safetensors and the dependencies declared by the resource.
 
 ## Configuration
 
@@ -371,6 +419,12 @@ Set these variables before starting `just backend-run`.
 
 | Variable | Default | Purpose and effective limits |
 | --- | --- | --- |
+| `NNMODELLING_CONFIG` | XDG path or `~/.config/nnmodelling/config.json` | Shared JSON profile; an explicitly selected missing file fails. |
+| `NNMODELLING_EXECUTOR` | `docker` | `docker` or `slurm`; overrides `backend.executor`. |
+| `NNMODELLING_SLURM_HOST`, `NNMODELLING_SLURM_ROOT`, `NNMODELLING_SLURM_IMAGE`, `NNMODELLING_SLURM_PARTITION` | empty | SSH alias, remote root, SIF and partition: required for Slurm. |
+| `NNMODELLING_SLURM_CPUS`, `NNMODELLING_SLURM_MEMORY`, `NNMODELLING_SLURM_TIME`, `NNMODELLING_SLURM_GPUS` | `2`, `4G`, `00:30:00`, `0` | Per-allocation resources; GPU count 0 to 8. |
+| `NNMODELLING_SSH_EXECUTABLE` | `ssh` | SSH command used by the service. |
+| `NNMODELLING_MAX_ARTIFACT_BYTES` | `64 GiB` | Configurable artifact bound, separate from bundles and corpus. |
 | `NNMODELLING_BACKEND_HOST` | `127.0.0.1` | Bind address passed to Uvicorn. Keep it on loopback for local use. |
 | `NNMODELLING_BACKEND_PORT` | `8765` | Port passed to Uvicorn. |
 | `NNMODELLING_JOB_ROOT` | `~/.local/share/nnmodelling/jobs` | Persistent directory for jobs, snapshots, logs and results. |
@@ -383,7 +437,7 @@ Set these variables before starting `just backend-run`.
 | `NNMODELLING_MAX_FILES` | `10000` | Maximum number of files in the bundle. |
 | `NNMODELLING_MAX_FILE_BYTES` | `128 MiB` | Maximum size of one file. |
 
-The four `MAX_*` limits are converted from strings to integers at startup; the service does not apply another range or minimum value to them. Defaults match the API checks. The Qt client also applies a total limit of `256 MiB` to local files before Base64 encoding. The server's default limit for decoded files is `46 MiB`, so it can reject larger bundles even when the client accepted them. Serialized metrics have a fixed limit of `64 MiB`.
+The bundle `MAX_*` limits are converted from strings to integers at startup; the service does not apply another range or minimum value to them. Defaults match the API checks. The Qt client also applies a total limit of `256 MiB` to local files before Base64 encoding. The server's default limit for decoded files is `46 MiB`, so it can reject larger bundles even when the client accepted them. Serialized metrics have a fixed limit of `64 MiB`.
 
 The worker runs in a network-disabled container with the snapshot mounted read-only and output mounted separately for writing, two CPUs and a `4 GiB` memory limit. A job's worker log is at `<NNMODELLING_JOB_ROOT>/<id>/output/worker.log`.
 

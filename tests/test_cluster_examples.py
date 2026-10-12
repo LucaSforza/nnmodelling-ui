@@ -19,7 +19,7 @@ def args(tmp_path: Path, models: Path):
     return cluster.parser().parse_args(["--models-dir", str(models), "--output-dir", str(tmp_path / "out")])
 
 
-def test_discovers_five_supported_examples_and_excludes_deepseek():
+def test_discovers_all_bundled_projects():
     projects = cluster.discover_projects(REPOSITORY / "examples/models")
     names = [name for name, _root, _project in projects]
     assert names == ["local-training", "mnist-mlp", "mnist-vae", "rnn-sine", "tiny-decoder-llm"]

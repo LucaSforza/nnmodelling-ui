@@ -99,8 +99,7 @@ not a model semantic variant. No backend service is launched on the cluster.
 
 Slurm configuration is service-private: SSH alias (`NNMODELLING_SLURM_HOST`),
 absolute remote root (`NNMODELLING_SLURM_ROOT`), absolute prebuilt SIF image
-(`NNMODELLING_SLURM_IMAGE`), partition (`NNMODELLING_SLURM_PARTITION`, default
-students), CPUs (default 2), memory (default 4G) and time (default 00:30:00).
+(`NNMODELLING_SLURM_IMAGE`), partition (`NNMODELLING_SLURM_PARTITION`, explicitly configured), CPUs (default 2), memory (default 4G) and time (default 00:30:00).
 Use existing SSH authentication and host verification; never copy credentials
 into jobs or disable host-key checks. Fail visibly on missing configuration,
 SSH, image, dependencies, scheduler failures and timeouts; never fall back to
@@ -184,7 +183,7 @@ sets `Endpoint` to that address automatically. Users do not need to guess or
 enter the managed service port; manually launched services keep the configured
 backend default unless changed explicitly.
 
-Persist non-secret launcher settings per user through Qt settings: executor,
+Persist non-secret launcher settings per user in the shared JSON profile below: executor,
 local job root, Docker runtime/image, or Slurm SSH alias, absolute remote job
 root, absolute prebuilt SIF image and Slurm resource limits. The UI uses existing
 SSH agent/configuration and host-key checks; it never collects SSH passwords or
@@ -477,7 +476,7 @@ uv/just startup, image, jobs, logs, shutdown and local lifecycle.
 
 ## GPU and remote corpus acquisition (accepted 2026-10-08)
 
-User explicitly requires miniDeepSeekv4 training on GPU. Slurm configuration
+GPU training is optional and explicitly selected. Slurm configuration
 adds `NNMODELLING_SLURM_GPUS` (integer 0..8, default 0); nonzero requests
 `--gres=gpu:N`, enables Singularity `--nv` and sets worker default device to CUDA.
 Qt Training backend configuration exposes GPU count and persists it with the
@@ -556,12 +555,6 @@ device and sets eval mode. Dataset-tokenized tensors and tensor operation inputs
 move to that device before execution; dataset decoding receives CPU tensors.
 Tensor-codec operation outputs remain on the selected device. No private graph
 access is required by inference examples. No dtype/compile policy is added.
-The miniDeepSeek consumer calls its declared `logits` operation, uses greedy
-last-position argmax, preserves token IDs with the frozen tokenizer, truncates
-context to 512 tokens, and stops at EOS or requested maximum. It requires an
-explicit trained wheel import identity; missing weights never fall back to
-random initialization. Consumer code lives in examples/implmentation/miniDeepSeekv4
-and final run provenance pins the successful training job and artifact digest.
 
 GPU Slurm allocations request their handoff signal up to 300 seconds before
 walltime, bounded to at most one quarter of the allocation. CPU allocations
@@ -627,3 +620,42 @@ Tiny Shakespeare adapter shuffles training windows with the seeded torch RNG per
 epoch, keeping validation/test ordered. Replay from epoch-start RNG recreates
 the same training order on Slurm handoff. Existing stochastic text decoding
 remains unchanged.
+
+
+## Portable per-user service profile (accepted 2026-10-12)
+
+The single launcher/service profile is `$XDG_CONFIG_HOME/nnmodelling/config.json`
+when XDG_CONFIG_HOME is set, otherwise `~/.config/nnmodelling/config.json`.
+`NNMODELLING_CONFIG` selects an explicit alternate file. Missing default profile
+uses local Docker defaults; an explicit missing file, malformed JSON, unknown
+profile keys or invalid field types/ranges produce visible errors before launch.
+No institution, account, SSH alias, remote path or partition is preconfigured.
+Host, remote root, image and partition are empty until explicitly supplied.
+
+The root JSON object contains `backend` and `slurm` objects. `backend` contains
+`executor`, `job_root`, `container_runtime`, `worker_image`; `slurm` contains
+`host`, `root`, `image`, `partition`, `cpus`, `memory`, `time`, `gpus`,
+`ssh_executable`. Strings are JSON strings; cpus/gpus are integers (cpus 1..256,
+gpus 0..8). Executor is docker or slurm. Local job root expands a leading tilde.
+Defaults retain local Docker, user-local job storage, two CPUs, 4G memory,
+00:30:00 walltime, zero GPUs and ssh. No credentials are profile keys.
+Standalone service precedence is explicit NNMODELLING_* environment > JSON >
+generic defaults. Bearer credentials stay environment/session-only.
+
+Python `backend.user_config` uses the standard json module for profile loading
+and validation. Qt uses its existing QJsonDocument and QSaveFile directly for
+profile reading and atomic updates; no parser dependency or subprocess helper.
+Both implementations enforce the same schema and defaults. UI shows profile
+path, loads non-secret fields, and saves atomically before starting/restarting
+the managed local service. Updates preserve unrelated root JSON settings.
+Invalid/unreadable profiles are never silently replaced; load/save errors prevent
+managed launch. Reopening configuration retries a failed load so users can fix
+the file externally. Prior Qt launcher settings are no longer read: users
+configure the portable profile explicitly. UI-selected fields become explicit
+child environment overrides. Existing backend credentials remain absent from
+disk and logs. Profile errors must not echo configured values.
+
+The removed large model example and its dedicated resources/consumers/probes
+are no longer shipped. Generic parameter counts, GPU support, remote acquisition
+and optimizers remain supported. Verification uses local bounded tests; remote
+training needs an explicitly configured reachable cluster.

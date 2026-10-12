@@ -15,8 +15,8 @@ just backend-run
 
 Leave the backend terminal open. In a second terminal, start `./build/qt/nnmodelling-ui`. A manually started backend uses `http://127.0.0.1:8765`; if you start it from `Configure backend…`, the app chooses an available loopback port and updates `Endpoint`. See the [server guide](server.md) for tokens and other options.
 
-To train on the Sapienza cluster, follow the illustrated [Slurm UI
-steps](server.md#run-jobs-on-the-sapienza-cluster-from-the-ui). Choose the
+To train on the configured Slurm cluster, follow the illustrated [Slurm UI
+steps](server.md#run-jobs-on-a-slurm-cluster-from-the-ui). Choose the
 executor with `Configure backend…`; the API, local endpoint and VAE settings
 below stay unchanged.
 
@@ -63,6 +63,10 @@ In the manager, press `New…` again and set:
 The `decoder.in` endpoint receives the tensor passed to the method. For this operation, the runtime replaces the incoming connection's value; the saved model graph stays intact. The `dataset` codec passes output `[B,784]` to the adapter's `untokenize` method, which returns one `[28,28]` NumPy image with pixels normalized between 0 and 1.
 
 In the list, check that both statuses say `Ready`, then press `Save`. If you see `Stale endpoint`, edit the operation to select a current node and handle, or remove it. Also save the project with `File > Save`.
+
+For short trials use CPU, Float32 and Adam; keep `Max steps = 0`,
+`Accumulation = 1` and early stopping disabled. To stop automatically based on
+validation, see [advanced options](client.md#advanced-training-options).
 
 ## 5. Train and download the wheel
 

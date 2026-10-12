@@ -34,15 +34,18 @@ assets. Training payloads are excluded from exported model wheels.
 
 ## Slurm jobs with a local backend
 
-Configure the local service with an existing SSH alias, an absolute remote job
-root and a prebuilt Singularity image containing the worker dependencies.
+Configure the shared per-user JSON profile described in
+[the user guide](../docs/user/en/server.md#per-user-toml-configuration), or use
+explicit environment overrides as below. Supply an existing SSH alias, an
+absolute remote job root, partition and prebuilt Singularity image.
 Create that remote directory with private permissions before starting; health
 checks that it exists and is writable:
 
 ```sh
-export NNMODELLING_SLURM_HOST=cluster
+export NNMODELLING_SLURM_HOST=my-cluster
 export NNMODELLING_SLURM_ROOT=/absolute/cluster/path/nnmodelling-jobs
 export NNMODELLING_SLURM_IMAGE=/absolute/cluster/path/worker.sif
+export NNMODELLING_SLURM_PARTITION=my-partition
 just backend-slurm
 ```
 
@@ -51,8 +54,8 @@ that same endpoint. `POST /v1/jobs` stages immutable snapshots on the cluster,
 then Slurm runs Singularity. Published losses and completed wheels return to
 the local service. Docker remains the default for `just backend-run`.
 
-In another terminal, submit all bundled models except DeepSeek and wait for
-completed artifacts:
+In another terminal, submit all bundled models and wait for completed
+artifacts:
 
 ```sh
 just train-cluster-examples

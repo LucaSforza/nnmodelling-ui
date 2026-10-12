@@ -26,7 +26,7 @@ def _configure(monkeypatch):
     monkeypatch.setattr(config, "SLURM_HOST", "cluster")
     monkeypatch.setattr(config, "SLURM_ROOT", "/cluster/jobs")
     monkeypatch.setattr(config, "SLURM_IMAGE", "/home/user/worker.sif")
-    monkeypatch.setattr(config, "SLURM_PARTITION", "students")
+    monkeypatch.setattr(config, "SLURM_PARTITION", "test-partition")
     monkeypatch.setattr(config, "SLURM_CPUS", 2)
     monkeypatch.setattr(config, "SLURM_MEMORY", "4G")
     monkeypatch.setattr(config, "SLURM_TIME", "00:30:00")
@@ -50,7 +50,7 @@ def test_config_rejects_unsafe_remote_paths_and_options(monkeypatch):
     monkeypatch.setattr(config, "SLURM_HOST", "cluster; touch /tmp/no")
     monkeypatch.setattr(config, "SLURM_ROOT", "/home/user/../other")
     monkeypatch.setattr(config, "SLURM_IMAGE", "relative.sif")
-    monkeypatch.setattr(config, "SLURM_PARTITION", "students;id")
+    monkeypatch.setattr(config, "SLURM_PARTITION", "test-partition;id")
     assert not slurm_configuration()["valid"]
 
 
@@ -80,7 +80,7 @@ def test_stage_and_batch_command_freeze_source_and_quote_remote_paths(tmp_path, 
     assert "--bind '/cluster/job root/" in script
     assert "--env PYTHONPATH=/app:/app/python/nnmodelling-runtime/src" in script
     args = runner._sbatch_arguments(job["id"], stage)
-    assert "--partition students --time 00:30:00 --mem 4G --cpus-per-task 2" in args
+    assert "--partition test-partition --time 00:30:00 --mem 4G --cpus-per-task 2" in args
     assert "--signal B:USR1@60" in args and "worker-%j.log" in args
     script = runner._batch_script(job["id"], stage)
     assert "checkpoint-request.${SLURM_JOB_ID}" in script

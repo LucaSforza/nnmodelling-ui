@@ -34,13 +34,14 @@ kept in the [backend sequence](sequences/backend-training.md).
 execution order from frozen graph metadata. The worker owns optimizer, random seeds and metrics. `JobStore` owns
 persisted job state, immutable request bytes and published output files. The
 Qt panel owns transient controls and asynchronous replies; the main window owns
-the optional local backend child process, and per-user Qt settings own its
+the optional local backend child process, and the shared per-user JSON profile owns its
 non-secret launch profile. C still owns the active native project. Exported
 `Model` owns a private dataset adapter, graph runtime and weights, without
 training payloads.
 
 Wheel export separates readable distribution identity (`nnm_<normalized-project-id>`)
-from the existing job-specific Python import package (`nnmodel_<normalized-job-id>`).
+and public Python package (`nnm_<normalized-project-id>`), with a job-specific
+compatibility alias (`nnmodel_<normalized-job-id>`).
 The API serves the stored artifact filename; old wheels remain unchanged.
 
 Slurm execution keeps Store/API local. UUID job directories receive frozen snapshots
@@ -83,3 +84,9 @@ Worker owns epoch-based early stopping, minimum-validation tensor selection
 and patience state. Checkpoint owns the same best state across Slurm handoff;
 final test/export uses restored best weights. Qt presents frozen controls and
 selection evidence, while JobStore validates optional early-stopping metrics.
+
+Accepted 2026-10-12: Qt configuration -> QJsonDocument/QSaveFile -> per-user
+config.json (atomic save). Standalone backend loads and validates the same
+profile via standard json, then applies explicit environment overrides.
+Cluster-specific fields have no defaults; profile errors remain visible and
+prevent managed launch. No profile subprocess or additional parser dependency.

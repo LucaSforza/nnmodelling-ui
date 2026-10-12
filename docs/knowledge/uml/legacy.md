@@ -12,7 +12,7 @@ generalizations are retained here as provenance, then reconciled in
 [current metamodel](metamodel.md). The VPP also contains one `Agent` actor,
 15 named use cases, one extend relation, and `Training`/`Modellazione` groups.
 Its 17 Constraint records and 12 NOTE records have no usable names; the
-legacy [MCP use-case parity document](https://github.com/LucaSforza/NNModelling/blob/master/docs/knowledge/uml/mcp-use-case-parity.md)
+legacy MCP use-case parity document (`docs/knowledge/uml/mcp-use-case-parity.md` in the historical repository)
 provides their accepted interpretation.
 
 ## Diagram

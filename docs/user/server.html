@@ -3,12 +3,13 @@
 <title>Configurare il server · NNModelling</title><link rel="stylesheet" href="style.css"/></head>
 <body><a class="skip" href="#content">Vai al contenuto</a>
 <aside><a class="brand" href="introduction.html">NN<span>Modelling</span></a>
-<p class="edition">Manuale utente · Italiano<br/>Edizione 6 ottobre 2026</p><nav class="language-switch" aria-label="Lingua del manuale"><a lang="it" href="server.html" aria-current="page">Italiano</a><a lang="en" href="en/server.html">English</a></nav>
+<p class="edition">Manuale utente · Italiano<br/>Edizione 12 ottobre 2026</p><nav class="language-switch" aria-label="Lingua del manuale"><a lang="it" href="server.html" aria-current="page">Italiano</a><a lang="en" href="en/server.html">English</a></nav>
 <nav aria-label="Capitoli"><a href="introduction.html">Introduzione</a><a href="client.html">Usare il client</a><a href="parameters.html">Catalogo dei parametri</a><a href="server.html" aria-current="page">Configurare il server</a><a href="tutorial-tiny-llm.html">Tutorial tiny LLM</a><a href="tutorial-vae.html">Tutorial VAE</a></nav><div class="outline"><p>In questa pagina</p><div class="toc">
 <ul>
 <li><a href="#backend-locale-e-job-su-slurm">Backend locale e job su Slurm</a><ul>
 <li><a href="#preparare-e-avviare-il-servizio">Preparare e avviare il servizio</a></li>
-<li><a href="#eseguire-i-job-sul-cluster-sapienza-dalla-ui">Eseguire i job sul cluster Sapienza dalla UI</a><ul>
+<li><a href="#configurazione-json-per-utente">Configurazione JSON per utente</a></li>
+<li><a href="#eseguire-i-job-su-un-cluster-slurm-dalla-ui">Eseguire i job su un cluster Slurm dalla UI</a><ul>
 <li><a href="#1-prepara-immagine-e-directory-remota">1. Prepara immagine e directory remota</a></li>
 <li><a href="#2-apri-configurazione-backend-e-scegli-slurm">2. Apri configurazione backend e scegli Slurm</a></li>
 <li><a href="#3-avvia-fastapi-in-locale">3. Avvia FastAPI in locale</a></li>
@@ -51,7 +52,47 @@ just backend-run
 <code>http://127.0.0.1:8765</code>; apri un altro terminale per interrogare l'API e usa
 <strong>Ctrl-C</strong> per fermare il servizio. Seleziona <strong>Training</strong> nell'app e premi
 <strong>Connect / check health</strong>. Il campo endpoint usa già l'indirizzo predefinito.</p>
-<h2 id="eseguire-i-job-sul-cluster-sapienza-dalla-ui">Eseguire i job sul cluster Sapienza dalla UI</h2>
+<h2 id="configurazione-json-per-utente">Configurazione JSON per utente</h2>
+<p>UI e backend leggono lo stesso file: <code>~/.config/nnmodelling/config.json</code>.
+Se <code>XDG_CONFIG_HOME</code> è definita, il percorso diventa
+<code>$XDG_CONFIG_HOME/nnmodelling/config.json</code>. <code>NNMODELLING_CONFIG</code> sceglie un file
+alternativo. La finestra <strong>Configure backend…</strong> mostra il percorso e salva le
+impostazioni non segrete prima dell'avvio del servizio. Non usa più le vecchie
+preferenze Qt del launcher. Nessun host, account, percorso remoto o partizione
+è preconfigurato.</p>
+<p>Puoi creare il file manualmente. Questo esempio contiene segnaposto: sostituisci
+host, percorsi assoluti e partizione con valori della tua installazione.</p>
+<pre><code class="language-json">{
+  "backend": {
+    "executor": "docker",
+    "job_root": "~/.local/share/nnmodelling/jobs",
+    "container_runtime": "docker",
+    "worker_image": "nnmodelling-worker:local"
+  },
+  "slurm": {
+    "host": "my-cluster",
+    "root": "/srv/nnmodelling/jobs",
+    "image": "/srv/nnmodelling/worker.sif",
+    "partition": "my-partition",
+    "cpus": 2,
+    "memory": "4G",
+    "time": "00:30:00",
+    "gpus": 0,
+    "ssh_executable": "ssh"
+  }
+}
+</code></pre>
+<p>Per Slurm imposta <code>"executor": "slurm"</code>. Il backend avviato da terminale usa
+prima le variabili <code>NNMODELLING_*</code> esplicite, poi JSON, poi i valori generici.
+La UI passa al servizio i valori scelti nei suoi campi. Il file predefinito
+assente permette l'uso locale; un file alternativo esplicito mancante o un JSON
+invalido produce un errore. Errori di lettura o salvataggio impediscono l'avvio
+gestito, senza sovrascrivere il file. Il salvataggio è atomico e conserva le
+altre impostazioni JSON. Password, chiavi SSH e bearer token non vanno nel file;
+il token resta in memoria e le credenziali SSH restano nell'agent/config SSH.</p>
+<p><code>just backend-image</code> usa runtime e tag dalle variabili d'ambiente: quando cambi
+questi due valori nel JSON, passa gli stessi valori al comando di build.</p>
+<figure class="annotated"><a href="assets/backend-config.png" class="image-link" title="Apri screenshot a dimensione originale"><img alt="Profilo JSON e backend Docker locale" src="assets/backend-config.png" loading="lazy"></a><figcaption><strong>Profilo JSON e backend Docker locale</strong><p class="image-hint">Clic sull'immagine per leggere i dettagli a dimensione originale.</p><ol class="callouts"><li><span class="badge" aria-hidden="true">1</span><span>Scegli l’esecutore locale</span></li><li><span class="badge" aria-hidden="true">2</span><span>Directory locale dei job, runtime dei container e immagine worker</span></li><li><span class="badge" aria-hidden="true">3</span><span>Percorso del profilo JSON portabile</span></li><li><span class="badge" aria-hidden="true">4</span><span>Stato di disponibilità del servizio locale</span></li><li><span class="badge" aria-hidden="true">5</span><span>Riavvia in sicurezza il backend locale</span></li></ol></figcaption></figure><h2 id="eseguire-i-job-su-un-cluster-slurm-dalla-ui">Eseguire i job su un cluster Slurm dalla UI</h2>
 <p>Il servizio FastAPI, il dashboard Training e l'archivio dei job restano su
 questo computer. La finestra <strong>Local backend service configuration</strong> sceglie
 Slurm come esecutore; solo i worker vengono inviati al cluster via SSH. Prima
@@ -61,9 +102,8 @@ e pacchetti. Il cluster deve offrire <code>sbatch</code>, <code>squeue</code>, <
 <code>singularity</code> e <code>python3</code> via SSH. I job non accedono alla rete. Usa un alias SSH
 già configurato sul computer, con autenticazione e verifica delle chiavi host.</p>
 <h3 id="1-prepara-immagine-e-directory-remota">1. Prepara immagine e directory remota</h3>
-<p>Sostituisci <code>utente_cluster</code> e il percorso dell'immagine con valori validi per il
-tuo account. Crea la directory una volta:</p>
-<pre><code class="language-sh">ssh cluster 'mkdir -p /home/utente_cluster/nnmodelling-jobs &amp;&amp; chmod 700 /home/utente_cluster/nnmodelling-jobs'
+<p>Sostituisci alias e percorsi di esempio con valori validi per il tuo account. Crea la directory una volta:</p>
+<pre><code class="language-sh">ssh my-cluster 'mkdir -p /srv/nnmodelling/jobs &amp;&amp; chmod 700 /srv/nnmodelling/jobs'
 </code></pre>
 <p>L'immagine deve già contenere ogni dipendenza Python richiesta dal progetto:
 durante il job non vengono installati pacchetti. La directory locale dei job
@@ -74,18 +114,20 @@ file temporanei di esecuzione per singolo job.</p>
 separata: il dashboard con endpoint, controlli di training, cronologia e curve
 resta disponibile. Imposta <code>Executor</code> su <code>SSH / Slurm</code> e compila alias SSH,
 directory locale, directory remota, immagine <code>.sif</code>, partizione, CPU, memoria e
-limite di tempo. I valori iniziali delle risorse sono <code>students</code>, <code>2</code>, <code>4G</code> e
-<code>00:30:00</code>; usa i limiti assegnati dal tuo account. <code>Time limit</code> è il limite
+limite di tempo e GPU. Host, directory remota, immagine e partizione sono
+obbligatori e inizialmente vuoti. I valori generici sono 2 CPU, <code>4G</code>,
+<code>00:30:00</code> e 0 GPU; usa i limiti assegnati dal tuo account. <code>Time limit</code> è il limite
 di ogni singola allocazione Slurm, non la durata massima del training.</p>
-<figure class="annotated"><a href="assets/slurm-configure.png" class="image-link" title="Apri screenshot a dimensione originale"><img alt="Configurare esecutore, percorsi e risorse Slurm" src="assets/slurm-configure.png" loading="lazy"></a><figcaption><strong>Configurare esecutore, percorsi e risorse Slurm</strong><p class="image-hint">Clic sull'immagine per leggere i dettagli a dimensione originale.</p><ol class="callouts"><li><span class="badge" aria-hidden="true">1</span><span>Selezione dell’esecutore</span></li><li><span class="badge" aria-hidden="true">2</span><span>Alias SSH di Slurm</span></li><li><span class="badge" aria-hidden="true">3</span><span>Directory remota assoluta delle attività</span></li><li><span class="badge" aria-hidden="true">4</span><span>Immagine Singularity precompilata</span></li><li><span class="badge" aria-hidden="true">5</span><span>Partizione e limiti delle risorse</span></li><li><span class="badge" aria-hidden="true">6</span><span>Stato di disponibilità del runtime</span></li><li><span class="badge" aria-hidden="true">7</span><span>Riavvia in sicurezza il backend locale</span></li></ol></figcaption></figure><h3 id="3-avvia-fastapi-in-locale">3. Avvia FastAPI in locale</h3>
+<figure class="annotated"><a href="assets/slurm-configure.png" class="image-link" title="Apri screenshot a dimensione originale"><img alt="Configurare esecutore, percorsi e risorse Slurm" src="assets/slurm-configure.png" loading="lazy"></a><figcaption><strong>Configurare esecutore, percorsi e risorse Slurm</strong><p class="image-hint">Clic sull'immagine per leggere i dettagli a dimensione originale.</p><ol class="callouts"><li><span class="badge" aria-hidden="true">1</span><span>Selezione dell’esecutore</span></li><li><span class="badge" aria-hidden="true">2</span><span>Alias SSH, directory remota, immagine SIF e partizione</span></li><li><span class="badge" aria-hidden="true">3</span><span>CPU, memoria, limite di tempo e numero di GPU</span></li><li><span class="badge" aria-hidden="true">4</span><span>Eseguibile SSH</span></li><li><span class="badge" aria-hidden="true">5</span><span>Percorso del profilo JSON portabile</span></li><li><span class="badge" aria-hidden="true">6</span><span>Errore visibile di configurazione mancante</span></li><li><span class="badge" aria-hidden="true">7</span><span>Riavvia in sicurezza il backend locale</span></li></ol></figcaption></figure><h3 id="3-avvia-fastapi-in-locale">3. Avvia FastAPI in locale</h3>
 <p>Nella finestra di configurazione premi <strong>Save settings and start local
-backend</strong>. Nello screenshot il servizio è già attivo, quindi il pulsante propone
-un riavvio sicuro; al primo avvio mostra invece l’azione di avvio. Viene avviato solo il servizio locale su loopback. L'app sceglie una
+backend</strong>. Lo screenshot mostra i campi remoti ancora vuoti: il tentativo di avvio è
+respinto prima di qualsiasi connessione al cluster.
+Quando un servizio gestito è attivo, il pulsante propone un riavvio sicuro. Viene avviato solo il servizio locale su loopback. L'app sceglie una
 porta libera e aggiorna automaticamente <code>Endpoint</code> nel dashboard. La riga di
-stato conferma avvio e disponibilità di Singularity; errori SSH, immagine o
+stato verifica avvio e disponibilità di Singularity; errori SSH, immagine o
 prerequisiti appaiono qui. Le preferenze non segrete vengono salvate per
 l'utente. Password SSH non vengono richieste o copiate.</p>
-<figure class="annotated"><a href="assets/slurm-configure.png" class="image-link" title="Apri screenshot a dimensione originale"><img alt="Configurazione Slurm pronta nel backend locale" src="assets/slurm-configure.png" loading="lazy"></a><figcaption><strong>Configurazione Slurm pronta nel backend locale</strong><p class="image-hint">Clic sull'immagine per leggere i dettagli a dimensione originale.</p><ol class="callouts"><li><span class="badge" aria-hidden="true">1</span><span>Selezione dell’esecutore</span></li><li><span class="badge" aria-hidden="true">2</span><span>Alias SSH di Slurm</span></li><li><span class="badge" aria-hidden="true">3</span><span>Directory remota assoluta delle attività</span></li><li><span class="badge" aria-hidden="true">4</span><span>Immagine Singularity precompilata</span></li><li><span class="badge" aria-hidden="true">5</span><span>Partizione e limiti delle risorse</span></li><li><span class="badge" aria-hidden="true">6</span><span>Stato di disponibilità del runtime</span></li><li><span class="badge" aria-hidden="true">7</span><span>Riavvia in sicurezza il backend locale</span></li></ol></figcaption></figure><h3 id="4-connetti-dashboard-e-invia-job">4. Connetti dashboard e invia job</h3>
+<h3 id="4-connetti-dashboard-e-invia-job">4. Connetti dashboard e invia job</h3>
 <p>Torna al dashboard <strong>Training</strong>: <code>Endpoint</code> contiene già l'indirizzo loopback
 scelto dal servizio. Premi <strong>Connect / check health</strong> se vuoi aggiornare la
 verifica. Invia progetto e parametri come per il runtime locale: non servono
@@ -100,7 +142,7 @@ prima che il checkpoint sia completo, il job viene mostrato come fallito e non
 può riprendere automaticamente. Gli iteratori di training personalizzati devono
 poter essere ricreati in modo ripetibile per permettere il ripristino del punto
 salvato.</p>
-<figure class="annotated"><a href="assets/slurm-dashboard.png" class="image-link" title="Apri screenshot a dimensione originale"><img alt="Dashboard Training con configurazione Slurm separata" src="assets/slurm-dashboard.png" loading="lazy"></a><figcaption><strong>Dashboard Training con configurazione Slurm separata</strong><p class="image-hint">Clic sull'immagine per leggere i dettagli a dimensione originale.</p><ol class="callouts"><li><span class="badge" aria-hidden="true">1</span><span>Indirizzo del backend</span></li><li><span class="badge" aria-hidden="true">2</span><span>Connetti e verifica lo stato del servizio</span></li><li><span class="badge" aria-hidden="true">3</span><span>Apri la configurazione separata del backend</span></li></ol></figcaption></figure><p>I tutorial <a href="tutorial-tiny-llm.html">LLM</a> e <a href="tutorial-vae.html">VAE</a> seguono lo
+<figure class="annotated"><a href="assets/slurm-dashboard.png" class="image-link" title="Apri screenshot a dimensione originale"><img alt="Controlli Training attuali" src="assets/slurm-dashboard.png" loading="lazy"></a><figcaption><strong>Controlli Training attuali</strong><p class="image-hint">Clic sull'immagine per leggere i dettagli a dimensione originale.</p><ol class="callouts"><li><span class="badge" aria-hidden="true">1</span><span>Indirizzo del backend e stato della connessione</span></li><li><span class="badge" aria-hidden="true">2</span><span>Basic training settings</span></li><li><span class="badge" aria-hidden="true">3</span><span>Dispositivo, precisione e ottimizzatore</span></li><li><span class="badge" aria-hidden="true">4</span><span>Controlli dell’arresto anticipato</span></li></ol></figcaption></figure><p>I tutorial <a href="tutorial-tiny-llm.html">LLM</a> e <a href="tutorial-vae.html">VAE</a> seguono lo
 stesso percorso. Se manca una dipendenza nella <code>.sif</code>, il job fallisce in modo
 visibile: ricostruisci l'immagine prima di riprovare. Per tornare all'esecuzione
 Docker locale, apri <strong>Configure backend…</strong>, seleziona <strong>Docker-compatible
@@ -194,7 +236,8 @@ vengono pubblicate metriche abbinate di training e validazione; a ogni fine epoc
 viene pubblicata anche l'eventuale finestra residua.</p>
 <p>L'API accetta questi intervalli: epoche <code>1–10000</code>, batch <code>1–4096</code>, learning rate
 finito maggiore di <code>0</code> e minore o uguale a <code>1</code>, seed da <code>-2147483648</code> a
-<code>4294967295</code>, cadenza <code>1–100000</code>. I campi JSON aggiuntivi vengono rifiutati.
+<code>4294967295</code>, cadenza <code>1–100000</code>. I campi JSON non previsti dal protocollo vengono rifiutati; le opzioni avanzate
+elencate nella guida client sono supportate.
 Il job registra la configurazione usata e lo snapshot dei file: le modifiche
 successive al progetto non cambiano un job già inviato.</p>
 <p>Per un invio riproducibile dal terminale, questo esempio usa solo la libreria
@@ -372,9 +415,9 @@ nuovi job, il nome della distribuzione è <code>nnm_&lt;id-progetto-normalizzato
 esempio, ID <code>llm</code> produce <code>nnm_llm-0.1.0-py3-none-any.whl</code>. Per normalizzare,
 sequenze diverse da lettere e cifre ASCII diventano <code>_</code>, gli underscore iniziali
 e finali sono rimossi e il risultato è minuscolo. Il client Qt conserva il nome
-completo inviato dal server, che include distribuzione, versione e tag. Il nome
-del modulo Python resta invece specifico del job: <code>nnmodel_&lt;id-job-normalizzato&gt;</code>.
-Non ricavare l'import dal nome della wheel; leggi il modulo al suo interno. Job
+completo inviato dal server, che include distribuzione, versione e tag. Il modulo Python delle nuove wheel è <code>nnm_&lt;id-progetto-normalizzato&gt;</code>:
+per ID <code>llm</code>, usa <code>from nnm_llm import Model</code>. Un alias specifico del job
+resta disponibile per compatibilità. Per wheel storiche, leggi il modulo al loro interno. Job
 generati dallo stesso progetto, o da progetti con lo stesso ID normalizzato,
 condividono distribuzione e versione:
 installali in ambienti Python separati. Le wheel archiviate prima della modifica
@@ -393,6 +436,36 @@ PyTorch, safetensors e le dipendenze dichiarate dalla risorsa.</p>
 </tr>
 </thead>
 <tbody>
+<tr>
+<td><code>NNMODELLING_CONFIG</code></td>
+<td>percorso XDG o <code>~/.config/nnmodelling/config.json</code></td>
+<td>File JSON condiviso; un percorso esplicito mancante produce errore.</td>
+</tr>
+<tr>
+<td><code>NNMODELLING_EXECUTOR</code></td>
+<td><code>docker</code></td>
+<td><code>docker</code> oppure <code>slurm</code>; sovrascrive <code>backend.executor</code>.</td>
+</tr>
+<tr>
+<td><code>NNMODELLING_SLURM_HOST</code>, <code>NNMODELLING_SLURM_ROOT</code>, <code>NNMODELLING_SLURM_IMAGE</code>, <code>NNMODELLING_SLURM_PARTITION</code></td>
+<td>vuoti</td>
+<td>Alias SSH, root remota, SIF e partizione: obbligatori per Slurm.</td>
+</tr>
+<tr>
+<td><code>NNMODELLING_SLURM_CPUS</code>, <code>NNMODELLING_SLURM_MEMORY</code>, <code>NNMODELLING_SLURM_TIME</code>, <code>NNMODELLING_SLURM_GPUS</code></td>
+<td><code>2</code>, <code>4G</code>, <code>00:30:00</code>, <code>0</code></td>
+<td>Risorse per allocazione; GPU da 0 a 8.</td>
+</tr>
+<tr>
+<td><code>NNMODELLING_SSH_EXECUTABLE</code></td>
+<td><code>ssh</code></td>
+<td>Comando SSH usato dal servizio.</td>
+</tr>
+<tr>
+<td><code>NNMODELLING_MAX_ARTIFACT_BYTES</code></td>
+<td><code>64 GiB</code></td>
+<td>Limite configurabile degli artifact, separato da bundle e corpus.</td>
+</tr>
 <tr>
 <td><code>NNMODELLING_BACKEND_HOST</code></td>
 <td><code>127.0.0.1</code></td>
@@ -450,7 +523,7 @@ PyTorch, safetensors e le dipendenze dichiarate dalla risorsa.</p>
 </tr>
 </tbody>
 </table>
-<p>I quattro limiti <code>MAX_*</code> sono convertiti da stringa a intero all'avvio; il
+<p>I limiti del bundle <code>MAX_*</code> sono convertiti da stringa a intero all'avvio; il
 servizio non applica un ulteriore intervallo o valore minimo a queste
 impostazioni. I valori standard sono allineati ai controlli dell'API; il client
 Qt applica inoltre un massimo complessivo di <code>256 MiB</code> ai file locali prima della
