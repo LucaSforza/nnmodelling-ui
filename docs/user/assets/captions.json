@@ -85,7 +85,15 @@
     "callouts": [
       {
         "number": 1,
-        "region": "Azioni per stereotipi, dataset e addestramento"
+        "region": "Azioni per pacchetti e risorse"
+      },
+      {
+        "number": 2,
+        "region": "Conteggio dei parametri"
+      },
+      {
+        "number": 3,
+        "region": "Backend di addestramento"
       }
     ]
   },
@@ -228,7 +236,7 @@
     ]
   },
   "training-connect.png": {
-    "caption": "Connessione al backend locale di addestramento",
+    "caption": "Connessione al backend e configurazione dell’addestramento",
     "callouts": [
       {
         "number": 1,
@@ -237,22 +245,87 @@
       {
         "number": 2,
         "region": "Connetti e verifica lo stato del servizio"
+      },
+      {
+        "number": 3,
+        "region": "Apri la configurazione separata del backend"
       }
     ]
   },
   "training-settings.png": {
-    "caption": "Impostazione delle opzioni di addestramento",
+    "caption": "Impostazioni di addestramento, ottimizzazione e arresto anticipato",
     "callouts": [
       {
         "number": 1,
-        "region": "Epoche, dimensione del batch, tasso di apprendimento e seme"
+        "region": "Epoche, batch, tasso di apprendimento, seme e frequenza delle metriche"
       },
       {
         "number": 2,
-        "region": "Salva il progetto e invia l’attività"
+        "region": "Dispositivo, precisione e ottimizzatore"
+      },
+      {
+        "number": 3,
+        "region": "Decadimento dei pesi, clipping, warmup, budget di passaggi e accumulo"
+      },
+      {
+        "number": 4,
+        "region": "Pazienza e miglioramento minimo della validazione per l’arresto anticipato"
       }
-    ],
-    "details": "3 epoche; batch 16; tasso di apprendimento 0,001; seme 0; pubblicazione a ogni passaggio."
+    ]
+  },
+  "slurm-configure.png": {
+    "caption": "Configurazione dell’esecutore SSH/Slurm",
+    "callouts": [
+      {
+        "number": 1,
+        "region": "Selezione dell’esecutore"
+      },
+      {
+        "number": 2,
+        "region": "Alias SSH, directory remota, immagine SIF e partizione"
+      },
+      {
+        "number": 3,
+        "region": "CPU, memoria, limite di tempo e numero di GPU"
+      },
+      {
+        "number": 4,
+        "region": "Eseguibile SSH"
+      },
+      {
+        "number": 5,
+        "region": "Percorso del profilo JSON portabile"
+      },
+      {
+        "number": 6,
+        "region": "Errore visibile di configurazione mancante"
+      },
+      {
+        "number": 7,
+        "region": "Riavvia in sicurezza il backend locale"
+      }
+    ]
+  },
+  "slurm-dashboard.png": {
+    "caption": "Dashboard di addestramento con i controlli attuali",
+    "callouts": [
+      {
+        "number": 1,
+        "region": "Indirizzo del backend e stato della connessione"
+      },
+      {
+        "number": 2,
+        "region": "Basic training settings"
+      },
+      {
+        "number": 3,
+        "region": "Dispositivo, precisione e ottimizzatore"
+      },
+      {
+        "number": 4,
+        "region": "Controlli dell’arresto anticipato"
+      }
+    ]
   },
   "training-dashboard.png": {
     "caption": "Dashboard al termine dell’addestramento in 12 passaggi",
@@ -462,6 +535,52 @@
       {
         "number": 4,
         "region": "Crea e salva il progetto"
+      }
+    ]
+  },
+  "parameter-counts.png": {
+    "caption": "Conteggio dei parametri del modello per nodo",
+    "callouts": [
+      {
+        "number": 1,
+        "region": "Parametri totali e addestrabili; completezza dell’analisi"
+      },
+      {
+        "number": 2,
+        "region": "Conteggio dei parametri per ogni nodo"
+      },
+      {
+        "number": 3,
+        "region": "Aggiorna il conteggio dei parametri"
+      },
+      {
+        "number": 4,
+        "region": "La barra orizzontale mostra la colonna Message"
+      }
+    ]
+  },
+  "backend-config.png": {
+    "caption": "Configurazione del backend locale e stato del profilo",
+    "callouts": [
+      {
+        "number": 1,
+        "region": "Scegli l’esecutore locale"
+      },
+      {
+        "number": 2,
+        "region": "Directory locale dei job, runtime dei container e immagine worker"
+      },
+      {
+        "number": 3,
+        "region": "Percorso del profilo JSON portabile"
+      },
+      {
+        "number": 4,
+        "region": "Stato di disponibilità del servizio locale"
+      },
+      {
+        "number": 5,
+        "region": "Riavvia in sicurezza il backend locale"
       }
     ]
   }

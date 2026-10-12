@@ -2,6 +2,7 @@
 #include "application/application.h"
 #include "utils/utils.h"
 #include "inference/inference.h"
+#include "inference/parameter_counts.h"
 #include "yyjson.h"
 
 #include <math.h>
@@ -115,6 +116,17 @@ char *nn_app_operations_json(const NNApplication *app, char *error, size_t cap)
         return NULL;
     }
     return nn_project_operations_json(app->project, error, cap);
+}
+
+char *nn_app_parameter_counts_json(NNApplication *app, char *error, size_t cap)
+{
+    if (!app || !app->project) {
+        nn_fail(error, cap, "no active project");
+        return NULL;
+    }
+    const NNInferenceReport *analysis = nn_app_analysis(app, error, cap);
+    if (!analysis) return NULL;
+    return nn_parameter_counts_json(app->project, analysis, error, cap);
 }
 
 bool nn_app_set_operations_json(NNApplication *app, const char *json,

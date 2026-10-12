@@ -6,7 +6,7 @@ from torch import nn
 
 
 class TotalLoss(nn.Module):
-    """Add scalar reconstruction MSE to the batch mean of per-sample KL."""
+    """Combine summed 28x28 pixel error with mean per-sample KL."""
 
     def forward(self, *inputs: torch.Tensor) -> torch.Tensor:
         if len(inputs) != 2:
@@ -16,7 +16,7 @@ class TotalLoss(nn.Module):
             raise ValueError("Expected scalar reconstruction MSE and nonempty per-sample KL [B]")
         if not reconstruction.is_floating_point() or reconstruction.dtype != kl.dtype or reconstruction.device != kl.device:
             raise ValueError("Reconstruction MSE and KL must have the same floating dtype and device")
-        return reconstruction + kl.mean()
+        return reconstruction * (28 * 28) + kl.mean()
 
 
 def build(parameters: Mapping[str, Any], context: Mapping[str, Any], services: object) -> nn.Module:

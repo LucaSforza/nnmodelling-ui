@@ -200,3 +200,34 @@ remain unchanged. `Model.encode` and `Model.decode` reuse modules and weights
 already loaded by the same graph instance. For the VAE example, eval-time
 reparameterization returns posterior mean; a standard-normal sample can be
 passed to `decode` by caller code.
+
+Accepted 2026-10-08: worker chooses explicit CPU/CUDA and FP32/BF16, moves batch
+inputs/targets to device, and uses configured accumulation before optimizer
+updates. DeepSeek Muon orthogonalizes independent matrix slices with Algorithm 1;
+annotated exclusions and non-matrices use AdamW. Checkpoint captures both
+optimizers, CUDA RNG and completed-update cursor. Metrics retain optimizer-step
+budget and processed-token evidence. DatasetAdapter.data_directory resolves
+read-only acquired corpus while tokenize/untokenize use packaged assets alone.
+
+The worker passes a writable output-owned dataset-cache root separately from
+the read-only corpus root. An adapter may derive revision/config-keyed token
+windows lazily per source shard and atomically publishes them; resumed epochs
+skip already consumed cached windows without repeating tokenization.
+
+Exported Model construction accepts an optional CPU/CUDA device. Weights load
+from safetensors before graph movement; operation inputs follow graph device,
+tensor outputs retain it, dataset outputs move to CPU for decoding.
+
+Root forward inputs and root-Input operation injection provide named batch
+input context through nested SubflowRunner calls. Declared externalInputs select
+inputs or targets explicitly; immediate subflow boundaries do not overwrite
+root batch bindings. Per-call context resets in finally, including failures.
+
+
+Accepted 2026-10-09: wheel generation names the public import package with the
+normalized frozen project ID, matching nnm distribution identity. The old
+job-specific name is an alias in new wheels. Consumer installs a selected
+replacement artifact and reuses its unchanged import in a fresh process.
+
+Tiny Shakespeare training load permutes windows from the torch RNG stream;
+validation/test keep their fixed order and checkpoint replay restores epoch order.

@@ -1,6 +1,6 @@
 {
   "name": "VAE total loss",
-  "description": "Explicit designer join: reconstruction MSE + mean(per-sample KL). Scalar output; shape analysis only.",
+  "description": "Explicit join: 784 × mean pixel MSE + mean(per-sample KL), equivalent to batch-mean summed pixel error plus KL. Scalar output; shape analysis only.",
   "kind": "join",
   "outputs": [{ "id": "loss", "type": "loss" }],
   "view": { "color": "#a4493d", "width": 270, "height": 120 },

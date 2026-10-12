@@ -6,12 +6,14 @@
 #include <QApplication>
 #include <QComboBox>
 #include <QDialog>
+#include <QDialogButtonBox>
 #include <QLineEdit>
 #include <QLabel>
 #include <QListWidget>
 #include <QPushButton>
 #include <QTemporaryDir>
 #include <QTimer>
+#include <QTableWidget>
 #include <QTreeWidget>
 
 #include <cassert>
@@ -77,19 +79,57 @@ int main(int argc, char **argv) {
             form->reject();
         });
         edit->click();
-        QTimer::singleShot(0, dialog, [] {
+        QTimer::singleShot(0, dialog, [&] {
             auto *form = qobject_cast<QDialog *>(QApplication::activeModalWidget());
             assert(form);
-            assert(form->findChild<QLineEdit *>(QStringLiteral("operationName")));
-            assert(form->findChild<QComboBox *>(QStringLiteral("operationInputNode"))->count() == 2);
-            assert(form->findChild<QComboBox *>(QStringLiteral("operationOutputNode"))->count() == 1);
+            auto *name = form->findChild<QLineEdit *>(QStringLiteral("operationName"));
+            auto *inputNode = form->findChild<QComboBox *>(QStringLiteral("operationInputNode"));
+            auto *inputHandleCombo = form->findChild<QComboBox *>(QStringLiteral("operationInputHandle"));
+            auto *outputNode = form->findChild<QComboBox *>(QStringLiteral("operationOutputNode"));
+            auto *outputHandleCombo = form->findChild<QComboBox *>(QStringLiteral("operationOutputHandle"));
+            assert(name && inputNode && inputHandleCombo && outputNode && outputHandleCombo);
+            name->setText(QStringLiteral("savedMethod"));
+            inputNode->setCurrentIndex(inputNode->findData(QStringLiteral("source")));
+            inputHandleCombo->setCurrentIndex(inputHandleCombo->findData(QString::fromUtf8(inputHandle)));
+            outputNode->setCurrentIndex(outputNode->findData(QStringLiteral("layer")));
+            outputHandleCombo->setCurrentIndex(outputHandleCombo->findData(QString::fromUtf8(outputHandle)));
             assert(form->findChild<QComboBox *>(QStringLiteral("operationInputCodec"))->count() == 2);
             assert(form->findChild<QComboBox *>(QStringLiteral("operationOutputCodec"))->count() == 2);
-            form->reject();
+            auto *buttons = form->findChild<QDialogButtonBox *>();
+            assert(buttons && buttons->button(QDialogButtonBox::Save));
+            buttons->button(QDialogButtonBox::Save)->click();
         });
         dialog->findChild<QPushButton *>(QStringLiteral("newOperation"))->click();
+        assert(list->count() == 3);
+        assert(list->item(2)->text().contains(QStringLiteral("savedMethod")));
+        QTimer::singleShot(0, dialog, [dialog] {
+            auto *managerButtons = dialog->findChild<QDialogButtonBox *>();
+            assert(managerButtons && managerButtons->button(QDialogButtonBox::Save));
+            managerButtons->button(QDialogButtonBox::Save)->click();
+        });
+    });
+    QAction *manageOperations = window.findChild<QAction *>(QStringLiteral("manageOperationsAction"));
+    manageOperations->trigger();
+    QTimer::singleShot(0, [&] {
+        auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+        auto *list = dialog ? dialog->findChild<QListWidget *>(QStringLiteral("operationsList")) : nullptr;
+        assert(list && list->count() == 3 && list->item(2)->text().contains(QStringLiteral("savedMethod")));
         dialog->reject();
     });
-    window.findChild<QAction *>(QStringLiteral("manageOperationsAction"))->trigger();
+    manageOperations->trigger();
+    assert(window.findChild<QAction *>(QStringLiteral("parameterCountsAction")));
+    QTimer::singleShot(0, [&] {
+        auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+        assert(dialog && dialog->objectName() == QStringLiteral("parameterCountsDialog"));
+        auto *summary = dialog->findChild<QLabel *>(QStringLiteral("parameterCountSummary"));
+        auto *table = dialog->findChild<QTableWidget *>(QStringLiteral("parameterCountRows"));
+        auto *refresh = dialog->findChild<QPushButton *>(QStringLiteral("refreshParameterCounts"));
+        assert(summary && summary->text().contains(QStringLiteral("Total parameters")));
+        assert(table && table->columnCount() == 5 && table->rowCount() >= 2);
+        assert(refresh);
+        refresh->click();
+        dialog->reject();
+    });
+    window.findChild<QAction *>(QStringLiteral("parameterCountsAction"))->trigger();
     return 0;
 }

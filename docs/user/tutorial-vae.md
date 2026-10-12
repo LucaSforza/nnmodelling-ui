@@ -13,7 +13,12 @@ just backend-image
 just backend-run
 ```
 
-Lascia il terminale del backend aperto. In un secondo terminale avvia `./build/qt/nnmodelling-ui`. Il backend predefinito usa `http://127.0.0.1:8765`; per token e altre opzioni consulta la [guida al server](server.md).
+Lascia il terminale del backend aperto. In un secondo terminale avvia `./build/qt/nnmodelling-ui`. Il backend avviato manualmente usa `http://127.0.0.1:8765`; se lo avvii da `Configure backend…`, l'app sceglie una porta loopback libera e aggiorna `Endpoint`. Per token e altre opzioni consulta la [guida al server](server.md).
+
+Per eseguire il training sul cluster Slurm configurato, segui gli illustrati
+[passaggi Slurm dalla UI](server.md#eseguire-i-job-su-un-cluster-slurm-dalla-ui).
+Scegli l'esecutore con `Configure backend…`; API, endpoint locale e parametri
+VAE qui sotto restano invariati.
 
 ## 2. Aprire una copia del VAE
 
@@ -59,14 +64,19 @@ L'ingresso `decoder.in` riceve il tensore fornito al metodo. Per questa operazio
 
 Nella lista controlla che entrambi gli stati siano `Ready`, poi premi `Save`. Se vedi `Stale endpoint`, modifica l'operazione per selezionare un nodo e un handle attuali, oppure rimuovila. Salva anche il progetto con `File > Save`.
 
+Per prove brevi usa CPU, Float32 e Adam; lascia `Max steps = 0`,
+`Accumulation = 1` e early stopping disattivato. Per arrestare automaticamente
+il job in base alla validazione consulta le [opzioni avanzate](client.md#opzioni-avanzate-di-training).
+
 ## 5. Addestrare e scaricare la wheel
 
-Apri `Training` e premi `Connect / check health`. Per il piccolo dataset incluso usa:
+Apri `Training` e premi `Connect / check health`. Per il dataset incluso e la
+loss corretta usa:
 
 | Campo | Valore |
 | --- | --- |
-| `Epochs` | `1` |
-| `Batch` | `32` |
+| `Epochs` | `100` |
+| `Batch` | `16` |
 | `Learning rate` | `0.001` |
 | `Seed` | `0` |
 | `Publish every N steps` | `10` |
@@ -115,3 +125,20 @@ sample = model.decode(torch.randn(1, 32))   # Una nuova immagine dal prior.
 ```
 
 Usa `model.decode(z)` per ricostruire l'immagine codificata; `model.decode(torch.randn(1,32))` parte invece da un punto casuale nello spazio latente. Entrambi usano i pesi addestrati nella wheel. Il metodo originale `model.infer(...)` resta disponibile.
+
+Il progetto VAE somma l'errore quadratico sui 784 pixel di ogni immagine e lo
+combina con la KL media sul batch. Non confrontare i valori di loss del nuovo
+training con quelli delle wheel precedenti, che usavano una riduzione diversa.
+
+Genera l'interpolazione richiesta fra due esempi MNIST reali:
+
+```sh
+cd examples/implementation/vae
+uv run --no-project python download_wheel.py
+uv sync --locked
+uv run --locked python main.py --interpolate
+```
+
+Il consumer codifica un 3 e un 7 del test set usando la media latente, interpola
+linearmente cinque vettori intermedi e decodifica tutti e sette i punti. Trovi
+le PNG singole e la tavola etichettata in `output/interpolation.png`.

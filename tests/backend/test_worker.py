@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import math
+import os
 import random
+import sys
+import types
 from dataclasses import dataclass
 
 import numpy as np
@@ -105,3 +108,255 @@ def test_metrics_publication_has_an_explicit_size_limit(tmp_path, monkeypatch):
     with pytest.raises(ValueError, match="publication limit"):
         worker._write_json(path, {"steps": ["payload too large"]})
     assert path.read_text() == '{"previous":true}'
+
+
+def _seed_training():
+    random.seed(25)
+    np.random.seed(25)
+    torch.manual_seed(25)
+
+
+def _adam_training(model, metrics, **kwargs):
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+    worker._train_epochs(model, TinyAdapter(), optimizer, 2, 2, 4, metrics, lambda: None, **kwargs)
+    return optimizer
+
+
+def test_checkpoint_resume_matches_uninterrupted_training(tmp_path):
+    _seed_training()
+    expected_model = StochasticLoss()
+    expected_metrics = {"epochs": [], "steps": [], "test_loss": None}
+    _adam_training(expected_model, expected_metrics)
+    expected_rng = worker._rng_state()
+
+    _seed_training()
+    interrupted_model = StochasticLoss()
+    interrupted_metrics = {"epochs": [], "steps": [], "test_loss": None}
+    marker = tmp_path / "checkpoint-request.123"
+    marker.touch()
+    with pytest.raises(SystemExit) as stopped:
+        optimizer = torch.optim.Adam(interrupted_model.parameters(), lr=0.01)
+        worker._train_epochs(
+            interrupted_model, TinyAdapter(), optimizer, 2, 2, 4, interrupted_metrics, lambda: None,
+            checkpoint_request=marker, checkpoint_output=tmp_path, job_id="logical-job",
+            scheduler_job_id="123",
+        )
+    assert stopped.value.code == 75
+    marker.unlink()
+
+    checkpoint = worker._load_checkpoint(tmp_path, "logical-job")
+    assert checkpoint["scheduler_id"] == "123"
+    assert checkpoint["global_step"] == 1
+    resumed_model = StochasticLoss()
+    resumed_optimizer = torch.optim.Adam(resumed_model.parameters(), lr=0.01)
+    resumed_model.load_state_dict(checkpoint["model_state"])
+    resumed_optimizer.load_state_dict(checkpoint["optimizer_state"])
+    resumed_metrics = checkpoint["metrics"]
+    worker._train_epochs(
+        resumed_model, TinyAdapter(), resumed_optimizer, 2, 2, 4, resumed_metrics, lambda: None,
+        resume=checkpoint,
+    )
+
+    assert torch.equal(resumed_model.weight, expected_model.weight)
+    assert resumed_metrics == expected_metrics
+    actual_rng = worker._rng_state()
+    assert actual_rng["python"] == expected_rng["python"]
+    assert actual_rng["numpy"][0] == expected_rng["numpy"][0]
+    assert np.array_equal(actual_rng["numpy"][1], expected_rng["numpy"][1])
+    assert torch.equal(actual_rng["torch"], expected_rng["torch"])
+
+
+def test_checkpoint_resume_honors_an_already_reached_step_budget(tmp_path):
+    _seed_training()
+    model = StochasticLoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+    metrics = {"epochs": [], "steps": [], "test_loss": None}
+    marker = tmp_path / "checkpoint-request.123"
+    marker.touch()
+    with pytest.raises(SystemExit):
+        worker._train_epochs(
+            model, TinyAdapter(), optimizer, 2, 2, 10, metrics, lambda: None,
+            checkpoint_request=marker, checkpoint_output=tmp_path, job_id="budget-job",
+            scheduler_job_id="123", max_steps=1,
+        )
+    marker.unlink()
+
+    checkpoint = worker._load_checkpoint(tmp_path, "budget-job")
+    model_state = {key: value.clone() for key, value in checkpoint["model_state"].items()}
+    resumed = StochasticLoss()
+    resumed.load_state_dict(checkpoint["model_state"])
+    resumed_optimizer = torch.optim.Adam(resumed.parameters(), lr=0.01)
+    resumed_optimizer.load_state_dict(checkpoint["optimizer_state"])
+    resumed_metrics = checkpoint["metrics"]
+    worker._train_epochs(
+        resumed, TinyAdapter(), resumed_optimizer, 2, 2, 10, resumed_metrics, lambda: None,
+        resume=checkpoint, max_steps=1,
+    )
+
+    assert resumed_metrics["optimizer_updates"] == 1
+    assert [point["step"] for point in resumed_metrics["steps"]] == [1]
+    assert resumed_metrics["epochs"] == []
+    for name, value in resumed.state_dict().items():
+        torch.testing.assert_close(value, model_state[name])
+
+
+def test_checkpoint_request_uses_attempt_marker_path(tmp_path, monkeypatch):
+    marker = tmp_path / "checkpoint-request.456"
+    monkeypatch.setenv("NNMODELLING_CHECKPOINT_REQUEST", str(marker))
+    assert worker._checkpoint_request_path() == marker
+    marker.touch()
+    assert worker._checkpoint_request_path().is_file()
+
+
+def test_accumulation_weights_short_group_and_max_steps_record_evidence():
+    @dataclass
+    class Batch:
+        inputs: dict[str, torch.Tensor]
+        targets: dict[str, torch.Tensor]
+
+    class Adapter:
+        def load(self, split: str, _batch_size: int):
+            sizes = (1, 3, 2) if split == "train" else (1,)
+            for index, size in enumerate(sizes):
+                target = 0.0 if index == 0 else 1.0
+                yield Batch({"x": torch.ones((size, 1))}, {"y": torch.full((size, 1), target)})
+
+    class LinearLoss(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.weight = torch.nn.Parameter(torch.tensor(0.0))
+
+        def forward(self, inputs, targets=None, include_loss=False):
+            return {"loss": (self.weight * inputs["x"] - targets["y"]).square().mean()}
+
+    model = LinearLoss()
+    optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
+    metrics = {"epochs": [], "steps": [], "test_loss": None}
+    worker._train_epochs(
+        model, Adapter(), optimizer, 2, 8, 10, metrics, lambda: None,
+        max_steps=1, gradient_accumulation_steps=2,
+    )
+
+    # The two microbatches contribute 1 and 3 samples: mean gradient is -1.5.
+    torch.testing.assert_close(model.weight, torch.tensor(0.15))
+    assert metrics["optimizer_updates"] == 1
+    assert metrics["processed_tokens"] == 4
+    assert metrics["max_steps"] == 1
+    assert metrics["epochs"] == []
+    assert len(metrics["steps"]) == 1
+    assert metrics["steps"][0]["optimizer_updates"] == 1
+    assert metrics["steps"][0]["processed_tokens"] == 4
+
+
+def test_warmup_and_global_gradient_clipping_apply_at_update_boundaries():
+    class Adapter:
+        def load(self, split: str, _batch_size: int):
+            for _ in range(1 if split != "train" else 2):
+                yield Batch({"x": torch.ones((1, 1))}, {"y": torch.ones((1, 1))})
+
+    class LinearLoss(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.weight = torch.nn.Parameter(torch.tensor(0.0))
+
+        def forward(self, inputs, targets=None, include_loss=False):
+            return {"loss": (self.weight * inputs["x"] - targets["y"]).square().mean()}
+
+    class RecordingSGD(torch.optim.SGD):
+        def __init__(self, parameters):
+            super().__init__(parameters, lr=0.1)
+            self.rates = []
+
+        def step(self, closure=None):
+            self.rates.append(self.param_groups[0]["lr"])
+            return super().step(closure)
+
+    model = LinearLoss()
+    optimizer = RecordingSGD(model.parameters())
+    metrics = {"epochs": [], "steps": [], "test_loss": None}
+    worker._train_epochs(
+        model, Adapter(), optimizer, 1, 1, 10, metrics, lambda: None,
+        gradient_clip=0.25, warmup_steps=2,
+    )
+
+    assert optimizer.rates == [0.05, 0.1]
+    torch.testing.assert_close(model.weight, torch.tensor(0.0375))
+
+
+def test_cuda_request_fails_without_cpu_fallback(tmp_path):
+    if torch.cuda.is_available():
+        pytest.skip("This environment has CUDA available.")
+    snapshot = tmp_path / "snapshot"
+    snapshot.mkdir()
+    (snapshot / "training.json").write_text(
+        '{"seed":0,"device":"cuda"}', encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="CUDA training was requested"):
+        worker.run(snapshot, tmp_path / "output", "job")
+
+
+@pytest.mark.parametrize("previous", [None, "/tmp/previous-dataset-cache"])
+def test_run_scopes_dataset_cache_root_to_persistent_job_output(tmp_path, monkeypatch, previous):
+    snapshot = tmp_path / "snapshot"
+    output = tmp_path / "output"
+    (snapshot / "files").mkdir(parents=True)
+    (snapshot / "core").mkdir()
+    output.mkdir()
+    (snapshot / "project.json").write_text("{}", encoding="utf-8")
+    (snapshot / "training.json").write_text(
+        '{"seed":0,"epochs":1,"batch_size":1,"learning_rate":0.01}', encoding="utf-8",
+    )
+    seen_cache_roots = []
+
+    class Model(torch.nn.Module):
+        def __init__(self, *_args, **_kwargs):
+            super().__init__()
+            self.weight = torch.nn.Parameter(torch.ones(()))
+
+    def load_dataset(_project):
+        cache_root = os.environ.get("NNMODELLING_DATASET_CACHE_ROOT")
+        seen_cache_roots.append(cache_root)
+        return object()
+
+    runtime = types.ModuleType("nnmodelling_runtime")
+    runtime.GraphModule = Model
+    runtime.load_dataset = load_dataset
+    runtime.build_wheel = lambda *_args: None
+    monkeypatch.setitem(sys.modules, "nnmodelling_runtime", runtime)
+    monkeypatch.setattr(worker, "_train_epochs", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(worker, "_epoch", lambda *_args, **_kwargs: 0.5)
+    if previous is None:
+        monkeypatch.delenv("NNMODELLING_DATASET_CACHE_ROOT", raising=False)
+    else:
+        monkeypatch.setenv("NNMODELLING_DATASET_CACHE_ROOT", previous)
+
+    worker.run(snapshot, output, "cache-job")
+
+    expected = str((output / "dataset-cache").resolve())
+    assert seen_cache_roots == [expected]
+    assert (output / "dataset-cache").is_dir()
+    if previous is None:
+        assert "NNMODELLING_DATASET_CACHE_ROOT" not in os.environ
+    else:
+        assert os.environ["NNMODELLING_DATASET_CACHE_ROOT"] == previous
+
+
+@pytest.mark.parametrize("damage", ["manifest", "tensor", "partial"])
+def test_incomplete_or_corrupt_checkpoint_is_rejected(tmp_path, damage):
+    if damage == "partial":
+        (tmp_path / "checkpoint.safetensors").write_bytes(b"orphan")
+    elif damage == "manifest":
+        (tmp_path / "checkpoint.safetensors").write_bytes(b"tensor")
+        (tmp_path / "checkpoint.json").write_text("{broken")
+    else:
+        model = StochasticLoss()
+        optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+        worker._save_checkpoint(tmp_path, "logical-job", "123", {
+            "global_step": 1, "epoch": 1, "batch_index": 1, "epoch_start_rng": worker._rng_state(),
+            "epoch_total": 1.0, "epoch_count": 1, "window_total": 1.0, "window_count": 1,
+            "metrics": {"epochs": [], "steps": [], "test_loss": None},
+        }, model, optimizer)
+        with (tmp_path / "checkpoint.safetensors").open("ab") as stream:
+            stream.write(b"tampered")
+    with pytest.raises((ValueError, OSError)):
+        worker._load_checkpoint(tmp_path, "logical-job")

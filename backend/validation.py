@@ -9,6 +9,7 @@ from typing import Any
 from fastapi import HTTPException
 
 from . import config
+from .remote_data import validate_remote_files
 
 _INVALID_SEGMENTS = {"", ".", "..", ".venv", "venv", "__pycache__", ".git", "node_modules"}
 
@@ -98,6 +99,10 @@ def validate_project(project: Any, files: dict[str, bytes], core_packages: dict[
                     raise HTTPException(422, f"Dataset {prefix!r} has an invalid tensor slot declaration.")
         datasets[(ref["id"], ref["version"])] = dataset_definition
         entrypoints = dataset_manifest.get("entrypoints", {})
+        try:
+            validate_remote_files(dataset_manifest, f"Dataset {prefix}")
+        except ValueError as error:
+            raise HTTPException(422, str(error)) from None
         python = entrypoints.get("python") if isinstance(entrypoints, dict) else None
         if not isinstance(python, dict) or python.get("language") != "python" or not isinstance(python.get("file"), str):
             raise HTTPException(422, f"Dataset {prefix!r} has no Python adapter entrypoint.")
@@ -180,8 +185,11 @@ def validate_project(project: Any, files: dict[str, bytes], core_packages: dict[
         for external in external_inputs:
             source_name = external.get("source") if isinstance(external, dict) else None
             parts = source_name.split(".") if isinstance(source_name, str) else []
-            if len(parts) != 3 or parts[:2] != ["batch", "targets"] or parts[2] not in declared_targets:
-                raise HTTPException(422, f"Node {node_id!r} objective references an undeclared dataset target.")
+            if len(parts) != 3 or parts[0] != "batch" or parts[1] not in {"inputs", "targets"}:
+                raise HTTPException(422, f"Node {node_id!r} objective references an invalid dataset batch binding.")
+            declared = declared_inputs if parts[1] == "inputs" else declared_targets
+            if parts[2] not in declared:
+                raise HTTPException(422, f"Node {node_id!r} objective references an undeclared dataset {parts[1][:-1]}.")
     for edge in project["edges"]:
         if not isinstance(edge, dict) or not isinstance(edge.get("id"), str) or not edge["id"]:
             raise HTTPException(422, "Each graph edge must have a non-empty string id.")
@@ -392,8 +400,11 @@ def _cycle_reachable(start: str, adjacency: dict[str, list[str]]) -> bool:
 
 def validate_training(value: Any) -> dict[str, Any]:
     required = {"epochs", "batch_size", "learning_rate", "seed"}
-    if not isinstance(value, dict) or frozenset(value) not in {frozenset(required), frozenset(required | {"publish_every_steps"})}:
-        raise HTTPException(422, "training requires epochs, batch_size, learning_rate, seed, and optional publish_every_steps.")
+    optional = {"publish_every_steps", "device", "precision", "optimizer", "weight_decay",
+                "gradient_clip", "warmup_steps", "max_steps", "gradient_accumulation_steps",
+                "early_stopping_patience", "early_stopping_min_delta"}
+    if not isinstance(value, dict) or not required <= value.keys() or value.keys() - required - optional:
+        raise HTTPException(422, "training requires epochs, batch_size, learning_rate, seed, and supported optional controls.")
     epochs = value["epochs"]
     batch = value["batch_size"]
     seed = value["seed"]
@@ -412,8 +423,44 @@ def validate_training(value: Any) -> dict[str, Any]:
         raise HTTPException(422, "learning_rate must be finite and in (0, 1].")
     if isinstance(publish_every_steps, bool) or not isinstance(publish_every_steps, int) or not 1 <= publish_every_steps <= 100000:
         raise HTTPException(422, "publish_every_steps must be an integer from 1 to 100000.")
-    return {"epochs": epochs, "batch_size": batch, "learning_rate": float(rate), "seed": seed,
-            "publish_every_steps": publish_every_steps}
+    result = {"epochs": epochs, "batch_size": batch, "learning_rate": float(rate), "seed": seed,
+              "publish_every_steps": publish_every_steps,
+              "early_stopping_patience": value.get("early_stopping_patience", 0),
+              "early_stopping_min_delta": value.get("early_stopping_min_delta", 0.0)}
+    choices = {"device": {"cpu", "cuda"}, "precision": {"float32", "bfloat16"},
+               "optimizer": {"adam", "deepseek-muon"}}
+    for name, allowed in choices.items():
+        if name in value:
+            if value[name] not in allowed:
+                raise HTTPException(422, f"{name} must be one of {', '.join(sorted(allowed))}.")
+            result[name] = value[name]
+    for name in ("weight_decay", "gradient_clip"):
+        if name in value:
+            number = value[name]
+            if isinstance(number, bool) or not isinstance(number, (int, float)) or not math.isfinite(float(number)):
+                raise HTTPException(422, f"{name} must be a finite number.")
+            if (name == "weight_decay" and not 0 <= number <= 1) or (name == "gradient_clip" and not 0 < number <= 1_000_000):
+                raise HTTPException(422, f"{name} is outside its supported range.")
+            result[name] = float(number)
+    integer_ranges = {"warmup_steps": (0, 10_000_000), "max_steps": (0, 100_000_000),
+                      "gradient_accumulation_steps": (1, 1024),
+                      "early_stopping_patience": (0, 10000)}
+    for name, (minimum, maximum) in integer_ranges.items():
+        if name in value:
+            number = value[name]
+            if type(number) is not int or not minimum <= number <= maximum:
+                raise HTTPException(422, f"{name} must be an integer from {minimum} to {maximum}.")
+            result[name] = number
+    if "early_stopping_min_delta" in value:
+        number = value["early_stopping_min_delta"]
+        try:
+            finite = math.isfinite(float(number))
+        except (OverflowError, TypeError, ValueError):
+            finite = False
+        if isinstance(number, bool) or not isinstance(number, (int, float)) or not finite or number < 0:
+            raise HTTPException(422, "early_stopping_min_delta must be a finite nonnegative number.")
+        result["early_stopping_min_delta"] = float(number)
+    return result
 
 
 def resolve_core_packages(project: dict[str, Any], files: dict[str, bytes] | None = None) -> dict[str, Path]:

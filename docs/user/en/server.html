@@ -3,11 +3,17 @@
 <title>Configure the server · NNModelling</title><link rel="stylesheet" href="../style.css"/></head>
 <body><a class="skip" href="#content">Skip to content</a>
 <aside><a class="brand" href="index.html">NN<span>Modelling</span></a>
-<p class="edition">User guide · English<br/>Edition 6 October 2026</p><nav class="language-switch" aria-label="Guide language"><a lang="it" href="../server.html">Italiano</a><a lang="en" href="server.html" aria-current="page">English</a></nav>
+<p class="edition">User guide · English<br/>Edition 12 October 2026</p><nav class="language-switch" aria-label="Guide language"><a lang="it" href="../server.html">Italiano</a><a lang="en" href="server.html" aria-current="page">English</a></nav>
 <nav aria-label="Chapters"><a href="index.html">Introduction</a><a href="client.html">Using the client</a><a href="parameters.html">Parameter catalog</a><a href="server.html" aria-current="page">Configure the server</a><a href="tutorial-tiny-llm.html">Tiny LLM tutorial</a><a href="tutorial-vae.html">VAE tutorial</a></nav><div class="outline"><p>On this page</p><div class="toc">
 <ul>
-<li><a href="#local-training">Local training</a><ul>
-<li><a href="#prepare-and-start-the-service">Prepare and start the service</a><ul>
+<li><a href="#local-backend-and-slurm-jobs">Local backend and Slurm jobs</a><ul>
+<li><a href="#prepare-and-start-the-service">Prepare and start the service</a></li>
+<li><a href="#per-user-json-configuration">Per-user JSON configuration</a></li>
+<li><a href="#run-jobs-on-a-slurm-cluster-from-the-ui">Run jobs on a Slurm cluster from the UI</a><ul>
+<li><a href="#1-prepare-the-image-and-remote-directory">1. Prepare the image and remote directory</a></li>
+<li><a href="#2-open-backend-configuration-and-choose-slurm">2. Open backend configuration and choose Slurm</a></li>
+<li><a href="#3-start-fastapi-locally">3. Start FastAPI locally</a></li>
+<li><a href="#4-connect-the-dashboard-and-submit">4. Connect the dashboard and submit</a></li>
 <li><a href="#example-port-8766-and-a-dedicated-job-store">Example: port 8766 and a dedicated job store</a></li>
 </ul>
 </li>
@@ -25,24 +31,115 @@
 </div>
 <p class="offline">Available offline.<br/><a href="README.md">Sources and verification</a></p></aside>
 <main id="content"><header><span class="eyebrow">FROM GRAPH TO MODEL</span><span class="chapter">Configure the server</span></header>
-<article><h1 id="local-training">Local training</h1>
-<p>NNModelling can submit an immutable copy of a project to the local FastAPI service. The service queues the work, runs it in an offline container, and stores snapshots, metrics and results on the computer. The <strong>Training</strong> window shows the connection, job history, curves and controls to cancel jobs, restore snapshots and download results.</p>
-<figure class="annotated"><a href="../assets/training-connect.png" class="image-link" title="Open screenshot at original size"><img alt="Backend connection panel" src="../assets/training-connect.png" loading="lazy"></a><figcaption><strong>Backend connection panel</strong><p class="image-hint">Click the image to inspect it at its original size.</p><ol class="callouts"><li><span class="badge" aria-hidden="true">1</span><span>Backend address</span></li><li><span class="badge" aria-hidden="true">2</span><span>Connect and check service health</span></li></ol></figcaption></figure><figure class="annotated"><a href="../assets/training-dashboard.png" class="image-link" title="Open screenshot at original size"><img alt="History, learning curves and results" src="../assets/training-dashboard.png" loading="lazy"></a><figcaption><strong>History, learning curves and results</strong><p class="image-hint">Click the image to inspect it at its original size.</p><ol class="callouts"><li><span class="badge" aria-hidden="true">1</span><span>Backend connection</span></li><li><span class="badge" aria-hidden="true">2</span><span>Training configuration</span></li><li><span class="badge" aria-hidden="true">3</span><span>Job history and status</span></li><li><span class="badge" aria-hidden="true">4</span><span>Training and validation loss curves</span></li><li><span class="badge" aria-hidden="true">5</span><span>Curve visibility and scale</span></li><li><span class="badge" aria-hidden="true">6</span><span>Final test loss</span></li><li><span class="badge" aria-hidden="true">7</span><span>Training and worker log</span></li><li><span class="badge" aria-hidden="true">8</span><span>Download, restore, cancel and close actions</span></li></ol></figcaption></figure><h2 id="prepare-and-start-the-service">Prepare and start the service</h2>
+<article><h1 id="local-backend-and-slurm-jobs">Local backend and Slurm jobs</h1>
+<p>NNModelling submits an immutable project copy to the local FastAPI service. The service, API and job history stay on this computer. Jobs can run in a local container or be sent to Slurm over SSH; in the latter case only the worker runs on the cluster, while snapshots, metrics, logs and results return to the local backend. The <strong>Training</strong> window shows the connection, history, curves and controls to cancel jobs, restore snapshots and download results.</p>
+<figure class="annotated"><a href="../assets/training-connect.png" class="image-link" title="Open screenshot at original size"><img alt="Backend connection panel" src="../assets/training-connect.png" loading="lazy"></a><figcaption><strong>Backend connection panel</strong><p class="image-hint">Click the image to inspect it at its original size.</p><ol class="callouts"><li><span class="badge" aria-hidden="true">1</span><span>Backend endpoint</span></li><li><span class="badge" aria-hidden="true">2</span><span>Connect and check service health</span></li><li><span class="badge" aria-hidden="true">3</span><span>Open separate backend configuration</span></li></ol></figcaption></figure><figure class="annotated"><a href="../assets/training-dashboard.png" class="image-link" title="Open screenshot at original size"><img alt="History, learning curves and results" src="../assets/training-dashboard.png" loading="lazy"></a><figcaption><strong>History, learning curves and results</strong><p class="image-hint">Click the image to inspect it at its original size.</p><ol class="callouts"><li><span class="badge" aria-hidden="true">1</span><span>Backend connection</span></li><li><span class="badge" aria-hidden="true">2</span><span>Training configuration</span></li><li><span class="badge" aria-hidden="true">3</span><span>Job history and status</span></li><li><span class="badge" aria-hidden="true">4</span><span>Training and validation loss curves</span></li><li><span class="badge" aria-hidden="true">5</span><span>Curve visibility and scale</span></li><li><span class="badge" aria-hidden="true">6</span><span>Final test loss</span></li><li><span class="badge" aria-hidden="true">7</span><span>Training and worker log</span></li><li><span class="badge" aria-hidden="true">8</span><span>Download, restore, cancel and close actions</span></li></ol></figcaption></figure><h2 id="prepare-and-start-the-service">Prepare and start the service</h2>
 <p>Run these Bash commands from the repository root. The token prompts use Bash <code>read -s</code>, and the reusable <code>AUTH</code> header later in this guide uses a Bash array. You need <code>uv</code>, <code>just</code> and an installed and running Docker-compatible runtime (Docker or Podman). The first command installs the workspace's locked dependencies; the second builds the CPU image used for training.</p>
 <pre><code class="language-sh">just backend-sync
 just backend-image
 just backend-run
 </code></pre>
 <p><code>backend-run</code> stays in the foreground. The default address is <code>http://127.0.0.1:8765</code>; use another terminal to query the API and press <strong>Ctrl-C</strong> to stop the service. Select <strong>Training</strong> in the app and press <strong>Connect / check health</strong>. The endpoint field already contains the default address.</p>
-<p>The wheel exporter is included in the worker image. After updating the
-repository to use the readable filenames, rebuild the image and restart the
-backend before submitting more jobs:</p>
-<pre><code class="language-sh">just backend-image
-# Stop an already running backend with Ctrl-C, then:
-just backend-run
+<h2 id="per-user-json-configuration">Per-user JSON configuration</h2>
+<p>UI and backend read the same file: <code>~/.config/nnmodelling/config.json</code>.
+When <code>XDG_CONFIG_HOME</code> is set, the path is
+<code>$XDG_CONFIG_HOME/nnmodelling/config.json</code>. <code>NNMODELLING_CONFIG</code> selects an
+alternate file. <strong>Configure backend…</strong> shows its path and saves non-secret
+settings before starting the service. Old Qt launcher preferences are no longer
+used. No host, account, remote path or partition is preconfigured.</p>
+<p>You may create the file manually. This example uses placeholders: replace the
+host, absolute paths and partition with values from your installation.</p>
+<pre><code class="language-json">{
+  "backend": {
+    "executor": "docker",
+    "job_root": "~/.local/share/nnmodelling/jobs",
+    "container_runtime": "docker",
+    "worker_image": "nnmodelling-worker:local"
+  },
+  "slurm": {
+    "host": "my-cluster",
+    "root": "/srv/nnmodelling/jobs",
+    "image": "/srv/nnmodelling/worker.sif",
+    "partition": "my-partition",
+    "cpus": 2,
+    "memory": "4G",
+    "time": "00:30:00",
+    "gpus": 0,
+    "ssh_executable": "ssh"
+  }
+}
 </code></pre>
-<p>Rebuilding does not alter wheels already stored: they remain downloadable with
-their original names and contents. Do not rename them manually.</p>
+<p>For Slurm set <code>"executor": "slurm"</code>. A terminal-started backend uses explicit
+<code>NNMODELLING_*</code> environment variables first, then JSON, then generic defaults.
+The UI passes its selected field values to the service. An absent default file
+allows local use; an explicitly selected missing file or invalid JSON reports
+an error. Read/save errors prevent managed startup without overwriting the file.
+Saving is atomic and preserves other JSON settings. Passwords, SSH keys and
+bearer tokens do not belong in this file; tokens remain in memory and SSH
+credentials stay in your SSH agent/configuration.</p>
+<p><code>just backend-image</code> reads runtime and image tag from environment variables:
+pass matching values to the build command when you change them in JSON.</p>
+<figure class="annotated"><a href="../assets/backend-config.png" class="image-link" title="Open screenshot at original size"><img alt="JSON profile and local Docker backend" src="../assets/backend-config.png" loading="lazy"></a><figcaption><strong>JSON profile and local Docker backend</strong><p class="image-hint">Click the image to inspect it at its original size.</p><ol class="callouts"><li><span class="badge" aria-hidden="true">1</span><span>Choose the local executor</span></li><li><span class="badge" aria-hidden="true">2</span><span>Local job root, container runtime and worker image</span></li><li><span class="badge" aria-hidden="true">3</span><span>Portable JSON profile path</span></li><li><span class="badge" aria-hidden="true">4</span><span>Local service readiness status</span></li><li><span class="badge" aria-hidden="true">5</span><span>Safely restart the local backend</span></li></ol></figcaption></figure><h2 id="run-jobs-on-a-slurm-cluster-from-the-ui">Run jobs on a Slurm cluster from the UI</h2>
+<p>FastAPI, the Training dashboard and the job archive stay on this computer. The
+<strong>Local backend service configuration</strong> window selects Slurm; only workers are
+sent to the cluster over SSH. First prepare a writable remote directory and a
+ready-to-use Singularity (<code>.sif</code>) image containing Python, PyTorch, NumPy,
+safetensors and every dependency declared by project datasets and packages. The
+cluster must provide <code>sbatch</code>, <code>squeue</code>, <code>sacct</code>, <code>scancel</code>, <code>singularity</code> and
+<code>python3</code> over SSH. Jobs have no network access. Use an SSH alias already
+configured on this computer, with normal authentication and host-key checks.</p>
+<h3 id="1-prepare-the-image-and-remote-directory">1. Prepare the image and remote directory</h3>
+<p>Replace the example SSH alias and paths with values for your account. Create
+the directory once:</p>
+<pre><code class="language-sh">ssh my-cluster 'mkdir -p /srv/nnmodelling/jobs &amp;&amp; chmod 700 /srv/nnmodelling/jobs'
+</code></pre>
+<p>The image must already contain every Python dependency required by the
+project; jobs do not install packages. The local job directory stores snapshots,
+metrics, logs and artifacts. The remote directory contains temporary execution
+files for each job.</p>
+<h3 id="2-open-backend-configuration-and-choose-slurm">2. Open backend configuration and choose Slurm</h3>
+<p>In the <strong>Training</strong> dashboard, press <strong>Configure backend…</strong>. A separate window
+opens while the dashboard with its endpoint, training controls, history and
+curves remains available. Set <code>Executor</code> to <code>SSH / Slurm</code>, then enter the SSH
+alias, local directory, remote directory, <code>.sif</code> image, partition, CPUs, memory
+time limit and GPU count. Host, remote root, image and partition are required
+and initially blank. Generic defaults are 2 CPUs, <code>4G</code>, <code>00:30:00</code> and 0 GPUs;
+use the limits assigned to your account. <code>Time limit</code> applies to each Slurm
+allocation, not to the total training duration.</p>
+<figure class="annotated"><a href="../assets/slurm-configure.png" class="image-link" title="Open screenshot at original size"><img alt="Configure the Slurm executor, paths and resources" src="../assets/slurm-configure.png" loading="lazy"></a><figcaption><strong>Configure the Slurm executor, paths and resources</strong><p class="image-hint">Click the image to inspect it at its original size.</p><ol class="callouts"><li><span class="badge" aria-hidden="true">1</span><span>Executor selection</span></li><li><span class="badge" aria-hidden="true">2</span><span>SSH alias, remote root, SIF image and partition</span></li><li><span class="badge" aria-hidden="true">3</span><span>CPU, memory, time limit and GPU count</span></li><li><span class="badge" aria-hidden="true">4</span><span>SSH executable</span></li><li><span class="badge" aria-hidden="true">5</span><span>Portable JSON profile path</span></li><li><span class="badge" aria-hidden="true">6</span><span>Visible missing-configuration error</span></li><li><span class="badge" aria-hidden="true">7</span><span>Safely restart the local backend</span></li></ol></figcaption></figure><h3 id="3-start-fastapi-locally">3. Start FastAPI locally</h3>
+<p>In the configuration window, press <strong>Save settings and start local backend</strong>.
+The screenshot shows blank remote fields: startup is rejected before any
+cluster connection.
+An active managed service changes the button to a safe restart action.
+Only the local service starts, bound to loopback. The app chooses an available
+port and fills <code>Endpoint</code> in the dashboard automatically. The status line
+checks startup and Singularity availability; SSH, image and prerequisite
+errors appear there. Non-secret preferences are saved for your user. The app
+never asks for or copies an SSH password.</p>
+<h3 id="4-connect-the-dashboard-and-submit">4. Connect the dashboard and submit</h3>
+<p>Return to the <strong>Training</strong> dashboard: <code>Endpoint</code> already contains the loopback
+address chosen by the service. Press <strong>Connect / check health</strong> to refresh the
+check if needed. Submit the project and parameters as with the local runtime:
+the project needs no Slurm flags and model configuration stays the same.
+Snapshots and results remain local; only the worker runs on the cluster.</p>
+<p>As an allocation approaches its limit, the worker automatically saves a safe
+checkpoint and submits another Slurm job that resumes from that point. The UI
+continues to show one job and its metrics while the Slurm allocation IDs change.
+Keep the local backend service running through these handoffs. If the cluster
+ends an allocation before its warning signal or before the checkpoint is
+complete, the job is marked failed and cannot resume automatically. Custom
+training iterators must be repeatable so the worker can restore the saved
+position.</p>
+<figure class="annotated"><a href="../assets/slurm-dashboard.png" class="image-link" title="Open screenshot at original size"><img alt="Current Training controls" src="../assets/slurm-dashboard.png" loading="lazy"></a><figcaption><strong>Current Training controls</strong><p class="image-hint">Click the image to inspect it at its original size.</p><ol class="callouts"><li><span class="badge" aria-hidden="true">1</span><span>Backend endpoint and connection status</span></li><li><span class="badge" aria-hidden="true">2</span><span>Basic training settings</span></li><li><span class="badge" aria-hidden="true">3</span><span>Device, precision and optimizer</span></li><li><span class="badge" aria-hidden="true">4</span><span>Early stopping controls</span></li></ol></figcaption></figure><p>The <a href="tutorial-tiny-llm.html">LLM</a> and <a href="tutorial-vae.html">VAE</a> tutorials follow the
+same path. If a dependency is missing from the <code>.sif</code>, the job fails visibly;
+rebuild the image before retrying. To return to local Docker execution, open
+<strong>Configure backend…</strong>, select <strong>Docker-compatible runtime</strong> and start the
+service.</p>
+<p>The worker image includes the wheel exporter. After updating the repository to
+use readable filenames, rebuild the worker image and restart the managed
+backend before submitting more jobs. Rebuilding does not alter stored wheels;
+they remain downloadable with their original names and contents. Do not rename
+them manually.</p>
 <h3 id="example-port-8766-and-a-dedicated-job-store">Example: port 8766 and a dedicated job store</h3>
 <p>To keep this instance separate, set a dedicated local store and use the same configuration in the service terminal:</p>
 <pre><code class="language-sh">export NNMODELLING_BACKEND_HOST=127.0.0.1
@@ -88,13 +185,15 @@ just backend-run
 <p><code>GET /health</code> does not require authentication. <code>status: "ok"</code> means the API is responding; for training, <code>container.available</code> must also be <code>true</code>. <code>runtime</code> identifies the configured Docker-compatible command and <code>error</code> is <code>null</code> or the reason the runtime is unavailable.</p>
 <pre><code class="language-sh">curl -fsS http://127.0.0.1:8765/health
 </code></pre>
-<p>Example response:</p>
+<p>Example response with the Docker runtime:</p>
 <pre><code class="language-json">{"status":"ok","container":{"available":true,"runtime":"docker","error":null}}
 </code></pre>
+<p>With Slurm, the <code>container</code> object also reports <code>"executor":"slurm"</code> and
+<code>"runtime":"singularity"</code>.</p>
 <p>OpenAPI documentation is available at <code>http://127.0.0.1:8765/docs</code>.</p>
 <h2 id="submit-a-project">Submit a project</h2>
 <p>Save the project in the app before submission. In the Training window, set epochs, batch, learning rate, seed and <strong>Publish every N steps</strong>, then press <strong>Save project and submit</strong>. Initial values are <code>10</code>, <code>32</code>, <code>0.001</code>, <code>0</code> and <code>10</code>. The interval controls how often paired training and validation metrics are published; the remaining window is also published at the end of each epoch.</p>
-<p>The API accepts these ranges: epochs <code>1–10000</code>, batch <code>1–4096</code>, finite learning rate greater than <code>0</code> and at most <code>1</code>, seed from <code>-2147483648</code> through <code>4294967295</code>, and publish interval <code>1–100000</code>. Additional JSON fields are rejected. A job records its configuration and file snapshot: later project edits do not change a submitted job.</p>
+<p>The API accepts these ranges: epochs <code>1–10000</code>, batch <code>1–4096</code>, finite learning rate greater than <code>0</code> and at most <code>1</code>, seed from <code>-2147483648</code> through <code>4294967295</code>, and publish interval <code>1–100000</code>. Unknown JSON fields are rejected; the advanced options listed in the client guide are supported. A job records its configuration and file snapshot: later project edits do not change a submitted job.</p>
 <p>For a reproducible terminal submission, this example uses only the Python standard library. From the repository root, it creates an in-memory bundle of <code>examples/models/tiny-decoder-llm</code> and submits a short one-epoch configuration. File contents, order and parameters are fixed; the script creates no intermediate files. It excludes symbolic links, <code>env</code> directories, <code>.env</code>, <code>venv</code>, <code>.venv</code>, caches and bytecode, as well as application-generated folders. It also includes inference assets listed in resource manifests.</p>
 <pre><code class="language-sh">python3 - &lt;&lt;'PY'
 import base64
@@ -240,7 +339,7 @@ mkdir -p artifacts
 curl -fS --remote-name --remote-header-name --output-dir artifacts \
   "${AUTH[@]}" "http://127.0.0.1:8765/v1/jobs/$JOB_ID/wheel"
 </code></pre>
-<p>The app provides the same <strong>Download weights</strong> and <strong>Download wheel</strong> commands. New jobs use distribution name <code>nnm_&lt;normalized-project-id&gt;</code>; for example, project ID <code>llm</code> produces <code>nnm_llm-0.1.0-py3-none-any.whl</code>. Normalization replaces runs outside ASCII letters and digits with <code>_</code>, trims leading and trailing underscores, and lowercases the result. Qt preserves the full name supplied by the server, including distribution, version and tag. The Python module remains job-specific as <code>nnmodel_&lt;normalized-job-id&gt;</code>. Do not derive the import from the wheel filename; inspect the module inside it. Different jobs from the same project, or from projects whose IDs normalize to the same value, share a distribution name and version, so install them in separate Python environments. Wheels stored before this change keep their original names and contents; do not rename them manually. The wheel includes the model, its inference adapter and weights. Inference does not need the service or source project, but it does need Python, PyTorch, safetensors and the dependencies declared by the resource.</p>
+<p>The app provides the same <strong>Download weights</strong> and <strong>Download wheel</strong> commands. New jobs use distribution name <code>nnm_&lt;normalized-project-id&gt;</code>; for example, project ID <code>llm</code> produces <code>nnm_llm-0.1.0-py3-none-any.whl</code>. Normalization replaces runs outside ASCII letters and digits with <code>_</code>, trims leading and trailing underscores, and lowercases the result. Qt preserves the full name supplied by the server, including distribution, version and tag. New wheels expose <code>nnm_&lt;normalized-project-id&gt;</code>: for project ID <code>llm</code>, use <code>from nnm_llm import Model</code>. A job-specific alias remains for compatibility. Inspect historical wheels to find their original import. Different jobs from the same project, or from projects whose IDs normalize to the same value, share a distribution name and version, so install them in separate Python environments. Wheels stored before this change keep their original names and contents; do not rename them manually. The wheel includes the model, its inference adapter and weights. Inference does not need the service or source project, but it does need Python, PyTorch, safetensors and the dependencies declared by the resource.</p>
 <h2 id="configuration">Configuration</h2>
 <p>Set these variables before starting <code>just backend-run</code>.</p>
 <table>
@@ -252,6 +351,36 @@ curl -fS --remote-name --remote-header-name --output-dir artifacts \
 </tr>
 </thead>
 <tbody>
+<tr>
+<td><code>NNMODELLING_CONFIG</code></td>
+<td>XDG path or <code>~/.config/nnmodelling/config.json</code></td>
+<td>Shared JSON profile; an explicitly selected missing file fails.</td>
+</tr>
+<tr>
+<td><code>NNMODELLING_EXECUTOR</code></td>
+<td><code>docker</code></td>
+<td><code>docker</code> or <code>slurm</code>; overrides <code>backend.executor</code>.</td>
+</tr>
+<tr>
+<td><code>NNMODELLING_SLURM_HOST</code>, <code>NNMODELLING_SLURM_ROOT</code>, <code>NNMODELLING_SLURM_IMAGE</code>, <code>NNMODELLING_SLURM_PARTITION</code></td>
+<td>empty</td>
+<td>SSH alias, remote root, SIF and partition: required for Slurm.</td>
+</tr>
+<tr>
+<td><code>NNMODELLING_SLURM_CPUS</code>, <code>NNMODELLING_SLURM_MEMORY</code>, <code>NNMODELLING_SLURM_TIME</code>, <code>NNMODELLING_SLURM_GPUS</code></td>
+<td><code>2</code>, <code>4G</code>, <code>00:30:00</code>, <code>0</code></td>
+<td>Per-allocation resources; GPU count 0 to 8.</td>
+</tr>
+<tr>
+<td><code>NNMODELLING_SSH_EXECUTABLE</code></td>
+<td><code>ssh</code></td>
+<td>SSH command used by the service.</td>
+</tr>
+<tr>
+<td><code>NNMODELLING_MAX_ARTIFACT_BYTES</code></td>
+<td><code>64 GiB</code></td>
+<td>Configurable artifact bound, separate from bundles and corpus.</td>
+</tr>
 <tr>
 <td><code>NNMODELLING_BACKEND_HOST</code></td>
 <td><code>127.0.0.1</code></td>
@@ -309,7 +438,7 @@ curl -fS --remote-name --remote-header-name --output-dir artifacts \
 </tr>
 </tbody>
 </table>
-<p>The four <code>MAX_*</code> limits are converted from strings to integers at startup; the service does not apply another range or minimum value to them. Defaults match the API checks. The Qt client also applies a total limit of <code>256 MiB</code> to local files before Base64 encoding. The server's default limit for decoded files is <code>46 MiB</code>, so it can reject larger bundles even when the client accepted them. Serialized metrics have a fixed limit of <code>64 MiB</code>.</p>
+<p>The bundle <code>MAX_*</code> limits are converted from strings to integers at startup; the service does not apply another range or minimum value to them. Defaults match the API checks. The Qt client also applies a total limit of <code>256 MiB</code> to local files before Base64 encoding. The server's default limit for decoded files is <code>46 MiB</code>, so it can reject larger bundles even when the client accepted them. Serialized metrics have a fixed limit of <code>64 MiB</code>.</p>
 <p>The worker runs in a network-disabled container with the snapshot mounted read-only and output mounted separately for writing, two CPUs and a <code>4 GiB</code> memory limit. A job's worker log is at <code>&lt;NNMODELLING_JOB_ROOT&gt;/&lt;id&gt;/output/worker.log</code>.</p>
 <h2 id="common-problems">Common problems</h2>
 <ul>

@@ -50,21 +50,29 @@ class Dataset(DatasetAdapter[str, str]):
 
     def untokenize(self, tensor: torch.Tensor) -> str:
         values = tensor.detach().cpu()
+
         if values.ndim == 3:
             if values.shape[0] != 1 or values.shape[2] != len(self._characters):
                 raise ValueError("LLM prediction must have shape [1, T, 65]")
             if not torch.isfinite(values).all():
                 raise ValueError("LLM prediction logits must be finite")
-            values = values.argmax(dim=-1)[0]
+
+            temperature = 0.8
+            values = torch.distributions.Categorical(
+                logits=values / temperature
+            ).sample()[0]
+
         elif values.ndim == 2 and values.shape[0] == 1:
             values = values[0]
         else:
             raise ValueError(
                 "LLM prediction must contain one batch of token logits or IDs"
             )
+
         ids = values.to(torch.int64).tolist()
         if any(index < 0 or index >= len(self._characters) for index in ids):
             raise ValueError("LLM prediction contains an unknown token ID")
+
         return "".join(self._characters[index] for index in ids)
 
     def load(self, split: str, batch_size: int) -> Iterator[Batch]:
@@ -85,6 +93,9 @@ class Dataset(DatasetAdapter[str, str]):
                 f"LLM split {split!r} contains an incomplete context window"
             )
         all_windows = torch.stack(windows)
+        if split == "train":
+            # Seeded order can be replayed from epoch-start RNG on Slurm resume.
+            all_windows = all_windows[torch.randperm(len(windows))]
         for start in range(0, len(windows), batch_size):
             batch = all_windows[start : start + batch_size]
             yield Batch(

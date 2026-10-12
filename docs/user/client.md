@@ -37,7 +37,7 @@ Anche chiudendo la finestra principale con modifiche non salvate compare la scel
 
 `Edit` contiene `Undo` (`Ctrl+Z`) e `Redo` (`Ctrl+Y` sulla piattaforma osservata). Le voci sono abilitate solo quando la cronologia del progetto ha rispettivamente un'azione annullabile o ripristinabile. Annullare/ripristinare aggiorna canvas, selezione, inspector e problemi. Salvataggio e cronologia sono distinti: il titolo perde l'asterisco quando lo stato torna alla revisione salvata.
 
-`Model` contiene `Create stereotype…`, `Create dataset…`, `Manage datasets…`, `Manage operations…` e `Training backend…`. Le azioni di authoring e gestione richiedono un progetto: senza progetto il client mostra il suggerimento di aprirne uno. `Training backend…` apre il pannello anche senza progetto, per controllare il servizio e consultare i job.
+`Model` contiene `Create stereotype…`, `Create dataset…`, `Manage datasets…`, `Manage operations…`, `Parameter counts…` e `Training backend…`. Le azioni di authoring e gestione richiedono un progetto: senza progetto il client mostra il suggerimento di aprirne uno. `Training backend…` apre il pannello anche senza progetto, per controllare il servizio e consultare i job.
 
 `View` contiene `Fit graph` (`Ctrl+0`), `Zoom in` (`Ctrl++` sulla piattaforma osservata), `Zoom out` (`Ctrl+-`) e `Arrange > Vertical/Horizontal`. `Fit graph` inquadra l'ambito corrente e le sue connessioni senza spostare i nodi. Zoom usa il puntatore quando si usa la rotella; i comandi da menu e toolbar scalano intorno al centro del canvas. La rotella del mouse ingrandisce/riduce. Il tasto centrale, oppure `Space` tenuto premuto insieme al tasto sinistro, trascina il canvas. `Escape` annulla un collegamento in preparazione o un trascinamento. Le scorciatoie di zoom possono variare con la piattaforma e il layout della tastiera.
 
@@ -82,6 +82,24 @@ Una subflow presenta un riquadro con conteggio dei figli. Il footer `Subflow · 
 La toolbar `Workspace` offre `Scope`, `Training`, `Fit`, `+`, `−` e `Arrange`. `Training` apre lo stesso pannello di `Model > Training backend…`. `Fit` inquadra il contenuto; `+` e `−` ingrandiscono/riducono. `Arrange` applica l'ordinamento verticale predefinito. La freccia del pulsante apre `Vertical` o `Horizontal`; le stesse scelte si trovano in `View > Arrange`. L'ordinamento ricalcola le posizioni dei nodi nell'ambito corrente, aggiorna il progetto in memoria e lo marca come modificato, quindi inquadra il risultato. Per renderlo persistente su disco usare `File > Save`. Nella direzione verticale il flusso va dall'alto in basso; nella direzione orizzontale va verso sinistra. Cambiare direzione è una scelta di presentazione della sessione; usare `Arrange` è l'azione che riordina e registra le posizioni.
 
 ![Scelta della direzione di ordinamento](assets/menu-arrange.png)
+
+## Numero di parametri
+
+Apri **Model > Parameter counts…** con un progetto attivo. Il riepilogo mostra
+`Total parameters`, `Trainable` e `Complete` oppure `Incomplete`. La tabella
+riporta nodo, stato, totale, parametri addestrabili e messaggio. `Refresh`
+ricalcola sul grafo corrente, comprese modifiche non ancora salvate; `Close`
+non cambia il progetto e non avvia training.
+
+I numeri sono stime derivate dalle regole Lua dei pacchetti. Un contributo
+sconosciuto o errato resta visibile e rende il totale incompleto: non equivale
+a zero parametri. I subflow includono i discendenti e le ripetizioni, senza
+sommare due volte quei contributi nel totale di rete. L'esempio MNIST MLP
+illustrato ha **109.386** parametri totali e addestrabili.
+
+![Menu Model con conteggio parametri](assets/menu-model.png)
+
+![Totali e dettaglio del conteggio parametri](assets/parameter-counts.png)
 
 ## Inspector
 
@@ -203,9 +221,17 @@ La sezione `Optional Lua inference` contiene l'editor sorgente. Il testo inizial
 
 `Training` nella toolbar e `Model > Training backend…` aprono `Training backend`. Il pannello è utilizzabile per collegarsi e consultare job anche senza un progetto; inviare un job richiede invece un progetto valido, che viene salvato prima dell'invio.
 
+### Configurare e avviare il backend locale
+
+Premi `Configure backend…` nel dashboard Training. Si apre la finestra separata `Local backend service configuration`; il dashboard con connessione, controlli, cronologia e curve resta utilizzabile. Scegli `Docker-compatible runtime` oppure `SSH / Slurm`. Per Slurm servono alias SSH configurato, directory remota scrivibile e immagine Singularity `.sif` già preparata. `Partition` e alias SSH partono vuoti; CPU, memoria, tempo e GPU hanno valori generici. Il profilo condiviso è `~/.config/nnmodelling/config.json`, modificabile con `NNMODELLING_CONFIG`. L'app non raccoglie password SSH né prepara immagini o dipendenze.
+
+Premi `Save settings and start local backend`. La UI avvia FastAPI su loopback in un processo locale separato; con `SSH / Slurm`, soltanto i worker vengono inviati al cluster. `uv` e il workspace del repository devono essere disponibili, e l'immagine worker va preparata prima. La finestra di configurazione mostra gli errori di avvio e disponibilità del runtime; il dashboard verifica poi il servizio con `Connect / check health`. Le impostazioni non segrete vengono salvate per l'utente corrente; `Bearer token` resta in memoria per la sessione. Se colleghi un servizio avviato manualmente o un endpoint remoto, la UI non lo controlla. La procedura Slurm illustrata è nella [guida del backend](server.md#eseguire-i-job-su-un-cluster-slurm-dalla-ui).
+
+Se il servizio gestito è già attivo, il pulsante diventa `Restart local backend safely`. La UI rifiuta il riavvio finché la cronologia contiene job `queued` o `running`, così non interrompe training. Chiudere il pannello Training lascia il servizio attivo. Chiudere l'app con servizio gestito attivo mostra un avviso: confermare arresta il backend e interrompe eventuali job Slurm; annullare mantiene l'app aperta.
+
 Per provare il MNIST VAE distribuito, crea una copia della cartella `examples/models/mnist-vae`, poi apri quella copia con `File > Open project…`. I metodi `encode` e `decode` sono già elencati in `Operations`. `encode(image)` converte immagine in tensore latente `[1,32]`; in modalità inferenza il VAE restituisce la media posteriore in modo deterministico. `decode(z)` accetta un tensore `[1,32]` e restituisce immagine NumPy `28 × 28`. Per generare immagine dal prior, si può passare `torch.randn(1, 32)` a `decode`.
 
-In alto, `Endpoint` parte da `http://127.0.0.1:8765`. `Bearer token` è facoltativo e nascosto mentre si digita; rimane in memoria per la sessione. `Connect / check health` controlla servizio e runtime container; `Refresh jobs` aggiorna la cronologia. La riga di stato comunica il risultato in forma leggibile.
+In alto, `Endpoint` parte da `http://127.0.0.1:8765` per un servizio avviato manualmente. Il backend gestito dall'app sceglie una porta loopback libera e aggiorna il campo automaticamente. `Bearer token` è facoltativo e nascosto mentre si digita; rimane in memoria per la sessione. `Connect / check health` controlla servizio e runtime; `Refresh jobs` aggiorna la cronologia. La riga di stato comunica il risultato in forma leggibile.
 
 I campi di invio sono `Epochs` (10), `Batch` (32), `Learning rate` (0.001), `Seed` (0) e `Publish every N steps` (10). Epochs: 1–10000; batch: 1–4096; learning rate: maggiore di zero e fino a 1; seed: da −2147483648 a 4294967295; pubblicazione: 1–100000. La cadenza regola pubblicazione dei punti e validazione. `Save project and submit` salva prima lo stato corrente e poi invia uno snapshot immutabile; se il salvataggio o l'invio fallisce, il messaggio appare nella riga di stato.
 
@@ -215,8 +241,10 @@ I campi di invio sono `Epochs` (10), `Batch` (32), `Learning rate` (0.001), `See
 
 Le nuove wheel usano la distribuzione `nnm_<id-progetto-normalizzato>`; per
 esempio, ID `llm` produce `nnm_llm-0.1.0-py3-none-any.whl`. Il modulo Python
-contenuto nella wheel resta specifico del job (`nnmodel_<id-job-normalizzato>`):
-per l'import va letto il nome del modulo dalla wheel, non dedotto dal filename.
+pubblico nelle nuove wheel coincide con la distribuzione:
+`nnm_<id-progetto-normalizzato>`. Per ID `llm`, usa `from nnm_llm import Model`.
+Un alias specifico del job resta per compatibilità; ispeziona le wheel storiche
+per trovare il loro import originale.
 Job di progetti con lo stesso ID normalizzato condividono distribuzione e
 versione; installa le wheel in ambienti Python separati. Le wheel già archiviate
 conservano nome e contenuto originali.
@@ -226,6 +254,31 @@ conservano nome e contenuto originali.
 ![Operazioni encode e decode pronte per l'esportazione nella wheel](assets/vae-operations-manager.png)
 
 ![Scelta della scala delle curve](assets/training-scale.png)
+
+### Opzioni avanzate di training
+
+![Dispositivo, ottimizzatore, budget e early stopping](assets/training-settings.png)
+
+| Campo | Valore iniziale | Significato |
+| --- | --- | --- |
+| `Device` | `CPU` | `CUDA` richiede GPU disponibile; nessun ripiego automatico su CPU. Per Slurm imposta anche GPU nel profilo backend. |
+| `Precision` | `Float32` | `BFloat16` seleziona precisione mista; pesi principali e operazioni sensibili restano FP32. |
+| `Optimizer` | `Adam` | In alternativa `DeepSeek Muon`, con AdamW per parametri esclusi/non matriciali. |
+| `Weight decay` | `0` | Regolarizzazione dell'ottimizzatore. |
+| `Clip norm` | `1` | Limite positivo della norma dei gradienti (massimo 1.000.000). |
+| `Warmup` | `0` | Numero di aggiornamenti per aumentare gradualmente il learning rate. |
+| `Max steps` | `0` | 0 esegue tutte le epoche; valore positivo limita aggiornamenti dell'ottimizzatore. |
+| `Accumulation` | `1` | Numero di batch accumulati per aggiornamento. |
+| `Early stop patience (epochs)` | `0` | 0 disabilita early stopping; altrimenti limita epoche consecutive senza miglioramento sufficiente della validazione. |
+| `Minimum validation-loss improvement` | `0` | Miglioramento minimo, in unità di loss, per azzerare la patience. |
+
+Con early stopping attivo il confronto avviene a fine epoca. Il worker conserva
+ogni minimo della validation loss e ripristina quei pesi prima di test finale
+ed esportazione, anche quando finisce il budget. Patience e soglia decidono
+quando fermarsi, non quali pesi esportare. Log e metriche distinguono budget,
+aggiornamenti e token elaborati. Un budget breve non indica completamento del
+corpus. Per prove leggere lascia CPU, Float32, Adam e early stopping disattivato.
+
 
 ## Funzioni non presenti nell'interfaccia corrente
 

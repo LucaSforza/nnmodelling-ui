@@ -31,3 +31,39 @@ repository's `nnmodelling-backend` skill.
 Every dataset resource declares its `DatasetAdapter` entrypoint and standalone
 uv metadata. Data loading is lazy; inference uses only the adapter and declared
 assets. Training payloads are excluded from exported model wheels.
+
+## Slurm jobs with a local backend
+
+Configure the shared per-user JSON profile described in
+[the user guide](../docs/user/en/server.md#per-user-toml-configuration), or use
+explicit environment overrides as below. Supply an existing SSH alias, an
+absolute remote job root, partition and prebuilt Singularity image.
+Create that remote directory with private permissions before starting; health
+checks that it exists and is writable:
+
+```sh
+export NNMODELLING_SLURM_HOST=my-cluster
+export NNMODELLING_SLURM_ROOT=/absolute/cluster/path/nnmodelling-jobs
+export NNMODELLING_SLURM_IMAGE=/absolute/cluster/path/worker.sif
+export NNMODELLING_SLURM_PARTITION=my-partition
+just backend-slurm
+```
+
+API remains at `http://127.0.0.1:8765`; the normal Qt Training dashboard uses
+that same endpoint. `POST /v1/jobs` stages immutable snapshots on the cluster,
+then Slurm runs Singularity. Published losses and completed wheels return to
+the local service. Docker remains the default for `just backend-run`.
+
+In another terminal, submit all bundled models and wait for completed
+artifacts:
+
+```sh
+just train-cluster-examples
+```
+
+This uses three epochs, batch size 16, learning rate 0.001 and seed 0. Override
+settings with `python tools/train_cluster_examples.py --help`. Reports and
+artifacts are ignored under `.computer-use/cluster-training`; repeat the same
+command to resume observation without resubmitting recorded jobs. Failures
+remain visible. Standalone consumers live in `implementation/llm/` and
+`implementation/vae/`; each verifies its frozen wheel hash before installation.

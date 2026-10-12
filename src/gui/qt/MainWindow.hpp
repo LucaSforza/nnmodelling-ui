@@ -17,6 +17,7 @@ class NNApplication;
 struct NNAutomation;
 class GraphScene;
 class GraphView;
+class BackendServiceManager;
 enum class FlowDirection;
 
 class MainWindow final : public QMainWindow {
@@ -55,6 +56,7 @@ private:
     void createDataset(const QString &id = QString(), const QString &version = QString());
     void manageDatasets();
     void manageOperations();
+    void showParameterCounts();
     void selectDataset(QTreeWidgetItem *item, int column);
     static char *automationUiCallback(void *user, const char *operation,
                                      const char *argsJson, char *error, size_t cap);
@@ -74,6 +76,7 @@ private:
     QAction *redoAction_ = nullptr;
     QTimer *automationTimer_ = nullptr;
     NNAutomation *automation_ = nullptr;
+    BackendServiceManager *backendService_ = nullptr;
     QString selectedPaletteId_;
     bool refreshing_ = false;
 };

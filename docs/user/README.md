@@ -21,7 +21,7 @@ Sorgenti: [introduzione](introduction.md), [client](client.md), [parametri](para
 
 ## Online publication
 
-The GitHub Actions workflow publishes this directory to [GitHub Pages](https://lucasforza.github.io/nnmodelling-ui/) when files here change on `main`. The published site contains only this user guide, not the rest of `docs/`. Update the generated HTML with the build command below when editing Markdown sources.
+The GitHub Actions workflow publishes this directory to GitHub Pages when files here change on `main`. The published site contains only this user guide, not the rest of `docs/`. Update the generated HTML with the build command below when editing Markdown sources.
 
 ## Build and verification / Generazione e verifica
 

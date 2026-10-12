@@ -1,9 +1,11 @@
 #include "BackendDialog.hpp"
+#include "BackendServiceManager.hpp"
 #include "TrainingCurveWidget.hpp"
 
 #include "application/application.h"
 
 #include <QDir>
+#include <QComboBox>
 #include <QImage>
 #include <QFile>
 #include <QJsonArray>
@@ -17,6 +19,7 @@
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QTemporaryDir>
+#include <QFileInfo>
 #include <QTest>
 #include <QTreeWidget>
 
@@ -110,7 +113,12 @@ public:
                                 {QStringLiteral("validation_loss"), step == 1 ? 0.5 : 0.4}});
                         responseBody = job(existingJobId, "completed", QJsonObject{{QStringLiteral("epochs"), epochs},
                             {QStringLiteral("steps"), steps},
-                            {QStringLiteral("test_loss"), 0.25}});
+                            {QStringLiteral("test_loss"), 0.25},
+                            {QStringLiteral("early_stopping"), QJsonObject{
+                                {QStringLiteral("best_epoch"), 4},
+                                {QStringLiteral("best_validation_loss"), 0.2},
+                                {QStringLiteral("non_improving_epochs"), 2},
+                                {QStringLiteral("stopped_epoch"), 6}}}});
                         }
                     } else responseBody = QByteArrayLiteral("{}");
                     const QByteArray statusText = status == 200 ? QByteArrayLiteral("200 OK") : QByteArrayLiteral("401 Unauthorized");
@@ -135,6 +143,106 @@ public:
 class BackendDialogTest final : public QObject {
     Q_OBJECT
 private slots:
+    void localBackendConfigurationValidationAndPersistence()
+    {
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        const QByteArray priorConfig = qgetenv("NNMODELLING_CONFIG");
+        const bool hadConfig = qEnvironmentVariableIsSet("NNMODELLING_CONFIG");
+        struct RestoreConfigEnvironment {
+            QByteArray value;
+            bool wasSet;
+            ~RestoreConfigEnvironment() { if (wasSet) qputenv("NNMODELLING_CONFIG", value); else qunsetenv("NNMODELLING_CONFIG"); }
+        } restore{priorConfig, hadConfig};
+        const QString profilePath = QDir(temporary.path()).filePath(QStringLiteral("config.json"));
+        QFile initialProfile(profilePath);
+        QVERIFY(initialProfile.open(QIODevice::WriteOnly));
+        const QByteArray initialProfileBytes = QJsonDocument(QJsonObject{
+            {QStringLiteral("backend"), QJsonObject{{QStringLiteral("executor"), QStringLiteral("docker")}}},
+            {QStringLiteral("unrelated"), QJsonObject{{QStringLiteral("nested"), QJsonArray{1, 2, 3}}}}
+        }).toJson(QJsonDocument::Indented);
+        QCOMPARE(initialProfile.write(initialProfileBytes), qint64(initialProfileBytes.size()));
+        initialProfile.close();
+        qputenv("NNMODELLING_CONFIG", profilePath.toUtf8());
+        BackendServiceManager manager(NN_SOURCE_DIR);
+        BackendDialog dialog(nullptr, {}, {}, nullptr, &manager);
+        const QStringList launcherControls{
+            QStringLiteral("backendExecutor"), QStringLiteral("backendJobRoot"),
+            QStringLiteral("backendDockerRuntime"), QStringLiteral("backendDockerImage"),
+            QStringLiteral("backendSlurmHost"), QStringLiteral("backendSlurmRoot"),
+            QStringLiteral("backendSlurmImage"), QStringLiteral("backendSlurmPartition"),
+            QStringLiteral("backendSlurmCpus"), QStringLiteral("backendSlurmMemory"),
+            QStringLiteral("backendSlurmTime"), QStringLiteral("backendSlurmGpus"),
+            QStringLiteral("backendSlurmSshExecutable"),
+            QStringLiteral("backendManagedStart")};
+        for (const QString &name : launcherControls)
+            QVERIFY2(!dialog.findChild<QWidget *>(name), qPrintable(name));
+        dialog.show();
+        dialog.findChild<QLineEdit *>(QStringLiteral("backendToken"))->setText(QStringLiteral("session-secret"));
+        QTest::mouseClick(dialog.findChild<QPushButton *>(QStringLiteral("backendConfigure")), Qt::LeftButton);
+        auto *configuration = dialog.findChild<QDialog *>(QStringLiteral("backendConfigurationWindow"));
+        QVERIFY(configuration);
+        QVERIFY(configuration != &dialog);
+        QVERIFY(configuration->isWindow());
+        QVERIFY(!configuration->isModal());
+        QVERIFY(dialog.isEnabled());
+        QVERIFY(configuration->isVisible());
+        auto *executor = configuration->findChild<QComboBox *>(QStringLiteral("backendExecutor"));
+        auto *jobRoot = configuration->findChild<QLineEdit *>(QStringLiteral("backendJobRoot"));
+        auto *startButton = configuration->findChild<QPushButton *>(QStringLiteral("backendManagedStart"));
+        QVERIFY(executor);
+        QVERIFY(jobRoot);
+        QVERIFY(startButton);
+        QVERIFY2(startButton->isEnabled(), qPrintable(configuration->findChild<QLabel *>(QStringLiteral("backendConfigurationStatus"))->text()));
+        QVERIFY(configuration->findChild<QLabel *>(QStringLiteral("backendConfigurationPath")));
+        QVERIFY(configuration->findChild<QLabel *>(QStringLiteral("backendConfigurationPath"))->text().contains(profilePath));
+        QCOMPARE(executor->parentWidget(), configuration);
+        QCOMPARE(jobRoot->parentWidget(), configuration);
+        QCOMPARE(configuration->findChild<QLineEdit *>(QStringLiteral("backendSlurmHost"))->text(), QString());
+        QCOMPARE(configuration->findChild<QLineEdit *>(QStringLiteral("backendSlurmPartition"))->text(), QString());
+        executor->setCurrentIndex(1);
+        jobRoot->setText(QStringLiteral("relative/jobs"));
+        QTest::mouseClick(startButton, Qt::LeftButton);
+        QVERIFY(configuration->findChild<QLabel *>(QStringLiteral("backendConfigurationStatus"))->text().contains(
+            QStringLiteral("absolute path")));
+
+        QVERIFY(!manager.isRunning());
+        QJsonObject profile{
+            {QStringLiteral("backend"), QJsonObject{
+                {QStringLiteral("executor"), QStringLiteral("slurm")},
+                {QStringLiteral("job_root"), temporary.path()},
+                {QStringLiteral("container_runtime"), QStringLiteral("docker")},
+                {QStringLiteral("worker_image"), QStringLiteral("nnmodelling-worker:local")}}},
+            {QStringLiteral("slurm"), QJsonObject{
+                {QStringLiteral("host"), QStringLiteral("test-cluster")},
+                {QStringLiteral("root"), QStringLiteral("/cluster/jobs")},
+                {QStringLiteral("image"), QStringLiteral("/cluster/images/worker.sif")},
+                {QStringLiteral("partition"), QStringLiteral("test")},
+                {QStringLiteral("cpus"), 2}, {QStringLiteral("memory"), QStringLiteral("4G")},
+                {QStringLiteral("time"), QStringLiteral("00:30:00")},
+                {QStringLiteral("gpus"), 3}, {QStringLiteral("ssh_executable"), QStringLiteral("ssh")}}}
+        };
+        QString savedPath;
+        QString saveError;
+        QVERIFY2(manager.saveUserConfig(profile, &savedPath, &saveError), qPrintable(saveError));
+        QCOMPARE(savedPath, profilePath);
+        QVERIFY(QFileInfo::exists(profilePath));
+        QFile savedProfile(profilePath);
+        QVERIFY(savedProfile.open(QIODevice::ReadOnly));
+        const QJsonObject saved = QJsonDocument::fromJson(savedProfile.readAll()).object();
+        QCOMPARE(saved.value(QStringLiteral("unrelated")).toObject().value(QStringLiteral("nested")).toArray(), QJsonArray({1, 2, 3}));
+        QCOMPARE(saved.value(QStringLiteral("backend")).toObject().value(QStringLiteral("executor")).toString(), QStringLiteral("slurm"));
+        QCOMPARE(saved.value(QStringLiteral("slurm")).toObject().value(QStringLiteral("gpus")).toInt(), 3);
+        QVERIFY(!QJsonDocument(saved).toJson().contains("session-secret"));
+        QVERIFY(!manager.isRunning());
+        QJsonObject loaded;
+        QString loadedPath;
+        QString loadError;
+        QVERIFY2(manager.loadUserConfig(&loadedPath, &loaded, &loadError), qPrintable(loadError));
+        QCOMPARE(loadedPath, profilePath);
+        QCOMPARE(loaded.value(QStringLiteral("slurm")).toObject().value(QStringLiteral("host")).toString(), QStringLiteral("test-cluster"));
+    }
+
     void curvePathsDoNotFillBetweenSeries()
     {
         TrainingCurveWidget curve;
@@ -278,6 +386,9 @@ private slots:
         auto *metrics = dialog.findChild<QPlainTextEdit *>(QStringLiteral("backendMetrics"));
         QTRY_VERIFY_WITH_TIMEOUT(metrics->toPlainText().contains(QStringLiteral("Final test loss: 0.25")), 3000);
         QVERIFY(metrics->toPlainText().contains(QStringLiteral("Step 1 (epoch 1) — training 0.6, validation 0.5")));
+        QVERIFY(metrics->toPlainText().contains(QStringLiteral("Best validation loss: 0.2 (epoch 4)")));
+        QVERIFY(metrics->toPlainText().contains(QStringLiteral("Non-improving epochs: 2")));
+        QVERIFY(metrics->toPlainText().contains(QStringLiteral("Stopped epoch: 6")));
         auto *curve = dialog.findChild<TrainingCurveWidget *>(QStringLiteral("trainingCurve"));
         QVERIFY(curve->usesStepAxis());
         QCOMPARE(curve->trainingPoints().size(), 120);
@@ -301,6 +412,27 @@ private slots:
         dialog.findChild<QLineEdit *>(QStringLiteral("trainingLearningRate"))->setText(QStringLiteral("0.02"));
         dialog.findChild<QLineEdit *>(QStringLiteral("trainingSeed"))->setText(QStringLiteral("42"));
         dialog.findChild<QLineEdit *>(QStringLiteral("trainingPublishEverySteps"))->setText(QStringLiteral("25"));
+        dialog.findChild<QComboBox *>(QStringLiteral("trainingDevice"))->setCurrentIndex(1);
+        dialog.findChild<QComboBox *>(QStringLiteral("trainingPrecision"))->setCurrentIndex(1);
+        dialog.findChild<QComboBox *>(QStringLiteral("trainingOptimizer"))->setCurrentIndex(1);
+        dialog.findChild<QLineEdit *>(QStringLiteral("trainingWeightDecay"))->setText(QStringLiteral("0.1"));
+        dialog.findChild<QLineEdit *>(QStringLiteral("trainingGradientClip"))->setText(QStringLiteral("2.5"));
+        dialog.findChild<QLineEdit *>(QStringLiteral("trainingWarmupSteps"))->setText(QStringLiteral("4"));
+        dialog.findChild<QLineEdit *>(QStringLiteral("trainingMaxSteps"))->setText(QStringLiteral("100"));
+        dialog.findChild<QLineEdit *>(QStringLiteral("trainingGradientAccumulationSteps"))->setText(QStringLiteral("8"));
+        auto *earlyStoppingPatience = dialog.findChild<QLineEdit *>(QStringLiteral("trainingEarlyStoppingPatience"));
+        auto *earlyStoppingMinDelta = dialog.findChild<QLineEdit *>(QStringLiteral("trainingEarlyStoppingMinDelta"));
+        QVERIFY(earlyStoppingPatience);
+        QVERIFY(earlyStoppingMinDelta);
+        QVERIFY(earlyStoppingPatience->toolTip().contains(QStringLiteral("completed epochs")));
+        QVERIFY(earlyStoppingMinDelta->toolTip().contains(QStringLiteral("validation loss")));
+        earlyStoppingPatience->setText(QStringLiteral("5"));
+        earlyStoppingMinDelta->setText(QStringLiteral("nan"));
+        QTest::mouseClick(dialog.findChild<QPushButton *>(QStringLiteral("backendSubmit")), Qt::LeftButton);
+        QVERIFY(dialog.findChild<QLabel *>(QStringLiteral("backendStatus"))->text().contains(
+            QStringLiteral("finite nonnegative early-stopping settings")));
+        QCOMPARE(backend.submitCount, 0);
+        earlyStoppingMinDelta->setText(QStringLiteral("0.01"));
         QTest::mouseClick(dialog.findChild<QPushButton *>(QStringLiteral("backendSubmit")), Qt::LeftButton);
         QTRY_COMPARE_WITH_TIMEOUT(backend.submitCount, 1, 5000);
         const QJsonObject training = backend.submitted.value(QStringLiteral("training")).toObject();
@@ -309,6 +441,16 @@ private slots:
         QCOMPARE(training.value(QStringLiteral("learning_rate")).toDouble(), 0.02);
         QCOMPARE(training.value(QStringLiteral("seed")).toInt(), 42);
         QCOMPARE(training.value(QStringLiteral("publish_every_steps")).toInt(), 25);
+        QCOMPARE(training.value(QStringLiteral("device")).toString(), QStringLiteral("cuda"));
+        QCOMPARE(training.value(QStringLiteral("precision")).toString(), QStringLiteral("bfloat16"));
+        QCOMPARE(training.value(QStringLiteral("optimizer")).toString(), QStringLiteral("deepseek-muon"));
+        QCOMPARE(training.value(QStringLiteral("weight_decay")).toDouble(), 0.1);
+        QCOMPARE(training.value(QStringLiteral("gradient_clip")).toDouble(), 2.5);
+        QCOMPARE(training.value(QStringLiteral("warmup_steps")).toInt(), 4);
+        QCOMPARE(training.value(QStringLiteral("max_steps")).toInt(), 100);
+        QCOMPARE(training.value(QStringLiteral("gradient_accumulation_steps")).toInt(), 8);
+        QCOMPARE(training.value(QStringLiteral("early_stopping_patience")).toInt(), 5);
+        QCOMPARE(training.value(QStringLiteral("early_stopping_min_delta")).toDouble(), 0.01);
         QCOMPARE(backend.authorization, QByteArrayLiteral("Bearer secret-for-test"));
         const QJsonObject project = backend.submitted.value(QStringLiteral("project")).toObject();
         QVERIFY(project.value(QStringLiteral("manifest")).toObject().value(QStringLiteral("schemaVersion")).isDouble());

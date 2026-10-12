@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import json
 import os
+import re
 import subprocess
 import sys
 import zipfile
@@ -49,7 +50,7 @@ def test_tiny_decoder_runs_training_and_causal_inference():
 def test_tiny_decoder_repeat_and_attention_parameters_are_independent():
     graph = GraphModule(REPOSITORY / "examples" / "models" / "tiny-decoder-llm", CORE)
     repeat = graph.node_modules[graph._node_modules["blocks"]]
-    assert len(repeat.subflows) == 2
+    assert len(repeat.subflows) >= 2
     first = repeat.subflows[0].node_modules["n4"].weight
     second = repeat.subflows[1].node_modules["n4"].weight
     assert first.data_ptr() != second.data_ptr()
@@ -73,6 +74,7 @@ def test_bundled_examples_train_and_export_isolated_inference_wheels(tmp_path):
     from safetensors.torch import save_file
 
     installed = []
+    stable_packages = []
     for index, name in enumerate(EXAMPLES):
         project = REPOSITORY / "examples" / "models" / name
         adapter = load_dataset(project)
@@ -99,10 +101,13 @@ def test_bundled_examples_train_and_export_isolated_inference_wheels(tmp_path):
         wheel = build_wheel(project, CORE, weights, tmp_path / "wheels", f"example-{index}")
         with zipfile.ZipFile(wheel) as archive:
             names = set(archive.namelist())
-            package = f"nnmodel_example_{index}"
-            assert f"{package}/weights.safetensors" in names
-            assert any(f"{package}/_snapshot/core/" in path and path.endswith("/manifest.json") for path in names)
             model = json.loads((project / "model.json").read_text(encoding="utf-8"))
+            normalized_id = re.sub(r"[^A-Za-z0-9]+", "_", model["manifest"]["id"]).strip("_").lower()
+            package = f"nnm_{normalized_id}"
+            stable_packages.append(package)
+            assert f"{package}/weights.safetensors" in names
+            assert f"nnmodel_example_{index}/__init__.py" in names
+            assert any(f"{package}/_snapshot/core/" in path and path.endswith("/manifest.json") for path in names)
             manifest = model["manifest"]
             dataset_ref = next(ref for ref in manifest["customDatasets"] if ref["id"] == manifest["activeDataset"]["id"] and ref["version"] == manifest["activeDataset"]["version"])
             dataset_manifest = json.loads((project / dataset_ref["path"] / "manifest.json").read_text(encoding="utf-8"))
@@ -127,14 +132,16 @@ def test_bundled_examples_train_and_export_isolated_inference_wheels(tmp_path):
 import numpy as np
 import torch
 sys.path = [p for p in sys.path if "/python/nnmodelling-runtime/src" not in p]
-sys.path[:0] = sys.argv[1:]
+sys.path[:0] = sys.argv[6:]
 assert importlib.util.find_spec("nnmodelling_runtime") is None
 samples = [0.25, np.zeros((28, 28), dtype=np.uint8), [0.0] * 32, "To be, or not to be.", np.zeros((28, 28), dtype=np.uint8)]
 for index, value in enumerate(samples):
-    module = importlib.import_module(f"nnmodel_example_{index}")
+    module = importlib.import_module(sys.argv[1 + index])
     model = module.Model()
     result = model.infer(value)
+    legacy = importlib.import_module(f"nnmodel_example_{index}").Model().infer(value)
     assert result is not None
+    assert legacy is not None
     assert "nnmodelling_runtime" not in sys.modules
     if index == 0: assert np.isfinite(result).all()
     if index == 1: assert isinstance(result, int) and 0 <= result < 10
@@ -145,7 +152,7 @@ for index, value in enumerate(samples):
     environment = os.environ.copy()
     environment.pop("PYTHONPATH", None)
     result = subprocess.run(
-        [sys.executable, "-c", script, *(str(path) for path in installed)],
+        [sys.executable, "-c", script, *stable_packages, *(str(path) for path in installed)],
         cwd=tmp_path,
         env=environment,
         capture_output=True,

@@ -83,6 +83,24 @@ The `Workspace` toolbar provides `Scope`, `Training`, `Fit`, `+`, `−` and `Arr
 
 ![Layout direction menu](../assets/menu-arrange.png)
 
+## Parameter counts
+
+Open **Model > Parameter counts…** with an active project. The summary shows
+`Total parameters`, `Trainable` and `Complete` or `Incomplete`. The table lists
+node, status, total, trainable parameters and message. `Refresh` uses the current
+graph, including unsaved edits; `Close` changes no project files and starts no
+training.
+
+Counts are estimates derived from package Lua rules. Unknown/error contributions
+remain visible and make the total incomplete; unknown does not mean zero.
+Subflow totals include descendants and repetitions without adding those
+contributions twice to the network total. The illustrated MNIST MLP example
+has **109,386** total and trainable parameters.
+
+![Model menu with parameter counts](../assets/menu-model.png)
+
+![Parameter totals and per-node breakdown](../assets/parameter-counts.png)
+
 ## Inspector
 
 Selecting a canvas node fills the `Inspector` table with `Property` and `Value` columns. With no selection, the panel is empty. `Name` is editable; press Enter or leave the field to apply a new name. `Package` shows `id@version`; hover over the row to see the package description.
@@ -201,7 +219,15 @@ The metadata fields have distinct meanings in both the stereotype and dataset fo
 
 `Training` on the toolbar and `Model > Training backend…` open `Training backend`. You can connect and inspect jobs without a project; submitting a job requires a valid project, which is saved before submission.
 
-At the top, `Endpoint` starts at `http://127.0.0.1:8765`. `Bearer token` is optional, hidden as you type and kept in memory for the session. `Connect / check health` checks the service and container runtime; `Refresh jobs` updates history. The status line reports the result in readable form.
+### Configure and start the local backend
+
+Press `Configure backend…` in the Training dashboard. The separate `Local backend service configuration` window opens; the dashboard with its connection, controls, history and curves stays usable. Choose `Docker-compatible runtime` or `SSH / Slurm`. Slurm needs a configured SSH alias, a writable remote directory and a prepared Singularity `.sif` image. `Partition` and SSH alias start blank; CPU, memory, time and GPU fields have generic defaults. The shared profile is `~/.config/nnmodelling/config.json`, overridable with `NNMODELLING_CONFIG`. The app does not collect SSH passwords or build images and dependencies.
+
+Press `Save settings and start local backend`. The UI starts FastAPI on loopback as a separate local process; with `SSH / Slurm`, only workers are sent to the cluster. `uv` and the repository workspace must be available, and the worker image must be prepared first. The configuration window shows startup and runtime availability errors; the dashboard then checks the service with `Connect / check health`. Non-secret settings are saved for the current user; `Bearer token` stays in memory for the session. When connected to a manually started service or remote endpoint, the UI does not manage it. See the illustrated [Slurm backend guide](server.md#run-jobs-on-a-slurm-cluster-from-the-ui).
+
+When the managed service is already running, the button changes to `Restart local backend safely`. The UI refuses to restart while job history contains `queued` or `running` jobs, avoiding training interruption. Closing the Training panel leaves the service running. Closing the app while its managed service is active shows a warning: confirming stops the backend and interrupts any Slurm jobs; canceling keeps the app open.
+
+At the top, `Endpoint` starts at `http://127.0.0.1:8765` for a manually started service. The app-managed backend reserves an available loopback port and fills this field automatically. `Bearer token` is optional, hidden as you type and kept in memory for the session. `Connect / check health` checks the service and runtime; `Refresh jobs` updates history. The status line reports the result in readable form.
 
 Submission fields are `Epochs` (10), `Batch` (32), `Learning rate` (0.001), `Seed` (0) and `Publish every N steps` (10). Epochs: 1–10000; batch: 1–4096; learning rate: greater than zero and at most 1; seed: −2147483648 to 4294967295; publish interval: 1–100000. The interval controls metric publication and validation. `Save project and submit` saves the current state first, then submits an immutable snapshot; a save or submission error appears in the status line.
 
@@ -210,9 +236,10 @@ Submission fields are `Epochs` (10), `Batch` (32), `Learning rate` (0.001), `See
 `Training and worker log` reports status, any error, metrics and final test loss. The bottom controls are `Download weights`, `Download wheel`, `Restore snapshot…`, `Cancel job` and `Close`. Downloads require a completed job and save the selected file through the system dialog. `Restore snapshot…` recreates a copy in a new folder chosen by the user, opens it as a project and does not overwrite an existing folder. `Cancel job` requests cancellation of the selected job. `Close` closes the panel.
 
 New wheels use distribution `nnm_<normalized-project-id>`; for example, project
-ID `llm` produces `nnm_llm-0.1.0-py3-none-any.whl`. The Python module inside the
-wheel remains job-specific (`nnmodel_<normalized-job-id>`): read the module name
-from the wheel for the import instead of deriving it from the filename. Jobs
+ID `llm` produces `nnm_llm-0.1.0-py3-none-any.whl`. The public Python module in new wheels matches the distribution,
+`nnm_<normalized-project-id>`; for ID `llm`, use `from nnm_llm import Model`.
+A job-specific alias remains for compatibility. Inspect historical wheels for
+their original import. Jobs
 from projects with the same normalized ID share a distribution name and
 version; install their wheels in separate Python environments. Previously
 stored wheels keep their original names and contents.
@@ -222,6 +249,31 @@ stored wheels keep their original names and contents.
 ![Encode and decode operations ready for export in the wheel](../assets/vae-operations-manager.png)
 
 ![Learning curve scale selection](../assets/training-scale.png)
+
+### Advanced training options
+
+![Device, optimizer, budget and early stopping](../assets/training-settings.png)
+
+| Field | Initial value | Meaning |
+| --- | --- | --- |
+| `Device` | `CPU` | `CUDA` requires an available GPU and never silently falls back to CPU. For Slurm also configure the backend GPU count. |
+| `Precision` | `Float32` | `BFloat16` enables mixed precision; master weights and sensitive operations remain FP32. |
+| `Optimizer` | `Adam` | Alternatively `DeepSeek Muon`, with AdamW for excluded/non-matrix parameters. |
+| `Weight decay` | `0` | Optimizer regularization. |
+| `Clip norm` | `1` | Positive gradient norm limit (at most 1,000,000). |
+| `Warmup` | `0` | Optimizer updates used to ramp up learning rate. |
+| `Max steps` | `0` | 0 runs all configured epochs; a positive value caps optimizer updates. |
+| `Accumulation` | `1` | Batches accumulated per optimizer update. |
+| `Early stop patience (epochs)` | `0` | 0 disables early stopping; otherwise caps consecutive epochs without a sufficient validation improvement. |
+| `Minimum validation-loss improvement` | `0` | Improvement in loss units required to reset patience. |
+
+With early stopping enabled, comparisons happen at epoch boundaries. The worker
+retains each validation-loss minimum and restores those weights before final
+test and export, including when the configured budget ends. Patience and the
+threshold determine when to stop, while the lowest validation loss determines
+exported weights. Logs and metrics distinguish budgets, updates and processed
+tokens. A small budget is not full-corpus completion. For light trials keep CPU,
+Float32, Adam and early stopping disabled.
 
 ## Features not exposed in the current interface
 

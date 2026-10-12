@@ -1,5 +1,9 @@
 # Verifica del manuale
 
+Edizione aggiornata il 12 ottobre 2026. Il profilo condiviso ora usa JSON;
+le schermate di conteggio parametri e configurazione mostrano la UI corrente.
+Le prove seguenti del 6 ottobre restano evidenza storica, non nuovi training.
+
 Verifica eseguita il 6 ottobre 2026. Le descrizioni derivano dai contratti della
 KB e dall'implementazione corrente; le immagini mostrano il client Qt reale,
 controllato con computer use attraverso il bridge noVNC locale.
@@ -61,3 +65,22 @@ e tabelle, con le differenze descritte nel testo.
 Le prove non hanno modificato gli esempi originali né il modello escluso dalla
 richiesta. Screenshot originali, copia dimostrativa e artifact restano fuori dai
 file versionati. I servizi temporanei di verifica sono arrestati a fine lavoro.
+
+## Verifica del 12 ottobre 2026
+
+- Build finale riuscita; 14 test core, 7 suite GUI/CLI e 181 test Python passati.
+  Test di socket Unix/HTTP eseguiti con accesso locale consentito dopo il blocco
+  del sandbox. Test Slurm usano risposte simulate: nessuna connessione remota.
+- Computer use sulla vera UI Qt: `Model > Parameter counts…`, totali 109.386,
+  dettaglio nodi e Refresh; configurazione JSON salvata e riletta dopo riavvio.
+- Backend Docker locale avviato dalla UI con profilo/archivio temporanei;
+  health disponibile, nessun job inviato. Slurm privo dei campi obbligatori
+  rifiutato prima della connessione. Nessun training sul cluster.
+- Nuovi screenshot annotati di menu, conteggio, configurazione e controlli
+  Training. Le immagini con curve di job completati restano storiche.
+- Limite bridge osservato: dopo avvio backend la composizione noVNC ha richiesto
+  riconnessione; Escape dalla configurazione ha terminato Qt e lasciato il
+  servizio locale temporaneo attivo. È stato arrestato esplicitamente. La
+  chiusura tramite `Close` del dashboard ha invece funzionato.
+- Alcune etichette dei controlli avanzati sono troncate alla larghezza iniziale
+  del dashboard; la tabella del manuale riporta nomi e significati completi.

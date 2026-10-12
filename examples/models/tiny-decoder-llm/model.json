@@ -110,7 +110,7 @@
           "version": "0.1.0"
         },
         "params": {
-          "times": 2
+          "times": 10
         }
       }
     },
@@ -198,7 +198,7 @@
       "type": "custom",
       "position": {
         "x": 300,
-        "y": 240
+        "y": 200
       },
       "data": {
         "name": "LayerNorm: 64",
@@ -219,7 +219,7 @@
       "type": "custom",
       "position": {
         "x": 300,
-        "y": 500
+        "y": 380
       },
       "data": {
         "name": "HorizontalRepeat: 4 heads × 16",
@@ -589,6 +589,28 @@
         "params": {},
         "boundaryHandle": "out"
       }
+    },
+    {
+      "id": "node-d872eb1b-978a-4283-8064-5cdf98261c63",
+      "type": "custom",
+      "position": {
+        "x": 300,
+        "y": 540
+      },
+      "data": {
+        "name": "Linear",
+        "scope": "blocks",
+        "package": {
+          "id": "core.linear",
+          "version": "0.1.0"
+        },
+        "params": {
+          "in_features": 64,
+          "out_features": 64,
+          "bias": true,
+          "dtype": "float32"
+        }
+      }
     }
   ],
   "edges": [
@@ -668,13 +690,6 @@
       "sourceHandle": "out",
       "target": "residual-attn",
       "targetHandle": "in-1"
-    },
-    {
-      "id": "e12",
-      "source": "heads",
-      "sourceHandle": "out",
-      "target": "residual-attn",
-      "targetHandle": "in-2"
     },
     {
       "id": "e13",
@@ -808,6 +823,20 @@
       "sourceHandle": "out",
       "target": "head-output",
       "targetHandle": "in"
+    },
+    {
+      "id": "47dc9fd9-14df-4588-b75c-8a31b766039a",
+      "source": "heads",
+      "sourceHandle": "out",
+      "target": "node-d872eb1b-978a-4283-8064-5cdf98261c63",
+      "targetHandle": "in"
+    },
+    {
+      "id": "d4b07ced-383c-4b44-b10b-9fa038268215",
+      "source": "node-d872eb1b-978a-4283-8064-5cdf98261c63",
+      "sourceHandle": "out",
+      "target": "residual-attn",
+      "targetHandle": "in-2"
     }
   ],
   "layoutDirection": "horizontal",
@@ -841,6 +870,7 @@
         "path": "datasets/llm.tokens-1.0.0"
       }
     ],
+    "operations": [],
     "activeDataset": {
       "id": "llm.tokens",
       "version": "1.0.0"

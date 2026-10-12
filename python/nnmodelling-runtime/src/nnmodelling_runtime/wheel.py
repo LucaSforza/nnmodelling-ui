@@ -62,6 +62,13 @@ def _distribution_name(model: dict[str, Any]) -> str:
     return f"nnm_{normalized}"
 
 
+def _legacy_import_name(job_id: str) -> str:
+    normalized = re.sub(r"[^A-Za-z0-9_]+", "_", job_id).strip("_").lower()
+    if not normalized or not normalized[0].isalpha():
+        normalized = "job_" + normalized
+    return f"nnmodel_{normalized}"
+
+
 def _copy_runtime(destination: Path) -> None:
     source_root = Path(__file__).resolve().parents[1]
     for package in ("nnmodelling_runtime", "stereotype_runtime"):
@@ -118,16 +125,21 @@ def build_wheel(
         raise ValueError("wheel export requires a Python dataset adapter")
 
     dist_name = _distribution_name(model)
-    normalized = re.sub(r"[^A-Za-z0-9_]+", "_", job_id).strip("_").lower()
-    if not normalized or not normalized[0].isalpha():
-        normalized = "job_" + normalized
-    package_name = f"nnmodel_{normalized}"
+    package_name = dist_name
+    legacy_name = _legacy_import_name(job_id)
     version = "0.1.0"
     wheel_name = f"{dist_name}-{version}-py3-none-any.whl"
     with tempfile.TemporaryDirectory(prefix="nnmodel-wheel-") as temporary:
         stage = Path(temporary) / package_name
         stage.mkdir()
         (stage / "__init__.py").write_text("from .model import Model\n\n__all__ = ['Model']\n", encoding="utf-8")
+        if legacy_name != package_name:
+            legacy = Path(temporary) / legacy_name
+            legacy.mkdir()
+            (legacy / "__init__.py").write_text(
+                f"from {package_name} import Model\n\n__all__ = ['Model']\n",
+                encoding="utf-8",
+            )
         _copy_runtime(stage)
         project_snapshot = stage / "_snapshot" / "project"
         core_snapshot = stage / "_snapshot" / "core"
@@ -213,7 +225,10 @@ def build_wheel(
             "from ._vendor.nnmodelling_runtime import GraphModule, load_dataset\n"
             "\n"
             "class Model:\n"
-            "    def __init__(self, weights_path=None):\n"
+            "    def __init__(self, weights_path=None, device='cpu'):\n"
+            "        self._device = torch.device(device)\n"
+            "        if self._device.type not in {'cpu', 'cuda'}: raise ValueError('device must select CPU or CUDA')\n"
+            "        if self._device.type == 'cuda' and not torch.cuda.is_available(): raise RuntimeError('CUDA was requested, but CUDA is unavailable')\n"
             "        self._root = Path(__file__).parent\n"
             "        self._project = self._root / '_snapshot' / 'project'\n"
             "        self._adapter = load_dataset(self._project)\n"
@@ -221,9 +236,16 @@ def build_wheel(
             "        path = Path(weights_path) if weights_path is not None else self._root / 'weights.safetensors'\n"
             "        if not path.is_file(): raise FileNotFoundError(path)\n"
             "        self._graph.load_state_dict(load_file(str(path), device='cpu'))\n"
+            "        self._graph.to(self._device)\n"
             "        self._graph.eval()\n"
             "        for name in self._graph.operations:\n"
             "            setattr(self, name, self._operation_method(name))\n"
+            "    def _to_device(self, value):\n"
+            "        if isinstance(value, torch.Tensor): return value.to(self._device)\n"
+            "        if isinstance(value, dict): return {key: self._to_device(item) for key, item in value.items()}\n"
+            "        if isinstance(value, list): return [self._to_device(item) for item in value]\n"
+            "        if isinstance(value, tuple): return tuple(self._to_device(item) for item in value)\n"
+            "        return value\n"
             "    def _operation_method(self, name):\n"
             "        return lambda value: self.run_operation(name, value)\n"
             "    def run_operation(self, name, value):\n"
@@ -234,15 +256,19 @@ def build_wheel(
             "            value = self._adapter.tokenize(value)\n"
             "            if not isinstance(value, torch.Tensor): raise TypeError('dataset operation input must tokenize to one Tensor')\n"
             "        elif not isinstance(value, torch.Tensor): raise TypeError('tensor operation input must be a batched torch.Tensor')\n"
-            "        result = self._graph.run_operation(name, value)\n"
-            "        return self._adapter.untokenize(result) if operation['output']['codec'] == 'dataset' else result\n"
+            "        value = self._to_device(value)\n"
+            "        with torch.inference_mode(): result = self._graph.run_operation(name, value)\n"
+            "        if operation['output']['codec'] == 'dataset':\n"
+            "            if not isinstance(result, torch.Tensor): raise TypeError('dataset operation output must be a Tensor')\n"
+            "            return self._adapter.untokenize(result.detach().to('cpu'))\n"
+            "        return result\n"
             "    def infer(self, value):\n"
             "        tokenized = self._adapter.tokenize(value)\n"
             "        if isinstance(tokenized, torch.Tensor):\n"
-            "            inputs = self._graph.single_input_mapping(tokenized)\n"
-            "        else: inputs = tokenized\n"
+            "            inputs = self._graph.single_input_mapping(self._to_device(tokenized))\n"
+            "        else: inputs = self._to_device(tokenized)\n"
             "        with torch.inference_mode(): prediction = self._graph(inputs)['prediction']\n"
-            "        return self._adapter.untokenize(prediction)\n"
+            "        return self._adapter.untokenize(prediction.detach().to('cpu'))\n"
             "    inference = infer\n",
             encoding="utf-8",
         )
@@ -252,6 +278,8 @@ def build_wheel(
         for path in stage.rglob("*"):
             if path.is_file():
                 entries[f"{package_name}/{path.relative_to(stage).as_posix()}"] = path.read_bytes()
+        if legacy_name != package_name:
+            entries[f"{legacy_name}/__init__.py"] = (Path(temporary) / legacy_name / "__init__.py").read_bytes()
         runtime_dependencies = _declared_python_dependencies([dataset_source] + [catalog.records[p][0] for p in required if p in catalog.records])
         metadata = (
             f"Metadata-Version: 2.1\nName: {dist_name}\nVersion: {version}\n"

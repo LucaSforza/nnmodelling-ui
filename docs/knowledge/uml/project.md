@@ -174,6 +174,11 @@ is code-free and does not extend the active package catalog.
 
 ## Constraints
 
+Accepted 2026-10-08: catalog validates an optional independent Lua
+`entrypoints.parameters` path with the same confinement and size rules as
+inference. Missing count metadata remains unknown; parameter report is derived
+read-only state and never persisted in project or package definitions.
+
 Formal: `activePackages(P) = corePackages ∪ refs(P.manifest.customPackages)`;
 `activeDatasets(P) = refs(P.manifest.customDatasets)`.
 Natural: project manifest exhaustively declares non-core resources; ambient

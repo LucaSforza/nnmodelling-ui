@@ -155,6 +155,54 @@ def test_submit_snapshot_and_list_keep_original_resource_bytes(tmp_path, monkeyp
         assert store.job_dir(job["id"]).joinpath("snapshot").stat().st_mode & 0o222 == 0
 
 
+def test_early_stopping_controls_are_accepted_frozen_and_returned(tmp_path, monkeypatch):
+    http, store, runner = client(tmp_path, monkeypatch)
+    with http:
+        submitted = payload()
+        submitted["training"].update(early_stopping_patience=4, early_stopping_min_delta=0)
+        response = http.post("/v1/jobs", json=submitted)
+        assert response.status_code == 202, response.content.decode()
+        job = response.json()
+        training = json.loads((store.job_dir(job["id"]) / "snapshot/training.json").read_text())
+        assert training["early_stopping_patience"] == 4
+        assert training["early_stopping_min_delta"] == 0.0
+        assert runner.submitted == [job["id"]]
+
+        output_metrics = store.job_dir(job["id"]) / "output/metrics.json"
+        early = {
+            "best_epoch": 2,
+            "best_validation_loss": 0.125,
+            "non_improving_epochs": 3,
+            "stopped_epoch": 5,
+        }
+        output_metrics.write_text(json.dumps({
+            "epochs": [
+                {"epoch": 1, "training_loss": 1.0, "validation_loss": 0.25},
+                {"epoch": 2, "training_loss": 0.8, "validation_loss": 0.125},
+                {"epoch": 3, "training_loss": 0.7, "validation_loss": 0.2},
+                {"epoch": 4, "training_loss": 0.6, "validation_loss": 0.3},
+                {"epoch": 5, "training_loss": 0.5, "validation_loss": 0.4},
+            ],
+            "steps": [], "test_loss": 0.2, "early_stopping": early,
+        }))
+        assert http.get(f"/v1/jobs/{job['id']}").json()["metrics"]["early_stopping"] == early
+        assert http.get("/v1/jobs").json()["jobs"][0]["metrics"]["early_stopping"] == early
+
+        for name, invalid_value in (
+            ("early_stopping_patience", True),
+            ("early_stopping_patience", 10001),
+            ("early_stopping_patience", 1.0),
+            ("early_stopping_min_delta", True),
+            ("early_stopping_min_delta", -0.1),
+            ("early_stopping_min_delta", float("inf")),
+            ("early_stopping_min_delta", "0.1"),
+        ):
+            invalid = payload()
+            invalid["training"][name] = invalid_value
+            assert http.post("/v1/jobs", json=invalid).status_code == 422, name
+        assert runner.submitted == [job["id"]]
+
+
 def test_nested_input_boundary_does_not_require_dataset_binding(tmp_path, monkeypatch):
     http, _store, runner = client(tmp_path, monkeypatch)
     submitted = payload_for("rnn-sine")
@@ -170,6 +218,38 @@ def test_nested_input_boundary_does_not_require_dataset_binding(tmp_path, monkey
         response = http.post("/v1/jobs", json=submitted)
         assert response.status_code == 202, response.content.decode()
         assert runner.submitted == [response.json()["id"]]
+
+
+def test_external_objective_inputs_accept_only_declared_dataset_slots(tmp_path, monkeypatch):
+    http, _store, runner = client(tmp_path, monkeypatch)
+
+    def job_with_source(source: str) -> dict:
+        job = payload_for("tiny-decoder-llm")
+        package = next(
+            ref
+            for ref in job["project"]["manifest"]["customPackages"]
+            if ref["id"] == "llm.token-cross-entropy"
+        )
+        manifest_path = f"{package['path']}/manifest.json"
+        package_manifest = json.loads(base64.b64decode(job["files"][manifest_path]))
+        definition_path = f"{package['path']}/{package_manifest['entrypoints']['definition']}"
+        definition = json.loads(base64.b64decode(job["files"][definition_path]))
+        definition["objective"]["externalInputs"][0]["source"] = source
+        job["files"][definition_path] = base64.b64encode(json.dumps(definition).encode()).decode()
+        return job
+
+    with http:
+        # The legacy target binding and the new root-input binding both validate.
+        target_job = job_with_source("batch.targets.target")
+        assert http.post("/v1/jobs", json=target_job).status_code == 202
+        input_job = job_with_source("batch.inputs.tokens")
+        assert http.post("/v1/jobs", json=input_job).status_code == 202
+
+        invalid = job_with_source("batch.inputs.undeclared")
+        response = http.post("/v1/jobs", json=invalid)
+        assert response.status_code == 422
+        assert "undeclared dataset input" in response.json()["detail"]
+        assert len(runner.submitted) == 2
 
 
 def test_publish_every_steps_is_optional_and_strictly_bounded(tmp_path, monkeypatch):

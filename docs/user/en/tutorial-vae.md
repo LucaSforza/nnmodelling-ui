@@ -13,7 +13,12 @@ just backend-image
 just backend-run
 ```
 
-Leave the backend terminal open. In a second terminal, start `./build/qt/nnmodelling-ui`. The default backend uses `http://127.0.0.1:8765`; see the [server guide](server.md) for tokens and other options.
+Leave the backend terminal open. In a second terminal, start `./build/qt/nnmodelling-ui`. A manually started backend uses `http://127.0.0.1:8765`; if you start it from `Configure backend…`, the app chooses an available loopback port and updates `Endpoint`. See the [server guide](server.md) for tokens and other options.
+
+To train on the configured Slurm cluster, follow the illustrated [Slurm UI
+steps](server.md#run-jobs-on-a-slurm-cluster-from-the-ui). Choose the
+executor with `Configure backend…`; the API, local endpoint and VAE settings
+below stay unchanged.
 
 ## 2. Open a copy of the VAE
 
@@ -59,14 +64,19 @@ The `decoder.in` endpoint receives the tensor passed to the method. For this ope
 
 In the list, check that both statuses say `Ready`, then press `Save`. If you see `Stale endpoint`, edit the operation to select a current node and handle, or remove it. Also save the project with `File > Save`.
 
+For short trials use CPU, Float32 and Adam; keep `Max steps = 0`,
+`Accumulation = 1` and early stopping disabled. To stop automatically based on
+validation, see [advanced options](client.md#advanced-training-options).
+
 ## 5. Train and download the wheel
 
-Open `Training` and press `Connect / check health`. Use these settings for the small included dataset:
+Open `Training` and press `Connect / check health`. Use these settings for the
+included dataset and corrected loss:
 
 | Field | Value |
 | --- | --- |
-| `Epochs` | `1` |
-| `Batch` | `32` |
+| `Epochs` | `100` |
+| `Batch` | `16` |
 | `Learning rate` | `0.001` |
 | `Seed` | `0` |
 | `Publish every N steps` | `10` |
@@ -115,3 +125,21 @@ sample = model.decode(torch.randn(1, 32))   # A new image from the prior.
 ```
 
 Use `model.decode(z)` to reconstruct the encoded image; `model.decode(torch.randn(1,32))` starts from a random point in latent space. Both use the trained wheel weights. The original `model.infer(...)` method remains available.
+
+The VAE objective sums squared error over each image's 784 pixels, then adds
+batch-mean KL. Do not compare new loss values with older wheels, which used a
+different reduction.
+
+Generate the requested interpolation between two real MNIST examples:
+
+```sh
+cd examples/implementation/vae
+uv run --no-project python download_wheel.py
+uv sync --locked
+uv run --locked python main.py --interpolate
+```
+
+The consumer encodes a 3 and a 7 from the test split to posterior-mean latents,
+linearly interpolates five intermediate vectors, and decodes all seven points.
+Individual PNGs and a labeled contact sheet are written to
+`output/interpolation.png`.

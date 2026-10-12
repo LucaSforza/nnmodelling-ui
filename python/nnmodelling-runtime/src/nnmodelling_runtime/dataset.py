@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Generic, Iterator, Mapping, TypeVar
 
 import torch
+import os
 
 InputT = TypeVar("InputT")
 OutputT = TypeVar("OutputT")
@@ -22,6 +23,17 @@ class DatasetAdapter(ABC, Generic[InputT, OutputT]):
 
     def __init__(self, dataset_dir: str | Path):
         self.directory = Path(dataset_dir)
+
+    @property
+    def data_directory(self) -> Path:
+        """Training data root, or the dataset resource directory for local use."""
+        return Path(os.environ.get("NNMODELLING_DATASET_DATA_ROOT", self.directory))
+
+    @property
+    def cache_directory(self) -> Path | None:
+        """Optional writable job scratch space for derived training data."""
+        value = os.environ.get("NNMODELLING_DATASET_CACHE_ROOT")
+        return Path(value) if value else None
 
     @abstractmethod
     def tokenize(self, value: InputT) -> torch.Tensor | Mapping[str, torch.Tensor]:

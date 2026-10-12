@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import argparse
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
@@ -56,8 +57,15 @@ SHOTS: dict[str, dict] = {
         "callouts": [(1, (415, 100), (120, 145), "Undo and redo")],
     },
     "menu-model": {
-        "crop": (75, 50, 355, 300), "caption": "Model menu",
-        "callouts": [(1, (370, 100), (195, 170), "Stereotype, dataset and training actions")],
+        "source": "menu-model-current",
+        "crop": (89, 0, 300, 293),
+        "caption": "Model menu",
+        "caption_en": "Model menu",
+        "callouts": [
+            (1, (60, 105), (102, 105), "Package and resource actions"),
+            (2, (60, 229), (102, 229), "Parameter counts"),
+            (3, (60, 270), (102, 270), "Training backend"),
+        ],
     },
     "menu-view": {
         "crop": (130, 50, 430, 300), "caption": "View menu",
@@ -127,18 +135,78 @@ SHOTS: dict[str, dict] = {
         ],
     },
     "training-connect": {
-        "crop": (110, 50, 1230, 900), "caption": "Connessione al backend locale di addestramento",
+        "source": "training-current",
+        "crop": (110, 0, 1230, 95),
+        "caption": "Training connection and backend configuration",
+        "caption_en": "Training connection and backend configuration",
         "callouts": [
-            (1, (250, 22), (385, 82), "Backend endpoint"),
-            (2, (920, 22), (1000, 82), "Connect and check service health"),
+            (1, (420, -20), (420, 55), "Backend endpoint"),
+            (2, (910, -20), (910, 20), "Connect and check service health"),
+            (3, (1218, -20), (1218, 20), "Open separate backend configuration"),
         ],
     },
     "training-settings": {
-        "crop": (110, 50, 1230, 900), "caption": "Impostazione delle opzioni di addestramento",
-        "details": "3 epoche; batch 16; tasso di apprendimento 0,001; seme 0; pubblicazione a ogni passaggio.",
+        "source": "training-current",
+        "crop": (110, 100, 1230, 250),
+        "caption": "Training settings, optimization and early stopping",
+        "caption_en": "Training settings, optimization and early stopping",
         "callouts": [
-            (1, (360, 22), (600, 175), "Epochs, batch size, learning rate and seed"),
-            (2, (1256, 175), (1105, 175), "Save the project and submit the job"),
+            (1, (120, 75), (120, 106), "Epochs, batch, learning rate, seed and metric cadence"),
+            (2, (85, 176), (110, 176), "Device, precision and optimizer"),
+            (3, (1220, 75), (1220, 197), "Weight decay, clipping, warmup, step budget and accumulation"),
+            (4, (847, 275), (847, 242), "Early stopping patience and minimum validation improvement"),
+        ],
+    },
+    "parameter-counts": {
+        "source": "parameter-counts-current",
+        "crop": (290, 145, 1050, 625),
+        "caption": "Model parameter counts by node",
+        "caption_en": "Model parameter counts by node",
+        "callouts": [
+            (1, (600, 120), (600, 158), "Total and trainable parameters; analysis completeness"),
+            (2, (1075, 330), (1015, 366), "Parameter counts for each node"),
+            (3, (930, 655), (930, 613), "Refresh the parameter counts"),
+            (4, (265, 551), (510, 551), "Horizontal scrollbar reveals the Message column"),
+        ],
+    },
+    "backend-config": {
+        "source": "backend-config-current",
+        "crop": (380, 125, 940, 645),
+        "caption": "Local backend configuration and profile status",
+        "caption_en": "Local backend configuration and profile status",
+        "callouts": [
+            (1, (970, 241), (920, 241), "Choose the local executor"),
+            (2, (970, 343), (750, 343), "Local job root, container runtime and worker image"),
+            (3, (350, 430), (660, 443), "Portable JSON profile path"),
+            (4, (970, 543), (915, 555), "Local service readiness status"),
+            (5, (970, 611), (920, 610), "Safely restart the local backend"),
+        ],
+    },
+    "slurm-configure": {
+        "source": "slurm-config-current",
+        "crop": (380, 125, 940, 762),
+        "caption": "SSH/Slurm executor configuration",
+        "caption_en": "SSH/Slurm executor configuration",
+        "callouts": [
+            (1, (970, 223), (920, 223), "Executor selection"),
+            (2, (970, 330), (750, 330), "SSH alias, remote root, SIF image and partition"),
+            (3, (970, 486), (750, 486), "CPU, memory, time limit and GPU count"),
+            (4, (970, 572), (750, 572), "SSH executable"),
+            (5, (970, 628), (790, 622), "Portable JSON profile path"),
+            (6, (970, 660), (933, 646), "Visible missing-configuration error"),
+            (7, (970, 730), (925, 744), "Safely restart the local backend"),
+        ],
+    },
+    "slurm-dashboard": {
+        "source": "training-current",
+        "crop": (110, 0, 1230, 250),
+        "caption": "Training dashboard with current controls",
+        "caption_en": "Training dashboard with current controls",
+        "callouts": [
+            (1, (420, -20), (420, 55), "Backend endpoint and connection status"),
+            (2, (120, 75), (120, 106), "Basic training settings"),
+            (3, (85, 176), (110, 176), "Device, precision and optimizer"),
+            (4, (847, 275), (847, 242), "Early stopping controls"),
         ],
     },
     "training-dashboard": {
@@ -262,6 +330,45 @@ ITALIAN_LABELS = {
     "Available templates": "Modelli disponibili",
     "Backend connection": "Connessione al backend",
     "Backend endpoint": "Indirizzo del backend",
+    "Backend endpoint and connection status": "Indirizzo del backend e stato della connessione",
+    "Choose the local executor": "Scegli l’esecutore locale",
+    "CPU, memory, time limit and GPU count": "CPU, memoria, limite di tempo e numero di GPU",
+    "Early stopping controls": "Controlli dell’arresto anticipato",
+    "Early stopping patience and minimum validation improvement": "Pazienza e miglioramento minimo della validazione per l’arresto anticipato",
+    "Epochs, batch, learning rate, seed and metric cadence": "Epoche, batch, tasso di apprendimento, seme e frequenza delle metriche",
+    "Horizontal scrollbar reveals the Message column": "La barra orizzontale mostra la colonna Message",
+    "Local backend configuration and profile status": "Configurazione del backend locale e stato del profilo",
+    "Local job root, container runtime and worker image": "Directory locale dei job, runtime dei container e immagine worker",
+    "Local service readiness status": "Stato di disponibilità del servizio locale",
+    "Model parameter counts by node": "Conteggio dei parametri del modello per nodo",
+    "Parameter counts for each node": "Conteggio dei parametri per ogni nodo",
+    "Portable JSON profile path": "Percorso del profilo JSON portabile",
+    "Refresh the parameter counts": "Aggiorna il conteggio dei parametri",
+    "SSH alias, remote root, SIF image and partition": "Alias SSH, directory remota, immagine SIF e partizione",
+    "SSH executable": "Eseguibile SSH",
+    "Total and trainable parameters; analysis completeness": "Parametri totali e addestrabili; completezza dell’analisi",
+    "Training dashboard with current controls": "Dashboard di addestramento con i controlli attuali",
+    "Training settings, optimization and early stopping": "Impostazioni di addestramento, ottimizzazione e arresto anticipato",
+    "Visible missing-configuration error": "Errore visibile di configurazione mancante",
+    "Weight decay, clipping, warmup, step budget and accumulation": "Decadimento dei pesi, clipping, warmup, budget di passaggi e accumulo",
+    "Device, precision and optimizer": "Dispositivo, precisione e ottimizzatore",
+    "Package and resource actions": "Azioni per pacchetti e risorse",
+    "Parameter counts": "Conteggio dei parametri",
+    "Training backend": "Backend di addestramento",
+    "Training connection and backend configuration": "Connessione al backend e configurazione dell’addestramento",
+    "SSH/Slurm executor configuration": "Configurazione dell’esecutore SSH/Slurm",
+    "Current training settings": "Impostazioni correnti dell’addestramento",
+    "Executor selection": "Selezione dell’esecutore",
+    "Absolute remote job root": "Directory remota assoluta delle attività",
+    "Prebuilt Singularity image": "Immagine Singularity precompilata",
+    "Partition and resource limits": "Partizione e limiti delle risorse",
+    "Runtime readiness status": "Stato di disponibilità del runtime",
+    "Safely restart the local backend": "Riavvia in sicurezza il backend locale",
+    "Open separate backend configuration": "Apri la configurazione separata del backend",
+    "Slurm SSH alias": "Alias SSH di Slurm",
+    "Slurm runtime readiness": "Stato di disponibilità del runtime Slurm",
+    "10 epochs; batch size 32; learning rate 0.001; seed 0; publish every 10 steps.":
+        "10 epoche; batch 32; tasso di apprendimento 0,001; seme 0; pubblicazione ogni 10 passaggi.",
     "Boundary mapping selector": "Selettore della mappatura del confine",
     "Choose a display name": "Scegli un nome visualizzato",
     "Choose a package reference": "Scegli un riferimento a un pacchetto",
@@ -402,21 +509,53 @@ def make_one(stem: str, spec: dict) -> list[dict]:
     return entries
 
 
+def write_english_captions(captions: dict) -> None:
+    # Keep the compact, one-entry-per-line format used by captions-en.json.
+    lines = ["{"]
+    entries = list(captions.items())
+    for index, (name, value) in enumerate(entries):
+        encoded = json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+        comma = "," if index + 1 < len(entries) else ""
+        lines.append(f"  {json.dumps(name, ensure_ascii=False)}: {encoded}{comma}")
+    lines.append("}")
+    (OUTPUT_DIR / "captions-en.json").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def main() -> None:
-    captions = {}
-    for stem, spec in SHOTS.items():
-        captions[f"{stem}.png"] = {
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--only", nargs="+", choices=tuple(SHOTS),
+                        help="generate only the named screenshot stems and update only their captions")
+    args = parser.parse_args()
+    selected = args.only if args.only else list(SHOTS)
+    italian_captions = json.loads((OUTPUT_DIR / "captions.json").read_text(encoding="utf-8"))
+    english_captions = json.loads((OUTPUT_DIR / "captions-en.json").read_text(encoding="utf-8"))
+    for stem in selected:
+        spec = SHOTS[stem]
+        calls = make_one(stem, spec)
+        key = f"{stem}.png"
+        italian_captions[key] = {
             "caption": italian(spec["caption"]),
             "callouts": [
-                {"number": item["number"], "region": italian(item["region"])}
-                for item in make_one(stem, spec)
+                {"number": call["number"], "region": italian(call["region"])}
+                for call in calls
             ],
         }
         if "details" in spec:
-            captions[f"{stem}.png"]["details"] = italian(spec["details"])
+            italian_captions[key]["details"] = italian(spec["details"])
+        if "caption_en" in spec:
+            english_captions[key] = {
+                "caption": spec["caption_en"],
+                "callouts": [
+                    {"number": call["number"], "region": call["region"]}
+                    for call in calls
+                ],
+            }
+            if "details_en" in spec:
+                english_captions[key]["details"] = spec["details_en"]
     (OUTPUT_DIR / "captions.json").write_text(
-        json.dumps(captions, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        json.dumps(italian_captions, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
+    write_english_captions(english_captions)
 
 
 if __name__ == "__main__":

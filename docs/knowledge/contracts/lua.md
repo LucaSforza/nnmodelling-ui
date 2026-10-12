@@ -75,7 +75,40 @@ Accepted 2026-10-04: generic infer_stereotype reference service and separate
 subflow visualization recipe runtime follow [3D contract](visualization-3d.md).
 Inference never executes visualization entrypoints.
 
+## Parameter counts (accepted 2026-10-08)
+
+Package manifests may independently declare
+`entrypoints.parameters={language:"lua",file:"parameters.lua"}`. This optional
+entrypoint returns `function(context, parameters, services)` and runs in the
+existing isolated bounded Lua sandbox, without Python, file or network access.
+It returns `{status="success", total=N, trainable=M}` with nonnegative exact
+integers and `M<=N`, or an explicit error/unresolved result. Missing entrypoints
+mean unknown, never zero. Arithmetic overflow and malformed results are errors.
+Counts exclude buffers and optimizer state and describe registered PyTorch
+parameters, not per-token active MoE parameters. Context supplies inferred input
+and output shape metadata when available; parameter-only formulas need not
+require a complete graph. Rules receive effective validated defaulted parameters.
+
+Only subflows receive `services.count_subflow()`: it recursively counts one
+immediate body; the package rule expresses replication. Repeat multiplies one
+body by times; Horizontal Repeat additionally counts its referenced join once
+using `services.count_stereotype(reference)`. Proxy counts one body. Recursion
+has depth 32 and a bounded invocation budget; malformed containment fails.
+No package-ID branching in the C host. Each root occurrence contributes once;
+subflow descendants are included through their owner, never counted twice.
+The read-only application query returns owned JSON (caller frees with
+nn_app_free_text), including total/trainable, completeness and per-node rows;
+unknown contributions preserve known subtotal and mark aggregate incomplete.
+Qt Model > Parameter counts displays total/trainable and node breakdown,
+including nested owners; refresh queries C and never mutates graph or dirty state.
+
 Accepted 2026-10-05: Concat exposes zero-based nonnegative axes and negative
 axes from the end. Its rule normalizes axes to negative indices before calling
 the existing tensor host (whose positive dimension indices are one-based).
 This preserves unrelated rules and symbolic batch dimensions.
+
+A `count_stereotype` reference inherits the calling graph node’s inferred
+input/output context. Its target package validates owned parameters, but
+does not reinterpret caller edge handles according to the target package
+kind. In particular a referenced join module must not require the caller’s
+ordinary `in` edge to be an `in-N` handle.

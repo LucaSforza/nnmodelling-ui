@@ -3,7 +3,7 @@
 <title>Tutorial VAE · NNModelling</title><link rel="stylesheet" href="style.css"/></head>
 <body><a class="skip" href="#content">Vai al contenuto</a>
 <aside><a class="brand" href="introduction.html">NN<span>Modelling</span></a>
-<p class="edition">Manuale utente · Italiano<br/>Edizione 6 ottobre 2026</p><nav class="language-switch" aria-label="Lingua del manuale"><a lang="it" href="tutorial-vae.html" aria-current="page">Italiano</a><a lang="en" href="en/tutorial-vae.html">English</a></nav>
+<p class="edition">Manuale utente · Italiano<br/>Edizione 12 ottobre 2026</p><nav class="language-switch" aria-label="Lingua del manuale"><a lang="it" href="tutorial-vae.html" aria-current="page">Italiano</a><a lang="en" href="en/tutorial-vae.html">English</a></nav>
 <nav aria-label="Capitoli"><a href="introduction.html">Introduzione</a><a href="client.html">Usare il client</a><a href="parameters.html">Catalogo dei parametri</a><a href="server.html">Configurare il server</a><a href="tutorial-tiny-llm.html">Tutorial tiny LLM</a><a href="tutorial-vae.html" aria-current="page">Tutorial VAE</a></nav><div class="outline"><p>In questa pagina</p><div class="toc">
 <ul>
 <li><a href="#tutorial-creare-operazioni-per-un-vae">Tutorial: creare operazioni per un VAE</a><ul>
@@ -29,7 +29,11 @@ just backend-sync
 just backend-image
 just backend-run
 </code></pre>
-<p>Lascia il terminale del backend aperto. In un secondo terminale avvia <code>./build/qt/nnmodelling-ui</code>. Il backend predefinito usa <code>http://127.0.0.1:8765</code>; per token e altre opzioni consulta la <a href="server.html">guida al server</a>.</p>
+<p>Lascia il terminale del backend aperto. In un secondo terminale avvia <code>./build/qt/nnmodelling-ui</code>. Il backend avviato manualmente usa <code>http://127.0.0.1:8765</code>; se lo avvii da <code>Configure backend…</code>, l'app sceglie una porta loopback libera e aggiorna <code>Endpoint</code>. Per token e altre opzioni consulta la <a href="server.html">guida al server</a>.</p>
+<p>Per eseguire il training sul cluster Slurm configurato, segui gli illustrati
+<a href="server.html#eseguire-i-job-su-un-cluster-slurm-dalla-ui">passaggi Slurm dalla UI</a>.
+Scegli l'esecutore con <code>Configure backend…</code>; API, endpoint locale e parametri
+VAE qui sotto restano invariati.</p>
 <h2 id="2-aprire-una-copia-del-vae">2. Aprire una copia del VAE</h2>
 <p>Dalla root del repository copia l'intero progetto, incluso dataset e pacchetti Python:</p>
 <pre><code class="language-sh">cp -a examples/models/mnist-vae my-vae
@@ -103,8 +107,12 @@ just backend-run
 </table>
 <p>L'ingresso <code>decoder.in</code> riceve il tensore fornito al metodo. Per questa operazione il runtime sostituisce il valore del collegamento in ingresso; il grafo del modello resta intatto. Il codec <code>dataset</code> passa l'uscita <code>[B,784]</code> all'adapter <code>untokenize</code>, che restituisce una singola immagine NumPy <code>[28,28]</code> con pixel normalizzati fra 0 e 1.</p>
 <p>Nella lista controlla che entrambi gli stati siano <code>Ready</code>, poi premi <code>Save</code>. Se vedi <code>Stale endpoint</code>, modifica l'operazione per selezionare un nodo e un handle attuali, oppure rimuovila. Salva anche il progetto con <code>File &gt; Save</code>.</p>
+<p>Per prove brevi usa CPU, Float32 e Adam; lascia <code>Max steps = 0</code>,
+<code>Accumulation = 1</code> e early stopping disattivato. Per arrestare automaticamente
+il job in base alla validazione consulta le <a href="client.html#opzioni-avanzate-di-training">opzioni avanzate</a>.</p>
 <h2 id="5-addestrare-e-scaricare-la-wheel">5. Addestrare e scaricare la wheel</h2>
-<p>Apri <code>Training</code> e premi <code>Connect / check health</code>. Per il piccolo dataset incluso usa:</p>
+<p>Apri <code>Training</code> e premi <code>Connect / check health</code>. Per il dataset incluso e la
+loss corretta usa:</p>
 <table>
 <thead>
 <tr>
@@ -115,11 +123,11 @@ just backend-run
 <tbody>
 <tr>
 <td><code>Epochs</code></td>
-<td><code>1</code></td>
+<td><code>100</code></td>
 </tr>
 <tr>
 <td><code>Batch</code></td>
-<td><code>32</code></td>
+<td><code>16</code></td>
 </tr>
 <tr>
 <td><code>Learning rate</code></td>
@@ -165,4 +173,16 @@ Image.fromarray(pixels).save("reconstruction.png")
 
 sample = model.decode(torch.randn(1, 32))   # Una nuova immagine dal prior.
 </code></pre>
-<p>Usa <code>model.decode(z)</code> per ricostruire l'immagine codificata; <code>model.decode(torch.randn(1,32))</code> parte invece da un punto casuale nello spazio latente. Entrambi usano i pesi addestrati nella wheel. Il metodo originale <code>model.infer(...)</code> resta disponibile.</p></article><footer>NNModelling · Manuale italiano · Screenshot dell'applicazione reale</footer></main></body></html>
+<p>Usa <code>model.decode(z)</code> per ricostruire l'immagine codificata; <code>model.decode(torch.randn(1,32))</code> parte invece da un punto casuale nello spazio latente. Entrambi usano i pesi addestrati nella wheel. Il metodo originale <code>model.infer(...)</code> resta disponibile.</p>
+<p>Il progetto VAE somma l'errore quadratico sui 784 pixel di ogni immagine e lo
+combina con la KL media sul batch. Non confrontare i valori di loss del nuovo
+training con quelli delle wheel precedenti, che usavano una riduzione diversa.</p>
+<p>Genera l'interpolazione richiesta fra due esempi MNIST reali:</p>
+<pre><code class="language-sh">cd examples/implementation/vae
+uv run --no-project python download_wheel.py
+uv sync --locked
+uv run --locked python main.py --interpolate
+</code></pre>
+<p>Il consumer codifica un 3 e un 7 del test set usando la media latente, interpola
+linearmente cinque vettori intermedi e decodifica tutti e sette i punti. Trovi
+le PNG singole e la tavola etichettata in <code>output/interpolation.png</code>.</p></article><footer>NNModelling · Manuale italiano · Screenshot dell'applicazione reale</footer></main></body></html>

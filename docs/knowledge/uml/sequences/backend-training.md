@@ -46,6 +46,43 @@ The snapshot includes selected dataset resources and submitted data. It is
 read-only to the worker. Later UI edits cannot change a queued or running job.
 The resolved core directory is frozen under `snapshot/core/<package-folder>`.
 
+## Configure and launch the local service
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Dashboard as Qt Training dashboard
+    participant Config as Separate modeless backend configuration window
+    participant Settings as Per-user JSON via QJsonDocument and QSaveFile
+    participant Process as Local service child process
+    participant API as Local FastAPI
+    User->>Dashboard: open backend configuration
+    Dashboard->>Config: show separate movable window
+    Config->>Settings: load validated profile and show its path
+    Note over Dashboard,Config: Dashboard remains usable with endpoint, jobs and curves visible
+    User->>Config: choose Docker or Slurm and enter service paths
+    Config->>Settings: atomically save non-secret launch profile
+    Note over Config,Settings: Load/save errors prevent managed launch
+    User->>Config: start or restart managed backend
+    Config->>API: inspect jobs if existing managed process is running
+    alt queued/running jobs exist
+        Config-->>User: refuse restart so jobs are not interrupted
+    else safe to launch
+        Config->>Config: reserve available loopback port
+        Config->>Process: spawn uv/uvicorn on loopback with validated environment
+        Process->>API: start FastAPI and select executor
+        Config->>Dashboard: set Endpoint to managed loopback address
+        Config->>API: GET /health
+        API-->>Config: executor/runtime availability
+        Config-->>User: show readiness or startup error
+    end
+```
+
+The child is a separate local Python process, not embedded in Qt. Closing the
+Training dialog leaves it running. Application shutdown warns that active jobs
+will be interrupted; user must explicitly confirm stopping it. An external
+backend endpoint is never managed by this launcher.
+
 ## Queue, container and worker lifecycle
 
 ```mermaid
@@ -71,6 +108,7 @@ The resolved core directory is frozen under `snapshot/core/<package-folder>`.
       Worker->>Worker: zero gradients
       Worker->>Graph: forward including objective
       Graph-->>Worker: prediction and scalar loss
+      Note over Graph,Worker: MNIST VAE objective rescales mean pixel MSE by 784 before adding batch-mean per-sample KL
       Worker->>Worker: backward and Adam update, increment global step
       opt publication cadence or epoch boundary
         Worker->>Worker: preserve RNG streams and switch to eval/no_grad
@@ -185,3 +223,77 @@ errors are recorded instead of represented as successful completion.
 Restore does not overwrite the original project or an existing destination.
 Downloaded weights and wheels require completed jobs. Safetensors is the
 interchange checkpoint; pickle checkpoints are not emitted.
+
+## Local API with remote Slurm containers (accepted 2026-10-08)
+
+```mermaid
+sequenceDiagram
+    participant API as Local FastAPI
+    participant Store as Local JobStore
+    participant Runner as SlurmJobRunner
+    participant SSH as Cluster SSH
+    participant Slurm as Slurm scheduler
+    participant Batch as Slurm batch wrapper
+    participant SIF as Singularity worker
+    API->>Store: Freeze request
+    API->>Runner: Queue local job ID
+    Runner->>SSH: Stage snapshot and worker source in new UUID directory
+    Runner->>SSH: sbatch contained Singularity command
+    SSH-->>Runner: Scheduler job ID
+    Runner->>Store: Persist scheduler identity and configuration
+    Slurm->>SIF: Execute same backend.worker
+    loop Until scheduler termination
+        Runner->>SSH: Read scheduler state and complete metrics
+        SSH-->>Runner: State and metrics bytes
+        Runner->>Store: Atomically publish local metrics
+    end
+    alt warning signal before per-allocation walltime
+        Slurm->>Batch: SIGUSR1 warning
+        Batch->>Batch: Create attempt-scoped checkpoint request file
+        Batch->>SIF: Expose request path to worker
+        SIF->>SIF: Check request after optimizer step
+        SIF->>SIF: Save model, Adam, RNG, cursor and metric windows
+        SIF-->>Slurm: Exit with checkpoint handoff status
+        Runner->>SSH: Retrieve and validate checkpoint and logs
+        Runner->>Store: Preserve same logical job and latest scheduler ID
+        Runner->>SSH: Submit next allocation in same remote job directory
+        SSH-->>Runner: New scheduler job ID
+        Runner->>Store: Record new scheduler attempt
+        Slurm->>SIF: Resume from private safetensors/JSON checkpoint
+    else final allocation completed
+        Runner->>SSH: Retrieve safe output files
+        Runner->>Store: Validate final metrics weights wheel and commit completion
+    else no valid checkpoint or explicit interruption
+        Runner->>Store: Record visible failed or cancelled job
+    end
+    opt Cancel shutdown restart or transport failure
+        Runner->>SSH: scancel recorded owned scheduler job
+        Runner->>Store: Record cancellation or visible interruption/error
+    end
+```
+
+Each local job keeps one ID across allocation attempts. Its Slurm ID changes and
+the active ID alone is targeted by cancellation. Checkpoints are written in the
+remote job output and transferred to local private output after each handoff;
+they use safetensors plus JSON, never pickle, and remain unavailable from the
+artifact API. The training adapter must replay an epoch deterministically from
+the captured Python, NumPy and torch RNG states so the worker can skip batches
+already covered by a checkpoint. A signal is honored at the next optimizer-step
+boundary; a hard walltime kill before that boundary fails visibly without
+automatic continuation. Final weights and wheel are created only after test
+evaluation on the last allocation.
+
+Accepted 2026-10-08: after staging metadata, optional remoteFiles triggers an
+owned Slurm preparation job. It downloads directly from pinned public HF
+revision and validates size/SHA256 before publish. Runner observes success,
+then submits network-isolated GPU training with read-only data binding. On
+checkpoint handoff, validate manifest and tensor hash remotely and submit next
+allocation without retrieving optimizer tensors. Final weights/wheel stream
+back to local JobStore. CUDA requests never fall back to CPU.
+
+
+Accepted 2026-10-09: at each completed epoch, when early stopping is enabled,
+worker compares full validation loss with prior best, captures every strict
+minimum and updates patience. A checkpoint carries best tensors and counters.
+On patience exhaustion or configured training end, restore best weights, run
+held-out test once, then publish final weights/wheel and completed status.

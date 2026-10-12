@@ -17,13 +17,19 @@ Se il backend era già installato e attivo prima dell'aggiornamento, ricostruisc
 l'immagine con `just backend-image`, arresta il servizio con Ctrl-C e avvialo di
 nuovo con `just backend-run` prima di inviare il job.
 
+Per eseguire questo stesso job sul cluster Slurm configurato, segui gli illustrati
+[passaggi Slurm dalla UI](server.md#eseguire-i-job-su-un-cluster-slurm-dalla-ui).
+Scegli l'esecutore con `Configure backend…`; lascia invariati endpoint e
+parametri Training qui sotto. La guida mostra anche come preparare immagine
+`.sif` e directory remota.
+
 Lascia il terminale del server aperto. In un secondo terminale avvia il client:
 
 ```sh
 ./build/qt/nnmodelling-ui
 ```
 
-Il backend standard ascolta su `http://127.0.0.1:8765`. Negli screenshot di questo tutorial compare **8766**, scelta per isolare la prova da una porta già occupata. Per riprodurre proprio quell'indirizzo avvia invece:
+Il backend avviato manualmente ascolta su `http://127.0.0.1:8765`. Negli screenshot di questo tutorial compare **8766**, scelta per isolare la prova da una porta già occupata. Se avvii il backend da `Configure backend…`, l'app sceglie una porta loopback libera e aggiorna `Endpoint` automaticamente. Per riprodurre l'indirizzo illustrato con un server manuale avvia invece:
 
 ```sh
 NNMODELLING_BACKEND_PORT=8766 just backend-run
@@ -78,6 +84,13 @@ Per riprodurre la prova illustrata usa:
 
 ![Configurazione del training breve](assets/training-settings.png)
 
+Per questa prova breve lascia `Device = CPU`, `Precision = Float32`,
+`Optimizer = Adam`, `Max steps = 0`, `Accumulation = 1` e
+`Early stop patience (epochs) = 0`. Le opzioni avanzate e il ripristino dei pesi
+migliori sono descritti nella [guida client](client.md#opzioni-avanzate-di-training).
+Le schermate del job completato sono storiche; i controlli avanzati mostrano
+l'interfaccia attuale e non documentano un nuovo training.
+
 Premi **Save project and submit** una volta. Il client salva le modifiche prima dell'invio, raccoglie risorse e dati e crea il job. Attendi che compaia in `Job history`, poi selezionalo: questa selezione carica curve, stato e metriche. Se resta visibile un vecchio messaggio di invio, `Connect / check health` aggiorna la riga di connessione; lo stato della riga del job e le metriche descrivono l'esperimento.
 
 ## 5. Leggere le curve e riconoscere il completamento
@@ -105,7 +118,7 @@ python3 -m venv .venv
 .venv/bin/python -m pip install /percorso/nnm_llm-0.1.0-py3-none-any.whl
 ```
 
-Il nome della distribuzione (`nnm_llm`) è diverso dal modulo Python, che resta specifico del job e ha forma `nnmodel_<id-job-normalizzato>`. Prima di creare `infer.py`, leggi il nome del modulo dalla wheel scaricata con questo comando, senza importare codice:
+Le nuove wheel del progetto `llm` espongono il modulo pubblico `nnm_llm`, uguale al nome della distribuzione. Un alias `nnmodel_<id-job-normalizzato>` resta disponibile. Per una wheel storica o un diverso ID progetto, leggi i moduli disponibili senza importare codice:
 
 ```sh
 python3 - /percorso/nnm_llm-0.1.0-py3-none-any.whl <<'PY'
@@ -113,16 +126,16 @@ import sys
 import zipfile
 with zipfile.ZipFile(sys.argv[1]) as wheel:
     for name in wheel.namelist():
-        if name.startswith("nnmodel_") and name.count("/") == 1 and name.endswith("/__init__.py"):
+        if name.startswith(("nnm_", "nnmodel_")) and name.count("/") == 1 and name.endswith("/__init__.py"):
             print("Modulo da importare:", name.split("/")[0])
 PY
 ```
 
-Il frammento seguente mostra **solo l'import del job storico** nelle schermate e nelle metriche sopra:
+Il frammento seguente usa l’import pubblico di una nuova wheel del progetto `llm`:
 
 ```python
 import torch
-from nnmodel_job_86caba53_0690_4c79_b948_4273ed1426b4 import Model
+from nnm_llm import Model
 
 torch.set_num_threads(2)
 model = Model()  # Carica i pesi inclusi nella wheel.
@@ -135,11 +148,11 @@ for _ in range(40):
 print(text)
 ```
 
-Salva il codice in `infer.py`, sostituendo l'import storico con il nome trovato nella wheel del tuo job; non dedurlo dal nome della distribuzione.
+Salva il codice in `infer.py`; se usi una wheel storica o un diverso ID progetto, sostituisci l’import con il modulo trovato nel file.
 
 Esegui `.venv/bin/python infer.py`. Il testo passato all'adapter deve contenere caratteri del vocabolario e un contesto non vuoto lungo al massimo 128 caratteri. `infer` è un alias di `inference`. La funzione restituisce una predizione per le posizioni della sequenza; il ciclo usa l'ultimo carattere predetto per costruire una continuazione greedy. Se vuoi pesi alternativi compatibili, costruisci `Model(weights_path="/percorso/weights.safetensors")`.
 
-La wheel contiene il runtime privato necessario: per usarla non servono il repository originale, il dataset di training o una chiamata al server. Job diversi dello stesso progetto, oppure di progetti con ID che producono lo stesso nome normalizzato, condividono distribuzione e versione: installa le rispettive wheel in ambienti separati. Gli artifact restano distinti per job. `examples/implementation/llm` è un consumer configurato per uno specifico job storico a 20 epoche; non cambiarne la wheel esistente.
+La wheel contiene il runtime privato necessario: per usarla non servono il repository originale, il dataset di training o una chiamata al server. Job diversi dello stesso progetto, oppure di progetti con ID che producono lo stesso nome normalizzato, condividono distribuzione e versione: installa le rispettive wheel in ambienti separati. Gli artifact restano distinti per job. `examples/implementation/llm` contiene un consumer autonomo: il suo README descrive download e sostituzione verificata della wheel, con import pubblico stabile per il medesimo ID progetto.
 
 ## 7. Passare al corpus completo
 

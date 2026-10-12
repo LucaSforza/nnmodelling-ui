@@ -2,6 +2,7 @@
 
 #include "application/application.h"
 #include "project/project.h"
+#include "BackendServiceManager.hpp"
 
 #include <QDir>
 #include <QCheckBox>
@@ -40,13 +41,14 @@
 #include "TrainingCurveWidget.hpp"
 
 #include <cmath>
+#include <limits>
 
 namespace {
 constexpr qint64 MaxModelBytes = 8 * 1024 * 1024;
 constexpr qint64 MaxResourceBytes = 256LL * 1024 * 1024;
 constexpr qint64 MaxResourceFileBytes = 128LL * 1024 * 1024;
 constexpr qint64 MaxJsonReplyBytes = 512LL * 1024 * 1024;
-constexpr qint64 MaxArtifactBytes = 1024LL * 1024 * 1024;
+constexpr qint64 MaxArtifactBytes = 64LL * 1024 * 1024 * 1024;
 constexpr int MaxResourceFiles = 10000;
 constexpr int RequestTimeoutMs = 15000;
 
@@ -106,11 +108,16 @@ bool gatherFile(const QString &base, const QString &relative, QJsonObject &files
 }
 
 bool gatherFiles(const QString &base, const QString &relativeDirectory, QJsonObject &files,
-                 QSet<QString> &included, qint64 &total, QString &error)
+                 QSet<QString> &included, qint64 &total, QString &error,
+                 const QSet<QString> *omittedRoots = nullptr)
 {
     if (!safeRelativePath(relativeDirectory) || relativeDirectory.count(QLatin1Char('/')) > 128) {
         error = QObject::tr("Project resource path or directory nesting exceeds the upload limit.");
         return false;
+    }
+    if (omittedRoots) {
+        for (const QString &omitted : *omittedRoots)
+            if (relativeDirectory == omitted || relativeDirectory.startsWith(omitted + QLatin1Char('/'))) return true;
     }
     if (excludedResourcePath(relativeDirectory)) return true;
     const QFileInfo root(QDir(base).filePath(relativeDirectory));
@@ -124,13 +131,15 @@ bool gatherFiles(const QString &base, const QString &relativeDirectory, QJsonObj
         if (!safeRelativePath(relative) || excludedResourcePath(relative)) continue;
         if (info.isSymLink()) continue;
         if (info.isDir()) {
-            if (!gatherFiles(base, relative, files, included, total, error)) return false;
+            if (!gatherFiles(base, relative, files, included, total, error, omittedRoots)) return false;
             continue;
         }
         if (!gatherFile(base, relative, files, included, total, error)) return false;
     }
     return true;
 }
+
+QString lossLabel(const QJsonValue &value);
 
 QString formatJob(const QJsonObject &job)
 {
@@ -139,6 +148,15 @@ QString formatJob(const QJsonObject &job)
     lines << QObject::tr("Status: %1").arg(job.value(QStringLiteral("status")).toString());
     if (!job.value(QStringLiteral("error")).isNull() && !job.value(QStringLiteral("error")).toString().isEmpty())
         lines << QObject::tr("Error: %1").arg(job.value(QStringLiteral("error")).toString());
+    if (metrics.contains(QStringLiteral("max_steps"))) {
+        const int maxSteps = metrics.value(QStringLiteral("max_steps")).toInt();
+        lines << (maxSteps > 0
+            ? QObject::tr("Explicit optimizer-step budget: %1").arg(maxSteps)
+            : QObject::tr("Optimizer-step budget: all configured epochs."));
+        lines << QObject::tr("Optimizer updates: %1 · processed tokens: %2")
+            .arg(metrics.value(QStringLiteral("optimizer_updates")).toVariant().toString(),
+                 metrics.value(QStringLiteral("processed_tokens")).toVariant().toString());
+    }
     const QJsonArray steps = metrics.value(QStringLiteral("steps")).toArray();
     const bool hasSteps = !steps.isEmpty();
     lines << (hasSteps ? QObject::tr("Published step metrics:") : QObject::tr("Epoch metrics (legacy):"));
@@ -159,6 +177,19 @@ QString formatJob(const QJsonObject &job)
     }
     const QJsonValue testLoss = metrics.value(QStringLiteral("test_loss"));
     lines << QObject::tr("Final test loss: %1").arg(testLoss.isNull() ? QObject::tr("pending") : testLoss.toVariant().toString());
+    const QJsonValue earlyStoppingValue = metrics.value(QStringLiteral("early_stopping"));
+    if (earlyStoppingValue.isObject()) {
+        const QJsonObject earlyStopping = earlyStoppingValue.toObject();
+        lines << QObject::tr("Early stopping evidence:");
+        lines << QObject::tr("Best validation loss: %1 (epoch %2)")
+            .arg(lossLabel(earlyStopping.value(QStringLiteral("best_validation_loss"))),
+                 earlyStopping.value(QStringLiteral("best_epoch")).toVariant().toString());
+        lines << QObject::tr("Non-improving epochs: %1")
+            .arg(earlyStopping.value(QStringLiteral("non_improving_epochs")).toVariant().toString());
+        const QJsonValue stoppedEpoch = earlyStopping.value(QStringLiteral("stopped_epoch"));
+        lines << QObject::tr("Stopped epoch: %1")
+            .arg(stoppedEpoch.isNull() ? QObject::tr("not stopped early") : stoppedEpoch.toVariant().toString());
+    }
     return lines.join(QLatin1Char('\n'));
 }
 
@@ -198,13 +229,18 @@ QString backendError(const QByteArray &body, int status, const QString &fallback
 }
 
 BackendDialog::BackendDialog(NNApplication *application, std::function<bool()> saveProject,
-                             std::function<bool(const QString &)> openProject, QWidget *parent)
+                             std::function<bool(const QString &)> openProject, QWidget *parent,
+                             BackendServiceManager *serviceManager)
     : QDialog(parent), application_(application), saveProject_(std::move(saveProject)),
-      openProject_(std::move(openProject)), network_(new QNetworkAccessManager(this))
+      openProject_(std::move(openProject)), serviceManager_(serviceManager),
+      network_(new QNetworkAccessManager(this))
 {
     setWindowTitle(tr("Training backend"));
     resize(1120, 850);
     setMinimumSize(920, 680);
+    QFont dialogFont = font();
+    dialogFont.setPointSize(qMax(dialogFont.pointSize(), 10));
+    setFont(dialogFont);
     auto *layout = new QVBoxLayout(this);
     auto *connection = new QHBoxLayout;
     connection->addWidget(new QLabel(tr("Endpoint"), this));
@@ -223,6 +259,9 @@ BackendDialog::BackendDialog(NNApplication *application, std::function<bool()> s
     refreshButton->setObjectName(QStringLiteral("backendRefresh"));
     connection->addWidget(connectButton);
     connection->addWidget(refreshButton);
+    configurationButton_ = new QPushButton(tr("Configure backend…"), this);
+    configurationButton_->setObjectName(QStringLiteral("backendConfigure"));
+    connection->addWidget(configurationButton_);
     layout->addLayout(connection);
     status_ = new QLabel(tr("Not connected"), this);
     status_->setObjectName(QStringLiteral("backendStatus"));
@@ -264,6 +303,78 @@ BackendDialog::BackendDialog(NNApplication *application, std::function<bool()> s
     training->addWidget(submitButton);
     training->addStretch(1);
     layout->addLayout(training);
+
+    auto *advancedTraining = new QHBoxLayout;
+    device_ = new QComboBox(this);
+    device_->setObjectName(QStringLiteral("trainingDevice"));
+    device_->addItem(tr("CPU"), QStringLiteral("cpu"));
+    device_->addItem(tr("CUDA"), QStringLiteral("cuda"));
+    precision_ = new QComboBox(this);
+    precision_->setObjectName(QStringLiteral("trainingPrecision"));
+    precision_->addItem(tr("Float32"), QStringLiteral("float32"));
+    precision_->addItem(tr("BFloat16"), QStringLiteral("bfloat16"));
+    optimizer_ = new QComboBox(this);
+    optimizer_->setObjectName(QStringLiteral("trainingOptimizer"));
+    optimizer_->addItem(tr("Adam"), QStringLiteral("adam"));
+    optimizer_->addItem(tr("DeepSeek Muon"), QStringLiteral("deepseek-muon"));
+    advancedTraining->addWidget(new QLabel(tr("Device"), this));
+    advancedTraining->addWidget(device_);
+    advancedTraining->addWidget(new QLabel(tr("Precision"), this));
+    advancedTraining->addWidget(precision_);
+    advancedTraining->addWidget(new QLabel(tr("Optimizer"), this));
+    advancedTraining->addWidget(optimizer_);
+    advancedTraining->addWidget(new QLabel(tr("Weight decay"), this));
+    weightDecay_ = new QLineEdit(QStringLiteral("0"), this);
+    weightDecay_->setObjectName(QStringLiteral("trainingWeightDecay"));
+    weightDecay_->setValidator(new QDoubleValidator(0.0, 1.0, 8, weightDecay_));
+    weightDecay_->setMaximumWidth(72);
+    advancedTraining->addWidget(weightDecay_);
+    advancedTraining->addWidget(new QLabel(tr("Clip norm"), this));
+    gradientClip_ = new QLineEdit(QStringLiteral("1"), this);
+    gradientClip_->setObjectName(QStringLiteral("trainingGradientClip"));
+    gradientClip_->setValidator(new QDoubleValidator(0.0, 1000000.0, 6, gradientClip_));
+    gradientClip_->setMaximumWidth(72);
+    advancedTraining->addWidget(gradientClip_);
+    auto addTrainingField = [this, advancedTraining](const QString &label, const QString &name,
+                                                      QLineEdit **target, const QString &value,
+                                                      int minimum, int maximum) {
+        advancedTraining->addWidget(new QLabel(label, this));
+        *target = new QLineEdit(value, this);
+        (*target)->setObjectName(name);
+        (*target)->setValidator(new QIntValidator(minimum, maximum, *target));
+        (*target)->setMaximumWidth(76);
+        advancedTraining->addWidget(*target);
+    };
+    addTrainingField(tr("Warmup"), QStringLiteral("trainingWarmupSteps"), &warmupSteps_, QStringLiteral("0"), 0, 10000000);
+    addTrainingField(tr("Max steps"), QStringLiteral("trainingMaxSteps"), &maxSteps_, QStringLiteral("0"), 0, 100000000);
+    addTrainingField(tr("Accumulation"), QStringLiteral("trainingGradientAccumulationSteps"),
+                     &gradientAccumulationSteps_, QStringLiteral("1"), 1, 1024);
+    layout->addLayout(advancedTraining);
+
+    auto *earlyStopping = new QHBoxLayout;
+    auto *patienceLabel = new QLabel(tr("Early stop patience (epochs)"), this);
+    earlyStoppingPatience_ = new QLineEdit(QStringLiteral("0"), this);
+    earlyStoppingPatience_->setObjectName(QStringLiteral("trainingEarlyStoppingPatience"));
+    earlyStoppingPatience_->setValidator(new QIntValidator(0, 10000, earlyStoppingPatience_));
+    earlyStoppingPatience_->setMaximumWidth(86);
+    const QString patienceTooltip = tr("0 disables early stopping. Otherwise, stop after this many completed epochs without a validation-loss improvement greater than min delta.");
+    patienceLabel->setToolTip(patienceTooltip);
+    earlyStoppingPatience_->setToolTip(patienceTooltip);
+    earlyStopping->addWidget(patienceLabel);
+    earlyStopping->addWidget(earlyStoppingPatience_);
+    auto *minDeltaLabel = new QLabel(tr("Minimum validation-loss improvement"), this);
+    earlyStoppingMinDelta_ = new QLineEdit(QStringLiteral("0"), this);
+    earlyStoppingMinDelta_->setObjectName(QStringLiteral("trainingEarlyStoppingMinDelta"));
+    earlyStoppingMinDelta_->setValidator(new QDoubleValidator(0.0, std::numeric_limits<double>::max(),
+                                                               16, earlyStoppingMinDelta_));
+    earlyStoppingMinDelta_->setMaximumWidth(120);
+    const QString minDeltaTooltip = tr("Finite, nonnegative loss units. A new epoch resets patience only when validation loss improves by more than this amount.");
+    minDeltaLabel->setToolTip(minDeltaTooltip);
+    earlyStoppingMinDelta_->setToolTip(minDeltaTooltip);
+    earlyStopping->addWidget(minDeltaLabel);
+    earlyStopping->addWidget(earlyStoppingMinDelta_);
+    earlyStopping->addStretch(1);
+    layout->addLayout(earlyStopping);
 
     auto *workspace = new QSplitter(Qt::Horizontal, this);
     auto *historyPanel = new QWidget(workspace);
@@ -350,9 +461,20 @@ BackendDialog::BackendDialog(NNApplication *application, std::function<bool()> s
     actions->addWidget(closeButton);
     layout->addLayout(actions);
     connect(closeButton, &QPushButton::clicked, this, &QDialog::accept);
+    connect(configurationButton_, &QPushButton::clicked, this, &BackendDialog::openBackendConfiguration);
     connect(connectButton, &QPushButton::clicked, this, &BackendDialog::connectBackend);
     connect(refreshButton, &QPushButton::clicked, this, &BackendDialog::refreshJobs);
     connect(submitButton, &QPushButton::clicked, this, &BackendDialog::submitJob);
+    if (serviceManager_) {
+        connect(serviceManager_, &BackendServiceManager::processError, this, [this](const QString &message) {
+            setMessage(message, true);
+        });
+        if (serviceManager_->isRunning()) {
+            endpoint_->setText(serviceManager_->endpoint().toString());
+            token_->setText(serviceManager_->bearerToken());
+            QTimer::singleShot(500, this, &BackendDialog::connectBackend);
+        }
+    }
     connect(trainingCurveVisible_, &QCheckBox::toggled, curve_, &TrainingCurveWidget::setTrainingVisible);
     connect(validationCurveVisible_, &QCheckBox::toggled, curve_, &TrainingCurveWidget::setValidationVisible);
     connect(curveScale_, &QComboBox::currentIndexChanged, this, [this](int index) {
@@ -372,6 +494,148 @@ BackendDialog::BackendDialog(NNApplication *application, std::function<bool()> s
     poll->start();
 }
 
+void BackendDialog::openBackendConfiguration()
+{
+    if (!configurationDialog_ || (!profileReady_ && !configurationDialog_->isVisible())) {
+        if (configurationDialog_) configurationDialog_->deleteLater();
+        configurationDialog_ = nullptr;
+        createBackendConfiguration();
+    }
+    configurationDialog_->show();
+    configurationDialog_->raise();
+    configurationDialog_->activateWindow();
+}
+
+void BackendDialog::createBackendConfiguration()
+{
+    configurationDialog_ = new QDialog(this, Qt::Window);
+    configurationDialog_->setObjectName(QStringLiteral("backendConfigurationWindow"));
+    configurationDialog_->setWindowTitle(tr("Local backend service configuration"));
+    configurationDialog_->setModal(false);
+    configurationDialog_->resize(560, 520);
+
+    auto *layout = new QVBoxLayout(configurationDialog_);
+    auto *description = new QLabel(
+        tr("Settings apply to the local service. Slurm submits training workers remotely."),
+        configurationDialog_);
+    description->setWordWrap(true);
+    layout->addWidget(description);
+
+    auto *form = new QFormLayout;
+    form->setHorizontalSpacing(12);
+    form->setVerticalSpacing(7);
+    executor_ = new QComboBox(configurationDialog_);
+    executor_->setObjectName(QStringLiteral("backendExecutor"));
+    executor_->addItem(tr("Docker-compatible runtime"), QStringLiteral("docker"));
+    executor_->addItem(tr("SSH / Slurm"), QStringLiteral("slurm"));
+    jobRoot_ = new QLineEdit(configurationDialog_);
+    jobRoot_->setObjectName(QStringLiteral("backendJobRoot"));
+    dockerRuntime_ = new QLineEdit(QStringLiteral("docker"), configurationDialog_);
+    dockerRuntime_->setObjectName(QStringLiteral("backendDockerRuntime"));
+    dockerImage_ = new QLineEdit(QStringLiteral("nnmodelling-worker:local"), configurationDialog_);
+    dockerImage_->setObjectName(QStringLiteral("backendDockerImage"));
+    slurmHost_ = new QLineEdit(configurationDialog_);
+    slurmHost_->setObjectName(QStringLiteral("backendSlurmHost"));
+    slurmRoot_ = new QLineEdit(configurationDialog_);
+    slurmRoot_->setObjectName(QStringLiteral("backendSlurmRoot"));
+    slurmImage_ = new QLineEdit(configurationDialog_);
+    slurmImage_->setObjectName(QStringLiteral("backendSlurmImage"));
+    slurmPartition_ = new QLineEdit(configurationDialog_);
+    slurmPartition_->setObjectName(QStringLiteral("backendSlurmPartition"));
+    slurmCpus_ = new QLineEdit(QStringLiteral("2"), configurationDialog_);
+    slurmCpus_->setObjectName(QStringLiteral("backendSlurmCpus"));
+    slurmMemory_ = new QLineEdit(QStringLiteral("4G"), configurationDialog_);
+    slurmMemory_->setObjectName(QStringLiteral("backendSlurmMemory"));
+    slurmTime_ = new QLineEdit(QStringLiteral("00:30:00"), configurationDialog_);
+    slurmTime_->setObjectName(QStringLiteral("backendSlurmTime"));
+    slurmGpus_ = new QLineEdit(QStringLiteral("0"), configurationDialog_);
+    slurmGpus_->setObjectName(QStringLiteral("backendSlurmGpus"));
+    slurmGpus_->setValidator(new QIntValidator(0, 8, slurmGpus_));
+    slurmSsh_ = new QLineEdit(configurationDialog_);
+    slurmSsh_->setObjectName(QStringLiteral("backendSlurmSshExecutable"));
+    form->addRow(tr("Executor"), executor_);
+    form->addRow(tr("Local job root"), jobRoot_);
+    form->addRow(tr("Docker runtime"), dockerRuntime_);
+    form->addRow(tr("Docker worker image"), dockerImage_);
+    form->addRow(tr("Slurm SSH alias"), slurmHost_);
+    form->addRow(tr("Remote job root"), slurmRoot_);
+    form->addRow(tr("Prebuilt SIF image"), slurmImage_);
+    form->addRow(tr("Partition"), slurmPartition_);
+    form->addRow(tr("CPUs"), slurmCpus_);
+    form->addRow(tr("Memory"), slurmMemory_);
+    form->addRow(tr("Time limit"), slurmTime_);
+    form->addRow(tr("GPUs (0–8)"), slurmGpus_);
+    form->addRow(tr("SSH executable"), slurmSsh_);
+    layout->addLayout(form);
+    for (QLineEdit *field : {jobRoot_, dockerRuntime_, dockerImage_, slurmHost_, slurmRoot_,
+                             slurmImage_, slurmPartition_, slurmCpus_, slurmMemory_, slurmTime_, slurmGpus_, slurmSsh_})
+        field->setMinimumHeight(27);
+    executor_->setMinimumHeight(27);
+
+    auto setRowVisible = [form](QWidget *field, bool visible) {
+        field->setVisible(visible);
+        if (QWidget *label = form->labelForField(field)) label->setVisible(visible);
+    };
+    auto updateExecutorFields = [this, setRowVisible] {
+        const bool docker = executor_->currentData().toString() == QStringLiteral("docker");
+        setRowVisible(dockerRuntime_, docker);
+        setRowVisible(dockerImage_, docker);
+        setRowVisible(slurmHost_, !docker);
+        setRowVisible(slurmRoot_, !docker);
+        setRowVisible(slurmImage_, !docker);
+        setRowVisible(slurmPartition_, !docker);
+        setRowVisible(slurmCpus_, !docker);
+        setRowVisible(slurmMemory_, !docker);
+        setRowVisible(slurmTime_, !docker);
+        setRowVisible(slurmGpus_, !docker);
+        setRowVisible(slurmSsh_, !docker);
+    };
+    connect(executor_, &QComboBox::currentIndexChanged, configurationDialog_, updateExecutorFields);
+    updateExecutorFields();
+
+    configurationPath_ = new QLabel(configurationDialog_);
+    configurationPath_->setObjectName(QStringLiteral("backendConfigurationPath"));
+    configurationPath_->setWordWrap(true);
+    layout->addWidget(configurationPath_);
+    QString profilePath;
+    QJsonObject profile;
+    QString loadError;
+    if (serviceManager_ && serviceManager_->loadUserConfig(&profilePath, &profile, &loadError)) {
+        profileReady_ = true;
+        configurationPath_->setText(tr("Profile: %1").arg(profilePath));
+        const QJsonObject backend = profile.value(QStringLiteral("backend")).toObject();
+        const QJsonObject slurm = profile.value(QStringLiteral("slurm")).toObject();
+        executor_->setCurrentIndex(qMax(0, executor_->findData(backend.value(QStringLiteral("executor")).toString())));
+        jobRoot_->setText(backend.value(QStringLiteral("job_root")).toString());
+        dockerRuntime_->setText(backend.value(QStringLiteral("container_runtime")).toString());
+        dockerImage_->setText(backend.value(QStringLiteral("worker_image")).toString());
+        slurmHost_->setText(slurm.value(QStringLiteral("host")).toString());
+        slurmRoot_->setText(slurm.value(QStringLiteral("root")).toString());
+        slurmImage_->setText(slurm.value(QStringLiteral("image")).toString());
+        slurmPartition_->setText(slurm.value(QStringLiteral("partition")).toString());
+        slurmCpus_->setText(QString::number(slurm.value(QStringLiteral("cpus")).toInt()));
+        slurmMemory_->setText(slurm.value(QStringLiteral("memory")).toString());
+        slurmTime_->setText(slurm.value(QStringLiteral("time")).toString());
+        slurmGpus_->setText(QString::number(slurm.value(QStringLiteral("gpus")).toInt()));
+        slurmSsh_->setText(slurm.value(QStringLiteral("ssh_executable")).toString());
+    } else {
+        configurationPath_->setText(profilePath.isEmpty() ? tr("Profile: unavailable") : tr("Profile: %1").arg(profilePath));
+        setMessage(loadError.isEmpty() ? tr("The shared configuration profile could not be loaded.") : loadError, true);
+    }
+
+    configurationStatus_ = new QLabel(status_->text(), configurationDialog_);
+    configurationStatus_->setObjectName(QStringLiteral("backendConfigurationStatus"));
+    configurationStatus_->setWordWrap(true);
+    layout->addWidget(configurationStatus_);
+    managedBackendButton_ = new QPushButton(tr("Save settings and start local backend"), configurationDialog_);
+    managedBackendButton_->setObjectName(QStringLiteral("backendManagedStart"));
+    managedBackendButton_->setEnabled(serviceManager_ != nullptr && profileReady_);
+    if (serviceManager_ && serviceManager_->isRunning())
+        managedBackendButton_->setText(tr("Restart local backend safely"));
+    layout->addWidget(managedBackendButton_);
+    connect(managedBackendButton_, &QPushButton::clicked, this, &BackendDialog::startManagedBackend);
+}
+
 QUrl BackendDialog::endpointUrl(const QString &path) const
 {
     QUrl base(endpoint_->text().trimmed());
@@ -388,6 +652,10 @@ void BackendDialog::setMessage(const QString &message, bool error)
 {
     status_->setText(message);
     status_->setStyleSheet(error ? QStringLiteral("color: #a22; font-weight: 600;") : QString());
+    if (configurationStatus_) {
+        configurationStatus_->setText(message);
+        configurationStatus_->setStyleSheet(error ? QStringLiteral("color: #a22; font-weight: 600;") : QString());
+    }
 }
 
 void BackendDialog::request(const QString &path, const QByteArray &method, const QByteArray &body)
@@ -480,6 +748,145 @@ void BackendDialog::connectBackend()
     request(QStringLiteral("/health"));
 }
 
+void BackendDialog::startManagedBackend()
+{
+    if (!serviceManager_ || !profileReady_) return;
+    QString root = jobRoot_->text().trimmed();
+    if (root == QStringLiteral("~")) root = QDir::homePath();
+    else if (root.startsWith(QStringLiteral("~/"))) root = QDir::homePath() + root.mid(1);
+    root = QDir::cleanPath(root);
+    if (!QDir::isAbsolutePath(root) || root.contains(QChar::Null) || root.contains(QChar::LineFeed)) {
+        setMessage(tr("Local job root must be an absolute path."), true);
+        return;
+    }
+    QStringList environment;
+    environment << QStringLiteral("NNMODELLING_EXECUTOR=") + executor_->currentData().toString()
+                << QStringLiteral("NNMODELLING_JOB_ROOT=") + root
+                << QStringLiteral("NNMODELLING_CONTAINER_RUNTIME=") + dockerRuntime_->text().trimmed()
+                << QStringLiteral("NNMODELLING_WORKER_IMAGE=") + dockerImage_->text().trimmed()
+                << QStringLiteral("NNMODELLING_SLURM_HOST=") + slurmHost_->text().trimmed()
+                << QStringLiteral("NNMODELLING_SLURM_ROOT=") + slurmRoot_->text().trimmed()
+                << QStringLiteral("NNMODELLING_SLURM_IMAGE=") + slurmImage_->text().trimmed()
+                << QStringLiteral("NNMODELLING_SLURM_PARTITION=") + slurmPartition_->text().trimmed()
+                << QStringLiteral("NNMODELLING_SLURM_CPUS=") + slurmCpus_->text().trimmed()
+                << QStringLiteral("NNMODELLING_SLURM_MEMORY=") + slurmMemory_->text().trimmed()
+                << QStringLiteral("NNMODELLING_SLURM_TIME=") + slurmTime_->text().trimmed()
+                << QStringLiteral("NNMODELLING_SLURM_GPUS=") + slurmGpus_->text().trimmed()
+                << QStringLiteral("NNMODELLING_SSH_EXECUTABLE=") + slurmSsh_->text().trimmed();
+    if (!token_->text().isEmpty())
+        environment << QStringLiteral("NNMODELLING_BEARER_TOKEN=") + token_->text();
+    if (executor_->currentData().toString() == QStringLiteral("docker")) {
+        const QString runtime = dockerRuntime_->text().trimmed();
+        const QString image = dockerImage_->text().trimmed();
+        static const QRegularExpression runtimePattern(QStringLiteral("^[A-Za-z0-9_./+-]+$"));
+        static const QRegularExpression imagePattern(QStringLiteral("^[A-Za-z0-9][A-Za-z0-9._/:@+-]{0,254}$"));
+        if (!runtimePattern.match(runtime).hasMatch() || !imagePattern.match(image).hasMatch()) {
+            setMessage(tr("Docker runtime and worker image must be valid executable and image names."), true);
+            return;
+        }
+    } else {
+        const QString host = slurmHost_->text().trimmed();
+        const QString remoteRoot = slurmRoot_->text().trimmed();
+        const QString image = slurmImage_->text().trimmed();
+        const QString partition = slurmPartition_->text().trimmed();
+        bool cpusOk = false;
+        const int cpus = slurmCpus_->text().trimmed().toInt(&cpusOk);
+        bool gpusOk = false;
+        const int gpus = slurmGpus_->text().trimmed().toInt(&gpusOk);
+        static const QRegularExpression aliasPattern(QStringLiteral("^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$"));
+        static const QRegularExpression remotePathPattern(QStringLiteral("^/(?:[^\\n\\r]+)$"));
+        static const QRegularExpression tokenPattern(QStringLiteral("^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$"));
+        static const QRegularExpression memoryPattern(QStringLiteral("^[1-9][0-9]*[KMGTP]?$"));
+        static const QRegularExpression timePattern(QStringLiteral("^[0-9]{1,3}(?:-[0-9]{1,2})?:[0-9]{2}:[0-9]{2}$"));
+        static const QRegularExpression executablePattern(QStringLiteral("^[A-Za-z0-9_./+-]+$"));
+        const QString memory = slurmMemory_->text().trimmed();
+        const QString time = slurmTime_->text().trimmed();
+        const QString sshExecutable = slurmSsh_->text().trimmed();
+        if (!aliasPattern.match(host).hasMatch() || !QDir::isAbsolutePath(remoteRoot) ||
+            remoteRoot.split(QLatin1Char('/')).contains(QStringLiteral("..")) ||
+            !remotePathPattern.match(image).hasMatch() || image.split(QLatin1Char('/')).contains(QStringLiteral("..")) ||
+            !tokenPattern.match(partition).hasMatch() || !cpusOk || cpus < 1 || cpus > 256 ||
+            !gpusOk || gpus < 0 || gpus > 8 ||
+            !memoryPattern.match(memory).hasMatch() || !timePattern.match(time).hasMatch() ||
+            !executablePattern.match(sshExecutable).hasMatch()) {
+            setMessage(tr("Slurm needs an SSH alias, absolute remote root and SIF path, valid partition, CPUs, memory and time limit."), true);
+            return;
+        }
+    }
+    const QJsonObject profile{
+        {QStringLiteral("backend"), QJsonObject{
+            {QStringLiteral("executor"), executor_->currentData().toString()},
+            {QStringLiteral("job_root"), root},
+            {QStringLiteral("container_runtime"), dockerRuntime_->text().trimmed()},
+            {QStringLiteral("worker_image"), dockerImage_->text().trimmed()}}},
+        {QStringLiteral("slurm"), QJsonObject{
+            {QStringLiteral("host"), slurmHost_->text().trimmed()},
+            {QStringLiteral("root"), slurmRoot_->text().trimmed()},
+            {QStringLiteral("image"), slurmImage_->text().trimmed()},
+            {QStringLiteral("partition"), slurmPartition_->text().trimmed()},
+            {QStringLiteral("cpus"), slurmCpus_->text().trimmed().toInt()},
+            {QStringLiteral("memory"), slurmMemory_->text().trimmed()},
+            {QStringLiteral("time"), slurmTime_->text().trimmed()},
+            {QStringLiteral("gpus"), slurmGpus_->text().trimmed().toInt()},
+            {QStringLiteral("ssh_executable"), slurmSsh_->text().trimmed()}}}};
+    QString profilePath;
+    QString saveError;
+    if (!serviceManager_->saveUserConfig(profile, &profilePath, &saveError)) {
+        if (!profilePath.isEmpty()) configurationPath_->setText(tr("Profile: %1").arg(profilePath));
+        setMessage(saveError.isEmpty() ? tr("The shared configuration profile could not be saved.") : saveError, true);
+        return;
+    }
+    configurationPath_->setText(tr("Profile: %1").arg(profilePath));
+    if (serviceManager_->isRunning()) {
+        checkJobsBeforeRestart();
+        return;
+    }
+    QString error;
+    if (!serviceManager_->start(environment, &error)) {
+        setMessage(error, true);
+        return;
+    }
+    endpoint_->setText(serviceManager_->endpoint().toString());
+    managedBackendButton_->setText(tr("Restart local backend safely"));
+    setMessage(tr("Starting local backend on loopback…"));
+    QTimer::singleShot(750, this, &BackendDialog::connectBackend);
+}
+
+void BackendDialog::checkJobsBeforeRestart()
+{
+    const QUrl url = serviceManager_->endpoint().resolved(QUrl(QStringLiteral("/v1/jobs")));
+    QNetworkRequest request(url);
+    request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
+    const QString token = token_->text();
+    if (!token.isEmpty()) request.setRawHeader("Authorization", QByteArrayLiteral("Bearer ") + token.toUtf8());
+    QNetworkReply *reply = network_->get(request);
+    auto *timeout = new QTimer(reply);
+    timeout->setSingleShot(true);
+    connect(timeout, &QTimer::timeout, reply, [reply] { reply->abort(); });
+    timeout->start(RequestTimeoutMs);
+    connect(reply, &QNetworkReply::finished, this, [this, reply] {
+        const QByteArray bytes = reply->readAll();
+        const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        const auto networkError = reply->error();
+        const QString networkMessage = reply->errorString();
+        reply->deleteLater();
+        const QJsonDocument document = QJsonDocument::fromJson(bytes);
+        if (networkError != QNetworkReply::NoError || status < 200 || status >= 300 || !document.isObject()) {
+            setMessage(backendError(bytes, status, networkMessage), true);
+            return;
+        }
+        for (const QJsonValue &entry : document.object().value(QStringLiteral("jobs")).toArray()) {
+            const QString state = entry.toObject().value(QStringLiteral("status")).toString();
+            if (state == QStringLiteral("queued") || state == QStringLiteral("running")) {
+                setMessage(tr("The managed backend cannot restart while jobs are queued or running."), true);
+                return;
+            }
+        }
+        serviceManager_->stop();
+        startManagedBackend();
+    });
+}
+
 void BackendDialog::refreshJobs()
 {
     request(QStringLiteral("/v1/jobs"));
@@ -493,11 +900,26 @@ void BackendDialog::submitJob()
     const qint64 seed = seed_->text().toLongLong(&seedOk);
     const double learningRate = learningRate_->text().toDouble(&lrOk);
     const int publishEverySteps = publishEverySteps_->text().toInt(&publishOk);
+    bool weightDecayOk = false, gradientClipOk = false, warmupOk = false, maxStepsOk = false, accumulationOk = false;
+    const double weightDecay = weightDecay_->text().toDouble(&weightDecayOk);
+    const double gradientClip = gradientClip_->text().toDouble(&gradientClipOk);
+    const int warmupSteps = warmupSteps_->text().toInt(&warmupOk);
+    const int maxSteps = maxSteps_->text().toInt(&maxStepsOk);
+    const int gradientAccumulationSteps = gradientAccumulationSteps_->text().toInt(&accumulationOk);
+    bool earlyStoppingPatienceOk = false, earlyStoppingMinDeltaOk = false;
+    const int earlyStoppingPatience = earlyStoppingPatience_->text().toInt(&earlyStoppingPatienceOk);
+    const double earlyStoppingMinDelta = earlyStoppingMinDelta_->text().toDouble(&earlyStoppingMinDeltaOk);
     if (!epochsOk || epochs < 1 || epochs > 10000 || !batchOk || batch < 1 || batch > 4096 ||
         !seedOk || seed < -2147483648LL || seed > 4294967295LL || !lrOk ||
         !std::isfinite(learningRate) || learningRate <= 0.0 || learningRate > 1.0 ||
-        !publishOk || publishEverySteps < 1 || publishEverySteps > 100000) {
-        setMessage(tr("Training settings require valid epochs, batch size, learning rate, seed and publication cadence."), true);
+        !publishOk || publishEverySteps < 1 || publishEverySteps > 100000 ||
+        !weightDecayOk || !std::isfinite(weightDecay) || weightDecay < 0 || weightDecay > 1 ||
+        !gradientClipOk || !std::isfinite(gradientClip) || gradientClip <= 0 || gradientClip > 1000000 ||
+        !warmupOk || warmupSteps < 0 || !maxStepsOk || maxSteps < 0 ||
+        !accumulationOk || gradientAccumulationSteps < 1 || gradientAccumulationSteps > 1024 ||
+        !earlyStoppingPatienceOk || earlyStoppingPatience < 0 || earlyStoppingPatience > 10000 ||
+        !earlyStoppingMinDeltaOk || !std::isfinite(earlyStoppingMinDelta) || earlyStoppingMinDelta < 0.0) {
+        setMessage(tr("Training settings require valid epochs, batch size, learning rate, seed, publication cadence and finite nonnegative early-stopping settings."), true);
         return;
     }
     if (!application_ || !nn_app_project(application_) || !saveProject_ || !saveProject_()) {
@@ -524,17 +946,37 @@ void BackendDialog::submitJob()
     QString gatherError;
     const QString root = QString::fromUtf8(nn_project_directory(project));
     const QJsonObject manifest = modelDocument.object().value(QStringLiteral("manifest")).toObject();
+    QSet<QString> remoteCorpusRoots;
+    const QJsonObject activeDataset = manifest.value(QStringLiteral("activeDataset")).toObject();
+    for (const QJsonValue &reference : manifest.value(QStringLiteral("customDatasets")).toArray()) {
+        const QJsonObject dataset = reference.toObject();
+        if (dataset.value(QStringLiteral("id")) != activeDataset.value(QStringLiteral("id")) ||
+            dataset.value(QStringLiteral("version")) != activeDataset.value(QStringLiteral("version"))) continue;
+        const QString datasetPath = dataset.value(QStringLiteral("path")).toString();
+        QFile datasetManifest(QDir(root).filePath(datasetPath + QStringLiteral("/manifest.json")));
+        if (!datasetManifest.open(QIODevice::ReadOnly)) break;
+        const QJsonObject remote = QJsonDocument::fromJson(datasetManifest.readAll()).object()
+                                      .value(QStringLiteral("remoteFiles")).toObject();
+        if (!remote.value(QStringLiteral("files")).toArray().isEmpty()) {
+            remoteCorpusRoots.insert(QStringLiteral("data"));
+            remoteCorpusRoots.insert(datasetPath + QStringLiteral("/data"));
+        }
+        break;
+    }
     for (const QString &listName : {QStringLiteral("customPackages"), QStringLiteral("customDatasets")}) {
         for (const QJsonValue &reference : manifest.value(listName).toArray()) {
             const QString path = reference.toObject().value(QStringLiteral("path")).toString();
-            if (path.isEmpty() || !gatherFiles(root, path, files, included, total, gatherError)) {
+            if (path.isEmpty() || !gatherFiles(root, path, files, included, total, gatherError,
+                                                &remoteCorpusRoots)) {
                 setMessage(gatherError.isEmpty() ? tr("Project resource reference has no safe path.") : gatherError, true);
                 return;
             }
         }
     }
     for (const QString &folder : {QStringLiteral("data"), QStringLiteral("resources")})
-        if (!gatherFiles(root, folder, files, included, total, gatherError)) { setMessage(gatherError, true); return; }
+        if (!gatherFiles(root, folder, files, included, total, gatherError, &remoteCorpusRoots)) {
+            setMessage(gatherError, true); return;
+        }
     // Explicit inference assets may live outside the conventional resource folders.
     const QJsonObject uploaded = files;
     for (auto it = uploaded.begin(); it != uploaded.end(); ++it) {
@@ -566,7 +1008,17 @@ void BackendDialog::submitJob()
         {QStringLiteral("training"), QJsonObject{{QStringLiteral("epochs"), epochs},
             {QStringLiteral("batch_size"), batch}, {QStringLiteral("learning_rate"), learningRate},
             {QStringLiteral("seed"), static_cast<double>(seed)},
-            {QStringLiteral("publish_every_steps"), publishEverySteps}}}
+            {QStringLiteral("publish_every_steps"), publishEverySteps},
+            {QStringLiteral("device"), device_->currentData().toString()},
+            {QStringLiteral("precision"), precision_->currentData().toString()},
+            {QStringLiteral("optimizer"), optimizer_->currentData().toString()},
+            {QStringLiteral("weight_decay"), weightDecay},
+            {QStringLiteral("gradient_clip"), gradientClip},
+            {QStringLiteral("warmup_steps"), warmupSteps},
+            {QStringLiteral("max_steps"), maxSteps},
+            {QStringLiteral("gradient_accumulation_steps"), gradientAccumulationSteps},
+            {QStringLiteral("early_stopping_patience"), earlyStoppingPatience},
+            {QStringLiteral("early_stopping_min_delta"), earlyStoppingMinDelta}}}
     };
     setMessage(tr("Submitting saved project snapshot…"));
     const QByteArray body = QJsonDocument(payload).toJson(QJsonDocument::Compact);
@@ -638,7 +1090,7 @@ void BackendDialog::download(const QString &kind)
         if (!okay) {
             if (!stale) {
                 if (reply->property("downloadTooLarge").toBool()) {
-                    setMessage(tr("Artifact exceeds the 1 GiB download limit."), true);
+                    setMessage(tr("Artifact exceeds the configured 64 GiB download limit."), true);
                 } else {
                     file->seek(0);
                     setMessage(backendError(file->read(2048), reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt(), error), true);

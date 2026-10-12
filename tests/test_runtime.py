@@ -4,9 +4,11 @@ import base64
 import csv
 import hashlib
 import json
+import os
 import struct
 import subprocess
 import sys
+import sysconfig
 from pathlib import Path
 
 import pytest
@@ -73,7 +75,7 @@ def _project(tmp_path: Path, core_packages: list[tuple], nodes, edges, *, datase
             "import torch\nfrom .dataset_helper import BaseAdapter\n"
             "class Dataset(BaseAdapter):\n"
             " def tokenize(self, value): return torch.as_tensor(value, dtype=torch.float32)\n"
-            " def untokenize(self, tensor): return tensor\n"
+            " def untokenize(self, tensor):\n  assert tensor.device.type == 'cpu'\n  return tensor\n"
             " def load(self, split, batch_size): return iter(())\n", encoding="utf-8")
         (root / "datasets" / "demo" / "vocab.json").write_text("{}", encoding="utf-8")
         (root / "datasets" / "demo" / "train.csv").write_text("secret training data", encoding="utf-8")
@@ -269,7 +271,7 @@ def build(parameters,context,services): return Concat(parameters["dim"])
     save_file({name: value.detach().cpu().contiguous() for name, value in graph.state_dict().items()}, weights)
     wheel = build_wheel(root, core, weights, tmp_path / "wheel", "reference-join")
     with zipfile.ZipFile(wheel) as archive:
-        assert "nnmodel_reference_join/_snapshot/core/concat/manifest.json" in archive.namelist()
+        assert "nnm_fixture/_snapshot/core/concat/manifest.json" in archive.namelist()
 
 
 def test_horizontal_repeat_eval_mode_reaches_unregistered_subflow_template(tmp_path):
@@ -418,6 +420,80 @@ def build(parameters, context, services): return Loss()
     assert result["loss"].item() == pytest.approx(0.0)
 
 
+def test_root_batch_inputs_survive_repeated_subflows_and_named_operations(tmp_path):
+    repeat = '''from torch import nn
+from stereotype_runtime.pytorch import BuildContext, SubflowServices
+class Repeat(nn.Module):
+ def __init__(self, blocks): super().__init__(); self.blocks=nn.ModuleList(blocks)
+ def forward(self, value):
+  for block in self.blocks: value=block(value)
+  return value
+def build(parameters, context, services): return Repeat([services.build_subflow() for _ in range(2)])
+'''
+    route = '''import torch
+from torch import nn
+from stereotype_runtime.pytorch import BuildContext, NoServices
+class Route(nn.Module):
+ def forward(self, value, token_ids):
+  assert token_ids.dtype == torch.int64
+  return value.float() + token_ids.remainder(7).float()
+def build(parameters, context, services): return Route()
+'''
+    route_objective = {
+        "externalInputs": [{"name": "token_ids", "source": "batch.inputs.tokens"}]
+    }
+    packages = [
+        _input_package(),
+        _output_package(),
+        ("test.repeat", "subflow", repeat),
+        ("test.route", "layer", route, None, [{"id": "out", "type": "output"}], route_objective),
+    ]
+    nodes = [
+        _node("tokens", "core.input", params={"binding": "tokens"}),
+        _node("repeat", "test.repeat"),
+        _node("after", "test.route"),
+        _node("prediction", "core.output"),
+        _node("block-input", "core.input", scope="repeat", params={"binding": "ignored"}),
+        _node("block-route", "test.route", scope="repeat"),
+        _node("block-output", "core.output", scope="repeat", boundary="out"),
+    ]
+    edges = [
+        {"id": "root-in", "source": "tokens", "target": "repeat"},
+        {"id": "repeat-after", "source": "repeat", "sourceHandle": "out", "target": "after"},
+        {"id": "after-out", "source": "after", "sourceHandle": "out", "target": "prediction"},
+        {"id": "inner-in", "source": "block-input", "target": "block-route"},
+        {"id": "inner-out", "source": "block-route", "sourceHandle": "out", "target": "block-output"},
+    ]
+    root, core = _project(tmp_path, packages, nodes, edges)
+    model_json = json.loads((root / "model.json").read_text(encoding="utf-8"))
+    model_json["manifest"]["operations"] = [
+        {
+            "name": "route_tokens",
+            "input": {"node": "tokens", "handle": "out", "codec": "tensor"},
+            "output": {"node": "repeat", "handle": "out", "codec": "tensor"},
+        },
+        {
+            "name": "cut_after",
+            "input": {"node": "after", "handle": "in", "codec": "tensor"},
+            "output": {"node": "after", "handle": "out", "codec": "tensor"},
+        },
+    ]
+    _write_json(root / "model.json", model_json)
+    graph = GraphModule(root, core)
+    token_ids = torch.tensor([[2, 5]], dtype=torch.int64)
+
+    full = graph({"tokens": token_ids})["prediction"]
+    torch.testing.assert_close(full, torch.tensor([[8.0, 20.0]]))
+    injected = graph.run_operation("route_tokens", token_ids)
+    torch.testing.assert_close(injected, torch.tensor([[6.0, 15.0]]))
+    with pytest.raises(ValueError, match="missing objective input 'tokens'"):
+        graph.run_operation("cut_after", token_ids.float())
+    with pytest.raises(ValueError, match="missing model input binding 'tokens'"):
+        graph({"other": token_ids})
+    # Failed calls restore root context and do not poison a later model call.
+    torch.testing.assert_close(graph({"tokens": token_ids})["prediction"], full)
+
+
 def test_dataset_adapter_and_standalone_wheels_support_weight_override_and_isolation(tmp_path):
     core_packages = [
         _input_package(), _output_package(),
@@ -426,6 +502,20 @@ def test_dataset_adapter_and_standalone_wheels_support_weight_override_and_isola
     nodes = [_node("x", "core.input", params={"binding": "features"}), _node("scale", "test.scale"), _node("pred", "core.output")]
     edges = [{"id": "a", "source": "x", "target": "scale"}, {"id": "b", "source": "scale", "sourceHandle": "out", "target": "pred"}]
     root, core = _project(tmp_path, core_packages, nodes, edges, dataset=True)
+    model_json = json.loads((root / "model.json").read_text(encoding="utf-8"))
+    model_json["manifest"]["operations"] = [
+        {
+            "name": "logits",
+            "input": {"node": "x", "handle": "out", "codec": "tensor"},
+            "output": {"node": "scale", "handle": "out", "codec": "tensor"},
+        },
+        {
+            "name": "dataset_logits",
+            "input": {"node": "x", "handle": "out", "codec": "dataset"},
+            "output": {"node": "scale", "handle": "out", "codec": "dataset"},
+        },
+    ]
+    _write_json(root / "model.json", model_json)
     adapter = load_dataset(root)
     assert isinstance(adapter, DatasetAdapter)
     assert list(adapter.load("train", 4)) == []
@@ -434,7 +524,10 @@ def test_dataset_adapter_and_standalone_wheels_support_weight_override_and_isola
     _write_scalar_weights(weights, 2.0)
     alternate = tmp_path / "alternate.safetensors"
     _write_scalar_weights(alternate, 5.0)
-    wheels = [build_wheel(root, core, weights, tmp_path / f"out-{index}", f"job-{index}") for index in range(2)]
+    wheels = [
+        build_wheel(root, core, selected_weights, tmp_path / f"out-{index}", f"job-{index}")
+        for index, selected_weights in enumerate((weights, alternate))
+    ]
     import zipfile
     for wheel in wheels:
         with zipfile.ZipFile(wheel) as archive:
@@ -456,6 +549,8 @@ def test_dataset_adapter_and_standalone_wheels_support_weight_override_and_isola
             dist_info = "nnm_fixture-0.1.0.dist-info"
             assert f"{dist_info}/METADATA" in names
             assert f"{dist_info}/RECORD" in names
+            assert "nnm_fixture/__init__.py" in names
+            assert f"nnmodel_job_{index}/__init__.py" in names
             metadata = archive.read(f"{dist_info}/METADATA").decode()
             assert "Name: nnm_fixture\n" in metadata
             records = {row[0]: row[1:] for row in csv.reader(archive.read(f"{dist_info}/RECORD").decode().splitlines())}
@@ -472,16 +567,62 @@ def test_dataset_adapter_and_standalone_wheels_support_weight_override_and_isola
         targets.append(target)
     script = '''import importlib, sys, torch
 sys.path = [p for p in sys.path if "/python/nnmodelling-runtime/src" not in p]
-sys.path[:0] = sys.argv[1:3]
+sys.path.insert(0, sys.argv[1])
 assert importlib.util.find_spec("nnmodelling_runtime") is None
-first = importlib.import_module("nnmodel_job_0").Model()
-second = importlib.import_module("nnmodel_job_1").Model(weights_path=sys.argv[3])
+first = importlib.import_module("nnm_fixture").Model()
+legacy = importlib.import_module(sys.argv[2]).Model()
 assert "nnmodelling_runtime" not in sys.modules
 x = torch.tensor([3.0])
-print(first.infer(x).item(), second.inference(x).item())
+assert first.logits(x).item() == float(sys.argv[3])
+assert first.dataset_logits([3.0]).item() == float(sys.argv[3])
+assert legacy.infer(x).item() == float(sys.argv[3])
+if not torch.cuda.is_available():
+ try: first.__class__(device="cuda")
+ except RuntimeError as error: assert "CUDA is unavailable" in str(error)
+ else: raise AssertionError("unavailable CUDA request succeeded")
 '''
-    result = subprocess.run([sys.executable, "-c", script, str(targets[0]), str(targets[1]), str(alternate)], cwd=tmp_path, check=True, capture_output=True, text=True)
-    assert result.stdout.strip() == "6.0 15.0"
+    for index, target in enumerate(targets):
+        result = subprocess.run([sys.executable, "-c", script, str(target), f"nnmodel_job_{index}", str(6 + index * 9)], cwd=tmp_path, capture_output=True, text=True)
+        assert result.returncode == 0, result.stderr
+        assert result.stdout == ""
+
+
+def test_llm_consumer_replaces_a_same_version_wheel_at_the_stable_import(tmp_path):
+    root, core = _project(
+        tmp_path,
+        [_input_package(), _output_package(),
+         ("test.scale", "layer", _linear_source(), {"value": {"type": "real", "default": 2.0}}, [{"id": "out", "type": "output"}])],
+        [_node("x", "core.input", params={"binding": "features"}), _node("scale", "test.scale"), _node("pred", "core.output")],
+        [{"id": "a", "source": "x", "target": "scale"}, {"id": "b", "source": "scale", "sourceHandle": "out", "target": "pred"}],
+        dataset=True,
+    )
+    model = json.loads((root / "model.json").read_text(encoding="utf-8"))
+    model["manifest"]["id"] = "tiny-decoder-llm"
+    _write_json(root / "model.json", model)
+    first_weights = tmp_path / "first.safetensors"
+    second_weights = tmp_path / "second.safetensors"
+    _write_scalar_weights(first_weights, 2.0)
+    _write_scalar_weights(second_weights, 5.0)
+    wheels = [
+        build_wheel(root, core, weights, tmp_path / f"consumer-wheel-{index}", f"consumer-job-{index}")
+        for index, weights in enumerate((first_weights, second_weights))
+    ]
+
+    environment = tmp_path / "consumer-venv"
+    subprocess.run(["uv", "venv", "--system-site-packages", str(environment)], check=True, capture_output=True, text=True)
+    python = environment / "bin" / "python"
+    installer = Path(__file__).resolve().parents[1] / "examples" / "implementation" / "llm" / "install_wheel.py"
+    env = {**os.environ, "PYTHONPATH": sysconfig.get_paths()["purelib"]}
+    for index, wheel in enumerate(wheels):
+        subprocess.run([str(python), str(installer), str(wheel)], check=True, capture_output=True, text=True, env=env)
+        result = subprocess.run(
+            [str(python), "-c", "from nnm_tiny_decoder_llm import Model; import torch; print(Model().infer(torch.tensor([3.0])).item())"],
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.strip() == ("6.0" if index == 0 else "15.0")
 
 
 @pytest.mark.parametrize(

@@ -69,3 +69,20 @@ def test_final_result_requires_epoch_and_finite_test_metrics(tmp_path):
     metrics, error = store.validated_result(job["id"])
     assert error is None
     assert metrics["test_loss"] == 0.25
+
+
+def test_token_and_optimizer_evidence_is_validated_and_legacy_metrics_stay_unchanged(tmp_path):
+    store = JobStore(tmp_path / "jobs")
+    job = store.create({"manifest": {"schemaVersion": 2}, "nodes": [], "edges": []}, {}, {}, {}, "owner")
+    path = store.job_dir(job["id"]) / "output/metrics.json"
+    metrics = {
+        "epochs": [{"epoch": 1, "training_loss": 1.0, "validation_loss": 0.5}],
+        "steps": [{"step": 1, "epoch": 1, "training_loss": 1.0, "validation_loss": 0.5,
+                   "optimizer_updates": 1, "processed_tokens": 12}],
+        "test_loss": 0.25, "optimizer_updates": 1, "processed_tokens": 12, "max_steps": 4,
+    }
+    path.write_text(json.dumps(metrics))
+    assert store.get(job["id"], "owner")["metrics"] == metrics
+    metrics["steps"][0]["processed_tokens"] = 11
+    path.write_text(json.dumps(metrics))
+    assert store.get(job["id"], "owner")["metrics"] == {"epochs": [], "test_loss": None, "steps": []}

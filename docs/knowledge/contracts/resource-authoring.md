@@ -101,6 +101,15 @@ claim is made. Project owns five custom stereotypes and reconstruction metadata
 (image [B,1,28,28], target [B,784]). Lua validates ordered joins, ranks, dtypes
 and dimensions; no VAE package-ID switches in C.
 
+Accepted 2026-10-08: the MNIST VAE training objective corrects reduction scales.
+Core MSELoss averages over batch and all 784 pixels; the VAE KL operation sums
+32 latent dimensions per sample. The scalar reconstruction MSE is multiplied
+by 784 before adding mean per-sample KL, yielding batch-mean
+`sum_pixels_squared_error + KL`. This is tied to the example's fixed 28x28
+image shape; changing image resolution requires changing the pixel factor too.
+Existing checkpoints and wheels retain old loss semantics and must be retrained
+to obtain outputs from this objective.
+
 Accepted: above behavior and CLI integration per automation contract. Deferred:
 stereotype editing/resource deletion, object values and training. Typed output/subflow
 authoring follows typed-outputs.md.
@@ -147,3 +156,8 @@ are rejected. Successful update saves current graph edits, clears dirty state,
 invalidates analysis and creates the same history barrier as resource creation.
 The two-file operation has runtime rollback; no new crash-recovery/file schema.
 Native client edits metadata only and never executes or edits Python/sample files.
+
+
+Accepted 2026-10-12: bundled examples remain portable and bounded. Large V4
+example, dedicated consumer and probes are removed from the shipped tree.
+Generic runtime and parameter-count contracts remain unchanged.
