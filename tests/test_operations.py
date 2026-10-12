@@ -116,13 +116,18 @@ def test_subflow_operation_budget_is_per_call(tmp_path):
     torch.testing.assert_close(graph(torch.tensor([2.0]))["prediction"], torch.tensor([30.0]))
 
 
-def test_subflow_operation_still_enforces_per_call_budget(tmp_path):
-    project, core = _subflow_fixture(tmp_path, calls=257)
+def test_subflow_operation_budget_failure_resets_for_later_calls(tmp_path, monkeypatch):
+    project, core = _subflow_fixture(tmp_path, calls=1)
     graph = GraphModule(project, core)
+    monkeypatch.setattr(GraphModule, "_MAX_EXECUTION_WORK", 3)
     for _ in range(2):
-        with pytest.raises(ValueError, match="subflow execution exceeds 256 invocations"):
+        with pytest.raises(ValueError, match="graph execution budget exceeded: 3 work units"):
             graph.run_operation("decode", torch.zeros(1))
         assert graph.training
+    monkeypatch.setattr(GraphModule, "_MAX_EXECUTION_WORK", 100)
+    torch.testing.assert_close(graph.run_operation("decode", torch.tensor([4.0])), torch.tensor([12.0]))
+    torch.testing.assert_close(graph(torch.tensor([2.0]))["prediction"], torch.tensor([30.0]))
+    assert graph.training
 
 
 def test_operation_slices_at_injected_handle_and_keeps_regular_forward(tmp_path):

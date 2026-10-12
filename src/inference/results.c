@@ -4,21 +4,95 @@
 #include <stdlib.h>
 #include <string.h>
 
-bool nn_inference_result_set(Result *result, const NNNode *node, NNInferenceStatus status,
-                       char *message, Tensor *tensor, const char *cause,
-                       const char *source_file, size_t source_line,
-                       const char *code_override)
+void nn_inference_result_dispose(Result *result)
 {
+    if (!result) return;
     free(result->id); free(result->message); free(result->dtype);
     free(result->cause_node_id); free(result->source_file);
     for (size_t i = 0; i < result->view.output_count; ++i) {
         free(result->owned_outputs ? result->owned_outputs[i].handle_id : NULL);
         free(result->owned_outputs ? result->owned_outputs[i].type : NULL);
-        if (result->owned_outputs) nn_inference_tensor_dispose(&result->owned_outputs[i].tensor);
+        if (result->owned_outputs)
+            nn_inference_tensor_dispose(&result->owned_outputs[i].tensor);
     }
     free(result->outputs); free(result->owned_outputs);
     nn_inference_free_dimensions(result->dimensions, result->view.dimension_count);
     memset(result, 0, sizeof(*result));
+}
+
+bool nn_inference_result_copy(Result *destination, const Result *source)
+{
+    if (!destination || !source) return false;
+    nn_inference_result_dispose(destination);
+    destination->view = source->view;
+    destination->id = nn_text_copy(source->id);
+    destination->message = nn_text_copy(source->message);
+    destination->dtype = nn_text_copy(source->dtype);
+    destination->cause_node_id = nn_text_copy(source->cause_node_id);
+    destination->source_file = nn_text_copy(source->source_file);
+    if (source->dimensions) {
+        destination->dimensions = calloc(source->view.dimension_count ?
+                                         source->view.dimension_count : 1,
+                                         sizeof(*destination->dimensions));
+        if (destination->dimensions) for (size_t i = 0; i < source->view.dimension_count; ++i) {
+            destination->dimensions[i] = nn_text_copy(source->dimensions[i]);
+            if (!destination->dimensions[i]) break;
+        }
+    }
+    if (source->view.output_count) {
+        destination->outputs = calloc(source->view.output_count,
+                                      sizeof(*destination->outputs));
+        destination->owned_outputs = calloc(source->view.output_count,
+                                             sizeof(*destination->owned_outputs));
+        if (destination->outputs && destination->owned_outputs) {
+            for (size_t i = 0; i < source->view.output_count; ++i) {
+                const OutputTensor *from = &source->owned_outputs[i];
+                OutputTensor *to = &destination->owned_outputs[i];
+                to->handle_id = nn_text_copy(from->handle_id);
+                to->type = nn_text_copy(from->type);
+                if (!to->handle_id || !to->type ||
+                    !nn_inference_tensor_copy(&to->tensor, &from->tensor)) break;
+                destination->outputs[i] = (NNInferenceTensor){
+                    .handle_id = to->handle_id, .type = to->type,
+                    .dtype = to->tensor.dtype,
+                    .dimensions = (const char *const *)to->tensor.dimensions,
+                    .dimension_count = to->tensor.count
+                };
+            }
+        }
+    }
+    bool okay = destination->id &&
+        (!source->message || destination->message) &&
+        (!source->dtype || destination->dtype) &&
+        (!source->cause_node_id || destination->cause_node_id) &&
+        (!source->source_file || destination->source_file) &&
+        (!source->dimensions || destination->dimensions) &&
+        (!source->view.output_count || (destination->outputs && destination->owned_outputs));
+    for (size_t i = 0; okay && i < source->view.dimension_count; ++i)
+        okay = destination->dimensions[i] != NULL;
+    for (size_t i = 0; okay && i < source->view.output_count; ++i)
+        okay = destination->owned_outputs[i].handle_id && destination->owned_outputs[i].type &&
+               destination->owned_outputs[i].tensor.dtype;
+    if (!okay) {
+        nn_inference_result_dispose(destination);
+        return false;
+    }
+    destination->view.node_id = destination->id;
+    destination->view.message = destination->message;
+    destination->view.dtype = destination->dtype;
+    destination->view.dimensions = (const char *const *)destination->dimensions;
+    destination->view.cause_node_id = destination->cause_node_id;
+    destination->view.source_file = destination->source_file;
+    destination->view.outputs = destination->outputs;
+    return true;
+}
+
+bool nn_inference_result_set(Result *result, const NNNode *node, NNInferenceStatus status,
+                       char *message, Tensor *tensor, const char *cause,
+                       const char *source_file, size_t source_line,
+                       const char *code_override)
+{
+    nn_inference_result_dispose(result);
     result->id = nn_text_copy(node->id); result->message = message;
     result->view.node_id = result->id; result->view.status = status;
     result->view.message = result->message;

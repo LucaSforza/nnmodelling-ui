@@ -98,8 +98,11 @@ includes loss dependencies and maps targets only through each definition's
 `objective.externalInputs`. Prediction inference evaluates the recursive
 prediction dependency closure and omits unrelated loss branches; it never
 fabricates targets. Scalar loss values are per-batch means, aggregated by sample
-count. The accepted execution limits are 32 nested scopes and 256 subflow
-builds/invocations.
+count. Accepted 2026-10-12: depth stays 32; independent construction budgets
+allow 4096 subflow runners, 100000 builder calls and 512 MiB of logical
+registered tensor bytes (deduplicated by Tensor identity, checked after builds).
+Each forward/operation starts a fresh 100000-unit scope/node execution budget.
+No numerical result cache or parameter sharing is introduced.
 
 The graph metadata is immutable for this instance. Dependency closure and
 topological order are currently derived during each scope evaluation; cached or

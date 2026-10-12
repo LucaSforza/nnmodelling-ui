@@ -25,9 +25,13 @@ void nn_inference_instruction_hook(lua_State *state, lua_Debug *debug)
 {
     (void)debug;
     LuaBudget *budget = *(LuaBudget **)lua_getextraspace(state);
-    budget->instructions += 1000;
-    if (budget->instructions > LUA_INSTRUCTION_LIMIT) {
+    if (budget->instructions > LUA_INSTRUCTION_LIMIT - 1000u) {
         lua_pushliteral(state, "inference instruction limit exceeded");
+        lua_error(state);
+    }
+    budget->instructions += 1000u;
+    if (budget->evaluation && !nn_inference_charge_lua(budget->evaluation, 1000u)) {
+        lua_pushliteral(state, "cumulative Lua instruction budget exceeded (10000000)");
         lua_error(state);
     }
 }

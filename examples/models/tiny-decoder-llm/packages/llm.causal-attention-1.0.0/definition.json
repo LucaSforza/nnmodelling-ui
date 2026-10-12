@@ -1,8 +1,31 @@
 {
-  "description": "Four-head causal self-attention with model width 64 and head width 16.",
+  "description": "Causal self-attention with configurable model width and heads.",
   "kind": "layer",
   "name": "Causal Self Attention",
-  "parameters": {},
+  "parameters": {
+    "d_model": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 64,
+      "position": "top"
+    },
+    "num_heads": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 4,
+      "position": "top"
+    },
+    "dropout": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "default": 0
+    },
+    "bias": {
+      "type": "boolean",
+      "default": true
+    }
+  },
   "view": {
     "color": "#6b8fc4",
     "height": 110,

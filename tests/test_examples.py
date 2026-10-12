@@ -4,6 +4,7 @@ from pathlib import Path
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import zipfile
@@ -68,6 +69,37 @@ def test_tiny_decoder_repeat_and_attention_parameters_are_independent():
     with torch.no_grad():
         parameter[0].add_(1)
     torch.testing.assert_close(parameter.detach()[1:], other_heads)
+
+
+@pytest.mark.parametrize("times", [43, 64])
+def test_tiny_decoder_large_repeat_preserves_training_and_causality(tmp_path, times):
+    source = REPOSITORY / "examples" / "models" / "tiny-decoder-llm"
+    model = json.loads((source / "model.json").read_text())
+    next(node for node in model["nodes"] if node["id"] == "blocks")["data"]["params"]["times"] = times
+    (tmp_path / "model.json").write_text(json.dumps(model))
+    shutil.copytree(source / "packages", tmp_path / "packages")
+    threads = torch.get_num_threads()
+    torch.set_num_threads(2)
+    try:
+        graph = GraphModule(tmp_path, CORE)
+        repeat = graph.node_modules[graph._node_modules["blocks"]]
+        assert len(repeat.subflows) == times
+        first = list(repeat.subflows[0].parameters())
+        last = list(repeat.subflows[-1].parameters())
+        assert {p.data_ptr() for p in first}.isdisjoint(p.data_ptr() for p in last)
+        tokens = torch.tensor([[4, 9, 12, 1]])
+        loss = graph(tokens, {"target": torch.tensor([[9, 12, 1, 2]])}, include_loss=True)["loss"]
+        assert loss.ndim == 0 and torch.isfinite(loss)
+        loss.backward()
+        assert all(p.grad is not None and torch.isfinite(p.grad).all() for p in first + last)
+        graph.eval()
+        with torch.inference_mode():
+            original = graph(tokens)["prediction"]
+            modified = graph(torch.tensor([[4, 9, 50, 51]]))["prediction"]
+        assert original.shape == (1, 4, 65)
+        torch.testing.assert_close(original[:, :2], modified[:, :2])
+    finally:
+        torch.set_num_threads(threads)
 
 
 def test_bundled_examples_train_and_export_isolated_inference_wheels(tmp_path):

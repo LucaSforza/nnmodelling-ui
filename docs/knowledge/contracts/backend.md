@@ -247,6 +247,22 @@ explicitly instead of silently claiming successful training with missing curves.
 
 ## Executable bundled examples (accepted 2026-10-05)
 
+Accepted 2026-10-12: tiny LLM project-owned stereotypes expose their numerical
+configuration through package definitions. `llm.causal-attention` declares
+`d_model` (positive integer, default 64), `num_heads` (positive integer,
+default 4), `dropout` (number in [0,1], default 0), and `bias` (boolean,
+default true). Model width must be divisible by head count; Lua validates
+floating [B,T,d_model] inputs and preserves shape. PyTorch builds causal
+self-attention using these values. `llm.token-cross-entropy` declares
+`ignore_index` (integer, default -100) and `label_smoothing` (number in [0,1],
+default 0), retaining mean scalar reduction and its external target binding.
+`llm.causal-mask` retains `max_length` (default 128); both Lua and PyTorch
+validate floating square [B,T,T] scores and reject known T above max_length.
+Symbolic sequence dimensions remain valid when their concrete size is unknown.
+Builders use definition-equivalent defaults for older empty parameter maps.
+Default numerical behavior, exact resource identities and editable Q/K/V graph
+topology remain unchanged. No automatic rewrite of saved projects or core assets.
+
 All five current examples (local-training, mnist-mlp, mnist-vae, rnn-sine,
 tiny-decoder-llm) require executable dataset adapters and every project-owned
 PyTorch resource. Keep numerical behavior in resources and generic graph runtime;
@@ -318,6 +334,25 @@ public SDK in the isolated verification environment; do not reject otherwise
 valid inference merely because a user also installed that SDK.
 
 ## Generic graph execution and export
+
+Accepted 2026-10-12: replace the shared 256 bound with independent internal
+limits: depth 32; 4096 constructed subflow runners; 100000 resource builder
+calls; and 512 MiB of logical registered parameter/buffer bytes, deduplicated
+by Tensor object identity. Account builders of referenced stereotypes too.
+Check registered tensors after each builder returns and include unregistered
+structural meta-runners while building, retaining no extra tensor references.
+The tensor bound is a construction acceptance check, not a guarantee against
+temporary allocations inside arbitrary Python package code; worker isolation
+still owns process memory constraints. Every forward or named operation permits
+100000 work units, charging each scope invocation and each evaluated graph node.
+Reset execution accounting on entry, including calls after failures. Error text
+names the exhausted construction, tensor, execution or depth budget and limit.
+No generic `times <= 256` restriction remains; finite excessive repetition
+fails through actual construction/execution accounting. Shape cache never
+memoizes numerical tensors, changes gradients, or shares repeated parameters.
+No public API/flags or graph-format changes. Tests cover repeat 43 and 64,
+independent weights, gradients, causality, cheap excessive construction,
+execution-budget failure and reset, and registered tensor accounting.
 
 Resolve exact package id/version and declared dependencies from snapshot.
 Load manifest pytorch entrypoint `build(parameters,context,services)`; existing
@@ -441,8 +476,9 @@ operation's dataset/tensor codec before and after this graph call. Normal
 `forward()` remains unchanged.
 Calls run with the same registered modules and loaded `state_dict`; loss targets
 are not fabricated or evaluated.
-Each operation call starts a fresh subflow invocation budget, as `forward()`
-does; the 256-invocation bound applies within one execution, not across calls.
+Each operation call starts fresh execution work accounting, as `forward()` does;
+the independent construction/resource/execution limits above replace the former
+256-invocation ceiling and never accumulate across calls.
 Codec metadata must be a string equal to `dataset` or `tensor`; other JSON
 types fail validation with HTTP 422 on submission and ValueError in the runtime.
 

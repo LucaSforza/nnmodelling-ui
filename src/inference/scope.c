@@ -100,6 +100,22 @@ NNInferenceStatus nn_inference_evaluate_scope(Evaluation *evaluation, const char
         nn_inference_scope_set_status(evaluation, scope, NN_INFERENCE_UNRESOLVED, *scope_message);
         free(outputs); free(indegree); free(done); return NN_INFERENCE_UNRESOLVED;
     }
+    if (nested_scope && inherited) {
+        bool hit = false;
+        if (!nn_inference_scope_cache_lookup(evaluation, owner, inherited, depth,
+                scope_output, owner_package->output_count, &hit)) {
+            *scope_message = nn_text_copy(evaluation->work_budget_exceeded
+                ? "work budget limit exceeded (100000 units)"
+                : "unable to replay cached subflow results");
+            if (!*scope_message) evaluation->allocation_failed = true;
+            free(outputs); free(indegree); free(done);
+            return NN_INFERENCE_RUNTIME_FAULT;
+        }
+        if (hit) {
+            free(outputs); free(indegree); free(done);
+            return NN_INFERENCE_SUCCESS;
+        }
+    }
     for (size_t e = 0; e < nn_model_edge_count(model); ++e) {
         const NNEdge *edge = nn_model_edge_at(model, e);
         const NNNode *source = nn_model_find_node(model, edge->source_id);
@@ -167,7 +183,11 @@ NNInferenceStatus nn_inference_evaluate_scope(Evaluation *evaluation, const char
         char *message = NULL, *source_file = NULL, *cause_node_id = NULL;
         size_t source_line = 0;
         Tensor output[2] = {{0}}; NNInferenceStatus status;
-        if (malformed) { status = NN_INFERENCE_SEMANTIC_ERROR; message = nn_text_copy("join target handle must be in-<positive integer>"); }
+        if (!nn_inference_charge_work(evaluation, 1)) {
+            status = NN_INFERENCE_RUNTIME_FAULT;
+            message = nn_text_copy("work budget limit exceeded (100000 units)");
+        }
+        else if (malformed) { status = NN_INFERENCE_SEMANTIC_ERROR; message = nn_text_copy("join target handle must be in-<positive integer>"); }
         else if (missing) { status = NN_INFERENCE_UNRESOLVED; message = nn_text_copy("an upstream tensor is unresolved"); }
         else if (!package) { status = NN_INFERENCE_RUNTIME_FAULT; message = nn_text_copy("package is absent from active catalog"); }
         else if (incoming_count == 0 && (!package->kind || strcmp(package->kind, "input"))) {
@@ -299,6 +319,9 @@ NNInferenceStatus nn_inference_evaluate_scope(Evaluation *evaluation, const char
         *scope_cause = nn_text_copy(root);
         if (!*scope_cause) evaluation->allocation_failed = true;
     }
+    if (nested_scope && output_status == NN_INFERENCE_SUCCESS && inherited)
+        nn_inference_scope_cache_store(evaluation, owner, inherited, depth,
+            scope_output, owner_package->output_count);
     free(failure_message);
     for (size_t i = 0; i < count; ++i) nn_inference_node_outputs_dispose(&outputs[i]);
     free(outputs); free(indegree); free(done);

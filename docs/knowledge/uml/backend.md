@@ -4,6 +4,12 @@ Accepted 2026-10-05. Normative protocol: [backend](../contracts/backend.md).
 The diagrams below show component ownership; request and runtime sequences are
 kept in the [backend sequence](sequences/backend-training.md).
 
+Accepted 2026-10-12: tiny LLM resource definitions own attention width/head
+count/dropout/bias and token-loss ignore-index/label-smoothing defaults. Catalog
+and Lua validate metadata and shape constraints; resource Python builders consume
+the same configuration. Causal-mask Lua and Python enforce the existing context
+limit. Generic graph runtime and Qt inspector require no package-specific branch.
+
 ```mermaid
   flowchart TD
     UI[Qt backend panel] -->|async HTTP v1| API[FastAPI local service]

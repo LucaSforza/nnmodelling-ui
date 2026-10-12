@@ -423,13 +423,13 @@
 </tr>
 <tr>
 <td><code>llm.token-cross-entropy@1.0.0</code></td>
-<td><code>Token Cross Entropy</code>: no parameters; <code>loss</code> output of kind loss; external target named <code>target</code> from <code>batch.targets.target</code>. Computes mean token cross-entropy from logits <code>[B,T,V]</code> to targets <code>[B,T]</code>.</td>
-<td>Defines the next-token prediction loss. The node's Inspector has no parameter fields; the node can still be selected, connected and removed.</td>
+<td><code>Token Cross Entropy</code>: <code>ignore_index</code> (integer, default <code>-100</code>) and <code>label_smoothing</code> (number from 0 to 1, default <code>0</code>); <code>loss</code> output; external target <code>batch.targets.target</code>.</td>
+<td>Computes mean token cross-entropy from logits <code>[B,T,V]</code> to targets <code>[B,T]</code>. Edit parameters in the Inspector.</td>
 </tr>
 <tr>
 <td><code>llm.causal-attention@1.0.0</code></td>
-<td><code>Causal Self Attention</code>: no parameters; <code>out</code> output of kind output; legacy description: four-head causal attention, model width 64 and head width 16.</td>
-<td>The package remains among project resources but is not used by the updated graph: attention operations are represented by explicit nodes and subflows. The interface has no module for editing a package definition.</td>
+<td><code>Causal Self Attention</code>: <code>d_model</code> (positive integer, default <code>64</code>), <code>num_heads</code> (positive integer, default <code>4</code>), <code>dropout</code> (number from 0 to 1, default <code>0</code>), <code>bias</code> (boolean, default <code>true</code>). Width must be divisible by head count.</td>
+<td>The package remains available in the palette, but the example graph uses explicit Q/K/V nodes and subflows. These parameters configure only instances of this package.</td>
 </tr>
 <tr>
 <td><code>llm.tokens@1.0.0</code> (dataset)</td>
@@ -438,5 +438,5 @@
 </tr>
 </tbody>
 </table>
-<p>The interface can create new stereotypes with <code>Create stereotype</code>, but cannot edit or delete an existing stereotype definition. You can edit node-instance parameters in the Inspector, connect/remove/move nodes and arrange the graph. Among the three LLM resources above, only <code>Causal Mask</code> has node parameters that can be changed. The dataset manager does not edit the Python implementation or data files.</p>
+<p>The interface can create new stereotypes with <code>Create stereotype</code>, but cannot edit or delete an existing stereotype definition. You can edit node-instance parameters in the Inspector, connect/remove/move nodes and arrange the graph. All three LLM resources above expose editable node parameters. New projects receive the updated definitions; previously copied projects retain their own packages. The dataset manager does not edit the Python implementation or data files.</p>
 <p>Package JSON describes shapes and dtypes for native analysis; the presence of an executable Python package in the example does not mean the Qt client runs Python while editing the graph.</p></article><footer>NNModelling · English user guide · Screenshots from the real application</footer></main></body></html>

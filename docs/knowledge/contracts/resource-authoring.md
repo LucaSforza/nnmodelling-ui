@@ -79,7 +79,9 @@ not package ID; Lua chooses Proxy/Repeat delegation. Hidden children analyze.
 Report includes all children once per node (last invocation for Repeat).
 Empty/incomplete/missing upstream boundaries: unresolved. Duplicate boundaries
 or malformed containment: semantic error. Lua faults propagate as runtime faults.
-Limits: depth 32, 256 subflow invocations per report; breaches are runtime faults.
+Limits and successful scope memoization follow the Lua contract: depth 32,
+bounded actual work and cumulative instructions replace the old shared
+256-call ceiling; breaches are explicit runtime faults.
 Orphan imported scopes stay viewable but unresolved. Horizontal Repeat's object
 join is still unsupported; compiler remains deferred. Typed multi-output
 subflows are accepted, not deferred.

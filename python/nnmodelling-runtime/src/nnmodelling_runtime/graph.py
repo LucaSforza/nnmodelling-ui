@@ -20,6 +20,7 @@ from ._imports import resource_module
 _CURRENT_TARGETS = contextvars.ContextVar("nnmodelling_targets", default={})
 _CURRENT_INCLUDE_LOSS = contextvars.ContextVar("nnmodelling_include_loss", default=False)
 _CURRENT_ROOT_INPUTS = contextvars.ContextVar("nnmodelling_root_inputs", default=None)
+_CURRENT_EXECUTION_BUDGET = contextvars.ContextVar("nnmodelling_execution_budget", default=None)
 
 
 def _operation_table(model: dict[str, Any], nodes: Mapping[str, dict[str, Any]], catalog: _Catalog | None = None):
@@ -226,9 +227,6 @@ class _SubflowRunner(torch.nn.Module):
             raise RuntimeError("subflow graph is no longer available")
         if self.training != graph.training:
             self.train(graph.training)
-        graph._runtime_invocations += 1
-        if graph._runtime_invocations > graph._module_limit:
-            raise ValueError("subflow execution exceeds 256 invocations")
         nested_targets = _CURRENT_TARGETS.get() if targets is None else targets
         nested_loss = _CURRENT_INCLUDE_LOSS.get() if include_loss is None else include_loss
         root_inputs = _CURRENT_ROOT_INPUTS.get() or {}
@@ -265,6 +263,12 @@ class _Services:
 class GraphModule(torch.nn.Module):
     """Generic, handle-keyed executor for a saved NNModelling schema-v2 graph."""
 
+    _MAX_DEPTH = 32
+    _MAX_SUBFLOW_RUNNERS = 4096
+    _MAX_BUILDER_CALLS = 100000
+    _MAX_REGISTERED_TENSOR_BYTES = 512 * 1024 * 1024
+    _MAX_EXECUTION_WORK = 100000
+
     def __init__(self, project_dir: str | Path, core_dir: str | Path | None = None):
         super().__init__()
         self.project_dir = Path(project_dir).resolve()
@@ -279,8 +283,10 @@ class GraphModule(torch.nn.Module):
         self._node_modules: dict[str, str] = {}
         self._node_module_objects: dict[str, torch.nn.Module] = {}
         self._subflow_builds = 0
-        self._runtime_invocations = 0
-        self._module_limit = 256
+        self._builder_calls = 0
+        self._builder_depth = 0
+        self._tensor_bytes = 0
+        self._tensor_refs: dict[int, tuple[weakref.ReferenceType, int]] = {}
         self._scope_depths = self._compute_scope_depths()
         self._scopes = defaultdict(list)
         for node in self.nodes.values():
@@ -303,8 +309,8 @@ class GraphModule(torch.nn.Module):
                     raise ValueError(f"orphan graph scope {current!r}")
                 current = owner.get("data", {}).get("scope", "")
                 depth += 1
-                if depth > 32:
-                    raise ValueError("subflow nesting exceeds maximum depth 32")
+                if depth > self._MAX_DEPTH:
+                    raise ValueError(f"construction depth budget exceeded: {self._MAX_DEPTH}")
             depths[scope] = depth
         return depths
 
@@ -358,8 +364,8 @@ class GraphModule(torch.nn.Module):
             if child_scope not in self._scopes or not child_scope:
                 raise ValueError(f"subflow {node_id!r} has no nested graph scope")
             self._subflow_builds += 1
-            if self._subflow_builds > self._module_limit:
-                raise ValueError("subflow module construction exceeds 256 instances")
+            if self._subflow_builds > self._MAX_SUBFLOW_RUNNERS:
+                raise ValueError(f"subflow runner construction budget exceeded: {self._MAX_SUBFLOW_RUNNERS}")
             child_modules = {
                 child_id: built
                 for child_id in self._scopes[child_scope]
@@ -383,12 +389,78 @@ class GraphModule(torch.nn.Module):
         }
         params = self._effective_parameters(node.get("data", {}).get("params", {}), definition)
         self._validate_parameters(manifest["id"], params, definition)
-        if kind == "subflow" and isinstance(params.get("times"), int) and params["times"] > self._module_limit:
-            raise ValueError("subflow repeat count exceeds 256")
-        built = module.build(params, context, services)
+        built = self._call_builder(module.build, params, context, services)
         if not isinstance(built, torch.nn.Module):
             raise TypeError(f"build() for {manifest['id']!r} must return torch.nn.Module")
         return built
+
+    def _call_builder(self, builder, *args):
+        if self._builder_depth > self._MAX_DEPTH:
+            raise ValueError(f"construction depth budget exceeded: {self._MAX_DEPTH}")
+        self._builder_calls += 1
+        if self._builder_calls > self._MAX_BUILDER_CALLS:
+            raise ValueError(f"resource builder call budget exceeded: {self._MAX_BUILDER_CALLS}")
+        self._builder_depth += 1
+        try:
+            built = builder(*args)
+        finally:
+            self._builder_depth -= 1
+        if isinstance(built, torch.nn.Module):
+            self._account_module_tensors(built)
+        return built
+
+    def _account_module_tensors(self, module: torch.nn.Module) -> None:
+        """Account unique registered tensors, including unregistered structural modules."""
+        pending = [module]
+        visited: set[int] = set()
+
+        while pending:
+            current = pending.pop()
+            if id(current) in visited:
+                continue
+            visited.add(id(current))
+            pending.extend(child for child in current._modules.values() if isinstance(child, torch.nn.Module))
+            tensors = (*current._parameters.values(), *current._buffers.values())
+            for tensor in tensors:
+                if tensor is None:
+                    continue
+                identity = id(tensor)
+                entry = self._tensor_refs.get(identity)
+                if entry is not None and entry[0]() is tensor:
+                    size = tensor.numel() * tensor.element_size()
+                    self._tensor_bytes += size - entry[1]
+                    self._tensor_refs[identity] = (entry[0], size)
+                    if self._tensor_bytes > self._MAX_REGISTERED_TENSOR_BYTES:
+                        raise ValueError(f"registered tensor byte budget exceeded: {self._MAX_REGISTERED_TENSOR_BYTES} bytes")
+                    continue
+                size = tensor.numel() * tensor.element_size()
+                owner_ref = weakref.ref(self)
+
+                def expired(reference, identity=identity, owner_ref=owner_ref):
+                    owner = owner_ref()
+                    if owner is None:
+                        return
+                    entry = owner._tensor_refs.get(identity)
+                    if entry is not None and entry[0] is reference:
+                        owner._tensor_refs.pop(identity, None)
+                        owner._tensor_bytes -= entry[1]
+
+                reference = weakref.ref(tensor, expired)
+                self._tensor_refs[identity] = (reference, size)
+                self._tensor_bytes += size
+                if self._tensor_bytes > self._MAX_REGISTERED_TENSOR_BYTES:
+                    raise ValueError(f"registered tensor byte budget exceeded: {self._MAX_REGISTERED_TENSOR_BYTES} bytes")
+            for value in current.__dict__.values():
+                if isinstance(value, torch.nn.Module):
+                    pending.append(value)
+
+    def _consume_execution_work(self) -> None:
+        budget = _CURRENT_EXECUTION_BUDGET.get()
+        if budget is None:
+            return
+        budget[0] += 1
+        if budget[0] > self._MAX_EXECUTION_WORK:
+            raise ValueError(f"graph execution budget exceeded: {self._MAX_EXECUTION_WORK} work units")
 
     @staticmethod
     def _validate_parameters(package_id: str, params: dict[str, Any], definition: dict[str, Any]) -> None:
@@ -441,7 +513,8 @@ class GraphModule(torch.nn.Module):
         services = _Services(ref, lambda: (_ for _ in ()).throw(ValueError("referenced join cannot build a subflow")))
         services._resolve = self._resolve_reference
         services._build_stereotype = self._build_stereotype
-        built = module.build(
+        built = self._call_builder(
+            module.build,
             params,
             {"input": definition.get("inputs", {}), "output": (definition.get("outputs") or [{}])[0]},
             services,
@@ -559,8 +632,9 @@ class GraphModule(torch.nn.Module):
         injected: tuple[str, str, torch.Tensor] | None = None,
         root_inputs: Mapping[str, torch.Tensor] | None = None,
     ) -> dict[str, torch.Tensor]:
-        if depth > 32:
-            raise ValueError("subflow execution exceeds depth 32")
+        if depth > self._MAX_DEPTH:
+            raise ValueError(f"execution depth budget exceeded: {self._MAX_DEPTH}")
+        self._consume_execution_work()
         terminals = [selected_output[0]] if selected_output else self._terminal_nodes(scope, include_loss)
         if not terminals:
             raise ValueError(f"scope {scope!r} has no requested output terminal")
@@ -568,6 +642,7 @@ class GraphModule(torch.nn.Module):
         required = self._closure(terminals, scope, boundary)
         values: dict[str, dict[str, torch.Tensor]] = {}
         for node_id in self._ordered(scope, required):
+            self._consume_execution_work()
             node = self.nodes[node_id]
             kind = self._kind(node_id)
             if kind == "input":
@@ -666,7 +741,6 @@ class GraphModule(torch.nn.Module):
         return result
 
     def forward(self, inputs: Mapping[str, torch.Tensor] | torch.Tensor, targets: Mapping[str, torch.Tensor] | None = None, include_loss: bool = False) -> dict[str, torch.Tensor]:
-        self._runtime_invocations = 0
         if isinstance(inputs, torch.Tensor):
             inputs = self.single_input_mapping(inputs)
         if not isinstance(inputs, Mapping) or any(not isinstance(value, torch.Tensor) for value in inputs.values()):
@@ -676,9 +750,11 @@ class GraphModule(torch.nn.Module):
         root_inputs_token = _CURRENT_ROOT_INPUTS.set(inputs)
         targets_token = _CURRENT_TARGETS.set(targets or {})
         loss_token = _CURRENT_INCLUDE_LOSS.set(include_loss)
+        budget_token = _CURRENT_EXECUTION_BUDGET.set([0])
         try:
             return self._evaluate_scope("", inputs, targets or {}, include_loss, root_inputs=inputs)
         finally:
+            _CURRENT_EXECUTION_BUDGET.reset(budget_token)
             _CURRENT_ROOT_INPUTS.reset(root_inputs_token)
             _CURRENT_TARGETS.reset(targets_token)
             _CURRENT_INCLUDE_LOSS.reset(loss_token)
@@ -702,7 +778,6 @@ class GraphModule(torch.nn.Module):
             raise TypeError("operation input must be a batched torch.Tensor")
         operation = self.operations[name]
         source, target = operation["input"], operation["output"]
-        self._runtime_invocations = 0
         was_training = self.training
         self.eval()
         root_inputs = {}
@@ -713,6 +788,7 @@ class GraphModule(torch.nn.Module):
         root_inputs_token = _CURRENT_ROOT_INPUTS.set(root_inputs)
         targets_token = _CURRENT_TARGETS.set({})
         loss_token = _CURRENT_INCLUDE_LOSS.set(False)
+        budget_token = _CURRENT_EXECUTION_BUDGET.set([0])
         try:
             with torch.inference_mode():
                 result = self._evaluate_scope(
@@ -723,6 +799,7 @@ class GraphModule(torch.nn.Module):
                 )
                 return result["operation"]
         finally:
+            _CURRENT_EXECUTION_BUDGET.reset(budget_token)
             self.train(was_training)
             _CURRENT_ROOT_INPUTS.reset(root_inputs_token)
             _CURRENT_TARGETS.reset(targets_token)

@@ -40,7 +40,8 @@ set(NN_PROJECT_SOURCES
     src/project/save.c src/project/datasets.c src/project/templates.c
     src/project/resources.c src/project/project_utils.c)
 set(NN_INFERENCE_SOURCES
-    src/inference/results.c src/inference/evaluation_utils.c src/inference/scope.c src/inference/lua_rule.c
+    src/inference/results.c src/inference/evaluation_utils.c src/inference/scope_cache.c
+    src/inference/scope.c src/inference/lua_rule.c
     src/inference/parameter_counts.c
     src/inference/lua_runtime.c src/inference/lua_sandbox.c
     src/inference/lua_tensor_ops.c src/inference/owned_tensors.c
@@ -68,7 +69,7 @@ if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 
 if(BUILD_TESTING)
-    foreach(name IN ITEMS model catalog inference application resources automation history stereotype_reference parameter_count)
+    foreach(name IN ITEMS model catalog inference inference_cache application resources automation history stereotype_reference parameter_count)
         add_executable(${name}_test tests/${name}_test.c)
         target_link_libraries(${name}_test PRIVATE nnmodelling_core)
         add_test(NAME ${name} COMMAND ${name}_test)
@@ -101,7 +102,7 @@ if(BUILD_TESTING)
     add_test(NAME lua COMMAND lua_smoke)
     set_tests_properties(lua PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}" LABELS core)
     # Existing tests use assert for their checks, including in Release builds.
-    foreach(name IN ITEMS model_test catalog_test inference_test application_test resources_test automation_test history_test project_test lua_smoke utils_test stereotype_reference_test parameter_count_test)
+    foreach(name IN ITEMS model_test catalog_test inference_test inference_cache_test application_test resources_test automation_test history_test project_test lua_smoke utils_test stereotype_reference_test parameter_count_test)
         if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
             target_compile_options(${name} PRIVATE -Wall -Wextra -Werror -pedantic -UNDEBUG)
         endif()

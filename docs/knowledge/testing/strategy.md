@@ -42,6 +42,21 @@ authoring defaults, invalid Lua/dependency/schema/slot rejection, symlink
 confinement, save rollback (disk and dirty flag), save/reopen and VAE copying.
 Inference tests cover inherited subflow tensors, repeated/nested scopes, all VAE
 shapes, empty/duplicate boundaries, orphan scopes and depth/invocation budgets.
+Accepted 2026-10-12: regression gates exercise tiny LLM Repeat 42/43/64,
+successful scope-cache replay with alternating/changing shapes, report-local
+invalidation, multi-output descendants and distinct work/instruction/depth
+faults. Sanitizers and allocation-failure injection verify cache ownership.
+Python gates verify independent repeated weights, gradients and causality;
+construction/registered-tensor budgets and per-forward/operation work reset
+replace the old shared 256 ceiling. Parameter tests compare nondefault token
+loss options to PyTorch and verify native/numerical causal-mask constraints.
+Verified 2026-10-12 after principal review: `just test` 15/15; `just
+test-sanitize` 15/15 with ASan/UBSan and leak checks; `just test-ui` 7/7
+(offscreen Qt and local CLI/socket integration). Combined runtime/operation/
+example Python gates pass 108 tests, and backend gates pass 86. Actual tiny
+decoder regressions pass at 43/64 repeats with loss/backpropagation and causal
+prefix invariance; native analysis passes at 42/43/64. Mermaid and offline
+guide checks pass. No visible desktop or container-training trial claimed.
 `just test-cli` runs the actual UI and nnmodelctl, creates and reopens resources,
 authors/connects nodes, navigates VAE scopes and captures a committed screenshot.
 The same end-to-end test is part of `just test-ui`. Socket tests verify private

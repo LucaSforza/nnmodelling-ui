@@ -106,26 +106,19 @@ NNInferenceReport *nn_infer_project(const NNProject *project)
             report->failed = true;
     }
     if (report->failed || evaluation.allocation_failed) {
+        nn_inference_scope_cache_free(&evaluation);
         nn_inference_free(report);
         return NULL;
     }
+    nn_inference_scope_cache_free(&evaluation);
     return report;
 }
 
 void nn_inference_free(NNInferenceReport *report)
 {
     if (!report) return;
-    for (size_t i = 0; i < report->count; ++i) {
-        Result *item = &report->items[i];
-        free(item->id); free(item->message); free(item->dtype);
-        free(item->cause_node_id); free(item->source_file);
-        for (size_t o = 0; item->owned_outputs && o < item->view.output_count; ++o) {
-            free(item->owned_outputs[o].handle_id); free(item->owned_outputs[o].type);
-            nn_inference_tensor_dispose(&item->owned_outputs[o].tensor);
-        }
-        free(item->outputs); free(item->owned_outputs);
-        nn_inference_free_dimensions(item->dimensions, item->view.dimension_count);
-    }
+    for (size_t i = 0; i < report->count; ++i)
+        nn_inference_result_dispose(&report->items[i]);
     free(report->root_message); free(report->items); free(report);
 }
 

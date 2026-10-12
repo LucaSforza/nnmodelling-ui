@@ -18,6 +18,10 @@ static void open_safe_libraries(lua_State *state)
     lua_pushnil(state); lua_setglobal(state, "load");
     lua_pushnil(state); lua_setglobal(state, "collectgarbage");
     luaL_requiref(state, LUA_MATHLIBNAME, luaopen_math, 1); lua_pop(state, 1);
+    lua_getglobal(state, LUA_MATHLIBNAME);
+    lua_pushnil(state); lua_setfield(state, -2, "random");
+    lua_pushnil(state); lua_setfield(state, -2, "randomseed");
+    lua_pop(state, 1);
     nn_inference_set_tensor_functions(state);
 }
 

@@ -423,13 +423,13 @@
 </tr>
 <tr>
 <td><code>llm.token-cross-entropy@1.0.0</code></td>
-<td><code>Token Cross Entropy</code>: nessun parametro; uscita <code>loss</code> di tipo loss; target esterno nominato <code>target</code> da <code>batch.targets.target</code>. Calcola la cross-entropy media per token da logits <code>[B,T,V]</code> a target <code>[B,T]</code>.</td>
-<td>Definisce la loss di previsione del token successivo. L'Inspector del nodo non offre campi parametro da cambiare; il nodo resta selezionabile, collegabile e rimovibile.</td>
+<td><code>Token Cross Entropy</code>: <code>ignore_index</code> (intero, default <code>-100</code>) e <code>label_smoothing</code> (numero tra 0 e 1, default <code>0</code>); uscita <code>loss</code>; target esterno <code>batch.targets.target</code>.</td>
+<td>Calcola la cross-entropy media per token da logits <code>[B,T,V]</code> a target <code>[B,T]</code>. I parametri sono modificabili nell'Inspector.</td>
 </tr>
 <tr>
 <td><code>llm.causal-attention@1.0.0</code></td>
-<td><code>Causal Self Attention</code>: nessun parametro; uscita <code>out</code> di tipo output; descrizione legacy: attenzione causale a quattro teste, larghezza modello 64 e larghezza testa 16.</td>
-<td>Il pacchetto è conservato tra le risorse del progetto, ma non è usato dal grafo aggiornato: le operazioni di attenzione sono rappresentate da nodi e subflow espliciti. Non c'è un modulo dell'interfaccia per modificare la definizione del pacchetto.</td>
+<td><code>Causal Self Attention</code>: <code>d_model</code> (intero positivo, default <code>64</code>), <code>num_heads</code> (intero positivo, default <code>4</code>), <code>dropout</code> (numero tra 0 e 1, default <code>0</code>), <code>bias</code> (booleano, default <code>true</code>). La larghezza deve essere divisibile per il numero di teste.</td>
+<td>Il pacchetto resta disponibile nella palette, ma il grafo dell'esempio usa nodi Q/K/V e subflow espliciti. Questi parametri configurano soltanto eventuali istanze del pacchetto.</td>
 </tr>
 <tr>
 <td><code>llm.tokens@1.0.0</code> (dataset)</td>
@@ -438,5 +438,5 @@
 </tr>
 </tbody>
 </table>
-<p>L'interfaccia permette di creare nuovi stereotype con <code>Create stereotype</code>, non di modificare o eliminare la definizione di uno stereotype già presente. Si possono modificare i parametri delle istanze-nodo nell'Inspector, collegare/rimuovere/spostare nodi e riordinare il grafo. Per le tre risorse LLM sopra, soltanto <code>Causal Mask</code> ha parametri modificabili sul nodo. Il dataset manager non modifica l'implementazione Python né i file di dati.</p>
+<p>L'interfaccia permette di creare nuovi stereotype con <code>Create stereotype</code>, non di modificare o eliminare la definizione di uno stereotype già presente. Si possono modificare i parametri delle istanze-nodo nell'Inspector, collegare/rimuovere/spostare nodi e riordinare il grafo. Le tre risorse LLM sopra espongono parametri modificabili sul nodo. I nuovi progetti ricevono le definizioni aggiornate; i progetti già copiati conservano i propri pacchetti. Il dataset manager non modifica l'implementazione Python né i file di dati.</p>
 <p>I package JSON descrivono forma e dtype per l'analisi nativa; la presenza di un package Python eseguibile nell'esempio non significa che il client Qt esegua Python durante la modifica del grafo.</p></article><footer>NNModelling · Manuale italiano · Screenshot dell'applicazione reale</footer></main></body></html>

@@ -45,6 +45,35 @@ invalidation or application release. Qt copies stable IDs and category markers;
 it never keeps report pointers across mutation. A failed mutation preserves
 the old report because active model state did not change.
 
+## Repeated shape evaluation (accepted 2026-10-12)
+
+```mermaid
+  sequenceDiagram
+    participant Rule as Subflow Lua rule
+    participant Analysis as Report-local C evaluation
+    participant Cache as Bounded successful scope cache
+    participant Body as Immediate scoped graph
+    Rule->>Analysis: infer_subflow(inherited tensor)
+    Analysis->>Analysis: check depth and charge request work
+    Analysis->>Cache: lookup owner, tensor metadata, depth
+    alt successful cached scope
+      Cache-->>Analysis: owned typed outputs and descendant rows
+      Analysis->>Analysis: charge replay work and restore descendant outcomes
+    else cache miss
+      Analysis->>Body: evaluate nodes with shared work/instruction budgets
+      Body-->>Analysis: mapped outputs and descendant outcomes
+      opt all descendants succeeded and cache has capacity
+        Analysis->>Cache: deep-copy outputs and descendant rows
+      end
+    end
+    Analysis-->>Rule: copied mapped outputs or explicit budget/runtime fault
+```
+
+Evaluation owns and frees cache at report completion; report keeps its normal
+owned final rows. Cached results never survive model/parameter/dataset mutation.
+Deterministic Lua has no random/randomseed functions. Per-rule limits remain;
+100000 work units and 10000000 cumulative instruction units replace call count.
+
 ## Diagnostics query through local automation
 
 ```mermaid

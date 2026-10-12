@@ -75,6 +75,36 @@ Accepted 2026-10-04: generic infer_stereotype reference service and separate
 subflow visualization recipe runtime follow [3D contract](visualization-3d.md).
 Inference never executes visualization entrypoints.
 
+## Repeated shape analysis and work budgets (accepted 2026-10-12)
+
+Shape rules are deterministic functions of immutable report-local model,
+catalog, selected dataset, effective parameters and tensor metadata. The sandbox
+removes `math.random` and `math.randomseed`; numerical sampling belongs to Python.
+Existing isolated Lua states and per-rule memory/instruction limits remain.
+
+One analysis owns a disposable successful-subflow cache keyed by owner node ID,
+inherited tensor dtype and ordered dimensions, and evaluation depth. Model,
+catalog, dataset and parameters are immutable for this report, so node identity
+also identifies effective parameters. Cache entries own mapped outputs and deep
+copies of all descendant report rows, including typed tensors and diagnostics.
+Hits replay descendant rows before returning owned output copies, preserving
+last-invocation inspector behavior even for alternating input shapes. Cache only
+scopes whose descendants all succeeded; errors/unresolved states are re-evaluated.
+Entries never cross reports or mutations. Cache is bounded to 256 entries and
+16 MiB of accounted owned storage; once full, skip insertion and continue normal
+analysis. Host allocation failures still discard the whole report explicitly.
+
+Remove the shared 256 service-call ceiling. Keep depth 32. Each report permits
+100000 work units, charging one per infer_subflow/infer_stereotype request and
+one per evaluated or replayed graph node. It also permits 10000000 cumulative
+Lua instruction units: charge 1000 per rule-state execution plus each existing
+1000-instruction hook tick, including nested and referenced rules. Overflow and
+budget breaches return explicit runtime faults naming work, cumulative Lua
+instructions or depth and the limit; no truncated successful report. Budgets
+start fresh for each report, cache hits consume work but execute no child Lua.
+Parameter-count recursion keeps its separate existing budget. No flags, public
+ABI changes or package-ID dispatch are introduced.
+
 ## Parameter counts (accepted 2026-10-08)
 
 Package manifests may independently declare

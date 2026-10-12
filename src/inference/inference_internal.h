@@ -10,10 +10,16 @@
 #define RULE_FILE_LIMIT (1024u * 1024u)
 #define LUA_MEMORY_LIMIT (16u * 1024u * 1024u)
 #define LUA_INSTRUCTION_LIMIT 200000u
+#define INFERENCE_WORK_LIMIT 100000u
+#define INFERENCE_LUA_INSTRUCTION_LIMIT 10000000u
+#define INFERENCE_SCOPE_CACHE_ENTRY_LIMIT 256u
+#define INFERENCE_SCOPE_CACHE_BYTE_LIMIT (16u * 1024u * 1024u)
 #define LUA_TEMP_ALLOCATION_LIMIT 512
+typedef struct Evaluation Evaluation;
 typedef struct LuaBudget {
     size_t used;
     unsigned instructions;
+    Evaluation *evaluation;
     bool host_allocation_failed;
     size_t temporary_count;
     void *temporary[LUA_TEMP_ALLOCATION_LIMIT];
@@ -43,7 +49,12 @@ typedef struct Evaluation {
     const NNCatalog *catalog;
     NNInferenceReport *report;
     const NNDataset *dataset;
-    size_t invocations;
+    size_t work_units;
+    size_t lua_instruction_units;
+    struct ScopeCacheEntry *scope_cache[INFERENCE_SCOPE_CACHE_ENTRY_LIMIT];
+    size_t scope_cache_count;
+    size_t scope_cache_bytes;
+    bool work_budget_exceeded;
     bool allocation_failed;
 } Evaluation;
 typedef struct { const NNEdge *edge; size_t order; } Incoming;
@@ -100,6 +111,16 @@ bool nn_inference_result_set(Result *result, const NNNode *node,
     const char *source_file, size_t source_line, const char *code_override);
 bool nn_inference_result_set_output_metadata(Result *result, const NNPackage *package,
     const Tensor *tensors);
+void nn_inference_result_dispose(Result *result);
+bool nn_inference_result_copy(Result *destination, const Result *source);
+bool nn_inference_charge_work(Evaluation *evaluation, size_t amount);
+bool nn_inference_charge_lua(Evaluation *evaluation, size_t amount);
+bool nn_inference_scope_cache_lookup(Evaluation *evaluation, const NNNode *owner,
+    const Tensor *inherited, size_t depth, Tensor *outputs, size_t output_count,
+    bool *hit);
+void nn_inference_scope_cache_store(Evaluation *evaluation, const NNNode *owner,
+    const Tensor *inherited, size_t depth, const Tensor *outputs, size_t output_count);
+void nn_inference_scope_cache_free(Evaluation *evaluation);
 void nn_inference_free_dimensions(char **dimensions, size_t count);
 void nn_inference_tensor_dispose(Tensor *tensor);
 bool nn_inference_tensor_copy(Tensor *destination, const Tensor *source);

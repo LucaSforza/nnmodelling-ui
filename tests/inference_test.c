@@ -37,6 +37,40 @@ static NNProject *open_vae(void)
     return project;
 }
 
+static NNProject *open_tiny_llm(void)
+{
+    char error[512] = {0};
+    NNProject *project = nn_project_open("examples/models/tiny-decoder-llm",
+                                         "stereotype-packages/core", error, sizeof(error));
+    if (!project) fprintf(stderr, "tiny LLM project open failed: %s\n", error);
+    return project;
+}
+
+static const NNNode *find_package_node(const NNModel *model, const char *package_id)
+{
+    for (size_t i = 0; i < nn_model_node_count(model); ++i) {
+        const NNNode *node = nn_model_node_at(model, i);
+        if (!strcmp(node->package_id, package_id)) return node;
+    }
+    return NULL;
+}
+
+static char *read_text_file(const char *path)
+{
+    FILE *file = fopen(path, "rb");
+    if (!file) return NULL;
+    if (fseek(file, 0, SEEK_END) != 0) { fclose(file); return NULL; }
+    long length = ftell(file);
+    if (length < 0 || fseek(file, 0, SEEK_SET) != 0) { fclose(file); return NULL; }
+    char *text = malloc((size_t)length + 1);
+    if (!text) { fclose(file); return NULL; }
+    size_t read = fread(text, 1, (size_t)length, file);
+    fclose(file);
+    if (read != (size_t)length) { free(text); return NULL; }
+    text[read] = '\0';
+    return text;
+}
+
 static void assert_shape(const NNInferenceResult *result, const char *dtype,
                          const char *const *dimensions, size_t count)
 {
@@ -110,6 +144,59 @@ int main(void)
     assert(report && nn_inference_count(report) == 0);
     assert(nn_inference_root_status(report) == NN_INFERENCE_UNRESOLVED);
     assert(nn_inference_root_message(report));
+    nn_inference_free(report);
+    nn_project_close(project);
+
+    project = open_tiny_llm();
+    assert(project);
+    assert(nn_model_add_node(nn_project_model(project), "test-attention", "Test attention",
+                             "llm.causal-attention", "1.0.0", "", 0, 0,
+                             error, sizeof(error)));
+    assert(nn_model_connect(nn_project_model(project), "test-attention-edge", "position", "out",
+                            "test-attention", "in", error, sizeof(error)));
+    report = nn_infer_project(project);
+    assert(report);
+    assert(find_result(report, "test-attention")->status == NN_INFERENCE_SUCCESS);
+    nn_inference_free(report);
+    NNValue invalid_heads = { .type = NN_VALUE_INT, .as.integer = 3 };
+    assert(nn_model_set_parameter(nn_project_model(project), "test-attention", "num_heads",
+                                  &invalid_heads, error, sizeof(error)));
+    report = nn_infer_project(project);
+    assert(report);
+    assert(find_result(report, "test-attention")->status == NN_INFERENCE_SEMANTIC_ERROR);
+    nn_inference_free(report);
+    nn_project_close(project);
+
+    project = open_tiny_llm();
+    assert(project);
+    report = nn_infer_project(project);
+    assert(report);
+    assert(find_result(report, "causal-mask")->status == NN_INFERENCE_SUCCESS);
+    assert(find_result(report, "token-loss")->status == NN_INFERENCE_SUCCESS);
+    nn_inference_free(report);
+    const int large_repeats[] = {42, 43, 64};
+    for (size_t i = 0; i < sizeof(large_repeats) / sizeof(large_repeats[0]); ++i) {
+        NNValue times = { .type = NN_VALUE_INT, .as.integer = large_repeats[i] };
+        assert(nn_model_set_parameter(nn_project_model(project), "blocks", "times",
+                                      &times, error, sizeof(error)));
+        report = nn_infer_project(project);
+        assert(report && nn_inference_root_status(report) == NN_INFERENCE_SUCCESS);
+        for (size_t n = 0; n < nn_inference_count(report); ++n)
+            assert(nn_inference_at(report, n)->status == NN_INFERENCE_SUCCESS);
+        const char *logit_shape[] = {"B", "128", "65"};
+        assert_shape(find_result(report, "logits"), "float32", logit_shape, 3);
+        nn_inference_free(report);
+    }
+    const NNNode *mask = find_package_node(nn_project_model(project), "llm.causal-mask");
+    assert(mask);
+    char mask_id[128];
+    snprintf(mask_id, sizeof(mask_id), "%s", mask->id);
+    NNValue short_context = { .type = NN_VALUE_INT, .as.integer = 2 };
+    assert(nn_model_set_parameter(nn_project_model(project), mask_id, "max_length",
+                                  &short_context, error, sizeof(error)));
+    report = nn_infer_project(project);
+    assert(report);
+    assert(find_result(report, mask_id)->status == NN_INFERENCE_SEMANTIC_ERROR);
     nn_inference_free(report);
     nn_project_close(project);
 
@@ -337,8 +424,16 @@ int main(void)
     report = nn_infer_project(project);
     assert(report);
     const NNInferenceResult *budget = find_result(report, "budget-repeat");
+    assert(budget && budget->status == NN_INFERENCE_SUCCESS);
+    nn_inference_free(report);
+    repeat_count.as.integer = 100000;
+    assert(nn_model_set_parameter(nn_project_model(project), "budget-repeat", "times",
+                                  &repeat_count, error, sizeof(error)));
+    report = nn_infer_project(project);
+    assert(report);
+    budget = find_result(report, "budget-repeat");
     assert(budget && budget->status == NN_INFERENCE_RUNTIME_FAULT);
-    assert(strstr(budget->message, "limit"));
+    assert(strstr(budget->message, "limit") || strstr(budget->message, "budget"));
     nn_inference_free(report);
     nn_project_close(project);
 
@@ -390,6 +485,16 @@ int main(void)
     const NNInferenceResult *depth = find_result(report, "depth-owner-0");
     assert(depth && depth->status == NN_INFERENCE_RUNTIME_FAULT);
     assert(strstr(depth->message, "limit"));
+    nn_inference_free(report);
+    assert(nn_model_remove_node(nn_project_model(project), "depth-input-32", error, sizeof(error)));
+    assert(nn_model_remove_node(nn_project_model(project), "depth-output-32", error, sizeof(error)));
+    assert(nn_model_remove_node(nn_project_model(project), "depth-owner-32", error, sizeof(error)));
+    assert(nn_model_connect(nn_project_model(project), "depth-leaf-edge", "depth-input-31", "out",
+                            "depth-output-31", "in", error, sizeof(error)));
+    report = nn_infer_project(project);
+    assert(report);
+    assert(find_result(report, "depth-owner-0")->status == NN_INFERENCE_SUCCESS);
+    assert(find_result(report, "depth-output-31")->status == NN_INFERENCE_SUCCESS);
     nn_inference_free(report);
     nn_project_close(project);
 
@@ -738,6 +843,42 @@ int main(void)
     report = nn_infer_project(diagnostic_project);
     assert(report);
     assert(find_result(report, "nested-two")->status == NN_INFERENCE_SEMANTIC_ERROR);
+    nn_inference_free(report);
+
+    char *mask_definition = read_text_file(
+        "examples/models/tiny-decoder-llm/packages/llm.causal-mask-1.0.0/definition.json");
+    char *mask_rule = read_text_file(
+        "examples/models/tiny-decoder-llm/packages/llm.causal-mask-1.0.0/inference.lua");
+    assert(mask_definition && mask_rule);
+    assert(nn_project_create_stereotype(diagnostic_project, "llm.causal-mask", "1.0.0",
+        mask_definition, mask_rule, "{}", error, sizeof(error)));
+    free(mask_definition);
+    free(mask_rule);
+    assert(nn_project_create_stereotype(diagnostic_project, "local.integer-scores", "0.1.0",
+        "{\"name\":\"Integer scores\",\"kind\":\"layer\","
+        "\"view\":{\"color\":\"#444444\",\"width\":200,\"height\":100},"
+        "\"parameters\":{}}",
+        "return function() return {status='success', "
+        "output=tensor.create({'B',2,2},'int64')} end",
+        "{}", error, sizeof(error)));
+    assert(nn_model_add_node(nn_project_model(diagnostic_project), "mask-rank",
+        "Mask rank", "llm.causal-mask", "1.0.0", "", 0, 0, error, sizeof(error)));
+    assert(nn_model_connect(nn_project_model(diagnostic_project), "mask-rank-edge",
+        "diagnostic-input", "out", "mask-rank", "in", error, sizeof(error)));
+    assert(nn_model_add_node(nn_project_model(diagnostic_project), "integer-scores",
+        "Integer scores", "local.integer-scores", "0.1.0", "", 0, 0,
+        error, sizeof(error)));
+    assert(nn_model_connect(nn_project_model(diagnostic_project), "integer-scores-input-edge",
+        "diagnostic-input", "out", "integer-scores", "in", error, sizeof(error)));
+    assert(nn_model_add_node(nn_project_model(diagnostic_project), "mask-type",
+        "Mask dtype", "llm.causal-mask", "1.0.0", "", 0, 0, error, sizeof(error)));
+    assert(nn_model_connect(nn_project_model(diagnostic_project), "mask-type-edge",
+        "integer-scores", "out", "mask-type", "in", error, sizeof(error)));
+    report = nn_infer_project(diagnostic_project);
+    assert(report);
+    assert(find_result(report, "integer-scores")->status == NN_INFERENCE_SUCCESS);
+    assert(find_result(report, "mask-rank")->status == NN_INFERENCE_SEMANTIC_ERROR);
+    assert(find_result(report, "mask-type")->status == NN_INFERENCE_SEMANTIC_ERROR);
     nn_inference_free(report);
     nn_project_close(diagnostic_project);
     return 0;

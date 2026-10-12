@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import csv
+import gc
 import hashlib
 import json
 import os
@@ -9,6 +10,7 @@ import struct
 import subprocess
 import sys
 import sysconfig
+import weakref
 from pathlib import Path
 
 import pytest
@@ -203,6 +205,248 @@ def build(parameters, context, services): return services.build_subflow()
     output.sum().backward()
     assert all(parameter.grad is not None for parameter in parameters)
     assert output.item() == pytest.approx(12.0)
+
+
+@pytest.mark.parametrize("times", [43, 64])
+def test_repeat_43_and_64_keep_independent_trainable_causal_layers(tmp_path, times):
+    repeat_source = '''from torch import nn
+from stereotype_runtime.pytorch import BuildContext, SubflowServices
+class Repeat(nn.Module):
+ def __init__(self, items): super().__init__(); self.items=nn.ModuleList(items)
+ def forward(self, x):
+  for item in self.items: x=item(x)
+  return x
+def build(parameters, context, services): return Repeat([services.build_subflow() for _ in range(parameters["times"])])
+'''
+    causal_source = '''import math
+import torch
+from torch import nn
+from stereotype_runtime.pytorch import BuildContext, NoServices
+class Causal(nn.Module):
+ def __init__(self):
+  super().__init__(); self.query=nn.Linear(4,4,bias=False); self.key=nn.Linear(4,4,bias=False); self.value=nn.Linear(4,4,bias=False)
+ def forward(self, x):
+  scores=self.query(x) @ self.key(x).transpose(-2,-1) / math.sqrt(4)
+  mask=torch.ones(scores.shape[-2:], dtype=torch.bool, device=x.device).triu(1)
+  weights=scores.masked_fill(mask, float("-inf")).softmax(dim=-1)
+  return x + 0.01 * (weights @ self.value(x))
+def build(parameters, context, services): return Causal()
+'''
+    packages = [
+        _input_package(), _output_package(),
+        ("test.repeat", "subflow", repeat_source, {"times": {"type": "integer", "minimum": 1, "default": times}}),
+        ("test.causal", "layer", causal_source, None, [{"id": "out", "type": "output"}]),
+    ]
+    nodes = [
+        _node("x", "core.input", params={"binding": "x"}), _node("repeat", "test.repeat"),
+        _node("pred", "core.output"), _node("inner-in", "core.input", scope="repeat"),
+        _node("causal", "test.causal", scope="repeat"), _node("inner-out", "core.output", scope="repeat", boundary="out"),
+    ]
+    edges = [
+        {"id": "a", "source": "x", "target": "repeat"}, {"id": "b", "source": "repeat", "target": "pred"},
+        {"id": "c", "source": "inner-in", "target": "causal"}, {"id": "d", "source": "causal", "target": "inner-out"},
+    ]
+    root, core = _project(tmp_path, packages, nodes, edges)
+    graph = GraphModule(root, core)
+    parameters = list(graph.parameters())
+    assert len(parameters) == 3 * times
+    assert len({parameter.data_ptr() for parameter in parameters}) == 3 * times
+    value = torch.randn((1, 4, 4), requires_grad=True)
+    result = graph(value)["prediction"]
+    changed = value.detach().clone()
+    changed[:, -1] += 10
+    torch.testing.assert_close(graph(changed)["prediction"][:, :-1], result.detach()[:, :-1])
+    result.sum().backward()
+    assert all(parameter.grad is not None for parameter in parameters)
+    assert torch.isfinite(result).all()
+
+
+def test_subflow_runner_budget_replaces_legacy_repeat_cap(tmp_path):
+    repeat_source = '''from torch import nn
+from stereotype_runtime.pytorch import BuildContext, SubflowServices
+class Repeat(nn.Module):
+ def __init__(self, items): super().__init__(); self.items=nn.ModuleList(items)
+ def forward(self, x):
+  for item in self.items: x=item(x)
+  return x
+def build(parameters, context, services): return Repeat([services.build_subflow() for _ in range(parameters["times"])])
+'''
+    packages = [
+        _input_package(), _output_package(),
+        ("test.repeat", "subflow", repeat_source, {"times": {"type": "integer", "minimum": 1}}),
+    ]
+    nodes = [
+        _node("x", "core.input", params={"binding": "x"}), _node("repeat", "test.repeat", params={"times": 257}),
+        _node("pred", "core.output"), _node("inner-in", "core.input", scope="repeat"),
+        _node("inner-out", "core.output", scope="repeat", boundary="out"),
+    ]
+    edges = [
+        {"id": "a", "source": "x", "target": "repeat"}, {"id": "b", "source": "repeat", "target": "pred"},
+        {"id": "c", "source": "inner-in", "target": "inner-out"},
+    ]
+    (tmp_path / "within").mkdir()
+    root, core = _project(tmp_path / "within", packages, nodes, edges)
+    graph = GraphModule(root, core)
+    assert graph(torch.tensor([2.0]))["prediction"].item() == pytest.approx(2.0)
+
+    nodes[1] = _node("repeat", "test.repeat", params={"times": 4097})
+    (tmp_path / "excess").mkdir()
+    root, core = _project(tmp_path / "excess", packages, nodes, edges)
+    with pytest.raises(ValueError, match="subflow runner construction budget exceeded: 4096"):
+        GraphModule(root, core)
+
+
+def test_recursive_reference_builder_stops_at_construction_budgets(tmp_path, monkeypatch):
+    recursive = '''from torch import nn
+from stereotype_runtime.pytorch import BuildContext, StereotypeServices
+def build(parameters, context, services): return services.build_stereotype(parameters["child"])
+'''
+    reference = {"id": "test.recursive", "version": "1.0.0", "parameters": {}}
+    packages = [
+        _input_package(), _output_package(),
+        ("test.recursive", "layer", recursive, {"child": {"type": "stereotype", "default": reference}}, [{"id": "out", "type": "output"}]),
+    ]
+    root, core = _project(
+        tmp_path,
+        packages,
+        [_node("x", "core.input", params={"binding": "x"}), _node("recursive", "test.recursive"), _node("out", "core.output")],
+        [{"id": "a", "source": "x", "target": "recursive"}, {"id": "b", "source": "recursive", "target": "out"}],
+    )
+    with pytest.raises(ValueError, match="construction depth budget exceeded: 32"):
+        GraphModule(root, core)
+    monkeypatch.setattr(GraphModule, "_MAX_BUILDER_CALLS", 2)
+    with pytest.raises(ValueError, match="resource builder call budget exceeded: 2"):
+        GraphModule(root, core)
+
+
+def test_nested_scope_depth_limit_accepts_32_and_rejects_33(tmp_path):
+    proxy = '''from torch import nn
+from stereotype_runtime.pytorch import BuildContext, SubflowServices
+def build(parameters, context, services): return services.build_subflow()
+'''
+    packages = [_input_package(), _output_package(), ("test.proxy", "subflow", proxy)]
+
+    def nested_project(base: Path, depth: int):
+        base.mkdir()
+        nodes = [
+            _node("root-input", "core.input", params={"binding": "x"}),
+            _node("scope-0", "test.proxy"), _node("root-output", "core.output"),
+        ]
+        edges = [
+            {"id": "root-in", "source": "root-input", "target": "scope-0"},
+            {"id": "root-out", "source": "scope-0", "target": "root-output"},
+        ]
+        for index in range(depth):
+            scope = f"scope-{index}"
+            input_id, output_id = f"input-{index}", f"output-{index}"
+            nodes.extend([
+                _node(input_id, "core.input", scope=scope),
+                _node(output_id, "core.output", scope=scope),
+            ])
+            if index + 1 < depth:
+                child_id = f"scope-{index + 1}"
+                nodes.append(_node(child_id, "test.proxy", scope=scope))
+                edges.extend([
+                    {"id": f"inner-in-{index}", "source": input_id, "target": child_id},
+                    {"id": f"inner-out-{index}", "source": child_id, "target": output_id},
+                ])
+            else:
+                edges.append({"id": f"inner-{index}", "source": input_id, "target": output_id})
+        return _project(base, packages, nodes, edges)
+
+    root, core = nested_project(tmp_path / "depth-32", 32)
+    GraphModule(root, core)
+    root, core = nested_project(tmp_path / "depth-33", 33)
+    with pytest.raises(ValueError, match="construction depth budget exceeded: 32"):
+        GraphModule(root, core)
+
+
+def test_registered_tensor_budget_deduplicates_and_includes_unregistered_modules(tmp_path, monkeypatch):
+    tensor_source = '''import torch
+from torch import nn
+from stereotype_runtime.pytorch import BuildContext, NoServices
+class Template(nn.Module):
+ def __init__(self): super().__init__(); self.weight=nn.Parameter(torch.ones(2, device="meta"))
+class Model(nn.Module):
+ def __init__(self):
+  super().__init__(); self.weight=nn.Parameter(torch.ones(2)); self.register_buffer("alias", self.weight)
+  object.__setattr__(self, "template", Template())
+  self.metadata={}; self.metadata["self"]=self.metadata
+ def forward(self, x): return x * self.weight
+def build(parameters, context, services): return Model()
+'''
+    root, core = _project(
+        tmp_path,
+        [_input_package(), _output_package(), ("test.tensor-model", "layer", tensor_source)],
+        [_node("x", "core.input", params={"binding": "x"}), _node("model", "test.tensor-model"), _node("out", "core.output")],
+        [{"id": "a", "source": "x", "target": "model"}, {"id": "b", "source": "model", "target": "out"}],
+    )
+    monkeypatch.setattr(GraphModule, "_MAX_REGISTERED_TENSOR_BYTES", 15)
+    with pytest.raises(ValueError, match="registered tensor byte budget exceeded: 15 bytes"):
+        GraphModule(root, core)
+
+    monkeypatch.setattr(GraphModule, "_MAX_REGISTERED_TENSOR_BYTES", 16)
+    graph = GraphModule(root, core)
+    assert graph._tensor_bytes == 16
+    monkeypatch.setattr(GraphModule, "_MAX_REGISTERED_TENSOR_BYTES", 100)
+    baseline = graph._tensor_bytes
+    ephemeral = torch.nn.Module()
+    ephemeral.register_buffer("buffer", torch.ones(3))
+    tensor_ref = weakref.ref(ephemeral.buffer)
+    graph._account_module_tensors(ephemeral)
+    assert graph._tensor_bytes == baseline + 12
+    del ephemeral
+    gc.collect()
+    assert tensor_ref() is None
+    assert graph._tensor_bytes == baseline
+
+
+def test_tensor_budget_rechecks_referenced_tensor_after_dtype_change(tmp_path, monkeypatch):
+    child_source = '''import torch
+from torch import nn
+from stereotype_runtime.pytorch import BuildContext, NoServices
+class Child(nn.Module):
+ def __init__(self): super().__init__(); self.weight=nn.Parameter(torch.ones(2))
+ def forward(self, x): return x * self.weight
+def build(parameters, context, services): return Child()
+'''
+    parent_source = '''from torch import nn
+from stereotype_runtime.pytorch import BuildContext, StereotypeServices
+def build(parameters, context, services):
+ child=services.build_stereotype(parameters["child"]); child.double(); return child
+'''
+    child_ref = {"id": "test.tensor-child", "version": "1.0.0", "parameters": {}}
+    root, core = _project(
+        tmp_path,
+        [
+            _input_package(), _output_package(),
+            ("test.tensor-child", "layer", child_source),
+            ("test.tensor-parent", "layer", parent_source, {"child": {"type": "stereotype", "default": child_ref}}),
+        ],
+        [_node("x", "core.input", params={"binding": "x"}), _node("model", "test.tensor-parent"), _node("out", "core.output")],
+        [{"id": "a", "source": "x", "target": "model"}, {"id": "b", "source": "model", "target": "out"}],
+    )
+    monkeypatch.setattr(GraphModule, "_MAX_REGISTERED_TENSOR_BYTES", 12)
+    with pytest.raises(ValueError, match="registered tensor byte budget exceeded: 12 bytes"):
+        GraphModule(root, core)
+
+
+def test_forward_execution_budget_is_fresh_after_failure(tmp_path, monkeypatch):
+    packages = [
+        _input_package(), _output_package(),
+        ("test.scale", "layer", _linear_source(), {"value": {"type": "real", "default": 2.0}}, [{"id": "out", "type": "output"}]),
+    ]
+    root, core = _project(
+        tmp_path, packages,
+        [_node("x", "core.input", params={"binding": "x"}), _node("scale", "test.scale"), _node("out", "core.output")],
+        [{"id": "a", "source": "x", "target": "scale"}, {"id": "b", "source": "scale", "target": "out"}],
+    )
+    graph = GraphModule(root, core)
+    monkeypatch.setattr(GraphModule, "_MAX_EXECUTION_WORK", 2)
+    with pytest.raises(ValueError, match="graph execution budget exceeded: 2 work units"):
+        graph(torch.tensor([3.0]))
+    monkeypatch.setattr(GraphModule, "_MAX_EXECUTION_WORK", 100)
+    assert graph(torch.tensor([3.0]))["prediction"].item() == pytest.approx(6.0)
 
 
 def test_horizontal_repeat_builds_independent_subflows_and_join(tmp_path):

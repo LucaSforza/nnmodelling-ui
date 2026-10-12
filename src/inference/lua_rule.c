@@ -184,7 +184,13 @@ NNInferenceStatus nn_inference_execute_rule(Evaluation *evaluation, const NNNode
     char *source = read_rule(package, &source_length, &read_allocation_failed);
     if (read_allocation_failed) evaluation->allocation_failed = true;
     if (!source) { *message = nn_text_copy("inference rule unavailable or invalid"); return NN_INFERENCE_RUNTIME_FAULT; }
+    if (!nn_inference_charge_lua(evaluation, 1000u)) {
+        free(source);
+        *message = nn_text_copy("cumulative Lua instruction budget limit exceeded (10000000 units)");
+        return NN_INFERENCE_RUNTIME_FAULT;
+    }
     LuaBudget budget = {0};
+    budget.evaluation = evaluation;
     lua_State *state = lua_newstate(nn_inference_limited_alloc, &budget, 0);
     if (!state) { free(source); *message = nn_text_copy("unable to create bounded Lua state"); return NN_INFERENCE_RUNTIME_FAULT; }
     *(LuaBudget **)lua_getextraspace(state) = &budget;
@@ -292,8 +298,10 @@ static int inference_subflow(lua_State *state)
     const char *kind = context ? nn_inference_package_kind(context->evaluation, context->node) : NULL;
     if (!context || !kind || strcmp(kind, "subflow"))
         return luaL_error(state, "infer_subflow is only available to subflow packages");
-    if (++context->evaluation->invocations > 256 || context->depth >= 32)
-        return luaL_error(state, "subflow inference limit exceeded");
+    if (!nn_inference_charge_work(context->evaluation, 1))
+        return luaL_error(state, "work budget limit exceeded (100000 units)");
+    if (context->depth >= 32)
+        return luaL_error(state, "depth limit exceeded (32)");
     if (lua_isnil(state, 1)) {
         lua_newtable(state);
         lua_pushliteral(state, "unresolved"); lua_setfield(state, -2, "status");
@@ -410,8 +418,11 @@ static bool value_from_lua(lua_State *state, int index, NNValue *value, unsigned
 static int inference_stereotype(lua_State *state)
 {
     LuaContext *context = lua_touserdata(state, lua_upvalueindex(1));
-    if (!context || context->depth >= 32 || ++context->evaluation->invocations > 256)
-        return luaL_error(state, "stereotype inference limit exceeded");
+    if (!context) return luaL_error(state, "invalid stereotype inference context");
+    if (!nn_inference_charge_work(context->evaluation, 1))
+        return luaL_error(state, "work budget limit exceeded (100000 units)");
+    if (context->depth >= 32)
+        return luaL_error(state, "depth limit exceeded (32)");
     nn_value_dispose(&context->reference_scratch);
     nn_catalog_parameters_free(context->reference_parameters, context->reference_parameter_count);
     context->reference_parameters = NULL;
