@@ -1,7 +1,9 @@
 # Editor and C application boundary
 
 Accepted 2026-10-14: MainWindow owns staged Manage metavariables and direct
-Inspector binding text/preview. NNProject owns declarations, NNModel owns
+Inspector single-field binding text/preview. GraphScene asks C for resolved
+positioned parameter values for nodes and preview children; it never paints
+internal binding JSON. NNProject owns declarations, NNModel owns
 binding values, and C parameter resolver feeds shape/count/export consumers.
 Changed declaration lists use the same unsaved history barrier as Operations.
 BackendServiceManager owns cancellable worker preparation QProcess; separate

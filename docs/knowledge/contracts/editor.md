@@ -6,13 +6,27 @@ Model > Manage metavariables opens a project-local staged list with New, Edit,
 Remove, Save and Cancel, matching Operations. Forms use Name, Type and Value;
 Save calls C validation and keeps invalid forms open with clear errors. Cancel
 does not mutate project. Project resources lists declarations and current values.
-Existing Inspector fields accept `$name` / `$(...)` directly. Text fields have no
-numeric-only Qt validator that blocks binding syntax. Boolean/choice/reference
-fields retain their literal controls and expose a compact editable binding field
-beside them; no semantic mode selector. Stored bindings display their source;
-resolved value or diagnostic appears underneath/tooltip. Core owns parsing,
-resolution and validation. Literal strings starting with $ are entered as $$.
+Every Inspector parameter has one value editor accepting a literal, `$name` or
+`$(Lua expression)` in that same control, including nested stereotype fields.
+Numeric/text/array fields use text input; boolean, choice and stereotype selectors
+are editable so their text area accepts binding syntax directly. No separate
+binding field or mode selector. A visible compact hint near Parameters explains
+the syntax; controls also expose placeholders/tooltips. Stored bindings display
+their source in the editor and a resolved value or diagnostic below it. Literal
+references display a friendly package name and nested fields, not raw reference
+JSON; bound references show a friendly resolved package and read-only nested
+values until explicitly replaced. Preview labels and editors must fit their tree
+row at normal and enlarged fonts, without overlapping following rows. Core owns
+parsing, resolution and validation. Literal strings starting with $ use $$.
 Refresh after variable edits updates shapes, counts and Inspector previews.
+
+Positioned parameter rows on canvas nodes, including subflows and expanded
+preview children, display concrete values from the C resolved-parameter query.
+They never display internal `$ref`/`$lua` JSON or Lua source. Stereotype values
+display friendly package names; arrays retain compact readable list notation.
+Resolution failure displays `?` with the diagnostic in a tooltip and normal
+problem markers. Displaying a value never replaces the authored binding or
+changes project dirty/history state.
 
 Accepted 2026-09-29: Qt 6 Widgets and Graphics View replace the SDL draw API.
 Cleanup accepted 2026-09-30: remove the superseded SDL adapter, C editor loop,
@@ -235,9 +249,10 @@ unsaved manifest edits; normal save or close persists them.
 Stereotype parameters expose an active-catalog package selector filtered by the
 parameter's optional kind, plus schema-derived fields for its parameters. The selector
 shows exact ID/version; choosing a new package seeds its defaults. Existing
-references retain their parameters until explicitly edited. Boolean fields use
-checkboxes, choices use selectors,
-integers and finite numbers use validated text fields, strings use text fields.
+references retain their parameters until explicitly edited. Boolean and choice
+fields use editable selectors, while integers, finite numbers and strings use
+text fields; the shared metavariable editor contract above governs both literals
+and bindings in each same control.
 Each field submits one updated reference using current committed sibling values.
 JSON-array parameters retain their existing array editor; no whole-reference
 JSON entry is required. Missing imported references remain visibly unset and can be repaired. Submit the object through

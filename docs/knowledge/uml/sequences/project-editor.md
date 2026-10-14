@@ -20,6 +20,10 @@
     Qt->>App: resolved_parameter_text and analysis
     App->>Resolve: resolve meta and sibling params, validate destination
     Resolve-->>Qt: concrete preview or named diagnostic through application
+    Qt->>Qt: show source in one value editor and size preview rows
+    Qt->>App: resolved_parameter_text for canvas parameter rows
+    App-->>Qt: concrete value or error
+    Qt->>Qt: paint computed value or unknown marker and retain source binding
     User->>Qt: submit training
     Qt->>App: resolved_model_json
     App->>Resolve: compile all defaulted parameters without source mutation
