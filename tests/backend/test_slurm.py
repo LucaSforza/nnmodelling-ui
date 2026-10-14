@@ -39,6 +39,7 @@ def _output_tar(metrics: dict, *, weights: bytes = b"weights", wheel: bytes = b"
     with tarfile.open(fileobj=stream, mode="w") as archive:
         for name, data in (("metrics.json", json.dumps(metrics).encode()),
                            ("weights.safetensors", weights), ("nnm_model-0.1.0-py3-none-any.whl", wheel),
+                           ("python-package.zip", b"package"),
                            ("worker.log", b"training finished")):
             info = tarfile.TarInfo(name)
             info.size = len(data)
@@ -220,6 +221,7 @@ def test_successful_remote_job_publishes_metrics_and_retrieves_safe_artifacts(tm
     assert store.get(job["id"], "owner")["metrics"] == metrics
     assert store.artifact(job["id"], "owner", "weights").read_bytes() == b"weights"
     assert store.artifact(job["id"], "owner", "wheel").read_bytes() == b"wheel"
+    assert store.artifact(job["id"], "owner", "package").read_bytes() == b"package"
 
 
 def test_remote_output_rejects_traversal_links_and_oversize(tmp_path, monkeypatch):

@@ -155,6 +155,52 @@ def test_submit_snapshot_and_list_keep_original_resource_bytes(tmp_path, monkeyp
         assert store.job_dir(job["id"]).joinpath("snapshot").stat().st_mode & 0o222 == 0
 
 
+def test_schema_three_submission_freezes_authored_and_concrete_graphs(tmp_path, monkeypatch):
+    http, store, runner = client(tmp_path, monkeypatch)
+    with http:
+        submitted = payload()
+        source = submitted["project"]
+        source["manifest"]["schemaVersion"] = 3
+        source["manifest"]["metavariables"] = [{"name": "width", "type": "integer", "value": 1}]
+        source["nodes"][1]["data"]["params"]["in_features"] = {"$ref": "width"}
+        execution = json.loads(json.dumps(source))
+        execution["manifest"]["schemaVersion"] = 2
+        execution["manifest"].pop("metavariables")
+        execution["nodes"][1]["data"]["params"]["in_features"] = 1
+        submitted["execution_project"] = execution
+
+        response = http.post("/v1/jobs", json=submitted)
+        assert response.status_code == 202, response.content.decode()
+        job = response.json()
+        snapshot = store.job_dir(job["id"]) / "snapshot"
+        assert json.loads((snapshot / "project.json").read_text()) == source
+        assert json.loads((snapshot / "execution-project.json").read_text()) == execution
+        assert http.get(f"/v1/jobs/{job['id']}/snapshot").json()["project"] == source
+        assert runner.submitted == [job["id"]]
+
+
+def test_schema_three_requires_execution_project_and_rejects_literal_changes(tmp_path, monkeypatch):
+    http, _store, _runner = client(tmp_path, monkeypatch)
+    with http:
+        submitted = payload()
+        submitted["project"]["manifest"]["schemaVersion"] = 3
+        missing = http.post("/v1/jobs", json=submitted)
+        assert missing.status_code == 422
+
+        source = submitted["project"]
+        source["manifest"]["metavariables"] = [{"name": "width", "type": "integer", "value": 1}]
+        source["nodes"][1]["data"]["params"]["in_features"] = {"$ref": "width"}
+        execution = json.loads(json.dumps(source))
+        execution["manifest"]["schemaVersion"] = 2
+        execution["manifest"].pop("metavariables")
+        execution["nodes"][1]["data"]["params"]["in_features"] = 1
+        execution["nodes"][1]["data"]["params"]["bias"] = False
+        submitted["execution_project"] = execution
+        rejected = http.post("/v1/jobs", json=submitted)
+        assert rejected.status_code == 422
+        assert "literal parameter" in rejected.json()["detail"]
+
+
 def test_early_stopping_controls_are_accepted_frozen_and_returned(tmp_path, monkeypatch):
     http, store, runner = client(tmp_path, monkeypatch)
     with http:
@@ -348,6 +394,7 @@ def test_wheel_download_preserves_readable_and_historical_artifact_names(tmp_pat
             assert response.headers["content-disposition"] == f'attachment; filename="{filename}"'
             assert Path(response.path) == artifact
             assert artifact.read_bytes() == b"stored wheel bytes"
+            assert http.get(f"/v1/jobs/{job_id}/package").status_code == 404
 
 
 def test_runner_cannot_start_a_job_cancelled_while_queued(tmp_path, monkeypatch):

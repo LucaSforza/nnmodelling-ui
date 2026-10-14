@@ -6,9 +6,10 @@ inference does not need the backend or editable model project.
 
 The consumer is pinned to the corrected 100-epoch MNIST VAE job
 `173dec99-e10a-4579-9e9d-41fbe7f9fca3`. Its artifact identity and SHA256 are
-recorded in `artifact.json`; the wheel distribution is `nnm_mnist_vae` and its
-job-specific Python module is
-`nnmodel_job_173dec99_e10a_4579_9e9d_41fbe7f9fca3`. The run used 64 training,
+recorded in `artifact.json`; the wheel distribution is `nnm_mnist_vae`. The
+consumer first imports the stable `nnm_mnist_vae` package and keeps the recorded
+job-specific module `nnmodel_job_173dec99_e10a_4579_9e9d_41fbe7f9fca3` as a
+fallback for this historical wheel. The run used 64 training,
 16 validation and 16 test images, seed 0, batch size 16 and learning rate
 0.001. With pixel-summed reconstruction error plus mean KL, final training,
 validation and test losses were 40.3861, 48.6109 and 42.6717.

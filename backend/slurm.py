@@ -590,7 +590,7 @@ class SlurmJobRunner(JobRunner):
         output = shlex.quote(stage + "/output")
         command = (
             f"cd {output} && total=0 && count=0 && set -- && "
-            "for f in metrics.json metrics.tmp weights.safetensors worker-*.log worker.log preparation-*.log *.whl; do "
+            "for f in metrics.json metrics.tmp weights.safetensors python-package.zip worker-*.log worker.log preparation-*.log *.whl; do "
             "if [ -e \"$f\" ] || [ -L \"$f\" ]; then "
             "[ ! -L \"$f\" ] || { echo 'linked output rejected' >&2; exit 43; }; "
             f"count=$((count + 1)); [ \"$count\" -le {config.MAX_FILES} ] || {{ echo 'too many output files' >&2; exit 46; }}; "
@@ -643,7 +643,7 @@ class SlurmJobRunner(JobRunner):
                     if member.size < 0 or member.size > config.MAX_METRICS_BYTES:
                         raise SlurmError("Remote transient metrics exceed the 64 MiB publication limit.")
                     continue
-                if (name not in {"metrics.json", "weights.safetensors", "worker.log"}
+                if (name not in {"metrics.json", "weights.safetensors", "python-package.zip", "worker.log"}
                         and not re.fullmatch(r"(?:worker|preparation)-[0-9]+\.log", name) and not name.endswith(".whl")):
                     raise SlurmError(f"Remote output archive contains an unexpected file: {name!r}")
                 if name in seen or member.size < 0 or member.size > _MAX_TRANSFER_BYTES:

@@ -17,7 +17,8 @@ from . import config
 from .runner import JobRunner, container_status
 from .slurm import SlurmJobRunner, slurm_status
 from .store import JobStore, utc_now
-from .validation import resolve_core_packages, safe_relative_path, validate_project, validate_training
+from .validation import (resolve_core_packages, safe_relative_path, validate_execution_project,
+                         validate_project, validate_training)
 from .remote_data import remote_records
 
 
@@ -44,6 +45,7 @@ class TrainingConfig(BaseModel):
 class JobRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     project: dict[str, Any]
+    execution_project: dict[str, Any] | None = None
     files: dict[str, str]
     training: TrainingConfig
 
@@ -160,7 +162,7 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="NNModelling local training API", version="1.0.0", lifespan=lifespan)
-app.add_middleware(RequestSizeLimit, maximum=(config.MAX_BUNDLE_BYTES * 4 // 3) + config.MAX_PROJECT_BYTES + 1024 * 1024)
+app.add_middleware(RequestSizeLimit, maximum=(config.MAX_BUNDLE_BYTES * 4 // 3) + 2 * config.MAX_PROJECT_BYTES + 1024 * 1024)
 
 
 async def current_owner(authorization: str | None = Header(default=None)) -> str:
@@ -188,6 +190,7 @@ async def health() -> dict[str, Any]:
 @app.post("/v1/jobs", status_code=202, response_model=JobResponse, response_model_exclude_unset=True)
 async def create_job(body: JobRequest, owner: str = Depends(current_owner)) -> dict[str, Any]:
     project = body.project
+    execution_project = body.execution_project
     training = validate_training(body.training.model_dump(exclude_none=True))
     if len(body.files) > config.MAX_FILES:
         raise HTTPException(413, f"At most {config.MAX_FILES} files may be submitted.")
@@ -218,15 +221,29 @@ async def create_job(body: JobRequest, owner: str = Depends(current_owner)) -> d
     project_bytes = len(json.dumps(project, separators=(",", ":")).encode("utf-8"))
     if project_bytes > config.MAX_PROJECT_BYTES:
         raise HTTPException(413, "Project model exceeds the configured size limit.")
-    core_packages = resolve_core_packages(project, files)
-    project = validate_project(project, files, core_packages)
+    execution_bytes = None
+    if execution_project is not None:
+        execution_bytes = len(json.dumps(execution_project, separators=(",", ":")).encode("utf-8"))
+        if execution_bytes > config.MAX_PROJECT_BYTES:
+            raise HTTPException(413, "Execution project model exceeds the configured size limit.")
+    core_packages = resolve_core_packages(execution_project or project, files)
+    if execution_project is None:
+        project = validate_project(project, files, core_packages)
+        from .validation import reject_unresolved_bindings
+        reject_unresolved_bindings(project)
+        if project["manifest"].get("schemaVersion") == 3:
+            raise HTTPException(422, "Schema-v3 projects require a concrete execution_project.")
+        execution_project = project
+    else:
+        project = validate_project(project, files, core_packages, allow_authored=True)
+        execution_project = validate_execution_project(project, execution_project, files, core_packages)
     try:
         has_remote_data = bool(remote_records(project, files))
     except ValueError as error:
         raise HTTPException(422, str(error)) from None
     if has_remote_data and config.EXECUTOR != "slurm":
         raise HTTPException(422, "Remote dataset files require the Slurm executor.")
-    record = store.create(project, files, training, core_packages, owner)
+    record = store.create(project, files, training, core_packages, owner, execution_project=execution_project)
     runner.submit(record["id"])
     return record
 
@@ -271,6 +288,17 @@ async def get_wheel(job_id: str, owner: str = Depends(current_owner)) -> FileRes
     if path is None:
         _job(job_id, owner)
         raise HTTPException(409, "The model wheel is available only after successful training.")
+    return FileResponse(path, media_type="application/zip", filename=path.name)
+
+
+@app.get("/v1/jobs/{job_id}/package")
+async def get_package(job_id: str, owner: str = Depends(current_owner)) -> FileResponse:
+    path = store.artifact(job_id, owner, "package")
+    if path is None:
+        record = _job(job_id, owner)
+        if record["status"] == "completed":
+            raise HTTPException(404, "This completed job has no portable Python package artifact.")
+        raise HTTPException(409, "The portable Python package is available only after successful training.")
     return FileResponse(path, media_type="application/zip", filename=path.name)
 
 
