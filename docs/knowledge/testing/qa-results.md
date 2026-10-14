@@ -284,3 +284,18 @@ into metamodel.md, and analysis/navigation into sequences.md. Removed the three
 overlapping current UML files rather than retain parallel versions. Explicitly
 historical legacy.md and original analysis/uml assets remain preserved; user
 approved this distinction and consolidation. No backend/training behavior added.
+
+## Metavariables and Slurm worker preparation — 2026-10-14
+
+Core 16/16 and Qt/CLI 8/8 gates passed, plus 113 backend and 58 runtime/operation/
+consumer pytest cases. Mermaid and offline user-guide validation passed.
+Actual Qt computer use through noVNC created metavariables, edited Inspector
+references/formulas, changed four heads to eight, saved the model, prepared and
+checked a new CPU SIF, trained tiny-decoder-llm on Slurm, and downloaded all three
+artifacts. Scheduler job `1033260` completed with exit `0:0`; installed wheel
+and extracted wheel/ZIP imports and inference passed in separate isolated Python
+processes without the public SDK. Full hashes, losses, commands, screenshots and
+the initial Qt VNC plugin crash/recovery are recorded in
+[the Slurm verification record](cluster-training.md#metavariables-prepared-sif-and-portable-imports--2026-10-14).
+Native computer-use surfaces were unavailable; no new Wayland trial is claimed.
+The saved trial project and owned Qt/bridge/backend processes were closed.

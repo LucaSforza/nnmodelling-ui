@@ -111,3 +111,86 @@ and prebuilt SIF as described in `examples/README.md`.
 Validation: 115 integrated Python tests, 13 core tests and 7 Qt/CLI tests passed.
 Official backend/example recipes also passed (26 and 51 tests). Standalone
 consumer recipes, Mermaid validation and `git diff --check` passed.
+
+## Metavariables, prepared SIF and portable imports — 2026-10-14
+
+The principal drove the actual Qt application through the project noVNC bridge;
+native computer-use surfaces were unavailable. Three GPT-6 Luna workers wrote
+the bounded C, Qt and backend/runtime changes after contracts and UML were
+updated. The checked-in tiny decoder was copied into the ignored trial directory;
+the original example was preserved.
+
+The Operations-style manager created integer `embedding-features=64` and
+`num-heads=4`. Inspector edits bound embedding/positional dimensions and all
+Q/K/V `in_features` to `$embedding-features`, Horizontal Repeat `times` to
+`$num-heads`, and all Q/K/V `out_features` to
+`$(params.in_features / meta["num-heads"])`. Scale uses
+`$(1 / math.sqrt(meta["embedding-features"] / meta["num-heads"]))`.
+Changing `num-heads` to 8 through the manager changed each projection's inferred
+last dimension from 16 to 8; concatenation retained 64 features and the GUI
+reported no model problems. The authored schema-3 model was saved through Qt.
+
+Prepare and install worker built the locked CPU environment locally, transferred
+and SHA256-verified its Docker archive, and submitted actual Slurm conversion
+job `1033259`. It finished `COMPLETED`, exit `0:0`, in 2:58. Dependency/startup
+probes ran with the training source mounted over `/app`; the Python environment
+remained available at `/opt/nnmodelling/venv`. The helper published immutable
+`worker-151c817a64aaf577c8bafd470f496efba29f42a637176caed63ba0057ffa24f0.sif`
+and Qt updated the isolated trial profile. Check worker also succeeded through
+the configuration dialog. No account path or credential is committed here.
+
+Qt then started the local service, confirmed Slurm health, and submitted three
+CPU epochs with batch size 16, learning rate 0.001, seed 0 and publication
+cadence 4. Scheduler job `1033260` finished `COMPLETED`, exit `0:0`, in 30 seconds;
+local job ID is `b09b4182-c80a-408c-9398-7f3a584da515`. The dashboard displayed
+completed state, finite paired curves and final test loss `3.0620439052581787`.
+
+| Epoch | Training loss | Validation loss |
+| --- | ---: | ---: |
+| 1 | 3.8181790113449097 | 3.459254264831543 |
+| 2 | 3.373031497001648 | 3.2701480388641357 |
+| 3 | 3.1861157417297363 | 3.1101107597351074 |
+
+There were 12 optimizer updates and 24,576 processed tokens. This is a bounded
+deployment/inference smoke, not a language-quality or full-corpus convergence
+claim. The source snapshot retained declarations and bindings. The separate
+execution snapshot and the wheel's model were schema 2 with concrete values:
+eight heads, 64 input features, eight Q/K/V output features and the resolved
+scale factor. Original identity/resources remained intact.
+
+Wheel, portable ZIP and safetensors were downloaded using the dashboard buttons.
+Each download matched its validated local job artifact byte for byte.
+
+| Artifact | SHA256 |
+| --- | --- |
+| `nnm_tiny_decoder_llm-0.1.0-py3-none-any.whl` | `399a3c3d284917434788105e132c173a19cb15a554b382edb1032f68108ae661` |
+| `python-package.zip` | `5235e5bc5a41852ee06251064767ac493a654bc0a2cd1de98b4b4e9fe4557e97` |
+| `weights.safetensors` | `031ac043d709f6e0a4ac6e8260702879373d2f5f1b1069727627c42abf23eec9` |
+
+Three fresh Python 3.14.8 processes tested the extracted wheel package, extracted
+portable ZIP and an offline `uv pip install --no-deps --target` installation.
+Each used the literal public import `from nnm_tiny_decoder_llm import Model`,
+verified its expected package location, excluded repository source and editable
+`.pth` files, and confirmed the public NNModelling SDK was not importable.
+Third-party dependencies were curated from the installed environment, including
+PyTorch 2.14.1+cpu. Resetting the RNG before comparisons proved `infer` and
+`inference` agree and downloaded explicit weights match bundled weights.
+Eight generated characters produced `ROMEO:\nhTHUey e` in every process.
+This model exposes text inference and declares no public tensor operation;
+consumer tensor-finiteness testing therefore does not apply.
+
+Local evidence is under `.computer-use/metavariable-slurm-trial/`: authored
+`tiny-decoder-llm/model.json`, profile, job snapshots/metrics, downloaded
+`artifacts/`, `formula-heads-8.png`, `worker-installed.png`,
+`training-and-downloads.png`, and `consumer-proof/actual-smoke.txt` with its
+reproduction README. One initial Qt VNC session crashed in the installed
+`libqvnc.so` redraw path while dismissing a combo popup; its unsaved trial edits
+were discarded. A fresh session using keyboard type selection completed the
+entire authoring, preparation, training and download flow. This records a bridge
+environment limitation, not a claim of native Wayland verification. The saved
+project was closed through Qt; bridge and owned local backend were stopped.
+
+Final automated gates passed: core 16/16, Qt/CLI 8/8, backend 113 pytest cases,
+and runtime/operations/LLM/VAE consumer 58 pytest cases. Socket/cache-dependent
+checks ran outside the restricted sandbox. Mermaid validated 44 diagrams in
+41 files; the offline user guide verified 13 pages. `git diff --check` passed.
