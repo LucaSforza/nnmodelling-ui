@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import hashlib
 import json
 from pathlib import Path
 
@@ -33,6 +34,7 @@ def test_snapshot_includes_inference_asset_and_excludes_model_json():
     assert "datasets/llm.tokens-1.0.0/vocabulary.json" in files
     assert "datasets/llm.tokens-1.0.0/data.json" in files
     assert "datasets/llm.tokens-1.0.0/manifest.json" in files
+    assert "execution-model.json" not in files
 
 
 def test_rejects_symlinks_inside_manifest_resource(tmp_path: Path):
@@ -68,13 +70,86 @@ def test_rejects_symlink_project_directories_and_model_files(tmp_path: Path):
     (models / "linked-project").symlink_to(target, target_is_directory=True)
     with pytest.raises(cluster.TrainingError, match="project directory cannot be a symlink"):
         cluster.discover_projects(models)
-
     (models / "linked-project").unlink()
     local_project = models / "local-project"
     local_project.mkdir()
     (local_project / "model.json").symlink_to(target / "model.json")
     with pytest.raises(cluster.TrainingError, match="model.json cannot be a symlink"):
         cluster.discover_projects(models)
+
+
+def schema_three_project(directory: Path) -> tuple[dict, dict]:
+    directory.mkdir(parents=True)
+    source = {
+        "manifest": {"schemaVersion": 3, "id": "compiled-example", "metavariables": [{"name": "width"}],
+                     "customDatasets": [], "customPackages": []},
+        "nodes": [], "edges": [],
+    }
+    execution = {"manifest": {"schemaVersion": 2, "id": "compiled-example",
+                              "customDatasets": [], "customPackages": []},
+                 "nodes": [], "edges": []}
+    model_bytes = json.dumps(source, separators=(",", ":")).encode()
+    (directory / "model.json").write_bytes(model_bytes)
+    wrapper = {"source_sha256": hashlib.sha256(model_bytes).hexdigest(), "execution_project": execution}
+    (directory / "execution-model.json").write_text(json.dumps(wrapper), encoding="utf-8")
+    return source, execution
+
+
+def test_schema_three_execution_artifact_is_required_and_source_pinned(tmp_path: Path):
+    directory = tmp_path / "model"
+    source, _execution = schema_three_project(directory)
+    model_bytes = (directory / "model.json").read_bytes()
+    artifact = directory / "execution-model.json"
+    artifact.unlink()
+    with pytest.raises(cluster.TrainingError, match="required native execution artifact"):
+        cluster.load_execution_artifact(directory, source, model_bytes)
+
+    other = tmp_path / "other.json"
+    other.write_text("{}", encoding="utf-8")
+    artifact.symlink_to(other)
+    with pytest.raises(cluster.TrainingError, match="symlink"):
+        cluster.load_execution_artifact(directory, source, model_bytes)
+    artifact.unlink()
+
+    artifact.write_text("not json", encoding="utf-8")
+    with pytest.raises(cluster.TrainingError, match="malformed"):
+        cluster.load_execution_artifact(directory, source, model_bytes)
+    artifact.write_text(json.dumps({"source_sha256": "0" * 64, "execution_project": {}}), encoding="utf-8")
+    with pytest.raises(cluster.TrainingError, match="does not match"):
+        cluster.load_execution_artifact(directory, source, model_bytes)
+
+    artifact.write_text(json.dumps({"source_sha256": hashlib.sha256(model_bytes).hexdigest(),
+                                    "execution_project": {"manifest": {"schemaVersion": 3}}}), encoding="utf-8")
+    with pytest.raises(cluster.TrainingError, match="concrete schema-2"):
+        cluster.load_execution_artifact(directory, source, model_bytes)
+
+
+def test_submission_includes_compiled_project_and_resume_hashes_companion(tmp_path: Path, monkeypatch):
+    models = tmp_path / "models"
+    source, execution = schema_three_project(models / "compiled-example")
+    posts = []
+    monkeypatch.setattr(cluster, "get_json", lambda *_: {"container": {"executor": "slurm", "available": True}})
+
+    def fake_request(_base, method, route, **kwargs):
+        if method == "POST" and route == "/v1/jobs":
+            posts.append(kwargs["payload"])
+            return 202, {}, json.dumps({"id": "job-compiled", "status": "queued", "metrics": {}, "error": None}).encode()
+        raise AssertionError(f"unexpected {method} {route}")
+
+    monkeypatch.setattr(cluster, "request", fake_request)
+    options = args(tmp_path, models)
+    assert cluster.run(options) == 0
+    body = posts[0]
+    assert body["project"] == source
+    assert body["execution_project"] == execution
+    assert "execution-model.json" not in body["files"]
+
+    wrapper = json.loads((models / "compiled-example/execution-model.json").read_text())
+    wrapper["execution_project"]["nodes"].append({"id": "changed"})
+    (models / "compiled-example/execution-model.json").write_text(json.dumps(wrapper), encoding="utf-8")
+    with pytest.raises(cluster.TrainingError, match="incompatible"):
+        cluster.run(options)
+    assert len(posts) == 1
 
 
 def test_refuses_non_slurm_health_before_submission(tmp_path: Path, monkeypatch):

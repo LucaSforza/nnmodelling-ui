@@ -12,6 +12,7 @@ import backend.app as service
 from backend.runner import JobRunner
 from backend.store import JobStore, utc_now
 from backend.app import RequestSizeLimit
+from tools.train_cluster_examples import load_execution_artifact
 
 
 REPOSITORY = Path(__file__).resolve().parents[1]
@@ -114,17 +115,22 @@ def payload() -> dict:
 
 def payload_for(example: str) -> dict:
     directory = REPOSITORY / "examples" / "models" / example
-    project = json.loads((directory / "model.json").read_text(encoding="utf-8"))
+    model_bytes = (directory / "model.json").read_bytes()
+    project = json.loads(model_bytes)
+    execution_project, _artifact_hash = load_execution_artifact(directory, project, model_bytes)
     files = {
         path.relative_to(directory).as_posix(): base64.b64encode(path.read_bytes()).decode("ascii")
         for path in directory.rglob("*")
-        if path.is_file() and path.name != "model.json" and "__pycache__" not in path.parts
+        if path.is_file() and path.name not in {"model.json", "execution-model.json"} and "__pycache__" not in path.parts
     }
-    return {
+    result = {
         "project": project,
         "files": files,
         "training": {"epochs": 1, "batch_size": 2, "learning_rate": 0.01, "seed": 7},
     }
+    if execution_project is not None:
+        result["execution_project"] = execution_project
+    return result
 
 
 def client(tmp_path: Path, monkeypatch) -> tuple[LocalClient, JobStore, RunnerStub]:
@@ -176,6 +182,23 @@ def test_schema_three_submission_freezes_authored_and_concrete_graphs(tmp_path, 
         assert json.loads((snapshot / "project.json").read_text()) == source
         assert json.loads((snapshot / "execution-project.json").read_text()) == execution
         assert http.get(f"/v1/jobs/{job['id']}/snapshot").json()["project"] == source
+        assert runner.submitted == [job["id"]]
+
+
+def test_bundled_llm_compilation_is_accepted_and_frozen_without_uploading_wrapper(tmp_path, monkeypatch):
+    http, store, runner = client(tmp_path, monkeypatch)
+    submitted = payload_for("tiny-decoder-llm")
+    assert submitted["project"]["manifest"]["schemaVersion"] == 3
+    assert submitted["execution_project"]["manifest"]["schemaVersion"] == 2
+    assert "execution-model.json" not in submitted["files"]
+    with http:
+        response = http.post("/v1/jobs", json=submitted)
+        assert response.status_code == 202, response.content.decode()
+        job = response.json()
+        snapshot = store.job_dir(job["id"]) / "snapshot"
+        assert json.loads((snapshot / "project.json").read_text()) == submitted["project"]
+        assert json.loads((snapshot / "execution-project.json").read_text()) == submitted["execution_project"]
+        assert http.get(f"/v1/jobs/{job['id']}/snapshot").json()["project"] == submitted["project"]
         assert runner.submitted == [job["id"]]
 
 

@@ -9,6 +9,12 @@ reads and validates those files before marking a job complete. Sources include
 
 ## Save and submit an immutable snapshot
 
+Bundled schema-3 examples also carry a source-hash-pinned native compilation in
+`execution-model.json`. The example submission tool verifies the source hash
+before sending both graphs through the same API validation below. Direct Python
+tests stage that concrete graph with original resources. Qt always queries C
+afresh; it never consumes this generated example artifact.
+
 ```mermaid
   sequenceDiagram
     actor User

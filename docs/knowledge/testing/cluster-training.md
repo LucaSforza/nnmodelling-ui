@@ -194,3 +194,21 @@ Final automated gates passed: core 16/16, Qt/CLI 8/8, backend 113 pytest cases,
 and runtime/operations/LLM/VAE consumer 58 pytest cases. Socket/cache-dependent
 checks ran outside the restricted sandbox. Mermaid validated 44 diagrams in
 41 files; the offline user guide verified 13 pages. `git diff --check` passed.
+
+Follow-up: the authored model is now committed at
+`examples/models/tiny-decoder-llm/model.json`, rather than existing only in the
+ignored trial copy. Model-width references also cover all LayerNorms, output
+projections and feed-forward dimensions. Its default concrete parameters and
+edges match the completed Slurm trial. Native analysis additionally passes at
+128 model features and four heads, including positional encoding and the
+512-wide feed-forward layer. The generated, source-hash-pinned
+`execution-model.json` is compared against fresh C compilation; direct Python
+tests and the example Slurm tool consume it without evaluating formulas.
+The tool rejects missing/stale/symlinked artifacts and hashes compilation in
+resume identity. The original repository project was reopened through Qt;
+Manage metavariables showed 64 features and eight heads, and analysis reported
+no problems. Evidence: `repository-metavariables.png` in the trial directory.
+Core 16/16, Qt/CLI 8/8 and 37 affected Python tests passed after promotion,
+including numerical training, causal prefixes, repeated-weight independence,
+wheel export and schema-3 source/concrete API submission. User guides and the
+example README now describe the committed ten-block, eight-head defaults.

@@ -47,7 +47,7 @@ Il progetto originale resta disponibile per altri esperimenti. Se preferisci una
 
 ## 3. Leggere il grafo prima di inviarlo
 
-Il modello usa un vocabolario di **65 caratteri**, contesto **128**, larghezza **64**, **due** blocchi decoder, **quattro** teste di attenzione di larghezza **16** e uno strato feed-forward di larghezza **256**. L'Input radice riceve `tokens`; Embedding e Positional Encoding preparano le rappresentazioni; Repeat applica i blocchi decoder; LayerNorm e Linear producono i logit; Token Cross Entropy alimenta `Loss Output`. `Output` raccoglie la predizione.
+Il modello attuale usa un vocabolario di **65 caratteri**, contesto **128**, larghezza **64**, **dieci** blocchi decoder, **otto** teste di attenzione di larghezza **8** e uno strato feed-forward di larghezza **256**. In `Model > Manage metavariables` trovi `embedding-features = 64` e `num-heads = 8`: cambiandoli, riferimenti e formule nell'Inspector ricalcolano le dimensioni condivise. La larghezza deve essere divisibile per il numero di teste. L'Input radice riceve `tokens`; Embedding e Positional Encoding preparano le rappresentazioni; Repeat applica i blocchi decoder; LayerNorm e Linear producono i logit; Token Cross Entropy alimenta `Loss Output`. `Output` raccoglie la predizione. Gli screenshot del grafo mostrano la versione storica con due blocchi e quattro teste.
 
 ![Grafo radice del modello linguistico](assets/overview.png)
 
@@ -60,7 +60,7 @@ Controlla `Project resources`: `llm.tokens@1.0.0` deve essere attivo. `Dataset�
 
 Chiudi con `Cancel` se stai solo ispezionando. Il dataset incluso contiene **64** finestre di training, **16** di validazione e **16** di test, ricavate da un estratto di Tiny Shakespeare. È già pronto: il primo training non richiede download del corpus.
 
-Seleziona Repeat: l'Inspector mostra `times = 2` e uscita `float32[B, 128, 64]`. Apri `Scope` e scegli il blocco decoder; nel suo ambito seleziona HorizontalRepeat: `times = 4`, `join = Concat`, `dim = -1`. Entra nello scope delle teste per vedere `Q × Kᵀ`, scala `0.25 = 1/√16`, maschera causale, Softmax e moltiplicazione per V. Il join concatena quattro risultati larghi 16 in un tensore largo 64.
+Seleziona Repeat: l'Inspector mostra `times = 10` e uscita `float32[B, 128, 64]`. Apri `Scope` e scegli il blocco decoder; nel suo ambito seleziona HorizontalRepeat: `times = $num-heads`, valore risolto `8`, `join = Concat`, `dim = -1`. Entra nello scope delle teste: Q/K/V usano `$(params.in_features / meta["num-heads"])`, risolto a `8`. La scala usa `$(1 / math.sqrt(meta["embedding-features"] / meta["num-heads"]))`, risolta a circa `0.353553`. Seguono maschera causale, Softmax e moltiplicazione per V. Il join concatena otto risultati larghi 8 in un tensore largo 64.
 
 ![Attenzione esplicita dentro HorizontalRepeat](assets/attention.png)
 

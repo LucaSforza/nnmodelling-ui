@@ -35,6 +35,98 @@ static void assert_equal_member(const yyjson_val *left, const yyjson_val *right,
     assert(yyjson_equals(yyjson_obj_get(left, key), yyjson_obj_get(right, key)));
 }
 
+static const yyjson_val *find_node(const yyjson_val *model, const char *node_id)
+{
+    const yyjson_val *nodes = yyjson_obj_get(model, "nodes");
+    for (size_t i = 0; i < yyjson_arr_size(nodes); ++i) {
+        const yyjson_val *node = yyjson_arr_get(nodes, i);
+        if (yyjson_equals_str(yyjson_obj_get(node, "id"), node_id)) return node;
+    }
+    return NULL;
+}
+
+static void assert_parameter_integer(const yyjson_val *model, const char *node_id,
+                                     const char *key, int64_t expected)
+{
+    const yyjson_val *node = find_node(model, node_id);
+    const yyjson_val *data = yyjson_obj_get(node, "data");
+    const yyjson_val *params = yyjson_obj_get(data, "params");
+    const yyjson_val *value = yyjson_obj_get(params, key);
+    assert(yyjson_is_int(value) && yyjson_get_int(value) == expected);
+}
+
+static char *resolve_tiny_example(const char *core, const char *example_path,
+                                  const char *bindings, char *error, size_t capacity)
+{
+    NNApplication *app = nn_app_new(core);
+    assert(app && nn_app_open(app, example_path, error, capacity));
+    if (bindings) assert(nn_app_set_metavariables_json(app, bindings, error, capacity));
+    char *resolved = nn_app_resolved_model_json(app, error, capacity);
+    if (resolved) {
+        const NNInferenceReport *report = nn_app_analysis(app, error, capacity);
+        assert(report && nn_inference_root_status(report) == NN_INFERENCE_SUCCESS);
+    }
+    nn_app_free(app);
+    return resolved;
+}
+
+static void test_tiny_example_execution_model(const char *core, const char *cwd,
+                                              char *error, size_t capacity)
+{
+    char *example_path = join(cwd, "examples/models/tiny-decoder-llm");
+    char *artifact_path = join(example_path, "execution-model.json");
+    char *wrapper_text = read_file(artifact_path);
+    yyjson_doc *wrapper = yyjson_read(wrapper_text, strlen(wrapper_text), 0);
+    assert(wrapper);
+    const yyjson_val *wrapper_root = yyjson_doc_get_root(wrapper);
+    const yyjson_val *hash = yyjson_obj_get(wrapper_root, "source_sha256");
+    const yyjson_val *expected = yyjson_obj_get(wrapper_root, "execution_project");
+    assert(yyjson_is_str(hash) && yyjson_get_len(hash) == 64 && expected);
+
+    char *resolved_text = resolve_tiny_example(core, example_path, NULL, error, capacity);
+    assert(resolved_text);
+    yyjson_doc *resolved = yyjson_read(resolved_text, strlen(resolved_text), 0);
+    assert(resolved && yyjson_equals(yyjson_doc_get_root(resolved), expected));
+    yyjson_doc_free(resolved);
+    free(resolved_text);
+
+    const char *changed = "[{\"name\":\"embedding-features\",\"type\":\"integer\",\"value\":128},{\"name\":\"num-heads\",\"type\":\"integer\",\"value\":4}]";
+    resolved_text = resolve_tiny_example(core, example_path, changed, error, capacity);
+    assert(resolved_text);
+    resolved = yyjson_read(resolved_text, strlen(resolved_text), 0);
+    assert(resolved);
+    const yyjson_val *model = yyjson_doc_get_root(resolved);
+    assert_parameter_integer(model, "blocks", "times", 10);
+    assert_parameter_integer(model, "embedding", "embedding_dim", 128);
+    assert_parameter_integer(model, "position", "d_model", 128);
+    assert_parameter_integer(model, "heads", "times", 4);
+    const char *projections[] = {"query", "key", "value"};
+    for (size_t i = 0; i < sizeof(projections) / sizeof(projections[0]); ++i) {
+        assert_parameter_integer(model, projections[i], "in_features", 128);
+        assert_parameter_integer(model, projections[i], "out_features", 32);
+    }
+    const yyjson_val *scale_node = find_node(model, "scale");
+    const yyjson_val *scale_params = yyjson_obj_get(yyjson_obj_get(scale_node, "data"), "params");
+    const yyjson_val *scale = yyjson_obj_get(scale_params, "factor");
+    assert(yyjson_is_num(scale) && yyjson_get_real(scale) > 0.176 && yyjson_get_real(scale) < 0.178);
+    assert_parameter_integer(model, "ff-expand", "in_features", 128);
+    assert_parameter_integer(model, "ff-expand", "out_features", 512);
+    assert_parameter_integer(model, "ff-contract", "in_features", 512);
+    assert_parameter_integer(model, "ff-contract", "out_features", 128);
+    assert_parameter_integer(model, "final-norm", "normalized_shape", 128);
+    assert_parameter_integer(model, "attn-norm", "normalized_shape", 128);
+    assert_parameter_integer(model, "ff-norm", "normalized_shape", 128);
+    assert_parameter_integer(model, "logits", "in_features", 128);
+    assert_parameter_integer(model, "node-d872eb1b-978a-4283-8064-5cdf98261c63", "in_features", 128);
+    assert_parameter_integer(model, "node-d872eb1b-978a-4283-8064-5cdf98261c63", "out_features", 128);
+    yyjson_doc_free(resolved);
+    free(resolved_text);
+    yyjson_doc_free(wrapper);
+    free(wrapper_text);
+    free(artifact_path);
+    free(example_path);
+}
+
 static NNInferenceStatus node_status(NNApplication *app, const char *node_id)
 {
     char error[512] = "";
@@ -51,14 +143,15 @@ static NNInferenceStatus node_status(NNApplication *app, const char *node_id)
 int main(void)
 {
     char temporary[] = "/tmp/nn-metavariable-test-XXXXXX";
-    char *root = mkdtemp(temporary);
-    assert(root);
     char cwd[4096];
+    char error[512] = "";
     assert(getcwd(cwd, sizeof(cwd)));
     char *core = join(cwd, "stereotype-packages/core");
+    char *root = mkdtemp(temporary);
+    assert(root);
+    test_tiny_example_execution_model(core, cwd, error, sizeof(error));
     NNApplication *app = nn_app_new(core);
     assert(app);
-    char error[512] = "";
     assert(nn_app_create(app, root, "variables", "Variables", false, error, sizeof(error)));
     assert(nn_app_add_node(app, "dense", "core.linear", "0.1.0", "", 0, 0,
                            error, sizeof(error)));

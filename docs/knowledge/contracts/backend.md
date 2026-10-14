@@ -2,6 +2,18 @@
 
 ## Authored and concrete training snapshots (accepted 2026-10-14)
 
+Bundled metavariable examples keep their authored schema-3 graph in `model.json`.
+For direct Python example tests and `train_cluster_examples.py`, they may ship
+`execution-model.json`: `{source_sha256, execution_project}`, with the SHA256 of
+the exact authored file and its native C-resolved schema-2 graph. This is a
+generated default-example artifact, not another evaluator. Consumers reject a
+missing, symlinked, malformed or source-hash-mismatched artifact; backend normal
+source/execution validation still applies. Direct Python execution stages the
+concrete graph as `model.json`, preserving resources. Native regression checks
+compare the committed concrete graph against the authoritative C resolver.
+Editing metavariables through Qt uses fresh native compilation and does not
+depend on this artifact. Changed example sources require regenerating it.
+
 POST /v1/jobs additionally accepts optional `execution_project`: a concrete
 schema-2 graph compiled by the authoritative native C/Lua resolver. Source
 `project` remains the exact saved schema-2/3 authoring model. Schema-3 sources
