@@ -11,7 +11,20 @@
 
 static int inference_subflow(lua_State *state);
 static int inference_stereotype(lua_State *state);
-static bool set_parameters(lua_State *state, const NNNode *node);
+static bool set_parameters(lua_State *state, const NNParameter *parameters, size_t count);
+
+static NNInferenceStatus parameter_status(NNParameterResolutionStatus status)
+{
+    switch (status) {
+    case NN_PARAMETER_RESOLUTION_UNRESOLVED: return NN_INFERENCE_UNRESOLVED;
+    case NN_PARAMETER_RESOLUTION_SEMANTIC: return NN_INFERENCE_SEMANTIC_ERROR;
+    case NN_PARAMETER_RESOLUTION_COMPILATION: return NN_INFERENCE_COMPILATION_ERROR;
+    case NN_PARAMETER_RESOLUTION_RUNTIME: return NN_INFERENCE_RUNTIME_FAULT;
+    case NN_PARAMETER_RESOLUTION_ALLOCATION: return NN_INFERENCE_RUNTIME_FAULT;
+    case NN_PARAMETER_RESOLUTION_SUCCESS: return NN_INFERENCE_SUCCESS;
+    }
+    return NN_INFERENCE_RUNTIME_FAULT;
+}
 
 static int resolve_input(lua_State *state)
 {
@@ -102,7 +115,7 @@ int nn_inference_invoke_rule(lua_State *state)
         lua_seti(state, -2, (lua_Integer)i + 1);
     }
     lua_setfield(state, -2, "inputs");
-    if (!set_parameters(state, call->context->node))
+    if (!set_parameters(state, call->parameters, call->parameter_count))
         return luaL_error(state, "unable to build inference parameters");
     set_services(state, call->context);
     lua_getglobal(state, "services");
@@ -136,12 +149,12 @@ static bool push_value(lua_State *state, const NNValue *value)
     }
 }
 
-static bool set_parameters(lua_State *state, const NNNode *node)
+static bool set_parameters(lua_State *state, const NNParameter *parameters, size_t count)
 {
-    lua_createtable(state, 0, (int)node->parameter_count);
-    for (size_t i = 0; i < node->parameter_count; ++i) {
-        if (push_value(state, &node->parameters[i].value))
-            lua_setfield(state, -2, node->parameters[i].key);
+    lua_createtable(state, 0, (int)count);
+    for (size_t i = 0; i < count; ++i) {
+        if (push_value(state, &parameters[i].value))
+            lua_setfield(state, -2, parameters[i].key);
         else return false;
     }
     return true;
@@ -214,8 +227,39 @@ NNInferenceStatus nn_inference_execute_rule(Evaluation *evaluation, const NNNode
     if (status == LUA_OK && !lua_isfunction(state, -1)) status = LUA_ERRRUN;
     LuaContext context = { .evaluation = evaluation, .node = node,
                            .depth = depth, .inherited = inherited };
+    NNParameter *resolved_parameters = NULL;
+    size_t resolved_parameter_count = 0;
+    const NNParameter *parameters = node->parameters;
+    size_t parameter_count = node->parameter_count;
+    const NNNode *stored = evaluation->project
+        ? nn_model_find_node(nn_project_model((NNProject *)evaluation->project), node->id) : NULL;
+    bool owns_parameters = stored == node;
+    if (owns_parameters && !resolved_parameters) {
+        char parameter_error[512] = "";
+        NNParameterResolutionStatus resolution = nn_inference_resolve_parameters_typed(
+            evaluation->project, node->id, &resolved_parameters,
+            &resolved_parameter_count, parameter_error, sizeof(parameter_error));
+        if (resolution != NN_PARAMETER_RESOLUTION_SUCCESS) {
+            *message = nn_text_copy(parameter_error[0] ? parameter_error : "parameter resolution failed");
+            if (resolution == NN_PARAMETER_RESOLUTION_ALLOCATION) evaluation->allocation_failed = true;
+            if (!*message) evaluation->allocation_failed = true;
+            if (resolution == NN_PARAMETER_RESOLUTION_COMPILATION) {
+                *source_file = nn_text_copy("parameter binding");
+                *source_line = 1;
+                if (!*source_file) evaluation->allocation_failed = true;
+            }
+            lua_close(state);
+            nn_inference_lua_temp_cleanup(&budget);
+            return parameter_status(resolution);
+        }
+    }
+    if (owns_parameters) {
+        parameters = resolved_parameters;
+        parameter_count = resolved_parameter_count;
+    }
     RuleCall call = { .context = &context, .inputs = inputs,
-                      .input_count = input_count };
+                      .input_count = input_count, .parameters = parameters,
+                      .parameter_count = parameter_count };
     if (status == LUA_OK) {
         lua_pushlightuserdata(state, &nn_inference_invoke_rule_registry_key);
         lua_rawget(state, LUA_REGISTRYINDEX);
@@ -229,6 +273,7 @@ NNInferenceStatus nn_inference_execute_rule(Evaluation *evaluation, const NNNode
         if (!*cause_node_id) evaluation->allocation_failed = true;
     }
     free(context.cause_node_id);
+    nn_catalog_parameters_free(resolved_parameters, resolved_parameter_count);
     nn_inference_lua_temp_detach(state, context.inherited_scratch.dtype);
     nn_inference_lua_temp_detach(state, context.inherited_scratch.dimensions);
     for (size_t i = 0; i < context.inherited_scratch.count; ++i)
@@ -439,6 +484,15 @@ static int inference_stereotype(lua_State *state)
     free(context->message_scratch); context->message_scratch = NULL;
     if (!value_from_lua(state, 1, &context->reference_scratch, 0))
         return luaL_error(state, "invalid stereotype reference");
+    NNParameterDef reference_definition = { .type = "stereotype" };
+    NNValue resolved_reference = {0};
+    char resolve_error[512] = "";
+    if (!nn_inference_resolve_reference(context->evaluation->project, context->node,
+            &reference_definition, &context->reference_scratch, &resolved_reference,
+            resolve_error, sizeof(resolve_error)))
+        return luaL_error(state, "%s", resolve_error[0] ? resolve_error : "unable to resolve stereotype parameters");
+    nn_value_dispose(&context->reference_scratch);
+    context->reference_scratch = resolved_reference;
     char error[512] = "";
     const NNPackage *package = nn_catalog_reference(context->evaluation->catalog,
         &context->reference_scratch, NULL, &context->reference_parameters,

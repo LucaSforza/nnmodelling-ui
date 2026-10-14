@@ -58,6 +58,8 @@ typedef struct {
     const NNNode *node;
     const NNPackage *package;
     size_t depth;
+    const NNParameter *parameters;
+    size_t parameter_count;
 } CountCall;
 
 typedef struct {
@@ -148,43 +150,13 @@ static bool push_value(lua_State *state, const NNValue *value, unsigned depth)
     }
 }
 
-static bool push_default(lua_State *state, const NNParameterDef *definition)
+static bool push_parameters(lua_State *state, const NNParameter *parameters,
+                            size_t count)
 {
-    switch (definition->default_value.type) {
-    case NN_PARAMETER_BOOLEAN: lua_pushboolean(state, definition->default_value.as.boolean); return true;
-    case NN_PARAMETER_INTEGER: lua_pushinteger(state, (lua_Integer)definition->default_value.as.integer); return true;
-    case NN_PARAMETER_NUMBER: lua_pushnumber(state, definition->default_value.as.number); return true;
-    case NN_PARAMETER_STRING: lua_pushstring(state, definition->default_value.as.string); return true;
-    case NN_PARAMETER_JSON: {
-        const char *text = definition->default_value.as.string;
-        yyjson_doc *document = text ? yyjson_read(text, strlen(text), 0) : NULL;
-        NNValue value = {0};
-        bool okay = document && nn_value_from_json(yyjson_doc_get_root(document), &value) &&
-                    push_value(state, &value, 0);
-        nn_value_dispose(&value);
-        if (document) yyjson_doc_free(document);
-        return okay;
-    }
-    default: return false;
-    }
-}
-
-static bool push_parameters(lua_State *state, const NNNode *node,
-                            const NNPackage *package)
-{
-    lua_createtable(state, 0, (int)package->parameter_count);
-    for (size_t i = 0; i < package->parameter_count; ++i) {
-        const NNParameterDef *definition = &package->parameters[i];
-        const NNValue *provided = NULL;
-        for (size_t j = 0; j < node->parameter_count; ++j)
-            if (!strcmp(node->parameters[j].key, definition->key)) {
-                provided = &node->parameters[j].value;
-                break;
-            }
-        bool okay = provided ? push_value(state, provided, 0) :
-                    definition->has_default ? push_default(state, definition) : false;
-        if (!okay) return false;
-        lua_setfield(state, -2, definition->key);
+    lua_createtable(state, 0, (int)count);
+    for (size_t i = 0; i < count; ++i) {
+        if (!push_value(state, &parameters[i].value, 0)) return false;
+        lua_setfield(state, -2, parameters[i].key);
     }
     return true;
 }
@@ -392,7 +364,7 @@ static int invoke_count_package(lua_State *state)
         .package = call->package, .depth = call->depth };
     if (!push_context(state, call->evaluation, call->node))
         return luaL_error(state, "unable to build parameter count context");
-    if (!push_parameters(state, call->node, call->package))
+    if (!push_parameters(state, call->parameters, call->parameter_count))
         return luaL_error(state, "unable to build parameter count parameters");
     lua_newtable(state);
     if (call->package->kind && !strcmp(call->package->kind, "subflow")) {
@@ -437,6 +409,17 @@ static int count_stereotype_service(lua_State *state)
         nn_value_dispose(&reference);
         return luaL_error(state, "invalid stereotype reference");
     }
+    NNParameterDef reference_definition = { .type = "stereotype" };
+    NNValue resolved_reference = {0};
+    char resolve_error[512] = "";
+    if (!nn_inference_resolve_reference(context->evaluation->project, context->node,
+            &reference_definition, &reference, &resolved_reference,
+            resolve_error, sizeof(resolve_error))) {
+        nn_value_dispose(&reference);
+        return luaL_error(state, "%s", resolve_error[0] ? resolve_error : "unable to resolve referenced parameters");
+    }
+    nn_value_dispose(&reference);
+    reference = resolved_reference;
     const NNPackage *package = nn_catalog_reference(context->evaluation->catalog,
         &reference, NULL, &parameters, &parameter_count, error, sizeof(error));
     nn_value_dispose(&reference);
@@ -492,8 +475,29 @@ static bool invoke_package(CountEvaluation *evaluation, const NNNode *node,
     free(source);
     if (status == LUA_OK) status = lua_pcall(state, 0, 1, 0);
     if (status == LUA_OK && !lua_isfunction(state, -1)) status = LUA_ERRRUN;
+    NNParameter *resolved_parameters = NULL;
+    size_t resolved_parameter_count = 0;
+    const NNParameter *parameters = node->parameters;
+    size_t parameter_count = node->parameter_count;
+    const NNNode *stored = nn_model_find_node(evaluation->model, node->id);
+    bool owns_parameters = stored == node;
+    if (owns_parameters) {
+        char parameter_error[512] = "";
+        NNParameterResolutionStatus resolution = nn_inference_resolve_parameters_typed(
+            evaluation->project, node->id, &resolved_parameters,
+            &resolved_parameter_count, parameter_error, sizeof(parameter_error));
+        if (resolution != NN_PARAMETER_RESOLUTION_SUCCESS) {
+            *message = nn_text_copy(parameter_error[0] ? parameter_error : "parameter resolution failed");
+            if (budget.host_allocation_failed || resolution == NN_PARAMETER_RESOLUTION_ALLOCATION || !*message)
+                evaluation->allocation_failed = true;
+            lua_close(state); nn_inference_lua_temp_cleanup(&budget);
+            return false;
+        }
+    }
+    if (owns_parameters) { parameters = resolved_parameters; parameter_count = resolved_parameter_count; }
     CountCall call = { .evaluation = evaluation, .node = node,
-                       .package = package, .depth = depth };
+                       .package = package, .depth = depth,
+                       .parameters = parameters, .parameter_count = parameter_count };
     if (status == LUA_OK) {
         lua_pushcfunction(state, invoke_count_package);
         lua_pushvalue(state, 1);
@@ -549,6 +553,7 @@ static bool invoke_package(CountEvaluation *evaluation, const NNNode *node,
         *message = nn_text_copy(text ? text : "Lua parameter count failed");
     }
     if (budget.host_allocation_failed) evaluation->allocation_failed = true;
+    nn_catalog_parameters_free(resolved_parameters, resolved_parameter_count);
     lua_close(state);
     nn_inference_lua_temp_cleanup(&budget);
     return status == LUA_OK;

@@ -11,8 +11,12 @@ depth is bounded to 64, with explicit cycle detection and errors naming the node
 and parameter. Lua tables convert only to existing bounded NNValue trees.
 References inside stereotype parameters resolve against that application's own
 defaulted schema. Resolve before rule invocation and parameter-count invocation;
-both see identical concrete values. Errors remain structured per-node problems,
-never fabricated defaults or stale successful values. Export uses this same
+both see identical concrete values. Errors remain structured per-node problems:
+unknown/missing dependencies are unresolved, cycles and wrong result types are
+semantic errors, Lua syntax errors are compilation errors, and sandbox execution
+or budget errors are runtime faults. Allocation failure discards the report.
+Classification is typed resolver state, never parsed from diagnostic text.
+Errors never produce fabricated defaults or stale successful values. Export uses this same
 resolver and freezes concrete values; Python never translates or evaluates Lua.
 
 Official Lua 5.5.1 source is compiled in-tree by `justfile` as a static C

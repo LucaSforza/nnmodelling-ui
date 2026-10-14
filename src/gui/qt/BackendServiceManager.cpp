@@ -8,6 +8,8 @@
 #include <QJsonObject>
 #include <QProcess>
 #include <QProcessEnvironment>
+#include <QPointer>
+#include <QTimer>
 #include <QSaveFile>
 #include <QStandardPaths>
 #include <QTcpServer>
@@ -15,6 +17,9 @@
 #include <utility>
 
 namespace {
+constexpr int WorkerCancelGraceMs = 60'000;
+constexpr int WorkerShutdownGraceMs = WorkerCancelGraceMs + 5'000;
+
 QJsonObject defaultProfile()
 {
     QString jobRoot = QDir::homePath() + QStringLiteral("/.local/share/nnmodelling/jobs");
@@ -162,10 +167,122 @@ BackendServiceManager::BackendServiceManager(QString sourceDirectory, QObject *p
         if (status == QProcess::CrashExit || code != 0)
             emit processError(tr("The managed backend stopped unexpectedly (exit code %1).").arg(code));
     });
+    workerProcess_ = new QProcess(this);
+    workerProcess_->setProcessChannelMode(QProcess::SeparateChannels);
+    connect(workerProcess_, &QProcess::readyReadStandardError, this, [this] {
+        // stderr may contain transport diagnostics; keep it out of the UI and logs.
+        workerProcess_->readAllStandardError();
+    });
+    connect(workerProcess_, &QProcess::readyReadStandardOutput,
+            this, &BackendServiceManager::consumeWorkerOutput);
+    connect(workerProcess_, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
+        if (error != QProcess::FailedToStart) return;
+        const QString message = tr("Could not start worker preparation. Check that uv is installed.");
+        workerFailureMessage_ = message;
+        emit workerPreparationFinished(false, message);
+    });
+    connect(workerProcess_, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this,
+            [this](int code, QProcess::ExitStatus status) {
+        workerOutput_ += workerProcess_->readAllStandardOutput();
+        if (!workerOutput_.trimmed().isEmpty()) workerOutput_ += '\n';
+        consumeWorkerOutput();
+        if (workerCancelled_ || !workerFailureMessage_.isEmpty() || status != QProcess::NormalExit ||
+            code != 0 || !workerSawSuccess_) {
+            const QString message = !workerFailureMessage_.isEmpty() ? workerFailureMessage_
+                : workerCancelled_ ? tr("Worker preparation cancelled.")
+                : tr("Worker preparation failed (exit code %1).").arg(code);
+            emit workerPreparationFinished(false, message);
+            return;
+        }
+        QString path;
+        QJsonObject profile;
+        QString saveError;
+        if (!loadUserConfig(&path, &profile, &saveError)) {
+            emit workerPreparationFinished(false, tr("Worker prepared an image, but the configuration profile could not be loaded."));
+            return;
+        }
+        if (path != preparationProfilePath_ ||
+            profile.value(QStringLiteral("slurm")).toObject() != preparationSlurmProfile_) {
+            emit workerPreparationFinished(false, tr("The Slurm profile changed while worker preparation was running; the image was not installed."));
+            return;
+        }
+        if (workerCheckOnly_) {
+            emit workerPreparationFinished(true, tr("Configured worker is ready."));
+            return;
+        }
+        if (!QDir::isAbsolutePath(preparedImage_) || preparedImage_.split(QLatin1Char('/')).contains(QStringLiteral("..")) ||
+            preparedImage_.contains(QChar::LineFeed) || preparedImage_.contains(QChar::CarriageReturn)) {
+            emit workerPreparationFinished(false, tr("Worker preparation returned an invalid image path."));
+            return;
+        }
+        QJsonObject slurm = profile.value(QStringLiteral("slurm")).toObject();
+        slurm.insert(QStringLiteral("image"), preparedImage_);
+        profile.insert(QStringLiteral("slurm"), slurm);
+        if (!saveUserConfig(profile, &path, &saveError)) {
+            emit workerPreparationFinished(false, tr("Worker prepared an image, but the configuration profile could not be updated."));
+            return;
+        }
+        emit workerPreparationFinished(true, tr("Worker image prepared and installed."));
+    });
+}
+
+void BackendServiceManager::consumeWorkerOutput()
+{
+        workerOutput_ += workerProcess_->readAllStandardOutput();
+        if (workerOutput_.size() > 128 * 1024) {
+            workerFailureMessage_ = tr("Worker preparation output exceeded its limit.");
+            cancelWorkerPreparation();
+            return;
+        }
+        qsizetype newline = -1;
+        while ((newline = workerOutput_.indexOf('\n')) >= 0) {
+            const QByteArray line = workerOutput_.left(newline).trimmed();
+            workerOutput_.remove(0, newline + 1);
+            if (line.isEmpty()) continue;
+            if (line.size() > 16 * 1024) {
+                workerFailureMessage_ = tr("Worker preparation emitted an oversized status event.");
+                cancelWorkerPreparation();
+                return;
+            }
+            QJsonParseError parseError;
+            const QJsonDocument document = QJsonDocument::fromJson(line, &parseError);
+            if (!document.isObject()) {
+                workerFailureMessage_ = tr("Worker preparation emitted an invalid status event.");
+                cancelWorkerPreparation();
+                return;
+            }
+            const QJsonObject event = document.object();
+            const QString phase = event.value(QStringLiteral("phase")).toString();
+            QString message = event.value(QStringLiteral("message")).toString();
+            const QString eventError = event.value(QStringLiteral("error")).toString();
+            if (message.size() > 2000) message = message.left(2000);
+            message.remove(QChar::Null);
+            const qint64 current = event.value(QStringLiteral("current")).toVariant().toLongLong();
+            const qint64 total = event.value(QStringLiteral("total")).toVariant().toLongLong();
+            emit workerPreparationProgress(phase, message, current, total);
+            if (phase == QStringLiteral("success")) {
+                workerSawSuccess_ = true;
+                preparedImage_ = event.value(QStringLiteral("image")).toString();
+                if (!workerCheckOnly_ && (preparedImage_.isEmpty() || preparedImage_.contains(QChar::Null))) {
+                    workerFailureMessage_ = tr("Worker preparation reported success without an image path.");
+                    workerSawSuccess_ = false;
+                }
+            } else if (phase == QStringLiteral("error") || !eventError.isEmpty()) {
+                workerFailureMessage_ = eventError.isEmpty()
+                    ? (message.isEmpty() ? tr("Worker preparation failed.") : message)
+                    : eventError.left(2000);
+            }
+        }
 }
 
 BackendServiceManager::~BackendServiceManager()
 {
+    cancelWorkerPreparation();
+    if (workerProcess_ && workerProcess_->state() != QProcess::NotRunning &&
+        !workerProcess_->waitForFinished(WorkerShutdownGraceMs)) {
+        workerProcess_->kill();
+        workerProcess_->waitForFinished(1000);
+    }
     stop();
 }
 
@@ -307,4 +424,66 @@ void BackendServiceManager::stop()
     }
     port_ = 0;
     bearerToken_.clear();
+}
+
+bool BackendServiceManager::prepareWorker(bool checkOnly, const QString &projectDirectory, QString *error)
+{
+    if (workerPreparationRunning()) {
+        if (error) *error = tr("Worker preparation is already running.");
+        return false;
+    }
+    if (!QFileInfo(sourceDirectory_ + QStringLiteral("/backend/prepare_worker.py")).isFile()) {
+        if (error) *error = tr("Worker preparation helper is not available in this workspace yet.");
+        return false;
+    }
+    const QString uv = QStandardPaths::findExecutable(QStringLiteral("uv"));
+    if (uv.isEmpty()) {
+        if (error) *error = tr("uv was not found on PATH.");
+        return false;
+    }
+    workerOutput_.clear();
+    preparedImage_.clear();
+    workerFailureMessage_.clear();
+    workerSawSuccess_ = false;
+    workerCheckOnly_ = checkOnly;
+    workerCancelled_ = false;
+    QJsonObject profile;
+    QString profileLoadError;
+    if (!loadUserConfig(&preparationProfilePath_, &profile, &profileLoadError)) {
+        if (error) *error = profileLoadError;
+        return false;
+    }
+    preparationSlurmProfile_ = profile.value(QStringLiteral("slurm")).toObject();
+    QStringList arguments{QStringLiteral("run"), QStringLiteral("--no-sync"), QStringLiteral("python"),
+        QStringLiteral("-m"), QStringLiteral("backend.prepare_worker"),
+        QStringLiteral("--profile"), ::profilePath()};
+    if (!projectDirectory.isEmpty())
+        arguments << QStringLiteral("--project") << QDir::cleanPath(projectDirectory);
+    if (checkOnly) arguments << QStringLiteral("--check");
+    workerProcess_->setWorkingDirectory(sourceDirectory_);
+    QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
+    environment.remove(QStringLiteral("NNMODELLING_BEARER_TOKEN"));
+    workerProcess_->setProcessEnvironment(environment);
+    workerProcess_->setProgram(uv);
+    workerProcess_->setArguments(arguments);
+    workerProcess_->start();
+    return true;
+}
+
+bool BackendServiceManager::workerPreparationRunning() const
+{
+    return workerProcess_ && workerProcess_->state() != QProcess::NotRunning;
+}
+
+void BackendServiceManager::cancelWorkerPreparation()
+{
+    if (!workerPreparationRunning() || workerCancelled_) return;
+    workerCancelled_ = true;
+    emit workerPreparationProgress(QStringLiteral("cancelling"),
+        tr("Waiting for worker cleanup before stopping the helper…"), 0, 0);
+    workerProcess_->terminate();
+    QPointer<QProcess> process(workerProcess_);
+    QTimer::singleShot(WorkerCancelGraceMs, this, [process] {
+        if (process && process->state() != QProcess::NotRunning) process->kill();
+    });
 }

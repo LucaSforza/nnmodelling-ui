@@ -18,6 +18,7 @@ void *nn_inference_limited_alloc(void *data, void *ptr, size_t old_size, size_t 
         return NULL;
     void *grown = realloc(ptr, new_size);
     if (grown) budget->used = budget->used - prior + new_size;
+    else budget->host_allocation_failed = true;
     return grown;
 }
 

@@ -274,6 +274,7 @@ void MainWindow::buildUi() {
     addAction(modelMenu, tr("Create dataset…"), {}, [this] { createDataset(); });
     addAction(modelMenu, tr("Manage datasets…"), {}, [this] { manageDatasets(); }, "manageDatasetsAction");
     addAction(modelMenu, tr("Manage operations…"), {}, [this] { manageOperations(); }, "manageOperationsAction");
+    addAction(modelMenu, tr("Manage metavariables…"), {}, [this] { manageMetavariables(); }, "manageMetavariablesAction");
     addAction(modelMenu, tr("Parameter counts…"), {}, [this] { showParameterCounts(); },
               "parameterCountsAction");
     QAction *backendPanelAction = addAction(modelMenu, tr("Training backend…"), {}, [this] {

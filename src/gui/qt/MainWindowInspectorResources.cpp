@@ -9,27 +9,67 @@
 #include <QBrush>
 #include <QCheckBox>
 #include <QComboBox>
+#include <QHBoxLayout>
 #include <QLineEdit>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
-#include <QDoubleValidator>
-#include <QRegularExpressionValidator>
-#include <QLocale>
 #include <QLabel>
 #include <QMessageBox>
 #include <QPushButton>
+#include <QRegularExpression>
 #include <QStatusBar>
 #include <QTimer>
 #include <QTreeWidget>
 #include <QTreeWidgetItem>
+
+namespace {
+QJsonValue parameterEditorValue(const QString &type, const QString &text)
+{
+    if (text.startsWith(QStringLiteral("$$"))) return text.mid(1);
+    static const QRegularExpression referencePattern(QStringLiteral("^\\$([A-Za-z_][A-Za-z0-9_-]*)$"));
+    const auto reference = referencePattern.match(text);
+    if (reference.hasMatch()) return QJsonObject{{QStringLiteral("$ref"), reference.captured(1)}};
+    if (text.startsWith(QStringLiteral("$(")) && text.endsWith(QLatin1Char(')')))
+        return QJsonObject{{QStringLiteral("$lua"), text.mid(2, text.size() - 3)}};
+    if (text.startsWith(QLatin1Char('$'))) return {};
+    if (type == QStringLiteral("string") || type == QStringLiteral("dtype")) return text;
+    QJsonParseError error;
+    const QJsonDocument parsed = QJsonDocument::fromJson(text.toUtf8(), &error);
+    if (type == QStringLiteral("json"))
+        return error.error == QJsonParseError::NoError && parsed.isArray() ? QJsonValue(parsed.array()) : QJsonValue();
+    const QJsonDocument scalar = QJsonDocument::fromJson(QByteArray("[") + text.toUtf8() + QByteArray("]"), &error);
+    return error.error == QJsonParseError::NoError && scalar.isArray() && scalar.array().size() == 1
+        ? scalar.array().at(0) : QJsonValue();
+}
+
+QString parameterBindingText(const QJsonValue &value)
+{
+    if (!value.isObject()) return {};
+    const QJsonObject object = value.toObject();
+    if (object.size() == 1 && object.value(QStringLiteral("$ref")).isString())
+        return QLatin1Char('$') + object.value(QStringLiteral("$ref")).toString();
+    if (object.size() == 1 && object.value(QStringLiteral("$lua")).isString())
+        return QStringLiteral("$(%1)").arg(object.value(QStringLiteral("$lua")).toString());
+    return {};
+}
+
+QString parameterEditorText(const QString &raw, const QString &type)
+{
+    const QJsonDocument document = QJsonDocument::fromJson(raw.toUtf8());
+    if (document.isObject()) {
+        const QString binding = parameterBindingText(document.object());
+        if (!binding.isEmpty()) return binding;
+    }
+    return (type == QStringLiteral("string") || type == QStringLiteral("dtype")) &&
+           raw.startsWith(QLatin1Char('$')) ? QLatin1Char('$') + raw : raw;
+}
+}
 #include <QStringList>
 #include <map>
 #include <algorithm>
 #include <cstring>
 #include <string>
-
-extern "C" char *nn_app_operations_json(const NNApplication *app, char *error, size_t capacity);
 
 using namespace MainWindowUtils;
 
@@ -149,18 +189,27 @@ void MainWindow::refreshInspector() {
             if (!definition.key) continue;
             const QString key = QString::fromUtf8(definition.key);
             char *valueText = nn_app_parameter_text(application_.get(), node->id, definition.key);
-            const QString value = valueText ? QString::fromUtf8(valueText) : QString();
+            const QString rawValue = valueText ? QString::fromUtf8(valueText) : QString();
             nn_app_free_text(valueText);
+            const QString type = definition.type ? QString::fromUtf8(definition.type) : QString();
+            const QString value = parameterEditorText(rawValue, type);
+            char previewError[ErrorCapacity] = {};
+            char *previewText = nn_app_resolved_parameter_text(application_.get(), node->id,
+                definition.key, previewError, sizeof(previewError));
+            const QString resolvedValue = previewText ? QString::fromUtf8(previewText) : QString();
+            nn_app_free_text(previewText);
+            const bool hasBinding =
+                !parameterBindingText(QJsonDocument::fromJson(rawValue.toUtf8()).object()).isEmpty();
+            const QString displayValue = hasBinding && !resolvedValue.isEmpty() ? resolvedValue : value;
             auto *row = new QTreeWidgetItem(parameters, {key, value});
             QWidget *editor = nullptr;
-            const QString type = definition.type ? QString::fromUtf8(definition.type) : QString();
             if (definition.choice_count > 0) {
                 auto *combo = new QComboBox(inspector_);
                 for (size_t j = 0; j < definition.choice_count; ++j) {
                     const QString choice = QString::fromUtf8(definition.choices[j]);
                     combo->addItem(choice);
                 }
-                combo->setCurrentText(value);
+                combo->setCurrentText(displayValue);
                 connect(combo, &QComboBox::currentTextChanged, this,
                         [this, key, nodeId](const QString &next) {
                     editNodeParameter(nodeId, key, next);
@@ -169,7 +218,8 @@ void MainWindow::refreshInspector() {
             } else if (type == QStringLiteral("stereotype")) {
                 auto *combo = new QComboBox(inspector_);
                 combo->setObjectName(QStringLiteral("stereotypeReference_%1").arg(key));
-                QJsonObject reference = QJsonDocument::fromJson(value.toUtf8()).object();
+                QJsonObject reference = QJsonDocument::fromJson(displayValue.toUtf8()).object();
+                const QJsonObject authoredReference = QJsonDocument::fromJson(rawValue.toUtf8()).object();
                 const QString currentId = reference.value(QStringLiteral("id")).toString();
                 const QString currentVersion = reference.value(QStringLiteral("version")).toString();
                 combo->addItem(tr("(choose package)"), QJsonObject());
@@ -222,21 +272,29 @@ void MainWindow::refreshInspector() {
                 const NNPackage *referenced = currentIndex > 0
                     ? nn_catalog_resolve(catalog, currentId.toUtf8().constData(),
                                          currentVersion.toUtf8().constData()) : nullptr;
-                const QJsonObject committed = reference.value(QStringLiteral("parameters")).toObject();
+                const QJsonObject committed = hasBinding
+                    ? reference.value(QStringLiteral("parameters")).toObject()
+                    : authoredReference.value(QStringLiteral("parameters")).toObject();
+                const QJsonObject resolvedParameters = reference.value(QStringLiteral("parameters")).toObject();
                 const QJsonObject defaults = combo->currentData().toJsonObject()
                     .value(QStringLiteral("parameters")).toObject();
                 for (size_t p = 0; referenced && p < referenced->parameter_count; ++p) {
                     const NNParameterDef &def = referenced->parameters[p];
                     const QString parameterKey = QString::fromUtf8(def.key);
-                    const QJsonValue current = committed.contains(parameterKey)
+                    const QJsonValue authored = committed.contains(parameterKey)
                         ? committed.value(parameterKey) : defaults.value(parameterKey);
+                    const QJsonValue resolved = resolvedParameters.contains(parameterKey)
+                        ? resolvedParameters.value(parameterKey) : authored;
+                    const QString nestedBinding = parameterBindingText(authored);
+                    const QJsonValue current = nestedBinding.isEmpty() ? authored : resolved;
                     auto *fieldRow = new QTreeWidgetItem(row, {parameterKey, QString()});
                     // Read siblings at submission: several fields may commit before queued refresh.
-                    auto submit = [this, nodeId, key, parameterKey](const QJsonValue &next) {
+                    auto submit = [this, nodeId, key, parameterKey, reference](const QJsonValue &next) {
                         const QByteArray id = nodeId.toUtf8(), parameter = key.toUtf8();
                         char *text = nn_app_parameter_text(application_.get(), id.constData(), parameter.constData());
                         QJsonObject updated = QJsonDocument::fromJson(text ? QByteArray(text) : QByteArray()).object();
                         nn_app_free_text(text);
+                        if (updated.isEmpty()) updated = reference;
                         QJsonObject values = updated.value(QStringLiteral("parameters")).toObject();
                         values.insert(parameterKey, next);
                         updated.insert(QStringLiteral("parameters"), values);
@@ -244,6 +302,7 @@ void MainWindow::refreshInspector() {
                             QJsonDocument(updated).toJson(QJsonDocument::Compact)));
                     };
                     QWidget *field = nullptr;
+                    const QString parameterType = QString::fromUtf8(def.type);
                     if (def.choice_count) {
                         auto *choices = new QComboBox(inspector_);
                         for (size_t c = 0; c < def.choice_count; ++c)
@@ -259,44 +318,52 @@ void MainWindow::refreshInspector() {
                                 [submit](bool checked) { submit(checked); });
                         field = check;
                     } else {
-                        const QString parameterType = QString::fromUtf8(def.type);
-                        QString text = current.isString() ? current.toString()
+                        QString text = current.isString() ? parameterEditorText(current.toString(), parameterType)
                             : QString::fromUtf8(QJsonDocument(QJsonArray{current})
                                 .toJson(QJsonDocument::Compact));
                         if (!current.isString()) text = text.mid(1, text.size() - 2);
                         auto *line = new QLineEdit(text, inspector_);
-                        if (parameterType == QStringLiteral("integer"))
-                            line->setValidator(new QRegularExpressionValidator(
-                                QRegularExpression(QStringLiteral("-?[0-9]+")), line));
-                        else if (parameterType == QStringLiteral("number")) {
-                            auto *validator = new QDoubleValidator(line);
-                            validator->setLocale(QLocale::c());
-                            line->setValidator(validator);
-                        }
                         if (def.has_minimum) line->setToolTip(tr("Minimum: %1").arg(def.minimum));
                         connect(line, &QLineEdit::editingFinished, this, [this, line, parameterType, submit] {
-                            if (parameterType == QStringLiteral("string") || parameterType == QStringLiteral("dtype")) {
-                                submit(line->text());
-                                return;
-                            }
-                            QJsonParseError parseError;
-                            const QJsonDocument parsed = QJsonDocument::fromJson(
-                                QByteArray("[") + line->text().toUtf8() + QByteArray("]"), &parseError);
-                            if (parseError.error != QJsonParseError::NoError || !parsed.isArray() || parsed.array().size() != 1) {
+                            const QJsonValue parsed = parameterEditorValue(parameterType, line->text());
+                            if (parsed.isUndefined()) {
                                 QMessageBox::warning(this, tr("Parameter rejected"), tr("Invalid parameter value"));
                                 return;
                             }
-                            submit(parsed.array().at(0));
+                            submit(parsed);
                         });
                         field = line;
                     }
                     field->setObjectName(QStringLiteral("stereotypeParameter_%1_%2").arg(key, parameterKey));
-                    inspector_->setItemWidget(fieldRow, 1, field);
+                    auto *controls = new QWidget(inspector_);
+                    auto *controlsLayout = new QHBoxLayout(controls);
+                    controlsLayout->setContentsMargins(0, 0, 0, 0);
+                    controlsLayout->addWidget(field, 1);
+                    auto *binding = new QLineEdit(nestedBinding, controls);
+                    binding->setObjectName(QStringLiteral("stereotypeParameter_%1_%2_binding").arg(key, parameterKey));
+                    binding->setMaximumWidth(190);
+                    binding->setPlaceholderText(tr("$name or $(Lua expression)"));
+                    connect(binding, &QLineEdit::editingFinished, this,
+                            [this, binding, parameterType, submit, nestedBinding, current] {
+                        const QString text = binding->text();
+                        if (text.isEmpty()) {
+                            if (!nestedBinding.isEmpty()) submit(current);
+                            return;
+                        }
+                        const QJsonValue next = parameterEditorValue(parameterType, text);
+                        if (next.isUndefined()) {
+                            QMessageBox::warning(this, tr("Parameter rejected"), tr("Enter $name or $(Lua expression)."));
+                            return;
+                        }
+                        submit(next);
+                    });
+                    controlsLayout->addWidget(binding);
+                    inspector_->setItemWidget(fieldRow, 1, controls);
                 }
                 editor = combo;
             } else if (type == QStringLiteral("boolean") || type == QStringLiteral("bool")) {
                 auto *check = new QCheckBox(inspector_);
-                check->setChecked(value == QStringLiteral("true"));
+                check->setChecked((hasBinding ? resolvedValue : value) == QStringLiteral("true"));
                 connect(check, &QCheckBox::toggled, this, [this, key, nodeId](bool checked) {
                     editNodeParameter(nodeId, key, checked ? QStringLiteral("true")
                                                            : QStringLiteral("false"));
@@ -320,6 +387,46 @@ void MainWindow::refreshInspector() {
                     editNodeParameter(nodeId, key, line->text());
                 });
                 editor = line;
+            }
+            if (editor && (hasBinding || definition.choice_count > 0 || type == QStringLiteral("boolean") ||
+                           type == QStringLiteral("bool") || type == QStringLiteral("stereotype"))) {
+                auto *container = new QWidget(inspector_);
+                auto *layout = new QVBoxLayout(container);
+                layout->setContentsMargins(2, 2, 2, 2);
+                layout->setSpacing(3);
+                if (hasBinding && type != QStringLiteral("boolean") && type != QStringLiteral("bool") &&
+                    type != QStringLiteral("stereotype") && definition.choice_count == 0) {
+                    // Numeric and free-text editors already accept binding syntax directly.
+                    layout->addWidget(editor);
+                } else {
+                    auto *controls = new QWidget(container);
+                    auto *rowLayout = new QHBoxLayout(controls);
+                    rowLayout->setContentsMargins(0, 0, 0, 0);
+                    rowLayout->addWidget(editor, 1);
+                    auto *binding = new QLineEdit(hasBinding ? value : QString(), controls);
+                    binding->setObjectName(QStringLiteral("parameterBinding_%1").arg(key));
+                    binding->setPlaceholderText(tr("$name or $(Lua expression)"));
+                    binding->setMaximumWidth(190);
+                    connect(binding, &QLineEdit::editingFinished, this,
+                            [this, binding, nodeId, key, hasBinding, resolvedValue] {
+                        if (!binding->text().isEmpty()) editNodeParameter(nodeId, key, binding->text());
+                        else if (hasBinding && !resolvedValue.isEmpty()) editNodeParameter(nodeId, key, resolvedValue);
+                    });
+                    rowLayout->addWidget(binding);
+                    layout->addWidget(controls);
+                }
+                auto *preview = new QLabel(container);
+                preview->setObjectName(QStringLiteral("parameterPreview_%1").arg(key));
+                preview->setWordWrap(true);
+                preview->setStyleSheet(QStringLiteral("color: #596b7f; font-size: 10pt;"));
+                if (!previewText && previewError[0]) {
+                    preview->setText(tr("Resolved value: %1").arg(QString::fromUtf8(previewError)));
+                    preview->setStyleSheet(QStringLiteral("color: #a22; font-size: 10pt;"));
+                } else {
+                    preview->setText(tr("Resolved: %1").arg(resolvedValue));
+                }
+                layout->addWidget(preview);
+                editor = container;
             }
             inspector_->setItemWidget(row, 1, editor);
         }
@@ -416,6 +523,26 @@ void MainWindow::refreshResources() {
         }
     } else {
         new QTreeWidgetItem(operations, {tr("Unable to read operations: %1").arg(QString::fromUtf8(error))});
+    }
+    auto *metavariables = new QTreeWidgetItem(resources_, {tr("Metavariables")});
+    metavariables->setExpanded(true);
+    char variableError[ErrorCapacity] = {};
+    char *variableText = nn_app_metavariables_json(application_.get(), variableError, sizeof(variableError));
+    if (variableText) {
+        const QJsonDocument variableDocument = QJsonDocument::fromJson(QByteArray(variableText));
+        nn_app_free_text(variableText);
+        for (const QJsonValue &entry : variableDocument.array()) {
+            const QJsonObject variable = entry.toObject();
+            const QString name = variable.value(QStringLiteral("name")).toString();
+            const QString type = variable.value(QStringLiteral("type")).toString();
+            QString value = variable.value(QStringLiteral("value")).isString()
+                ? variable.value(QStringLiteral("value")).toString()
+                : QString::fromUtf8(QJsonDocument(QJsonArray{variable.value(QStringLiteral("value"))})
+                    .toJson(QJsonDocument::Compact)).mid(1).chopped(1);
+            new QTreeWidgetItem(metavariables, {QStringLiteral("$%1  [%2] = %3").arg(name, type, value)});
+        }
+    } else {
+        new QTreeWidgetItem(metavariables, {tr("Unable to read metavariables: %1").arg(QString::fromUtf8(variableError))});
     }
     resources_->expandAll();
 }

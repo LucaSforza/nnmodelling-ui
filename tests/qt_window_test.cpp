@@ -108,6 +108,8 @@ void WindowTest::stereotypeReferenceForm() {
         R"({"name":"Form join","kind":"join","view":{"color":"#4779c4","width":180,"height":100},"parameters":{"enabled":{"type":"boolean","default":true},"factor":{"type":"number","default":1.0,"minimum":0},"mode":{"type":"string","default":"sum","choices":["sum","mean"]}}})",
         "return function(c,p,s) return {status='success',output=c.inputs[1]} end",
         "{}", error, sizeof(error)), error);
+    const QByteArray variables = QByteArrayLiteral("[{\"name\":\"factor\",\"type\":\"number\",\"value\":3.5}]");
+    QVERIFY2(nn_app_set_metavariables_json(app, variables.constData(), error, sizeof(error)), error);
     MainWindow window(app);
     window.show();
     auto *scene = window.findChild<GraphScene *>();
@@ -119,7 +121,7 @@ void WindowTest::stereotypeReferenceForm() {
     auto *dimension = window.findChild<QLineEdit *>("stereotypeParameter_join_dim");
     QVERIFY(selector && dimension);
     QCOMPARE(dimension->text(), QStringLiteral("-1"));
-    QVERIFY(dimension->validator());
+    QVERIFY(!dimension->validator());
     QVERIFY(!window.findChild<QLineEdit *>("stereotypeParameters_join"));
     dimension->setText("0");
     QVERIFY(QMetaObject::invokeMethod(dimension, "editingFinished", Qt::DirectConnection));
@@ -174,6 +176,20 @@ void WindowTest::stereotypeReferenceForm() {
     QCOMPARE(values.value("factor").toDouble(), 2.5);
     QCOMPARE(values.value("enabled").toBool(), false);
     QCOMPARE(values.value("mode").toString(), QStringLiteral("mean"));
+    auto *factorBinding = window.findChild<QLineEdit *>(QStringLiteral("stereotypeParameter_join_factor_binding"));
+    QVERIFY(factorBinding);
+    factorBinding->setText(QStringLiteral("$factor"));
+    QVERIFY(QMetaObject::invokeMethod(factorBinding, "editingFinished", Qt::DirectConnection));
+    QCoreApplication::processEvents();
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    reference = nn_app_parameter_text(app, "parallel", "join");
+    const QJsonValue factorSource = QJsonDocument::fromJson(reference).object()
+        .value("parameters").toObject().value("factor");
+    nn_app_free_text(reference);
+    QCOMPARE(factorSource.toObject().value(QStringLiteral("$ref")).toString(), QStringLiteral("factor"));
+    auto *preview = window.findChild<QLabel *>(QStringLiteral("parameterPreview_join"));
+    QVERIFY(preview);
+    QVERIFY(preview->text().contains(QStringLiteral("3.5")));
     QVERIFY2(nn_app_save(app, error, sizeof(error)), error);
     window.close();
 }

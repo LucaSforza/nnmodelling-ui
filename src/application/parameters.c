@@ -13,6 +13,13 @@
 #include <stdlib.h>
 #include <string.h>
 
+static bool parameter_binding(const NNValue *value);
+static bool contains_parameter_binding(const NNValue *value);
+static bool validate_parameter_source(const NNCatalog *catalog,
+                                      const NNParameterDef *definition,
+                                      const NNValue *value, unsigned depth,
+                                      char *error, size_t capacity);
+
 static bool parameter_definition(const NNPackage *package, const char *key,
                                  const NNParameterDef **result)
 {
@@ -36,6 +43,44 @@ static bool parse_parameter_text(const NNCatalog *catalog, const NNParameterDef 
 {
     memset(value, 0, sizeof(*value));
     if (!definition || !text) return nn_fail(error, capacity, "invalid parameter text");
+    size_t text_length = strlen(text);
+    if (text[0] == '$' && text[1] != '$') {
+        const char *kind = NULL, *source = NULL;
+        size_t source_length = 0;
+        char *owned = NULL;
+        if (text[1] == '(' && text_length >= 3 && text[text_length - 1] == ')') {
+            kind = "$lua";
+            source = text + 2;
+            source_length = text_length - 3;
+        } else if ((text[1] == '_' || (text[1] >= 'A' && text[1] <= 'Z') ||
+                    (text[1] >= 'a' && text[1] <= 'z')) && text_length <= 129) {
+            kind = "$ref";
+            source = text + 1;
+            source_length = text_length - 1;
+            for (size_t i = 1; i < text_length; ++i) {
+                unsigned char c = (unsigned char)text[i];
+                if (!( (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+                       (c >= '0' && c <= '9') || c == '_' || c == '-'))
+                    return nn_fail(error, capacity, "invalid metavariable reference");
+            }
+        } else return nn_fail(error, capacity, "parameter binding must use $name or $(Lua expression)");
+        if (!source_length || text_length > 64u * 1024u)
+            return nn_fail(error, capacity, "parameter binding is empty or exceeds 64 KiB");
+        owned = malloc(source_length + 1);
+        value->as.object.items = calloc(1, sizeof(NNParameter));
+        if (!owned || !value->as.object.items) { free(owned); free(value->as.object.items); memset(value, 0, sizeof(*value)); return nn_fail(error, capacity, "out of memory parsing parameter binding"); }
+        memcpy(owned, source, source_length); owned[source_length] = '\0';
+        value->type = NN_VALUE_OBJECT;
+        value->as.object.count = 1;
+        value->as.object.items[0].key = nn_text_copy(kind);
+        value->as.object.items[0].value.type = NN_VALUE_STRING;
+        value->as.object.items[0].value.as.string = owned;
+        if (!value->as.object.items[0].key) { nn_value_dispose(value); return nn_fail(error, capacity, "out of memory parsing parameter binding"); }
+        return true;
+    }
+    if (text[0] == '$' && text[1] == '$' &&
+        (!strcmp(definition->type, "string") || !strcmp(definition->type, "dtype")))
+        ++text;
     if (!strcmp(definition->type, "boolean")) {
         if (strcmp(text, "true") && strcmp(text, "false"))
             return nn_fail(error, capacity, "boolean must be true or false");
@@ -74,11 +119,80 @@ static bool parse_parameter_text(const NNCatalog *catalog, const NNParameterDef 
                            : "parameter requires a JSON array");
         }
     } else return nn_fail(error, capacity, "unsupported parameter type");
-    if (!nn_catalog_validate_value(catalog, definition, value, error, capacity)) {
+    if (!validate_parameter_source(catalog, definition, value, 0, error, capacity)) {
         if (value->type == NN_VALUE_ARRAY || value->type == NN_VALUE_OBJECT) nn_value_dispose(value);
         return false;
     }
     return true;
+}
+
+static bool parameter_binding(const NNValue *value)
+{
+    if (!value || value->type != NN_VALUE_OBJECT || value->as.object.count != 1 ||
+        !value->as.object.items || !value->as.object.items[0].key ||
+        value->as.object.items[0].value.type != NN_VALUE_STRING) return false;
+    const NNParameter *entry = &value->as.object.items[0];
+    size_t length = strlen(entry->value.as.string);
+    if (!strcmp(entry->key, "$ref")) {
+        const unsigned char *p = (const unsigned char *)entry->value.as.string;
+        if (!length || length > 128 || !( (*p >= 'A' && *p <= 'Z') ||
+             (*p >= 'a' && *p <= 'z') || *p == '_')) return false;
+        for (++p; *p; ++p)
+            if (!( (*p >= 'A' && *p <= 'Z') || (*p >= 'a' && *p <= 'z') ||
+                   (*p >= '0' && *p <= '9') || *p == '_' || *p == '-')) return false;
+        return true;
+    }
+    return !strcmp(entry->key, "$lua") && length > 0 && length <= 64u * 1024u;
+}
+
+static bool contains_parameter_binding(const NNValue *value)
+{
+    if (!value) return false;
+    if (parameter_binding(value)) return true;
+    if (value->type == NN_VALUE_ARRAY)
+        for (size_t i = 0; i < value->as.array.count; ++i)
+            if (contains_parameter_binding(&value->as.array.items[i])) return true;
+    if (value->type == NN_VALUE_OBJECT)
+        for (size_t i = 0; i < value->as.object.count; ++i)
+            if (contains_parameter_binding(&value->as.object.items[i].value)) return true;
+    return false;
+}
+
+static bool validate_parameter_source(const NNCatalog *catalog,
+                                      const NNParameterDef *definition,
+                                      const NNValue *value, unsigned depth,
+                                      char *error, size_t capacity)
+{
+    if (depth > 64) return nn_fail(error, capacity, "parameter binding nesting exceeds 64");
+    if (parameter_binding(value)) return true;
+    if (!strcmp(definition->type, "stereotype") && contains_parameter_binding(value)) {
+        const NNValue *id = nn_value_member(value, "id");
+        const NNValue *version = nn_value_member(value, "version");
+        const NNValue *parameters = nn_value_member(value, "parameters");
+        if (value->type != NN_VALUE_OBJECT || value->as.object.count != 3 ||
+            !id || id->type != NN_VALUE_STRING || !version || version->type != NN_VALUE_STRING ||
+            !parameters || parameters->type != NN_VALUE_OBJECT)
+            return nn_fail(error, capacity, "stereotype reference requires id, version and parameter object");
+        const NNPackage *package = nn_catalog_resolve(catalog, id->as.string, version->as.string);
+        if (!package || (definition->kind && (!package->kind || strcmp(definition->kind, package->kind))))
+            return nn_fail(error, capacity, "stereotype reference does not resolve to a compatible package");
+        for (size_t i = 0; i < parameters->as.object.count; ++i) {
+            const NNParameter *entry = &parameters->as.object.items[i];
+            const NNParameterDef *child = NULL;
+            for (size_t j = 0; j < package->parameter_count; ++j)
+                if (!strcmp(entry->key, package->parameters[j].key)) { child = &package->parameters[j]; break; }
+            if (!child) {
+                nn_errorf(error, capacity, "unknown referenced parameter '%s'", entry->key);
+                return false;
+            }
+            if (!validate_parameter_source(catalog, child, &entry->value, depth + 1, error, capacity))
+                return false;
+        }
+        return true;
+    }
+    if (contains_parameter_binding(value))
+        return nn_fail(error, capacity, "parameter binding wrappers are only valid in stereotype parameters");
+    return nn_catalog_validate_value(catalog, definition, value, error, capacity);
 }
 
 static bool default_value(const NNApplication *app, const NNPackage *package,
@@ -169,7 +283,8 @@ bool nn_app_set_parameter(NNApplication *app, const char *node_id, const char *k
     const NNParameterDef *definition = NULL;
     if (!parameter_definition(package, key, &definition))
         return nn_app_history_fail(app, error, cap, "unknown parameter");
-    if (!nn_catalog_validate_value(nn_project_catalog(app->project), definition, value, error, cap)) {
+    if (!(contains_parameter_binding(value) ||
+          nn_catalog_validate_value(nn_project_catalog(app->project), definition, value, error, cap))) {
         if (app->history.group_active) app->history.group_failed = true;
         return false;
     }

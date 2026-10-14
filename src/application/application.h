@@ -32,6 +32,12 @@ bool nn_app_update_dataset(NNApplication *app, const char *id, const char *versi
 char *nn_app_operations_json(const NNApplication *app, char *error, size_t cap);
 bool nn_app_set_operations_json(NNApplication *app, const char *json,
                                 char *error, size_t cap);
+char *nn_app_metavariables_json(const NNApplication *app, char *error, size_t cap);
+bool nn_app_set_metavariables_json(NNApplication *app, const char *json,
+                                   char *error, size_t cap);
+char *nn_app_resolved_model_json(NNApplication *app, char *error, size_t cap);
+char *nn_app_resolved_parameter_text(NNApplication *app, const char *node,
+                                     const char *key, char *error, size_t cap);
 /* Returned UTF-8 text is owned; release with nn_app_free_text. */
 char *nn_app_parameter_counts_json(NNApplication *app, char *error, size_t cap);
 bool nn_app_create_vae(NNApplication *app, const char *parent, const char *id,

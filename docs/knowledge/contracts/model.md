@@ -39,7 +39,10 @@ validates and copies it; `nn_app_resolved_model_json(app,error,capacity)` return
 an owned concrete schema-2 execution model without modifying source/dirty/history.
 All texts are released by nn_app_free_text. Parameter preview is available via
 `nn_app_resolved_parameter_text(app,node,key,error,capacity)` with same ownership.
-Project supplies equivalent declaration get/set operations; inference supplies
+Project supplies equivalent declaration get/set operations and
+`nn_project_model_json(project,error,capacity)`, an owned serialization query
+using the existing project writer. Application export consumes this public
+query, never another module's private header. Inference supplies
 `nn_inference_resolve_parameters(project,node,&parameters,&count,error,capacity)`
 returning a defaulted, validated owned list, freed with nn_catalog_parameters_free.
 
