@@ -1,5 +1,70 @@
 # Local backend and Python execution
 
+## Authored and concrete training snapshots (accepted 2026-10-14)
+
+POST /v1/jobs additionally accepts optional `execution_project`: a concrete
+schema-2 graph compiled by the authoritative native C/Lua resolver. Source
+`project` remains the exact saved schema-2/3 authoring model. Schema-3 sources
+require execution_project; unresolved bindings are rejected before enqueue.
+Both graphs must retain identical identity, resources, operation metadata,
+nodes, positions, scopes, packages, boundaries and edges; only bound parameter
+values, merged defaults, schemaVersion and removed metavariables may differ.
+Literal supplied values must not be changed. Validate concrete metadata with
+ordinary backend validation. The backend treats this as an explicit compiled
+artifact; it does not claim to independently re-evaluate Lua. Direct API clients
+with formulas must obtain execution_project from the C application query.
+Freeze source as snapshot/project.json and concrete graph as
+snapshot/execution-project.json. Worker copies the concrete graph to its private
+model.json; snapshot restore returns source and original resource files.
+Legacy literal requests without execution_project keep existing behavior.
+Bound both model JSON payloads independently; no formula code executes in API.
+
+## Worker image preparation from Qt (accepted 2026-10-14)
+
+Slurm configuration adds Prepare and install worker and Check worker actions.
+Preparation is a separate owned, cancellable local process, driven by
+`backend.prepare_worker`, with JSON-line phase/progress/error events. It reads
+the existing non-secret profile, never launches a remote API, and uses existing
+SSH agent/configuration and host verification. Repository workspace, uv,
+Docker-compatible builder, SSH, remote Slurm and Singularity are prerequisites.
+Build locally with backend/Dockerfile and frozen uv.lock/examples group, export
+a Docker archive, stream it via SSH to a private unique staging directory, then
+convert it through an owned Slurm allocation using docker-archive:<path>.
+Check resulting Python dependencies and worker startup in the same contained
+mount layout as training. Network access is preparation-only; training stays
+isolated. Environment lives in /opt/nnmodelling/venv so /app source binds cannot
+hide it. Custom resource dependency declarations are metadata-only: use uv to
+derive a frozen preparation lock seeded from workspace lock when additions are
+needed, never execute uploaded builders to discover dependencies or add an
+unlocked pip requirements path. Current standard lock is CPU; a requested GPU
+preparation must reject CPU-only torch explicitly, never silently claim CUDA.
+
+Install SIF under a content-hash filename beside the configured remote image;
+never overwrite a SIF used by existing jobs. Validate transfer/hash/runtime
+before reporting success and atomically updating slurm.image in the profile.
+Errors/cancellation preserve prior image and profile; target only owned recorded
+scheduler allocations. QProcess is owned by main-application service manager,
+so closing configuration does not orphan work. App shutdown cancels its own
+preparation. UI shows real phases and transfer byte progress, bounded sanitized
+diagnostics, and Cancel. Credentials and inherited bearer tokens are absent
+from artifacts/profile/logs. Check action probes configured SIF and dependencies.
+Recipes in justfile expose the same preparation/check path for terminal use.
+
+## Portable inference package (accepted 2026-10-14)
+
+Readable import remains nnm_<normalized-project-id>, independent of job UUID.
+New wheel consumers use direct imports; job-specific alias is compatibility only.
+Archived wheels remain immutable. A completed worker also exports a ZIP of the
+same public Python package tree, excluding dist-info and job alias, for extraction
+beside caller code. GET /v1/jobs/{id}/package and Download Python package provide
+this artifact. Extraction plus ordinary import works with torch/safetensors/
+NumPy/resource dependencies already installed. No runtime import hook, sys.path
+hack or automatic package install during import. Package includes graph, adapter,
+private runtime and weights, excludes training data, and uses concrete parameters.
+Legacy completed jobs without ZIP report a visible missing-artifact error while
+weights/wheel remain downloadable. Tests cover direct import outside checkout,
+replacement wheel, ZIP extraction/inference, and original snapshot restore.
+
 Accepted 2026-10-05 by explicit user request. Supersedes backend/training
 deferrals in earlier native-client documents. OpenAPI, not OpenAI integration,
 is requested. C11 client remains graph authority; Python executes immutable

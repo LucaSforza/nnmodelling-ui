@@ -1,5 +1,29 @@
 # Backend execution and snapshot ownership
 
+## Preparation and compiled snapshots (accepted 2026-10-14)
+
+```mermaid
+flowchart TD
+  Config[Qt Slurm configuration] --> Preparation[Owned local preparation process]
+  Preparation --> UV[Workspace lock and Dockerfile]
+  UV --> Archive[Docker archive]
+  Archive --> Transfer[SSH streaming transfer]
+  Transfer --> Allocation[Owned Slurm SIF conversion allocation]
+  Allocation --> Probe[Contained dependency and worker check]
+  Probe --> Install[Immutable hashed SIF and atomic profile update]
+  C[Native C Lua resolver] --> Concrete[Concrete schema 2 execution graph]
+  C --> Authored[Authored schema 2 or 3 source]
+  Authored --> Store[Immutable local snapshot]
+  Concrete --> Store
+  Store --> Worker[Isolated training with concrete parameters]
+  Worker --> Wheel[Readable wheel]
+  Wheel --> Portable[Same public package tree as ZIP]
+```
+
+Snapshot restore returns authored source; worker/export consume concrete graph.
+Preparation environment is outside /app; source mounts cannot hide dependencies.
+Profile/image publication follows successful verification only.
+
 Accepted 2026-10-05. Normative protocol: [backend](../contracts/backend.md).
 The diagrams below show component ownership; request and runtime sequences are
 kept in the [backend sequence](sequences/backend-training.md).

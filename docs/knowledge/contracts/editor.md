@@ -1,5 +1,19 @@
 # Graphics and editor contract
 
+## Metavariable authoring (accepted 2026-10-14)
+
+Model > Manage metavariables opens a project-local staged list with New, Edit,
+Remove, Save and Cancel, matching Operations. Forms use Name, Type and Value;
+Save calls C validation and keeps invalid forms open with clear errors. Cancel
+does not mutate project. Project resources lists declarations and current values.
+Existing Inspector fields accept `$name` / `$(...)` directly. Text fields have no
+numeric-only Qt validator that blocks binding syntax. Boolean/choice/reference
+fields retain their literal controls and expose a compact editable binding field
+beside them; no semantic mode selector. Stored bindings display their source;
+resolved value or diagnostic appears underneath/tooltip. Core owns parsing,
+resolution and validation. Literal strings starting with $ are entered as $$.
+Refresh after variable edits updates shapes, counts and Inspector previews.
+
 Accepted 2026-09-29: Qt 6 Widgets and Graphics View replace the SDL draw API.
 Cleanup accepted 2026-09-30: remove the superseded SDL adapter, C editor loop,
 C graphical entry point and platform smoke test. Qt is the only graphical

@@ -1,5 +1,12 @@
 # Editor and C application boundary
 
+Accepted 2026-10-14: MainWindow owns staged Manage metavariables and direct
+Inspector binding text/preview. NNProject owns declarations, NNModel owns
+binding values, and C parameter resolver feeds shape/count/export consumers.
+Changed declaration lists use the same unsaved history barrier as Operations.
+BackendServiceManager owns cancellable worker preparation QProcess; separate
+configuration presents phase/progress/errors and publishes verified image paths.
+
 Consolidated 2026-10-02: this is the single current editor/graphics/analysis
 ownership diagram. The former graphics.md and diagnostics.md duplicated these
 owners; their current details are retained here and in sequences.md. Source
