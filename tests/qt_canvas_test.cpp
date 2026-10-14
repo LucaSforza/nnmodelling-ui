@@ -83,6 +83,82 @@ private slots:
         pumpEvents();
     }
 
+    void positionedParametersShowResolvedBindings() {
+        char error[512] = {};
+        NNApplication *app = nn_app_new(NN_SOURCE_DIR "/stereotype-packages/core");
+        QVERIFY(app);
+        QVERIFY2(nn_app_open(app, NN_SOURCE_DIR "/examples/models/tiny-decoder-llm",
+                             error, sizeof(error)), error);
+        auto variableScene = std::make_unique<GraphScene>(app);
+        const QByteArray expectedQueryBinding =
+            "{\"$lua\":\"params.in_features / meta[\\\"num-heads\\\"]\"}";
+        NodeItem *embedding = variableScene->nodeItem(QStringLiteral("embedding"));
+        QVERIFY(embedding);
+        QCOMPARE(embedding->bottomParameters().size(), 1);
+        QCOMPARE(embedding->bottomParameters().first().second, QStringLiteral("64"));
+        variableScene->setScope(QStringLiteral("heads"));
+        variableScene->refresh();
+        NodeItem *query = variableScene->nodeItem(QStringLiteral("query"));
+        QVERIFY(query);
+        QCOMPARE(query->topParameters().first().second, QStringLiteral("64"));
+        QCOMPARE(query->bottomParameters().first().second, QStringLiteral("8"));
+        variableScene->setScope(QString());
+        variableScene->refresh();
+
+        const QByteArray changed = R"([{"name":"embedding-features","type":"integer","value":128},{"name":"num-heads","type":"integer","value":4}])";
+        QVERIFY2(nn_app_set_metavariables_json(app, changed.constData(), error, sizeof(error)), error);
+        const bool dirtyBeforeRefresh = nn_project_dirty(nn_app_project(app));
+        const bool canUndoBeforeRefresh = nn_app_can_undo(app);
+        variableScene->refresh();
+        embedding = variableScene->nodeItem(QStringLiteral("embedding"));
+        QVERIFY(embedding);
+        QCOMPARE(embedding->bottomParameters().first().second, QStringLiteral("128"));
+        QCOMPARE(nn_project_dirty(nn_app_project(app)), dirtyBeforeRefresh);
+        QCOMPARE(nn_app_can_undo(app), canUndoBeforeRefresh);
+
+        variableScene->setScope(QStringLiteral("heads"));
+        variableScene->refresh();
+        query = variableScene->nodeItem(QStringLiteral("query"));
+        QVERIFY(query);
+        QCOMPARE(query->topParameters().first().second, QStringLiteral("128"));
+        QCOMPARE(query->bottomParameters().first().second, QStringLiteral("32"));
+        char *binding = nn_app_parameter_text(app, "query", "out_features");
+        QVERIFY(binding);
+        QCOMPARE(QByteArray(binding), expectedQueryBinding);
+        nn_app_free_text(binding);
+
+        const QByteArray missing = R"([{"name":"embedding-features","type":"integer","value":128}])";
+        QVERIFY2(nn_app_set_metavariables_json(app, missing.constData(), error, sizeof(error)), error);
+        variableScene->refresh();
+        query = variableScene->nodeItem(QStringLiteral("query"));
+        QVERIFY(query);
+        QCOMPARE(query->bottomParameters().first().second, QStringLiteral("?"));
+        QVERIFY(query->toolTip().contains(QStringLiteral("num-heads")));
+        binding = nn_app_parameter_text(app, "query", "out_features");
+        QVERIFY(binding);
+        QCOMPARE(QByteArray(binding), expectedQueryBinding);
+        nn_app_free_text(binding);
+
+        const QByteArray fractional = R"([{"name":"embedding-features","type":"integer","value":128},{"name":"num-heads","type":"integer","value":3}])";
+        QVERIFY2(nn_app_set_metavariables_json(app, fractional.constData(), error, sizeof(error)), error);
+        const bool dirtyBeforeErrorRefresh = nn_project_dirty(nn_app_project(app));
+        const bool canUndoBeforeErrorRefresh = nn_app_can_undo(app);
+        variableScene->refresh();
+        query = variableScene->nodeItem(QStringLiteral("query"));
+        QVERIFY(query);
+        QCOMPARE(query->bottomParameters().first().second, QStringLiteral("?"));
+        QVERIFY(query->toolTip().contains(QStringLiteral("out_features")));
+        QCOMPARE(nn_project_dirty(nn_app_project(app)), dirtyBeforeErrorRefresh);
+        QCOMPARE(nn_app_can_undo(app), canUndoBeforeErrorRefresh);
+        binding = nn_app_parameter_text(app, "query", "out_features");
+        QVERIFY(binding);
+        QCOMPARE(QByteArray(binding), expectedQueryBinding);
+        nn_app_free_text(binding);
+
+        variableScene.reset();
+        nn_app_free(app);
+    }
+
     void cleanup() {
         delete view_;
         view_ = nullptr;

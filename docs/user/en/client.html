@@ -56,9 +56,13 @@ factor = $(1 / math.sqrt(meta["embedding-features"] / meta["num-heads"]))
 <p><code>meta["name"]</code> reads a declaration; <code>params.name</code> reads a sibling parameter,
 including its default. Lua expressions must return a value satisfying the
 destination type and constraints; fractional integers are errors. Enter <code>$$</code>
-for a literal string beginning with <code>$</code>. Existing checkbox, choice and reference
-controls retain literal editing and provide adjacent binding text. Inspector
-shows stored source and resolved value/error. Missing references, cycles and
+for a literal string beginning with <code>$</code>. Every parameter has one value editor.
+Boolean, choice and reference menus are editable: type a reference or formula
+directly into their text area. A visible Parameters hint explains the syntax,
+including nested fields. Inspector shows stored source and a resolved value/error
+below it. Node cards show calculated values such as <code>64</code>, never internal binding
+JSON or Lua source. An unresolved value shows <code>?</code> with its diagnostic in a tooltip.
+Missing references, cycles and
 invalid results block training, while the project remains editable/saveable.</p>
 <p>Saving a changed declaration list creates the same unsaved history barrier as
 Operations. Parameter binding edits retain ordinary Undo/Redo. Projects using
@@ -138,13 +142,13 @@ has <strong>109,386</strong> total and trainable parameters.</p>
 <p>For an <code>Output</code> or <code>Loss Output</code> inside a subflow, <code>Boundary mapping</code> associates the terminal with an output declared by the container. The list includes only outputs of the same kind; <code>(unmapped)</code> appears when there is no association. An imported association that no longer matches appears as <code>Invalid mapping: …</code> so you can correct it.</p>
 <p><code>Parameters</code> contains one control for each parameter defined by the package:</p>
 <ul>
-<li>parameters with preset choices use drop-down menus;</li>
-<li>Boolean values use checkboxes;</li>
+<li>parameters with preset choices use editable drop-down menus;</li>
+<li>Boolean values use editable <code>true</code> / <code>false</code> menus;</li>
 <li>integers, numbers, strings, dtypes and JSON values use text fields, validated by the package when you confirm the field;</li>
 <li>parameters placed at <code>top</code> or <code>bottom</code> can also appear as synthetic rows on the node card.</li>
 </ul>
 <p>For the meaning, defaults, limits and choices of every field in distributed packages, see the <a href="parameters.html">parameter catalog</a>.</p>
-<p>A <code>stereotype</code> parameter consists of a package selector and fields from that package's schema. The selector shows the name and exact <code>id@version</code> identity, applies any kind filter, and uses <code>(choose package)</code> when no package is selected. Choosing a package initializes its parameters to their defaults; an existing reference keeps its values. Inner fields use checkboxes, menus or text according to their type. The project validates the selection and every changed field. If a value is invalid, the client reports the rejection and keeps the last confirmed values. Inspector data refreshes after an edit.</p>
+<p>A <code>stereotype</code> parameter consists of an editable package selector and fields from that package's schema. The selector shows the name and exact <code>id@version</code> identity, applies any kind filter, and uses <code>(choose package)</code> when no package is selected. Choosing a package initializes its parameters to their defaults; an existing reference keeps its values. Type a reference/formula directly into the selector; its resolved nested values then remain read-only until explicitly replacing that reference, without editing the shared declaration. Literal-reference inner fields use editable menus or text according to their type. The project validates the selection and every changed field. If a value is invalid, the client reports the rejection and keeps the last confirmed values. Inspector data refreshes after an edit.</p>
 <figure class="annotated"><a href="../assets/inspector.png" class="image-link" title="Open screenshot at original size"><img alt="Inspector with a selected node" src="../assets/inspector.png" loading="lazy"></a><figcaption><strong>Inspector with a selected node</strong><p class="image-hint">Click the image to inspect it at its original size.</p><ol class="callouts"><li><span class="badge" aria-hidden="true">1</span><span>Properties of the selected object</span></li><li><span class="badge" aria-hidden="true">2</span><span>Project resources and dataset actions</span></li><li><span class="badge" aria-hidden="true">3</span><span>Model problems</span></li></ol></figcaption></figure><figure class="annotated"><a href="../assets/inspector-reference-menu.png" class="image-link" title="Open screenshot at original size"><img alt="Choosing a stereotype reference" src="../assets/inspector-reference-menu.png" loading="lazy"></a><figcaption><strong>Choosing a stereotype reference</strong><p class="image-hint">Click the image to inspect it at its original size.</p><ol class="callouts"><li><span class="badge" aria-hidden="true">1</span><span>Available packages</span></li></ol></figcaption></figure><figure class="annotated"><a href="../assets/inspector-reference.png" class="image-link" title="Open screenshot at original size"><img alt="Parameters of the referenced package" src="../assets/inspector-reference.png" loading="lazy"></a><figcaption><strong>Parameters of the referenced package</strong><p class="image-hint">Click the image to inspect it at its original size.</p><ol class="callouts"><li><span class="badge" aria-hidden="true">1</span><span>Referenced package</span></li><li><span class="badge" aria-hidden="true">2</span><span>Reference parameters</span></li></ol></figcaption></figure><figure class="annotated"><a href="../assets/inspector-boundary.png" class="image-link" title="Open screenshot at original size"><img alt="Mapping a terminal to an external handle" src="../assets/inspector-boundary.png" loading="lazy"></a><figcaption><strong>Mapping a terminal to an external handle</strong><p class="image-hint">Click the image to inspect it at its original size.</p><ol class="callouts"><li><span class="badge" aria-hidden="true">1</span><span>Boundary mapping selector</span></li><li><span class="badge" aria-hidden="true">2</span><span>Selected output boundary</span></li></ol></figcaption></figure><h2 id="project-resources-and-dataset-selection">Project resources and dataset selection</h2>
 <p><code>Project resources</code> displays three expandable groups:</p>
 <ul>

@@ -299,3 +299,35 @@ the initial Qt VNC plugin crash/recovery are recorded in
 [the Slurm verification record](cluster-training.md#metavariables-prepared-sif-and-portable-imports--2026-10-14).
 Native computer-use surfaces were unavailable; no new Wayland trial is claimed.
 The saved trial project and owned Qt/bridge/backend processes were closed.
+
+## Direct parameter formulas and resolved canvas values — 2026-10-14
+
+Inspector uses one editor per parameter, including editable boolean/choice/
+package selectors and nested package fields. Binding previews are native child
+rows, so enlarged fonts do not overlap following editors. Canvas positioned
+rows use the C resolver and retain authored bindings; errors show `?` with a
+diagnostic tooltip. Package references display names rather than reference JSON.
+
+Validation: `CCACHE_DISABLE=1 just test` passed 16/16 core tests. The Qt build
+passed; the first GUI gate exposed a test lookup selecting another tree instead
+of the named Inspector. After correcting that lookup, the complete GUI gate
+passed 8/8. New assertions cover direct nested boolean/choice/numeric bindings,
+literal choices starting with `$`, rejected choices, undo/redo, enlarged-font
+row geometry, and canvas refresh from 64/8 to 128/32 with missing/fractional
+values displayed as unknown without modifying source/history. Mermaid validation
+passed 44 diagrams in 41 files; the offline guide check passed all 13 pages.
+
+The principal rebuilt Qt and started a fresh noVNC session on an ignored copy
+of the saved example. Actual computer use entered `$(1-2)` in `join.dim` and
+`$(true)` in Query `bias`, in each parameter's own editor. Their separate
+Resolved rows showed `-1` and `true`; Q/K/V cards showed numeric 64/8 and the
+model retained no problems. Save and file inspection confirmed the authored
+formulas persisted. The original example was unchanged. Project, Qt/bridge and
+browser tab were closed after verification. Native desktop surfaces were
+unavailable; no new Wayland or Slurm run is claimed for this presentation change.
+
+Local screenshots:
+
+* `.computer-use/metavariable-editor-trial/nested-editor.png`
+* `.computer-use/metavariable-editor-trial/boolean-editor.png`
+* `.computer-use/metavariable-editor-trial/resolved-canvas.png`

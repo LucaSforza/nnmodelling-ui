@@ -127,10 +127,15 @@ stesso stereotype, compresi i suoi default. Per nomi con trattino usa parentesi
 quadre. `$(...)` contiene un'espressione Lua; il risultato deve avere tipo e
 vincoli del campo. Una divisione non intera in un campo integer è un errore,
 non viene arrotondata. Una stringa letterale che inizia con `$` si scrive con
-`$$`. Campi booleani, scelte e riferimenti mantengono i controlli abituali e
-offrono un campo di testo accanto per il riferimento/formula.
+`$$`. Ogni parametro ha un solo campo per valore, riferimento o formula.
+Anche i menu booleani, delle scelte e dei riferimenti sono modificabili:
+scrivi `$nome` o `$(...)` direttamente nella loro area di testo. Il suggerimento
+vicino a `Parameters` ricorda la sintassi, valida anche nei campi annidati.
 
-Inspector conserva il testo e mostra risultato risolto o errore. Variabili
+Inspector conserva il testo e mostra risultato risolto o errore sotto il campo.
+Le schede dei nodi mostrano il valore calcolato, per esempio `64`, senza JSON
+interno o formule; un risultato non risolvibile appare come `?` con motivo nel
+tooltip. Variabili
 mancanti, cicli e risultati incompatibili impediscono il training finché non
 corretti; il progetto resta modificabile e salvabile. Modificare la lista crea
 una barriera nella cronologia, come Operations; modificare un parametro conserva
@@ -146,14 +151,14 @@ Per una `Output` o `Loss Output` dentro una subflow, `Boundary mapping` permette
 
 `Parameters` contiene un controllo per ogni parametro definito dal pacchetto:
 
-- i parametri con scelte predefinite sono menu a discesa;
-- i valori booleani sono caselle da spuntare;
+- i parametri con scelte predefinite sono menu a discesa modificabili;
+- i valori booleani usano menu modificabili `true` / `false`;
 - interi, numeri, stringhe, dtype e valori JSON sono campi di testo, validati dal pacchetto quando si conferma il campo;
 - i parametri posizionati `top` o `bottom` possono comparire anche come righe sintetiche sulla scheda del nodo.
 
 Per significato, default, limiti e scelte di ogni campo dei pacchetti distribuiti, consulta il [catalogo dei parametri](parameters.md).
 
-Un parametro di tipo `stereotype` è composto da un selettore di pacchetto e dai campi dello schema di quel pacchetto. Il selettore mostra nome e identità esatta `id@version`, applica l'eventuale filtro per tipo, e ` (choose package)` rappresenta l'assenza di scelta. Scegliere un pacchetto inizializza i suoi parametri ai valori predefiniti; un riferimento già presente mantiene i propri valori. I campi interni usano caselle, menu o testo secondo il tipo. La selezione e ogni campo aggiornato vengono verificati dal progetto; se un valore non è valido il client segnala il rifiuto e conserva i valori confermati. I dati dell'Inspector si aggiornano dopo una modifica.
+Un parametro di tipo `stereotype` è composto da un selettore di pacchetto modificabile e dai campi dello schema di quel pacchetto. Il selettore mostra nome e identità esatta `id@version`, applica l'eventuale filtro per tipo, e ` (choose package)` rappresenta l'assenza di scelta. Scegliere un pacchetto inizializza i suoi parametri ai valori predefiniti; un riferimento già presente mantiene i propri valori. Puoi scrivere un riferimento/formula direttamente nel selettore. In quel caso i parametri risolti sono in sola lettura finché non sostituisci esplicitamente il riferimento; non modificano la dichiarazione condivisa. I campi interni di un riferimento letterale usano menu modificabili o testo secondo il tipo. La selezione e ogni campo aggiornato vengono verificati dal progetto; se un valore non è valido il client segnala il rifiuto e conserva i valori confermati. I dati dell'Inspector si aggiornano dopo una modifica.
 
 ![Inspector con un nodo selezionato](assets/inspector.png)
 
