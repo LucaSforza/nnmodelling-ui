@@ -26,7 +26,7 @@ Worker images start with the workspace runtime, CPU PyTorch, safetensors, NumPy,
 ```dockerfile
 FROM nnmodelling-worker:local
 USER 0
-RUN uv pip install --python /app/.venv/bin/python 'scikit-image==0.25.2'
+RUN uv pip install --python /opt/nnmodelling/venv/bin/python 'scikit-image==0.25.2'
 USER 65532:65532
 ```
 
@@ -45,6 +45,17 @@ export NNMODELLING_SLURM_IMAGE=/absolute/remote/path/worker.sif
 export NNMODELLING_SLURM_PARTITION=my-partition
 just backend-slurm
 ```
+
+Accepted 2026-10-14: configuration includes Prepare and install worker and
+Check worker. The owned helper `backend.prepare_worker --profile PATH
+[--project PATH] [--check]` builds with the workspace/derived frozen uv lock,
+transfers a Docker archive, converts it in an owned Slurm allocation, verifies
+dependencies/startup, and publishes an immutable hash-named SIF. Qt updates
+slurm.image only after success. Environment is /opt/nnmodelling/venv, outside
+the /app source bind. Preparation cancellation targets its recorded allocation;
+training remains network-isolated. Standard lock is CPU, so GPU preparation
+rejects CPU-only torch rather than silently claiming CUDA support. See backend
+contract for source/concrete snapshots and portable package download.
 
 The existing Qt Training dashboard uses the same local endpoint. UI and backend
 share ~/.config/nnmodelling/config.json (XDG_CONFIG_HOME or NNMODELLING_CONFIG

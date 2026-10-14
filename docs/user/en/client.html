@@ -7,6 +7,7 @@
 <nav aria-label="Chapters"><a href="index.html">Introduction</a><a href="client.html" aria-current="page">Using the client</a><a href="parameters.html">Parameter catalog</a><a href="server.html">Configure the server</a><a href="tutorial-tiny-llm.html">Tiny LLM tutorial</a><a href="tutorial-vae.html">VAE tutorial</a></nav><div class="outline"><p>On this page</p><div class="toc">
 <ul>
 <li><a href="#nnmodelling-client-guide">NNModelling client guide</a><ul>
+<li><a href="#model-metavariables">Model metavariables</a></li>
 <li><a href="#starting-the-application-and-projects">Starting the application and projects</a></li>
 <li><a href="#menus-and-history">Menus and history</a></li>
 <li><a href="#graph-workspace">Graph workspace</a><ul>
@@ -39,6 +40,31 @@
 <p class="offline">Available offline.<br/><a href="README.md">Sources and verification</a></p></aside>
 <main id="content"><header><span class="eyebrow">FROM GRAPH TO MODEL</span><span class="chapter">Using the client</span></header>
 <article><h1 id="nnmodelling-client-guide">NNModelling client guide</h1>
+<h2 id="model-metavariables">Model metavariables</h2>
+<p><code>Model &gt; Manage metavariables…</code> opens an Operations-style staged list with New,
+Edit, Remove, Save and Cancel. Each declaration has Name, Type and a literal
+Value. Types match stereotype parameters: integer, number, boolean, string,
+dtype, json arrays and stereotype references. Names may include hyphens.
+Declarations are shared across all model scopes.</p>
+<p>Enter references/formulas directly in ordinary Inspector parameter fields:</p>
+<pre><code class="language-text">embedding_dim = $embedding-features
+times = $num-heads
+in_features = $embedding-features
+out_features = $(params.in_features / meta["num-heads"])
+factor = $(1 / math.sqrt(meta["embedding-features"] / meta["num-heads"]))
+</code></pre>
+<p><code>meta["name"]</code> reads a declaration; <code>params.name</code> reads a sibling parameter,
+including its default. Lua expressions must return a value satisfying the
+destination type and constraints; fractional integers are errors. Enter <code>$$</code>
+for a literal string beginning with <code>$</code>. Existing checkbox, choice and reference
+controls retain literal editing and provide adjacent binding text. Inspector
+shows stored source and resolved value/error. Missing references, cycles and
+invalid results block training, while the project remains editable/saveable.</p>
+<p>Saving a changed declaration list creates the same unsaved history barrier as
+Operations. Parameter binding edits retain ordinary Undo/Redo. Projects using
+metavariables/bindings use schema 3 and require an updated client. Training
+snapshots retain authored source for restore and freeze concrete values from
+the same C/Lua resolver used by native analysis.</p>
 <p>This guide describes the Qt client controls and how they affect a project. Interface labels are shown in English as they appear on screen. Graph edits become part of the project with <code>File &gt; Save</code>; resource creation and dataset metadata edits save the project when the operation completes.</p>
 <figure class="annotated"><a href="../assets/overview.png" class="image-link" title="Open screenshot at original size"><img alt="Main window and workspace areas" src="../assets/overview.png" loading="lazy"></a><figcaption><strong>Main window and workspace areas</strong><p class="image-hint">Click the image to inspect it at its original size.</p><ol class="callouts"><li><span class="badge" aria-hidden="true">1</span><span>Menu bar</span></li><li><span class="badge" aria-hidden="true">2</span><span>Scope, training and canvas tools</span></li><li><span class="badge" aria-hidden="true">3</span><span>Package catalog</span></li><li><span class="badge" aria-hidden="true">4</span><span>Graph canvas</span></li><li><span class="badge" aria-hidden="true">5</span><span>Inspector</span></li><li><span class="badge" aria-hidden="true">6</span><span>Project resources</span></li><li><span class="badge" aria-hidden="true">7</span><span>Model problems</span></li><li><span class="badge" aria-hidden="true">8</span><span>Status area</span></li></ol></figcaption></figure><h2 id="starting-the-application-and-projects">Starting the application and projects</h2>
 <p>In a normal desktop launch, the project chooser appears first. <code>New project</code> creates an empty project; <code>New MNIST MLP</code> and <code>New mini LLM</code> create editable copies of the examples; <code>Open project</code> opens a project folder; <code>Close</code> closes the chooser and leaves the main window open. The main window can therefore remain open without a project. If the application starts through the automation bridge without a project path, the initial chooser is skipped. Open it with <code>File &gt; New project…</code>, <code>File &gt; Open project…</code> or <code>Training</code>. Example model copies are independent of the originals.</p>

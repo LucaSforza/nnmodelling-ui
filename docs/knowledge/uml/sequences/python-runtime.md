@@ -124,7 +124,7 @@ lowered execution remains the performance TODO in the backend contract.
     Worker->>Worker: save weights.safetensors
     Worker->>Runtime: build_wheel(project, core, weights, output, job ID)
     Runtime->>Runtime: normalize frozen project ID for nnm distribution name
-    Note over Runtime,Wheel: Filename and dist-info use project identity, import package retains job identity
+    Note over Runtime,Wheel: Filename, dist-info and public import use project identity with a job compatibility alias
     Runtime->>Wheel: copy exact graph and package closure
     Runtime->>Wheel: copy adapter Python, metadata and declared inference assets
     Runtime->>Wheel: vendor private SDK ABI and weights
@@ -152,6 +152,12 @@ code and frozen core. Declared dataset `inferenceAssets` use project-relative
 paths and are copied byte-for-byte. External resource dependencies are retained
 in wheel metadata, while the SDK is privately vendored; the wheel is independent
 of the service and source checkout.
+
+Accepted 2026-10-14: worker uses snapshot/execution-project.json when present;
+original project.json remains authoring/restore data. Wheel copies only concrete
+graph parameters and additionally publishes a ZIP containing the same public
+package tree for extraction beside caller code; installed external dependencies
+remain required. No Lua evaluator or import hook is packaged for this feature.
 
 The executable consumer at `examples/implementation/llm/` downloads the completed
 job's wheel through the service's artifact endpoint and verifies its SHA256

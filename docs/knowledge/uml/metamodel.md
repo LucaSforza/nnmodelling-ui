@@ -3,18 +3,18 @@
 ## Metavariable resolution (accepted 2026-10-14)
 
 ```mermaid
-classDiagram
-  ModelManifest *-- Metavariable
-  Metavariable : name
-  Metavariable : type
-  Metavariable : literalValue
-  ParameterValue --> ParameterBinding : optional authored ref or Lua
-  ParameterBinding : source
-  NNProject --> ParameterResolver : immutable declaration and catalog views
-  ParameterResolver --> ResolvedParameters : defaulted validated owned values
-  ResolvedParameters --> InferenceReport
-  ResolvedParameters --> ParameterReport
-  ResolvedParameters --> ExecutionSnapshot
+  classDiagram
+    ModelManifest *-- Metavariable
+    Metavariable : name
+    Metavariable : type
+    Metavariable : literalValue
+    ParameterValue --> ParameterBinding : optional authored ref or Lua
+    ParameterBinding : source
+    NNProject --> ParameterResolver : immutable declaration and catalog views
+    ParameterResolver --> ResolvedParameters : defaulted validated owned values
+    ResolvedParameters --> InferenceReport
+    ResolvedParameters --> ParameterReport
+    ResolvedParameters --> ExecutionSnapshot
 ```
 
 Schema 3 distinguishes authored bindings from literal values. Model-wide

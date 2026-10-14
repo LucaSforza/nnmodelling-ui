@@ -16,7 +16,10 @@
 </ul>
 </li>
 <li><a href="#numero-di-parametri">Numero di parametri</a></li>
-<li><a href="#inspector">Inspector</a></li>
+<li><a href="#inspector">Inspector</a><ul>
+<li><a href="#metavariabili-del-modello">Metavariabili del modello</a></li>
+</ul>
+</li>
 <li><a href="#risorse-del-progetto-e-selezione-dataset">Risorse del progetto e selezione dataset</a><ul>
 <li><a href="#gestire-le-operazioni-esportate">Gestire le operazioni esportate</a></li>
 <li><a href="#gestore-dei-dataset">Gestore dei dataset</a></li>
@@ -107,6 +110,34 @@ a zero parametri. I subflow includono i discendenti e le ripetizioni, senza
 sommare due volte quei contributi nel totale di rete. L'esempio MNIST MLP
 illustrato ha <strong>109.386</strong> parametri totali e addestrabili.</p>
 <figure class="annotated"><a href="assets/menu-model.png" class="image-link" title="Apri screenshot a dimensione originale"><img alt="Menu Model con conteggio parametri" src="assets/menu-model.png" loading="lazy"></a><figcaption><strong>Menu Model con conteggio parametri</strong><p class="image-hint">Clic sull'immagine per leggere i dettagli a dimensione originale.</p><ol class="callouts"><li><span class="badge" aria-hidden="true">1</span><span>Azioni per pacchetti e risorse</span></li><li><span class="badge" aria-hidden="true">2</span><span>Conteggio dei parametri</span></li><li><span class="badge" aria-hidden="true">3</span><span>Backend di addestramento</span></li></ol></figcaption></figure><figure class="annotated"><a href="assets/parameter-counts.png" class="image-link" title="Apri screenshot a dimensione originale"><img alt="Totali e dettaglio del conteggio parametri" src="assets/parameter-counts.png" loading="lazy"></a><figcaption><strong>Totali e dettaglio del conteggio parametri</strong><p class="image-hint">Clic sull'immagine per leggere i dettagli a dimensione originale.</p><ol class="callouts"><li><span class="badge" aria-hidden="true">1</span><span>Parametri totali e addestrabili; completezza dell’analisi</span></li><li><span class="badge" aria-hidden="true">2</span><span>Conteggio dei parametri per ogni nodo</span></li><li><span class="badge" aria-hidden="true">3</span><span>Aggiorna il conteggio dei parametri</span></li><li><span class="badge" aria-hidden="true">4</span><span>La barra orizzontale mostra la colonna Message</span></li></ol></figcaption></figure><h2 id="inspector">Inspector</h2>
+<h3 id="metavariabili-del-modello">Metavariabili del modello</h3>
+<p><code>Model &gt; Manage metavariables…</code> apre un elenco come il gestore Operations:
+<code>New…</code>, <code>Edit…</code>, <code>Remove</code>, <code>Save</code>, <code>Cancel</code>. Ogni dichiarazione ha nome, tipo e
+valore; le modifiche restano nella finestra finché premi Save. Cancel le scarta.
+Tipi disponibili: integer, number, boolean, string, dtype, json (array) e
+stereotype. I nomi possono contenere trattini, per esempio <code>num-heads</code>.
+Le dichiarazioni sono comuni a tutto il modello, comprese subflow annidate.</p>
+<p>Nei normali campi Parameters scrivi direttamente un riferimento o una formula:</p>
+<pre><code class="language-text">embedding_dim = $embedding-features
+times = $num-heads
+in_features = $embedding-features
+out_features = $(params.in_features / meta["num-heads"])
+factor = $(1 / math.sqrt(meta["embedding-features"] / meta["num-heads"]))
+</code></pre>
+<p><code>meta["nome"]</code> legge una metavariabile; <code>params.nome</code> legge un altro campo dello
+stesso stereotype, compresi i suoi default. Per nomi con trattino usa parentesi
+quadre. <code>$(...)</code> contiene un'espressione Lua; il risultato deve avere tipo e
+vincoli del campo. Una divisione non intera in un campo integer è un errore,
+non viene arrotondata. Una stringa letterale che inizia con <code>$</code> si scrive con
+<code>$$</code>. Campi booleani, scelte e riferimenti mantengono i controlli abituali e
+offrono un campo di testo accanto per il riferimento/formula.</p>
+<p>Inspector conserva il testo e mostra risultato risolto o errore. Variabili
+mancanti, cicli e risultati incompatibili impediscono il training finché non
+corretti; il progetto resta modificabile e salvabile. Modificare la lista crea
+una barriera nella cronologia, come Operations; modificare un parametro conserva
+Undo/Redo. Progetti con metavariabili/formule usano schema 3 e richiedono client
+aggiornato. Lo snapshot conserva formule originali; training e wheel usano
+valori concreti calcolati dallo stesso risolutore dell'editor.</p>
 <p>Scegliere un nodo sul canvas riempie la tabella <code>Inspector</code> con colonne <code>Property</code> e <code>Value</code>. Senza nodo selezionato il pannello è vuoto. <code>Name</code> è un campo modificabile: premere Invio o uscire dal campo applica il nuovo nome. <code>Package</code> mostra <code>id@version</code>; passare il puntatore sulla riga mostra la descrizione del pacchetto.</p>
 <p>Quando l'analisi riesce, <code>Successful outputs</code> elenca ogni handle con il suo tipo, dtype e forma. Per i terminali compare invece <code>Consumed tensor</code> con dtype e forma del tensore ricevuto. Questi valori descrivono l'analisi di forma; non indicano che il modello sia stato addestrato.</p>
 <p>Per una <code>Output</code> o <code>Loss Output</code> dentro una subflow, <code>Boundary mapping</code> permette di associare il terminale a un'uscita dichiarata dal contenitore. L'elenco contiene solo uscite dello stesso tipo; <code>(unmapped)</code> appare se non c'è ancora un'associazione. Un'associazione importata che non corrisponde più è mostrata come <code>Invalid mapping: …</code> per poterla correggere.</p>
@@ -224,7 +255,7 @@ illustrato ha <strong>109.386</strong> parametri totali e addestrabili.</p>
 <figure class="annotated"><a href="assets/model-problems.png" class="image-link" title="Apri screenshot a dimensione originale"><img alt="Problemi del modello e filtro per ambito" src="assets/model-problems.png" loading="lazy"></a><figcaption><strong>Problemi del modello e filtro per ambito</strong><p class="image-hint">Clic sull'immagine per leggere i dettagli a dimensione originale.</p><ol class="callouts"><li><span class="badge" aria-hidden="true">1</span><span>Elenco dei problemi</span></li><li><span class="badge" aria-hidden="true">2</span><span>Nodi del grafo interessati</span></li></ol></figcaption></figure><h2 id="training-backend">Training backend</h2>
 <p><code>Training</code> nella toolbar e <code>Model &gt; Training backend…</code> aprono <code>Training backend</code>. Il pannello è utilizzabile per collegarsi e consultare job anche senza un progetto; inviare un job richiede invece un progetto valido, che viene salvato prima dell'invio.</p>
 <h3 id="configurare-e-avviare-il-backend-locale">Configurare e avviare il backend locale</h3>
-<p>Premi <code>Configure backend…</code> nel dashboard Training. Si apre la finestra separata <code>Local backend service configuration</code>; il dashboard con connessione, controlli, cronologia e curve resta utilizzabile. Scegli <code>Docker-compatible runtime</code> oppure <code>SSH / Slurm</code>. Per Slurm servono alias SSH configurato, directory remota scrivibile e immagine Singularity <code>.sif</code> già preparata. <code>Partition</code> e alias SSH partono vuoti; CPU, memoria, tempo e GPU hanno valori generici. Il profilo condiviso è <code>~/.config/nnmodelling/config.json</code>, modificabile con <code>NNMODELLING_CONFIG</code>. L'app non raccoglie password SSH né prepara immagini o dipendenze.</p>
+<p>Premi <code>Configure backend…</code> nel dashboard Training. Si apre la finestra separata <code>Local backend service configuration</code>; il dashboard con connessione, controlli, cronologia e curve resta utilizzabile. Scegli <code>Docker-compatible runtime</code> oppure <code>SSH / Slurm</code>. Per Slurm servono alias SSH configurato, directory remota scrivibile e immagine Singularity <code>.sif</code>, selezionata oppure preparata con <code>Prepare and install worker…</code>. <code>Partition</code> e alias SSH partono vuoti; CPU, memoria, tempo e GPU hanno valori generici. Il profilo condiviso è <code>~/.config/nnmodelling/config.json</code>, modificabile con <code>NNMODELLING_CONFIG</code>. L'app non raccoglie password SSH.</p>
 <p>Premi <code>Save settings and start local backend</code>. La UI avvia FastAPI su loopback in un processo locale separato; con <code>SSH / Slurm</code>, soltanto i worker vengono inviati al cluster. <code>uv</code> e il workspace del repository devono essere disponibili, e l'immagine worker va preparata prima. La finestra di configurazione mostra gli errori di avvio e disponibilità del runtime; il dashboard verifica poi il servizio con <code>Connect / check health</code>. Le impostazioni non segrete vengono salvate per l'utente corrente; <code>Bearer token</code> resta in memoria per la sessione. Se colleghi un servizio avviato manualmente o un endpoint remoto, la UI non lo controlla. La procedura Slurm illustrata è nella <a href="server.html#eseguire-i-job-su-un-cluster-slurm-dalla-ui">guida del backend</a>.</p>
 <p>Se il servizio gestito è già attivo, il pulsante diventa <code>Restart local backend safely</code>. La UI rifiuta il riavvio finché la cronologia contiene job <code>queued</code> o <code>running</code>, così non interrompe training. Chiudere il pannello Training lascia il servizio attivo. Chiudere l'app con servizio gestito attivo mostra un avviso: confermare arresta il backend e interrompe eventuali job Slurm; annullare mantiene l'app aperta.</p>
 <p>Per provare il MNIST VAE distribuito, crea una copia della cartella <code>examples/models/mnist-vae</code>, poi apri quella copia con <code>File &gt; Open project…</code>. I metodi <code>encode</code> e <code>decode</code> sono già elencati in <code>Operations</code>. <code>encode(image)</code> converte immagine in tensore latente <code>[1,32]</code>; in modalità inferenza il VAE restituisce la media posteriore in modo deterministico. <code>decode(z)</code> accetta un tensore <code>[1,32]</code> e restituisce immagine NumPy <code>28 × 28</code>. Per generare immagine dal prior, si può passare <code>torch.randn(1, 32)</code> a <code>decode</code>.</p>

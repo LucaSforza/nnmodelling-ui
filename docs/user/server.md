@@ -81,6 +81,45 @@ questi due valori nel JSON, passa gli stessi valori al comando di build.
 
 ## Eseguire i job su un cluster Slurm dalla UI
 
+### Preparare il worker dalla finestra di configurazione
+
+`Prepare and install worker…` costruisce e installa l'immagine richiesta dal
+training usando profilo corrente. Servono workspace del repository, uv e
+Docker/Podman sul computer; SSH, Slurm e Singularity sul cluster. L'autenticazione
+usa agent/config SSH esistenti, senza raccogliere password o copiare chiavi.
+
+La preparazione costruisce immagine dalle dipendenze uv bloccate, trasferisce
+archivio sul cluster, converte in SIF in una propria allocazione Slurm e verifica
+ambiente Python e worker. L'interfaccia mostra fasi, byte trasferiti, errori e
+Cancel. Nessun training parte durante preparazione. Un successo seleziona
+immagine verificata con nome basato sul suo hash; errore o annullamento conserva
+immagine precedente. `Check worker` controlla la SIF selezionata. Dopo successo
+avvia o riavvia backend con il comando abituale, quando non ci sono job attivi.
+
+L'ambiente Python dell'immagine è in `/opt/nnmodelling/venv`, separato dal mount
+dei sorgenti. La ricetta standard ha PyTorch CPU: configurare GPU non trasforma
+quell'ambiente in CUDA; preparazione GPU richiede dipendenze CUDA bloccate
+compatibili e viene rifiutata se il worker è CPU-only. Il training resta senza
+rete; download e installazione dipendenze avvengono prima.
+
+### Usare un pacchetto Python senza installare la wheel
+
+Per nuovi job completati, `Download Python package` scarica ZIP con la stessa
+cartella pubblica contenuta nella wheel. Estrai accanto allo script: per progetto
+`tiny-decoder-llm` ottieni cartella `nnm_tiny_decoder_llm`, quindi:
+
+```python
+from nnm_tiny_decoder_llm import Model
+
+model = Model()
+prediction = model.infer("ROMEO:\n")
+```
+
+Python deve già avere torch, NumPy, safetensors e dipendenze dichiarate dalle
+risorse. Copiare soltanto file `.whl` non equivale a installarlo. ZIP include
+pesi, adapter e runtime privato; non include dati di training. I vecchi job che
+non possiedono ZIP conservano download wheel/pesi originali.
+
 Il servizio FastAPI, il dashboard Training e l'archivio dei job restano su
 questo computer. La finestra **Local backend service configuration** sceglie
 Slurm come esecutore; solo i worker vengono inviati al cluster via SSH. Prima
@@ -204,7 +243,7 @@ con una versione fissata. Salva questo testo come `Dockerfile.worker-extra` nell
 ```dockerfile
 FROM nnmodelling-worker:local
 USER 0
-RUN uv pip install --python /app/.venv/bin/python 'scikit-image==0.25.2'
+RUN uv pip install --python /opt/nnmodelling/venv/bin/python 'scikit-image==0.25.2'
 USER 65532:65532
 ```
 

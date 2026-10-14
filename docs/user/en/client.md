@@ -1,5 +1,37 @@
 # NNModelling client guide
 
+## Model metavariables
+
+`Model > Manage metavariables…` opens an Operations-style staged list with New,
+Edit, Remove, Save and Cancel. Each declaration has Name, Type and a literal
+Value. Types match stereotype parameters: integer, number, boolean, string,
+dtype, json arrays and stereotype references. Names may include hyphens.
+Declarations are shared across all model scopes.
+
+Enter references/formulas directly in ordinary Inspector parameter fields:
+
+```text
+embedding_dim = $embedding-features
+times = $num-heads
+in_features = $embedding-features
+out_features = $(params.in_features / meta["num-heads"])
+factor = $(1 / math.sqrt(meta["embedding-features"] / meta["num-heads"]))
+```
+
+`meta["name"]` reads a declaration; `params.name` reads a sibling parameter,
+including its default. Lua expressions must return a value satisfying the
+destination type and constraints; fractional integers are errors. Enter `$$`
+for a literal string beginning with `$`. Existing checkbox, choice and reference
+controls retain literal editing and provide adjacent binding text. Inspector
+shows stored source and resolved value/error. Missing references, cycles and
+invalid results block training, while the project remains editable/saveable.
+
+Saving a changed declaration list creates the same unsaved history barrier as
+Operations. Parameter binding edits retain ordinary Undo/Redo. Projects using
+metavariables/bindings use schema 3 and require an updated client. Training
+snapshots retain authored source for restore and freeze concrete values from
+the same C/Lua resolver used by native analysis.
+
 This guide describes the Qt client controls and how they affect a project. Interface labels are shown in English as they appear on screen. Graph edits become part of the project with `File > Save`; resource creation and dataset metadata edits save the project when the operation completes.
 
 ![Main window and workspace areas](../assets/overview.png)

@@ -103,6 +103,41 @@ illustrato ha **109.386** parametri totali e addestrabili.
 
 ## Inspector
 
+### Metavariabili del modello
+
+`Model > Manage metavariables…` apre un elenco come il gestore Operations:
+`New…`, `Edit…`, `Remove`, `Save`, `Cancel`. Ogni dichiarazione ha nome, tipo e
+valore; le modifiche restano nella finestra finché premi Save. Cancel le scarta.
+Tipi disponibili: integer, number, boolean, string, dtype, json (array) e
+stereotype. I nomi possono contenere trattini, per esempio `num-heads`.
+Le dichiarazioni sono comuni a tutto il modello, comprese subflow annidate.
+
+Nei normali campi Parameters scrivi direttamente un riferimento o una formula:
+
+```text
+embedding_dim = $embedding-features
+times = $num-heads
+in_features = $embedding-features
+out_features = $(params.in_features / meta["num-heads"])
+factor = $(1 / math.sqrt(meta["embedding-features"] / meta["num-heads"]))
+```
+
+`meta["nome"]` legge una metavariabile; `params.nome` legge un altro campo dello
+stesso stereotype, compresi i suoi default. Per nomi con trattino usa parentesi
+quadre. `$(...)` contiene un'espressione Lua; il risultato deve avere tipo e
+vincoli del campo. Una divisione non intera in un campo integer è un errore,
+non viene arrotondata. Una stringa letterale che inizia con `$` si scrive con
+`$$`. Campi booleani, scelte e riferimenti mantengono i controlli abituali e
+offrono un campo di testo accanto per il riferimento/formula.
+
+Inspector conserva il testo e mostra risultato risolto o errore. Variabili
+mancanti, cicli e risultati incompatibili impediscono il training finché non
+corretti; il progetto resta modificabile e salvabile. Modificare la lista crea
+una barriera nella cronologia, come Operations; modificare un parametro conserva
+Undo/Redo. Progetti con metavariabili/formule usano schema 3 e richiedono client
+aggiornato. Lo snapshot conserva formule originali; training e wheel usano
+valori concreti calcolati dallo stesso risolutore dell'editor.
+
 Scegliere un nodo sul canvas riempie la tabella `Inspector` con colonne `Property` e `Value`. Senza nodo selezionato il pannello è vuoto. `Name` è un campo modificabile: premere Invio o uscire dal campo applica il nuovo nome. `Package` mostra `id@version`; passare il puntatore sulla riga mostra la descrizione del pacchetto.
 
 Quando l'analisi riesce, `Successful outputs` elenca ogni handle con il suo tipo, dtype e forma. Per i terminali compare invece `Consumed tensor` con dtype e forma del tensore ricevuto. Questi valori descrivono l'analisi di forma; non indicano che il modello sia stato addestrato.
@@ -223,7 +258,7 @@ La sezione `Optional Lua inference` contiene l'editor sorgente. Il testo inizial
 
 ### Configurare e avviare il backend locale
 
-Premi `Configure backend…` nel dashboard Training. Si apre la finestra separata `Local backend service configuration`; il dashboard con connessione, controlli, cronologia e curve resta utilizzabile. Scegli `Docker-compatible runtime` oppure `SSH / Slurm`. Per Slurm servono alias SSH configurato, directory remota scrivibile e immagine Singularity `.sif` già preparata. `Partition` e alias SSH partono vuoti; CPU, memoria, tempo e GPU hanno valori generici. Il profilo condiviso è `~/.config/nnmodelling/config.json`, modificabile con `NNMODELLING_CONFIG`. L'app non raccoglie password SSH né prepara immagini o dipendenze.
+Premi `Configure backend…` nel dashboard Training. Si apre la finestra separata `Local backend service configuration`; il dashboard con connessione, controlli, cronologia e curve resta utilizzabile. Scegli `Docker-compatible runtime` oppure `SSH / Slurm`. Per Slurm servono alias SSH configurato, directory remota scrivibile e immagine Singularity `.sif`, selezionata oppure preparata con `Prepare and install worker…`. `Partition` e alias SSH partono vuoti; CPU, memoria, tempo e GPU hanno valori generici. Il profilo condiviso è `~/.config/nnmodelling/config.json`, modificabile con `NNMODELLING_CONFIG`. L'app non raccoglie password SSH.
 
 Premi `Save settings and start local backend`. La UI avvia FastAPI su loopback in un processo locale separato; con `SSH / Slurm`, soltanto i worker vengono inviati al cluster. `uv` e il workspace del repository devono essere disponibili, e l'immagine worker va preparata prima. La finestra di configurazione mostra gli errori di avvio e disponibilità del runtime; il dashboard verifica poi il servizio con `Connect / check health`. Le impostazioni non segrete vengono salvate per l'utente corrente; `Bearer token` resta in memoria per la sessione. Se colleghi un servizio avviato manualmente o un endpoint remoto, la UI non lo controlla. La procedura Slurm illustrata è nella [guida del backend](server.md#eseguire-i-job-su-un-cluster-slurm-dalla-ui).
 
