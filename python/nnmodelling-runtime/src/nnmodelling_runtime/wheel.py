@@ -278,6 +278,10 @@ def build_wheel(
         for path in stage.rglob("*"):
             if path.is_file():
                 entries[f"{package_name}/{path.relative_to(stage).as_posix()}"] = path.read_bytes()
+        package_archive = output / "python-package.zip"
+        with zipfile.ZipFile(package_archive, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+            for name, payload in sorted(entries.items()):
+                archive.writestr(name, payload)
         if legacy_name != package_name:
             entries[f"{legacy_name}/__init__.py"] = (Path(temporary) / legacy_name / "__init__.py").read_bytes()
         runtime_dependencies = _declared_python_dependencies([dataset_source] + [catalog.records[p][0] for p in required if p in catalog.records])

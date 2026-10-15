@@ -61,7 +61,7 @@
         "y": 240
       },
       "data": {
-        "name": "Token Embedding: 65 × 64",
+        "name": "Token Embedding",
         "scope": "",
         "package": {
           "id": "core.embedding",
@@ -69,7 +69,9 @@
         },
         "params": {
           "num_embeddings": 65,
-          "embedding_dim": 64,
+          "embedding_dim": {
+            "$ref": "embedding-features"
+          },
           "input_dtype": "int64",
           "dtype": "float32"
         }
@@ -90,7 +92,9 @@
           "version": "0.1.0"
         },
         "params": {
-          "d_model": 64,
+          "d_model": {
+            "$ref": "embedding-features"
+          },
           "max_len": 128
         }
       }
@@ -103,7 +107,7 @@
         "y": 720
       },
       "data": {
-        "name": "Repeat: 2 decoder blocks",
+        "name": "Decoder blocks ×10",
         "scope": "",
         "package": {
           "id": "core.repeat",
@@ -122,15 +126,17 @@
         "y": 960
       },
       "data": {
-        "name": "LayerNorm: 64",
+        "name": "Final LayerNorm",
         "scope": "",
         "package": {
           "id": "core.layer-norm",
           "version": "0.1.0"
         },
         "params": {
-          "normalized_shape": 64,
-          "eps": 0.00001,
+          "normalized_shape": {
+            "$ref": "embedding-features"
+          },
+          "eps": 1e-05,
           "elementwise_affine": true
         }
       }
@@ -143,14 +149,16 @@
         "y": 1160
       },
       "data": {
-        "name": "Linear: 64 → 65",
+        "name": "Vocabulary projection",
         "scope": "",
         "package": {
           "id": "core.linear",
           "version": "0.1.0"
         },
         "params": {
-          "in_features": 64,
+          "in_features": {
+            "$ref": "embedding-features"
+          },
           "out_features": 65,
           "bias": true,
           "dtype": "float32"
@@ -201,15 +209,17 @@
         "y": 200
       },
       "data": {
-        "name": "LayerNorm: 64",
+        "name": "Attention LayerNorm",
         "scope": "blocks",
         "package": {
           "id": "core.layer-norm",
           "version": "0.1.0"
         },
         "params": {
-          "normalized_shape": 64,
-          "eps": 0.00001,
+          "normalized_shape": {
+            "$ref": "embedding-features"
+          },
+          "eps": 1e-05,
           "elementwise_affine": true
         }
       }
@@ -222,14 +232,16 @@
         "y": 380
       },
       "data": {
-        "name": "HorizontalRepeat: 4 heads × 16",
+        "name": "Attention heads",
         "scope": "blocks",
         "package": {
           "id": "core.horizontal-repeat",
           "version": "0.1.0"
         },
         "params": {
-          "times": 4,
+          "times": {
+            "$ref": "num-heads"
+          },
           "join": {
             "id": "core.concat",
             "version": "0.1.0",
@@ -265,15 +277,17 @@
         "y": 1000
       },
       "data": {
-        "name": "LayerNorm: 64",
+        "name": "Feed-forward LayerNorm",
         "scope": "blocks",
         "package": {
           "id": "core.layer-norm",
           "version": "0.1.0"
         },
         "params": {
-          "normalized_shape": 64,
-          "eps": 0.00001,
+          "normalized_shape": {
+            "$ref": "embedding-features"
+          },
+          "eps": 1e-05,
           "elementwise_affine": true
         }
       }
@@ -286,15 +300,19 @@
         "y": 1240
       },
       "data": {
-        "name": "Linear: 64 → 256",
+        "name": "Feed-forward expansion",
         "scope": "blocks",
         "package": {
           "id": "core.linear",
           "version": "0.1.0"
         },
         "params": {
-          "in_features": 64,
-          "out_features": 256,
+          "in_features": {
+            "$ref": "embedding-features"
+          },
+          "out_features": {
+            "$lua": "params.in_features * 4"
+          },
           "bias": true,
           "dtype": "float32"
         }
@@ -327,15 +345,19 @@
         "y": 1680
       },
       "data": {
-        "name": "Linear: 256 → 64",
+        "name": "Feed-forward projection",
         "scope": "blocks",
         "package": {
           "id": "core.linear",
           "version": "0.1.0"
         },
         "params": {
-          "in_features": 256,
-          "out_features": 64,
+          "in_features": {
+            "$lua": "meta[\"embedding-features\"] * 4"
+          },
+          "out_features": {
+            "$ref": "embedding-features"
+          },
           "bias": true,
           "dtype": "float32"
         }
@@ -403,15 +425,19 @@
         "y": 280
       },
       "data": {
-        "name": "Query: 64 → 16",
+        "name": "Query projection",
         "scope": "heads",
         "package": {
           "id": "core.linear",
           "version": "0.1.0"
         },
         "params": {
-          "in_features": 64,
-          "out_features": 16,
+          "in_features": {
+            "$ref": "embedding-features"
+          },
+          "out_features": {
+            "$lua": "params.in_features / meta[\"num-heads\"]"
+          },
           "bias": true,
           "dtype": "float32"
         }
@@ -425,15 +451,19 @@
         "y": 280
       },
       "data": {
-        "name": "Key: 64 → 16",
+        "name": "Key projection",
         "scope": "heads",
         "package": {
           "id": "core.linear",
           "version": "0.1.0"
         },
         "params": {
-          "in_features": 64,
-          "out_features": 16,
+          "in_features": {
+            "$ref": "embedding-features"
+          },
+          "out_features": {
+            "$lua": "params.in_features / meta[\"num-heads\"]"
+          },
           "bias": true,
           "dtype": "float32"
         }
@@ -447,15 +477,19 @@
         "y": 280
       },
       "data": {
-        "name": "Value: 64 → 16",
+        "name": "Value projection",
         "scope": "heads",
         "package": {
           "id": "core.linear",
           "version": "0.1.0"
         },
         "params": {
-          "in_features": 64,
-          "out_features": 16,
+          "in_features": {
+            "$ref": "embedding-features"
+          },
+          "out_features": {
+            "$lua": "params.in_features / meta[\"num-heads\"]"
+          },
           "bias": true,
           "dtype": "float32"
         }
@@ -506,14 +540,16 @@
         "y": 1120
       },
       "data": {
-        "name": "Scale: 1 / √16",
+        "name": "Attention scale",
         "scope": "heads",
         "package": {
           "id": "core.scale",
           "version": "0.1.0"
         },
         "params": {
-          "factor": 0.25
+          "factor": {
+            "$lua": "1 / math.sqrt(meta[\"embedding-features\"] / meta[\"num-heads\"])"
+          }
         }
       }
     },
@@ -598,15 +634,19 @@
         "y": 540
       },
       "data": {
-        "name": "Linear",
+        "name": "Attention output projection",
         "scope": "blocks",
         "package": {
           "id": "core.linear",
           "version": "0.1.0"
         },
         "params": {
-          "in_features": 64,
-          "out_features": 64,
+          "in_features": {
+            "$ref": "embedding-features"
+          },
+          "out_features": {
+            "$ref": "embedding-features"
+          },
           "bias": true,
           "dtype": "float32"
         }
@@ -841,7 +881,7 @@
   ],
   "layoutDirection": "horizontal",
   "manifest": {
-    "schemaVersion": 2,
+    "schemaVersion": 3,
     "id": "tiny-decoder-llm",
     "version": "0.1.0",
     "name": "Tiny Decoder LLM",
@@ -874,6 +914,18 @@
     "activeDataset": {
       "id": "llm.tokens",
       "version": "1.0.0"
-    }
+    },
+    "metavariables": [
+      {
+        "name": "embedding-features",
+        "type": "integer",
+        "value": 64
+      },
+      {
+        "name": "num-heads",
+        "type": "integer",
+        "value": 8
+      }
+    ]
   }
 }

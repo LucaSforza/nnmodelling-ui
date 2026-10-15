@@ -52,7 +52,8 @@ uv run --locked python main.py $'ROMEO:\n' --tokens 120
 ```
 
 The consumer calls the wheel's public `Model.inference(text)` and
-`Model.infer(text)` methods and repeatedly generates one greedy character,
-keeping only the last 128 characters as context. PyTorch uses two CPU threads.
-The isolated 8-character smoke run printed `ROMEO:\n t t t t`; the output is
-repetitive, as expected for this small run.
+`Model.infer(text)` methods and samples one character at the adapter's fixed
+temperature of 0.8, keeping only the last 128 characters as context. Sampling
+is stochastic; PyTorch uses two CPU threads. The default prompt is
+`ROMEO:\nThis is him\nGIULIETTA:`. The isolated 8-character smoke run printed
+`ROMEO:\n t t t t`; the output is repetitive, as expected for this small run.

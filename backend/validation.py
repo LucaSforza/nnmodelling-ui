@@ -27,12 +27,21 @@ def safe_relative_path(value: str) -> PurePosixPath:
     return path
 
 
-def validate_project(project: Any, files: dict[str, bytes], core_packages: dict[str, Path]) -> dict[str, Any]:
+def validate_project(project: Any, files: dict[str, bytes], core_packages: dict[str, Path], *,
+                     allow_authored: bool = False) -> dict[str, Any]:
     if not isinstance(project, dict) or not isinstance(project.get("manifest"), dict):
         raise HTTPException(422, "project must be a schema-v2 model object with a manifest.")
     manifest = project["manifest"]
-    if manifest.get("schemaVersion") != 2:
-        raise HTTPException(422, "Only saved schema-v2 projects are accepted.")
+    schema = manifest.get("schemaVersion")
+    if type(schema) is not int or schema not in ({2, 3} if allow_authored else {2}):
+        raise HTTPException(422, "Only schema-v2 concrete projects and schema-v2/3 authored projects are accepted.")
+    if schema == 3:
+        _validate_metavariables(manifest.get("metavariables", []))
+        _validate_authored_bindings(project, manifest)
+    else:
+        if "metavariables" in manifest:
+            raise HTTPException(422, "Schema-v2 projects cannot contain metavariables.")
+        _reject_unresolved_bindings(project)
     if not isinstance(project.get("nodes"), list) or not isinstance(project.get("edges"), list):
         raise HTTPException(422, "project must contain nodes and edges arrays.")
     custom_packages = _resource_refs(manifest.get("customPackages", []), "customPackages")
@@ -232,6 +241,168 @@ def validate_project(project: Any, files: dict[str, bytes], core_packages: dict[
             raise HTTPException(422, "Graph contains a directed cycle.")
     _validate_operations(manifest.get("operations", []), node_map, kinds, scopes, output_types)
     return project
+
+
+def validate_execution_project(source: dict[str, Any], execution: Any, files: dict[str, bytes],
+                               core_packages: dict[str, Path]) -> dict[str, Any]:
+    """Validate C-compiled graph metadata and prove it preserves authored source."""
+    if not isinstance(execution, dict) or not isinstance(execution.get("manifest"), dict):
+        raise HTTPException(422, "execution_project must be a concrete schema-v2 model object.")
+    if execution["manifest"].get("schemaVersion") != 2:
+        raise HTTPException(422, "execution_project must use schemaVersion 2.")
+    if "metavariables" in execution["manifest"]:
+        raise HTTPException(422, "execution_project cannot contain metavariables.")
+    _reject_unresolved_bindings(execution)
+    _compare_compiled_projects(source, execution)
+    return validate_project(execution, files, core_packages)
+
+
+def _validate_metavariables(values: Any) -> None:
+    import math
+    import re
+
+    if not isinstance(values, list) or len(values) > 256:
+        raise HTTPException(422, "manifest.metavariables must be an array with at most 256 declarations.")
+    names: set[str] = set()
+    types = {"boolean", "integer", "number", "string", "dtype", "json", "stereotype"}
+    for item in values:
+        if (not isinstance(item, dict) or set(item) != {"name", "type", "value"}
+                or not isinstance(item["name"], str) or len(item["name"].encode("utf-8")) > 128
+                or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_-]*", item["name"])
+                or item["name"] in names or not isinstance(item["type"], str) or item["type"] not in types):
+            raise HTTPException(422, "manifest.metavariables contains an invalid or duplicate declaration.")
+        names.add(item["name"])
+        if isinstance(item["value"], dict) and _is_binding(item["value"]):
+            raise HTTPException(422, "Metavariable declarations must contain literal values.")
+        value, kind = item["value"], item["type"]
+        valid = (
+            type(value) is bool if kind == "boolean" else
+            type(value) is int if kind == "integer" else
+            isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) if kind == "number" else
+            isinstance(value, str) if kind in {"string", "dtype"} else
+            isinstance(value, list) if kind == "json" else
+            isinstance(value, dict) and isinstance(value.get("id"), str) and isinstance(value.get("version"), str)
+            if kind == "stereotype" else False
+        )
+        if not valid:
+            raise HTTPException(422, f"Metavariable {item['name']!r} has a value that does not match type {kind!r}.")
+
+
+def _is_binding(value: Any) -> bool:
+    return isinstance(value, dict) and (
+        (set(value) == {"$ref"} and isinstance(value["$ref"], str))
+        or (set(value) == {"$lua"} and isinstance(value["$lua"], str))
+    )
+
+
+def _validate_authored_bindings(project: dict[str, Any], manifest: dict[str, Any]) -> None:
+    declared = {item["name"] for item in manifest.get("metavariables", [])}
+    for node in project.get("nodes", []):
+        data = node.get("data") if isinstance(node, dict) else None
+        params = data.get("params") if isinstance(data, dict) else None
+        _walk_bindings(params, declared, authored=True)
+
+
+def _walk_bindings(value: Any, declared: set[str], *, authored: bool) -> None:
+    if isinstance(value, dict):
+        if "$ref" in value or "$lua" in value:
+            if not _is_binding(value):
+                raise HTTPException(422, "Parameter bindings must be exact {$ref:string} or {$lua:string} objects.")
+            if "$ref" in value and (not value["$ref"] or value["$ref"] not in declared):
+                raise HTTPException(422, f"Unknown metavariable reference {value['$ref']!r}.")
+            if "$lua" in value and (not value["$lua"] or len(value["$lua"].encode("utf-8")) > 65536):
+                raise HTTPException(422, "Lua parameter bindings must contain 1..65536 UTF-8 bytes.")
+            return
+        for item in value.values():
+            _walk_bindings(item, declared, authored=authored)
+    elif isinstance(value, list):
+        for item in value:
+            _walk_bindings(item, declared, authored=authored)
+
+
+def _reject_unresolved_bindings(project: dict[str, Any]) -> None:
+    for node in project.get("nodes", []):
+        data = node.get("data") if isinstance(node, dict) else None
+        params = data.get("params") if isinstance(data, dict) else None
+        if _contains_binding(params):
+            raise HTTPException(422, "Concrete execution graph contains an unresolved parameter binding.")
+        _walk_bindings(params, set(), authored=False)
+
+
+def reject_unresolved_bindings(project: dict[str, Any]) -> None:
+    _reject_unresolved_bindings(project)
+
+
+def _compare_compiled_projects(source: dict[str, Any], execution: dict[str, Any]) -> None:
+    source_manifest = dict(source["manifest"])
+    execution_manifest = dict(execution["manifest"])
+    for manifest in (source_manifest, execution_manifest):
+        manifest.pop("schemaVersion", None)
+        manifest.pop("metavariables", None)
+    if not _json_equal(source_manifest, execution_manifest):
+        raise HTTPException(422, "execution_project changes authored project identity or resources.")
+    if set(source) != set(execution) or not {"manifest", "nodes", "edges"} <= set(source):
+        raise HTTPException(422, "execution_project changes authored project structure.")
+    for key in set(source) - {"manifest", "nodes", "edges"}:
+        if not _json_equal(source[key], execution[key]):
+            raise HTTPException(422, f"execution_project changes authored project field {key!r}.")
+    source_nodes, execution_nodes = source.get("nodes"), execution.get("nodes")
+    if not isinstance(source_nodes, list) or not isinstance(execution_nodes, list) or len(source_nodes) != len(execution_nodes):
+        raise HTTPException(422, "execution_project changes the authored node set.")
+    declared = {item["name"] for item in source["manifest"].get("metavariables", [])}
+    for authored, concrete in zip(source_nodes, execution_nodes):
+        if not isinstance(authored, dict) or not isinstance(concrete, dict):
+            raise HTTPException(422, "execution_project contains malformed nodes.")
+        left, right = dict(authored), dict(concrete)
+        left_data = left.get("data")
+        right_data = right.get("data")
+        if not isinstance(left_data, dict) or not isinstance(right_data, dict):
+            raise HTTPException(422, "execution_project changes authored node data.")
+        left_data, right_data = dict(left_data), dict(right_data)
+        authored_params = left_data.pop("params", {})
+        concrete_params = right_data.pop("params", {})
+        left["data"], right["data"] = left_data, right_data
+        if not _json_equal(left, right):
+            raise HTTPException(422, "execution_project changes authored node identity, position, scope, or package.")
+        if not isinstance(authored_params, dict) or not isinstance(concrete_params, dict):
+            raise HTTPException(422, "execution_project contains malformed node parameters.")
+        for key, value in authored_params.items():
+            if key not in concrete_params or not _compiled_value_matches(value, concrete_params[key]):
+                raise HTTPException(422, f"execution_project changes literal parameter {key!r}.")
+    if not _json_equal(source.get("edges"), execution.get("edges")):
+        raise HTTPException(422, "execution_project changes authored graph edges.")
+
+
+def _contains_binding(value: Any) -> bool:
+    if _is_binding(value):
+        return True
+    if isinstance(value, dict):
+        return any(_contains_binding(item) for item in value.values())
+    if isinstance(value, list):
+        return any(_contains_binding(item) for item in value)
+    return False
+
+
+def _compiled_value_matches(source: Any, concrete: Any) -> bool:
+    if _is_binding(source):
+        return not _contains_binding(concrete)
+    if isinstance(source, dict):
+        if not isinstance(concrete, dict) or not set(source) <= set(concrete):
+            return False
+        return all(_compiled_value_matches(value, concrete[key]) for key, value in source.items())
+    if isinstance(source, list):
+        return (isinstance(concrete, list) and len(source) == len(concrete)
+                and all(_compiled_value_matches(left, right) for left, right in zip(source, concrete)))
+    return type(source) is type(concrete) and source == concrete
+
+
+def _json_equal(first: Any, second: Any) -> bool:
+    try:
+        return json.dumps(first, sort_keys=True, separators=(",", ":"), allow_nan=False) == json.dumps(
+            second, sort_keys=True, separators=(",", ":"), allow_nan=False
+        )
+    except (TypeError, ValueError):
+        return False
 
 
 def _validate_operations(operations: Any, nodes, kinds, scopes, output_types) -> None:
@@ -487,6 +658,8 @@ def resolve_core_packages(project: dict[str, Any], files: dict[str, bytes] | Non
         package = data.get("package") if isinstance(data, dict) else None
         if isinstance(package, dict) and isinstance(package.get("id"), str) and package["id"].startswith("core."):
             pending.append((package["id"], str(package.get("version", ""))))
+        if isinstance(data, dict):
+            _collect_core_references(data.get("params"), pending)
     files = files or {}
     manifest = project.get("manifest", {})
     for ref in manifest.get("customPackages", []) if isinstance(manifest, dict) else []:
@@ -506,8 +679,24 @@ def resolve_core_packages(project: dict[str, Any], files: dict[str, bytes] | Non
                     if len(matches) != 1:
                         raise HTTPException(422, f"Core dependency {package_id} does not resolve uniquely.")
                     pending.append(matches[0])
+        try:
+            definition_name = _definition_file(json.loads(data.decode("utf-8")), "Custom package")
+            definition = json.loads(files[f"{ref['path'].rstrip('/')}/{definition_name}"].decode("utf-8"))
+            parameters = definition.get("parameters", {})
+            if isinstance(parameters, dict):
+                for parameter in parameters.values():
+                    if isinstance(parameter, dict):
+                        _collect_core_references(parameter.get("default"), pending)
+        except (UnicodeDecodeError, ValueError, KeyError, TypeError, AttributeError, HTTPException):
+            # Full validation below reports malformed package definitions.
+            pass
     while pending:
-        identity = pending.pop()
+        package_id, requested_version = pending.pop()
+        matches = [identity for identity in catalog
+                   if identity[0] == package_id and _satisfies(identity[1], requested_version)]
+        if len(matches) != 1:
+            raise HTTPException(422, f"Required core package {package_id}@{requested_version} does not resolve uniquely.")
+        identity = matches[0]
         if identity in needed:
             continue
         folder = catalog.get(identity)
@@ -536,6 +725,18 @@ def _reject_symlinks(root: Path) -> None:
     for path in root.rglob("*"):
         if path.is_symlink():
             raise HTTPException(422, f"Core package contains a symlink: {path.name}.")
+
+
+def _collect_core_references(value: Any, pending: list[tuple[str, str]]) -> None:
+    if isinstance(value, dict):
+        package_id, version = value.get("id"), value.get("version")
+        if isinstance(package_id, str) and package_id.startswith("core.") and isinstance(version, str):
+            pending.append((package_id, version))
+        for item in value.values():
+            _collect_core_references(item, pending)
+    elif isinstance(value, list):
+        for item in value:
+            _collect_core_references(item, pending)
 
 
 def copy_core_packages(packages: dict[str, Path], destination: Path) -> None:

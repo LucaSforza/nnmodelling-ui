@@ -85,7 +85,8 @@ class JobStore:
         return ids
 
     def create(self, project: dict[str, Any], files: dict[str, bytes], training: dict[str, Any],
-               core_packages: dict[str, Path], owner: str) -> dict[str, Any]:
+               core_packages: dict[str, Path], owner: str,
+               execution_project: dict[str, Any] | None = None) -> dict[str, Any]:
         job_id = str(uuid.uuid4())
         job_dir = self.job_dir(job_id)
         snapshot = job_dir / "snapshot"
@@ -95,6 +96,7 @@ class JobStore:
             (snapshot / "files").mkdir(parents=True)
             out.mkdir()
             _atomic_json(snapshot / "project.json", project)
+            _atomic_json(snapshot / "execution-project.json", execution_project or project)
             _atomic_json(snapshot / "training.json", training)
             for rel, data in files.items():
                 dest = snapshot / "files" / PurePosixPath(rel)
@@ -210,6 +212,8 @@ class JobStore:
         elif name == "wheel":
             wheels = sorted(path for path in out.glob("*.whl") if _safe_output_file(path, out))
             path = wheels[0] if len(wheels) == 1 else None
+        elif name == "package":
+            path = out / "python-package.zip"
         else:
             path = None
         return path if path is not None and _safe_output_file(path, out) else None
@@ -225,8 +229,9 @@ class JobStore:
             return None, "worker completed without an epoch summary and finite test loss"
         weights = output / "weights.safetensors"
         wheels = [path for path in output.glob("*.whl") if _safe_output_file(path, output)]
-        if not _safe_output_file(weights, output) or len(wheels) != 1:
-            return None, "worker completed without safe weights and exactly one wheel"
+        package = output / "python-package.zip"
+        if not _safe_output_file(weights, output) or len(wheels) != 1 or not _safe_output_file(package, output):
+            return None, "worker completed without safe weights, exactly one wheel, and portable package"
         return metrics, None
 
     def safe_output_file(self, job_id: str, name: str) -> Path | None:

@@ -25,10 +25,6 @@
 
 #include <cstring>
 
-extern "C" char *nn_app_operations_json(const NNApplication *app, char *error, size_t capacity);
-extern "C" bool nn_app_set_operations_json(NNApplication *app, const char *json,
-                                              char *error, size_t capacity);
-
 using namespace MainWindowUtils;
 
 namespace {

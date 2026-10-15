@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import types
 from pathlib import Path
 import sys
 
@@ -124,6 +125,27 @@ def test_model_consumer_uses_public_operations_and_checks_shapes() -> None:
     assert np.isfinite(outputs["inference"]).all()
     assert model.calls.count("encode") == 2
     assert model.calls.count("decode") == 2
+
+
+def test_model_loader_prefers_stable_import_and_keeps_historical_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.syspath_prepend(str(CONSUMER))
+    monkeypatch.setitem(sys.modules, "download_wheel", downloader)
+    main_spec = importlib.util.spec_from_file_location("_vae_loader_test", CONSUMER / "main.py")
+    assert main_spec and main_spec.loader
+    consumer = importlib.util.module_from_spec(main_spec)
+    main_spec.loader.exec_module(consumer)
+    monkeypatch.setattr(consumer, "load_artifact", lambda _path: artifact_for(b"wheel"))
+
+    direct = types.ModuleType("nnm_mnist_vae")
+    direct.Model = type("DirectModel", (), {"__init__": lambda self, weights_path=None: setattr(self, "source", "stable")})
+    monkeypatch.setitem(sys.modules, "nnm_mnist_vae", direct)
+    assert consumer.load_model(None).source == "stable"
+
+    legacy = types.ModuleType("nnmodel_verified_job_id")
+    legacy.Model = type("LegacyModel", (), {"__init__": lambda self, weights_path=None: setattr(self, "source", "legacy")})
+    monkeypatch.delitem(sys.modules, "nnm_mnist_vae")
+    monkeypatch.setitem(sys.modules, "nnmodel_verified_job_id", legacy)
+    assert consumer.load_model(None).source == "legacy"
 
 
 def test_artifact_metadata_rejects_unfrozen_hash(tmp_path: Path) -> None:

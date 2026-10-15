@@ -9,6 +9,12 @@ reads and validates those files before marking a job complete. Sources include
 
 ## Save and submit an immutable snapshot
 
+Bundled schema-3 examples also carry a source-hash-pinned native compilation in
+`execution-model.json`. The example submission tool verifies the source hash
+before sending both graphs through the same API validation below. Direct Python
+tests stage that concrete graph with original resources. Qt always queries C
+afresh; it never consumes this generated example artifact.
+
 ```mermaid
   sequenceDiagram
     actor User
@@ -25,14 +31,16 @@ reads and validates those files before marking a job complete. Sources include
     else save succeeds
       C-->>UI: exact saved model and project directory
       UI->>UI: collect manifest resources and inference assets
-      UI->>API: POST project files and training configuration
+      UI->>C: resolve model parameters through bounded C Lua
+      C-->>UI: concrete execution_project or node/field error
+      UI->>API: POST authored project, concrete execution_project, files and training configuration
       API->>API: check auth, payload bounds and training fields
       API->>Validate: validate schema, identities, graph and package metadata
       Note over Validate: Uploaded Python is not executed during validation
       alt metadata and payload accepted
         Validate-->>API: validated project and resolved core packages
         API->>Store: persist model, files, core bytes and config
-        Store->>Store: write immutable snapshot and queued job record
+        Store->>Store: freeze authored and concrete models, files, queued job record
         Store-->>API: queued job
         API->>Runner: enqueue job ID
         API-->>UI: queued job ID and initial metrics
@@ -42,6 +50,9 @@ reads and validates those files before marking a job complete. Sources include
     end
 ```
 
+Accepted 2026-10-14: schema-3 authored sources require a concrete schema-2
+execution graph. API checks structural equality and unchanged literal values;
+worker consumes concrete model, restore returns original source with bindings.
 The snapshot includes selected dataset resources and submitted data. It is
 read-only to the worker. Later UI edits cannot change a queued or running job.
 The resolved core directory is frozen under `snapshot/core/<package-folder>`.
@@ -49,33 +60,33 @@ The resolved core directory is frozen under `snapshot/core/<package-folder>`.
 ## Configure and launch the local service
 
 ```mermaid
-sequenceDiagram
-    actor User
-    participant Dashboard as Qt Training dashboard
-    participant Config as Separate modeless backend configuration window
-    participant Settings as Per-user JSON via QJsonDocument and QSaveFile
-    participant Process as Local service child process
-    participant API as Local FastAPI
-    User->>Dashboard: open backend configuration
-    Dashboard->>Config: show separate movable window
-    Config->>Settings: load validated profile and show its path
-    Note over Dashboard,Config: Dashboard remains usable with endpoint, jobs and curves visible
-    User->>Config: choose Docker or Slurm and enter service paths
-    Config->>Settings: atomically save non-secret launch profile
-    Note over Config,Settings: Load/save errors prevent managed launch
-    User->>Config: start or restart managed backend
-    Config->>API: inspect jobs if existing managed process is running
-    alt queued/running jobs exist
-        Config-->>User: refuse restart so jobs are not interrupted
-    else safe to launch
-        Config->>Config: reserve available loopback port
-        Config->>Process: spawn uv/uvicorn on loopback with validated environment
-        Process->>API: start FastAPI and select executor
-        Config->>Dashboard: set Endpoint to managed loopback address
-        Config->>API: GET /health
-        API-->>Config: executor/runtime availability
-        Config-->>User: show readiness or startup error
-    end
+  sequenceDiagram
+      actor User
+      participant Dashboard as Qt Training dashboard
+      participant Config as Separate modeless backend configuration window
+      participant Settings as Per-user JSON via QJsonDocument and QSaveFile
+      participant Process as Local service child process
+      participant API as Local FastAPI
+      User->>Dashboard: open backend configuration
+      Dashboard->>Config: show separate movable window
+      Config->>Settings: load validated profile and show its path
+      Note over Dashboard,Config: Dashboard remains usable with endpoint, jobs and curves visible
+      User->>Config: choose Docker or Slurm and enter service paths
+      Config->>Settings: atomically save non-secret launch profile
+      Note over Config,Settings: Load/save errors prevent managed launch
+      User->>Config: start or restart managed backend
+      Config->>API: inspect jobs if existing managed process is running
+      alt queued/running jobs exist
+          Config-->>User: refuse restart so jobs are not interrupted
+      else safe to launch
+          Config->>Config: reserve available loopback port
+          Config->>Process: spawn uv/uvicorn on loopback with validated environment
+          Process->>API: start FastAPI and select executor
+          Config->>Dashboard: set Endpoint to managed loopback address
+          Config->>API: GET /health
+          API-->>Config: executor/runtime availability
+          Config-->>User: show readiness or startup error
+      end
 ```
 
 The child is a separate local Python process, not embedded in Qt. Closing the
@@ -227,49 +238,49 @@ interchange checkpoint; pickle checkpoints are not emitted.
 ## Local API with remote Slurm containers (accepted 2026-10-08)
 
 ```mermaid
-sequenceDiagram
-    participant API as Local FastAPI
-    participant Store as Local JobStore
-    participant Runner as SlurmJobRunner
-    participant SSH as Cluster SSH
-    participant Slurm as Slurm scheduler
-    participant Batch as Slurm batch wrapper
-    participant SIF as Singularity worker
-    API->>Store: Freeze request
-    API->>Runner: Queue local job ID
-    Runner->>SSH: Stage snapshot and worker source in new UUID directory
-    Runner->>SSH: sbatch contained Singularity command
-    SSH-->>Runner: Scheduler job ID
-    Runner->>Store: Persist scheduler identity and configuration
-    Slurm->>SIF: Execute same backend.worker
-    loop Until scheduler termination
-        Runner->>SSH: Read scheduler state and complete metrics
-        SSH-->>Runner: State and metrics bytes
-        Runner->>Store: Atomically publish local metrics
-    end
-    alt warning signal before per-allocation walltime
-        Slurm->>Batch: SIGUSR1 warning
-        Batch->>Batch: Create attempt-scoped checkpoint request file
-        Batch->>SIF: Expose request path to worker
-        SIF->>SIF: Check request after optimizer step
-        SIF->>SIF: Save model, Adam, RNG, cursor and metric windows
-        SIF-->>Slurm: Exit with checkpoint handoff status
-        Runner->>SSH: Retrieve and validate checkpoint and logs
-        Runner->>Store: Preserve same logical job and latest scheduler ID
-        Runner->>SSH: Submit next allocation in same remote job directory
-        SSH-->>Runner: New scheduler job ID
-        Runner->>Store: Record new scheduler attempt
-        Slurm->>SIF: Resume from private safetensors/JSON checkpoint
-    else final allocation completed
-        Runner->>SSH: Retrieve safe output files
-        Runner->>Store: Validate final metrics weights wheel and commit completion
-    else no valid checkpoint or explicit interruption
-        Runner->>Store: Record visible failed or cancelled job
-    end
-    opt Cancel shutdown restart or transport failure
-        Runner->>SSH: scancel recorded owned scheduler job
-        Runner->>Store: Record cancellation or visible interruption/error
-    end
+  sequenceDiagram
+      participant API as Local FastAPI
+      participant Store as Local JobStore
+      participant Runner as SlurmJobRunner
+      participant SSH as Cluster SSH
+      participant Slurm as Slurm scheduler
+      participant Batch as Slurm batch wrapper
+      participant SIF as Singularity worker
+      API->>Store: Freeze request
+      API->>Runner: Queue local job ID
+      Runner->>SSH: Stage snapshot and worker source in new UUID directory
+      Runner->>SSH: sbatch contained Singularity command
+      SSH-->>Runner: Scheduler job ID
+      Runner->>Store: Persist scheduler identity and configuration
+      Slurm->>SIF: Execute same backend.worker
+      loop Until scheduler termination
+          Runner->>SSH: Read scheduler state and complete metrics
+          SSH-->>Runner: State and metrics bytes
+          Runner->>Store: Atomically publish local metrics
+      end
+      alt warning signal before per-allocation walltime
+          Slurm->>Batch: SIGUSR1 warning
+          Batch->>Batch: Create attempt-scoped checkpoint request file
+          Batch->>SIF: Expose request path to worker
+          SIF->>SIF: Check request after optimizer step
+          SIF->>SIF: Save model, Adam, RNG, cursor and metric windows
+          SIF-->>Slurm: Exit with checkpoint handoff status
+          Runner->>SSH: Retrieve and validate checkpoint and logs
+          Runner->>Store: Preserve same logical job and latest scheduler ID
+          Runner->>SSH: Submit next allocation in same remote job directory
+          SSH-->>Runner: New scheduler job ID
+          Runner->>Store: Record new scheduler attempt
+          Slurm->>SIF: Resume from private safetensors/JSON checkpoint
+      else final allocation completed
+          Runner->>SSH: Retrieve safe output files
+          Runner->>Store: Validate final metrics weights wheel and commit completion
+      else no valid checkpoint or explicit interruption
+          Runner->>Store: Record visible failed or cancelled job
+      end
+      opt Cancel shutdown restart or transport failure
+          Runner->>SSH: scancel recorded owned scheduler job
+          Runner->>Store: Record cancellation or visible interruption/error
+      end
 ```
 
 Each local job keeps one ID across allocation attempts. Its Slurm ID changes and

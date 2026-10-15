@@ -20,6 +20,12 @@ NNCatalog *nn_catalog_load(const char *core_root, const char *project_root,
     return calloc(1, sizeof(NNCatalog));
 }
 void nn_catalog_free(NNCatalog *catalog) { free(catalog); }
+bool nn_catalog_validate_value(const NNCatalog *catalog, const NNParameterDef *definition,
+                              const NNValue *value, char *error, size_t capacity)
+{
+    (void)catalog; (void)definition; (void)value; (void)error; (void)capacity;
+    return true;
+}
 size_t nn_catalog_count(const NNCatalog *catalog) { return catalog ? 1 : 0; }
 const NNPackage *nn_catalog_at(const NNCatalog *catalog, size_t index)
 {

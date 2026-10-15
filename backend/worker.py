@@ -540,6 +540,18 @@ def _train_epochs(
     restore_best()
 
 
+def _materialize_project(snapshot: Path, project: Path) -> None:
+    execution_project = snapshot / "execution-project.json"
+    shutil.copy2(execution_project if execution_project.is_file() else snapshot / "project.json",
+                 project / "model.json")
+    files_root = snapshot / "files"
+    for source in files_root.rglob("*"):
+        if source.is_file():
+            destination = project / source.relative_to(files_root)
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, destination)
+
+
 def run(snapshot: Path, output: Path, job_id: str) -> None:
     import numpy as np
     import torch
@@ -567,13 +579,7 @@ def run(snapshot: Path, output: Path, job_id: str) -> None:
     project = Path(tempfile.mkdtemp(prefix="nnmodelling-project-"))
     os.environ["NNMODELLING_DATASET_CACHE_ROOT"] = str(cache_root)
     try:
-        shutil.copy2(snapshot / "project.json", project / "model.json")
-        files_root = snapshot / "files"
-        for source in files_root.rglob("*"):
-            if source.is_file():
-                destination = project / source.relative_to(files_root)
-                destination.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(source, destination)
+        _materialize_project(snapshot, project)
         core_dir = snapshot / "core"
         adapter = load_dataset(project)
         model = GraphModule(project, core_dir=core_dir)

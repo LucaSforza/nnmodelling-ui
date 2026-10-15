@@ -7,6 +7,8 @@
 <nav aria-label="Chapters"><a href="index.html">Introduction</a><a href="client.html">Using the client</a><a href="parameters.html">Parameter catalog</a><a href="server.html" aria-current="page">Configure the server</a><a href="tutorial-tiny-llm.html">Tiny LLM tutorial</a><a href="tutorial-vae.html">VAE tutorial</a></nav><div class="outline"><p>On this page</p><div class="toc">
 <ul>
 <li><a href="#local-backend-and-slurm-jobs">Local backend and Slurm jobs</a><ul>
+<li><a href="#prepare-and-install-a-slurm-worker">Prepare and install a Slurm worker</a></li>
+<li><a href="#extract-a-python-package-beside-your-script">Extract a Python package beside your script</a></li>
 <li><a href="#prepare-and-start-the-service">Prepare and start the service</a></li>
 <li><a href="#per-user-json-configuration">Per-user JSON configuration</a></li>
 <li><a href="#run-jobs-on-a-slurm-cluster-from-the-ui">Run jobs on a Slurm cluster from the UI</a><ul>
@@ -32,6 +34,35 @@
 <p class="offline">Available offline.<br/><a href="README.md">Sources and verification</a></p></aside>
 <main id="content"><header><span class="eyebrow">FROM GRAPH TO MODEL</span><span class="chapter">Configure the server</span></header>
 <article><h1 id="local-backend-and-slurm-jobs">Local backend and Slurm jobs</h1>
+<h2 id="prepare-and-install-a-slurm-worker">Prepare and install a Slurm worker</h2>
+<p>Use <code>Prepare and install worker…</code> in backend configuration with your existing
+SSH alias, remote paths, partition and resources. Preparation requires the
+repository workspace, uv and Docker/Podman locally; SSH, Slurm and Singularity
+remotely. Existing SSH agent/configuration handles authentication and host
+verification. Passwords, keys and bearer tokens never enter the profile or logs.</p>
+<p>The helper builds using the workspace lock, transfers a Docker archive, converts
+it to SIF in an owned Slurm allocation, and checks Python dependencies and worker
+startup. The UI presents phases, transfer bytes, errors and Cancel. Successful
+verification selects an immutable hash-named SIF; failures retain the previous
+image. <code>Check worker</code> probes the selected image. Start/restart the local backend
+after preparation completes, with no queued/running jobs during restart.</p>
+<p>Python environment lives at <code>/opt/nnmodelling/venv</code>, outside the <code>/app</code> source
+bind. The standard lock selects CPU PyTorch; CUDA preparation needs compatible
+locked dependencies and rejects a CPU-only image. Dependency installation takes
+place during preparation; training remains network-isolated.</p>
+<h2 id="extract-a-python-package-beside-your-script">Extract a Python package beside your script</h2>
+<p>New completed jobs provide <code>Download Python package</code>, a ZIP containing the same
+public package as the wheel. Extract it beside caller code. For project ID
+<code>tiny-decoder-llm</code>, use:</p>
+<pre><code class="language-python">from nnm_tiny_decoder_llm import Model
+
+model = Model()
+prediction = model.infer("ROMEO:\n")
+</code></pre>
+<p>The environment must already provide torch, NumPy, safetensors and declared
+resource dependencies. Copying a <code>.whl</code> file does not install it. Extracted ZIP
+includes weights, adapter and private runtime, without training data. Historical
+jobs without ZIP retain their original wheel/weight downloads.</p>
 <p>NNModelling submits an immutable project copy to the local FastAPI service. The service, API and job history stay on this computer. Jobs can run in a local container or be sent to Slurm over SSH; in the latter case only the worker runs on the cluster, while snapshots, metrics, logs and results return to the local backend. The <strong>Training</strong> window shows the connection, history, curves and controls to cancel jobs, restore snapshots and download results.</p>
 <figure class="annotated"><a href="../assets/training-connect.png" class="image-link" title="Open screenshot at original size"><img alt="Backend connection panel" src="../assets/training-connect.png" loading="lazy"></a><figcaption><strong>Backend connection panel</strong><p class="image-hint">Click the image to inspect it at its original size.</p><ol class="callouts"><li><span class="badge" aria-hidden="true">1</span><span>Backend endpoint</span></li><li><span class="badge" aria-hidden="true">2</span><span>Connect and check service health</span></li><li><span class="badge" aria-hidden="true">3</span><span>Open separate backend configuration</span></li></ol></figcaption></figure><figure class="annotated"><a href="../assets/training-dashboard.png" class="image-link" title="Open screenshot at original size"><img alt="History, learning curves and results" src="../assets/training-dashboard.png" loading="lazy"></a><figcaption><strong>History, learning curves and results</strong><p class="image-hint">Click the image to inspect it at its original size.</p><ol class="callouts"><li><span class="badge" aria-hidden="true">1</span><span>Backend connection</span></li><li><span class="badge" aria-hidden="true">2</span><span>Training configuration</span></li><li><span class="badge" aria-hidden="true">3</span><span>Job history and status</span></li><li><span class="badge" aria-hidden="true">4</span><span>Training and validation loss curves</span></li><li><span class="badge" aria-hidden="true">5</span><span>Curve visibility and scale</span></li><li><span class="badge" aria-hidden="true">6</span><span>Final test loss</span></li><li><span class="badge" aria-hidden="true">7</span><span>Training and worker log</span></li><li><span class="badge" aria-hidden="true">8</span><span>Download, restore, cancel and close actions</span></li></ol></figcaption></figure><h2 id="prepare-and-start-the-service">Prepare and start the service</h2>
 <p>Run these Bash commands from the repository root. The token prompts use Bash <code>read -s</code>, and the reusable <code>AUTH</code> header later in this guide uses a Bash array. You need <code>uv</code>, <code>just</code> and an installed and running Docker-compatible runtime (Docker or Podman). The first command installs the workspace's locked dependencies; the second builds the CPU image used for training.</p>
@@ -162,7 +193,7 @@ NNMODELLING_CONTAINER_RUNTIME=podman just backend-run
 <p>If a resource needs <code>scikit-image</code>, you can build an additional image with a pinned version. Save this as <code>Dockerfile.worker-extra</code> in the repository root:</p>
 <pre><code class="language-dockerfile">FROM nnmodelling-worker:local
 USER 0
-RUN uv pip install --python /app/.venv/bin/python 'scikit-image==0.25.2'
+RUN uv pip install --python /opt/nnmodelling/venv/bin/python 'scikit-image==0.25.2'
 USER 65532:65532
 </code></pre>
 <p>Build the base image with the tag used by the Dockerfile, then build the extension and select it when starting the service:</p>
@@ -197,6 +228,7 @@ just backend-run
 <p>For a reproducible terminal submission, this example uses only the Python standard library. From the repository root, it creates an in-memory bundle of <code>examples/models/tiny-decoder-llm</code> and submits a short one-epoch configuration. File contents, order and parameters are fixed; the script creates no intermediate files. It excludes symbolic links, <code>env</code> directories, <code>.env</code>, <code>venv</code>, <code>.venv</code>, caches and bytecode, as well as application-generated folders. It also includes inference assets listed in resource manifests.</p>
 <pre><code class="language-sh">python3 - &lt;&lt;'PY'
 import base64
+import hashlib
 import json
 import os
 from pathlib import Path, PurePosixPath
@@ -206,7 +238,14 @@ base_url = os.environ.get("NNMODELLING_BACKEND_URL", "http://127.0.0.1:8765").rs
 root = Path.cwd() / "examples/models/tiny-decoder-llm"
 if not root.is_dir() or root.is_symlink():
     raise FileNotFoundError(f"Example project directory does not exist: {root}")
-model = json.loads((root / "model.json").read_text(encoding="utf-8"))
+model_bytes = (root / "model.json").read_bytes()
+model = json.loads(model_bytes)
+compiled_path = root / "execution-model.json"
+if compiled_path.is_symlink():
+    raise ValueError("Compiled example must not be a symlink")
+compiled = json.loads(compiled_path.read_bytes())
+if compiled["source_sha256"] != hashlib.sha256(model_bytes).hexdigest():
+    raise ValueError("Example compilation is stale; submit edited models through Qt")
 excluded = {
     ".venv", "venv", "env", ".env", "__pycache__", ".git", "build", "dist",
     "target", ".pytest_cache", ".nnmodelling-generated", "node_modules",
@@ -278,6 +317,7 @@ for name, encoded in list(files.items()):
 
 payload = {
     "project": model,
+    "execution_project": compiled["execution_project"],
     "files": files,
     "training": {
         "epochs": 1,

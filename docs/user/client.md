@@ -103,6 +103,46 @@ illustrato ha **109.386** parametri totali e addestrabili.
 
 ## Inspector
 
+### Metavariabili del modello
+
+`Model > Manage metavariables…` apre un elenco come il gestore Operations:
+`New…`, `Edit…`, `Remove`, `Save`, `Cancel`. Ogni dichiarazione ha nome, tipo e
+valore; le modifiche restano nella finestra finché premi Save. Cancel le scarta.
+Tipi disponibili: integer, number, boolean, string, dtype, json (array) e
+stereotype. I nomi possono contenere trattini, per esempio `num-heads`.
+Le dichiarazioni sono comuni a tutto il modello, comprese subflow annidate.
+
+Nei normali campi Parameters scrivi direttamente un riferimento o una formula:
+
+```text
+embedding_dim = $embedding-features
+times = $num-heads
+in_features = $embedding-features
+out_features = $(params.in_features / meta["num-heads"])
+factor = $(1 / math.sqrt(meta["embedding-features"] / meta["num-heads"]))
+```
+
+`meta["nome"]` legge una metavariabile; `params.nome` legge un altro campo dello
+stesso stereotype, compresi i suoi default. Per nomi con trattino usa parentesi
+quadre. `$(...)` contiene un'espressione Lua; il risultato deve avere tipo e
+vincoli del campo. Una divisione non intera in un campo integer è un errore,
+non viene arrotondata. Una stringa letterale che inizia con `$` si scrive con
+`$$`. Ogni parametro ha un solo campo per valore, riferimento o formula.
+Anche i menu booleani, delle scelte e dei riferimenti sono modificabili:
+scrivi `$nome` o `$(...)` direttamente nella loro area di testo. Il suggerimento
+vicino a `Parameters` ricorda la sintassi, valida anche nei campi annidati.
+
+Inspector conserva il testo e mostra risultato risolto o errore sotto il campo.
+Le schede dei nodi mostrano il valore calcolato, per esempio `64`, senza JSON
+interno o formule; un risultato non risolvibile appare come `?` con motivo nel
+tooltip. Variabili
+mancanti, cicli e risultati incompatibili impediscono il training finché non
+corretti; il progetto resta modificabile e salvabile. Modificare la lista crea
+una barriera nella cronologia, come Operations; modificare un parametro conserva
+Undo/Redo. Progetti con metavariabili/formule usano schema 3 e richiedono client
+aggiornato. Lo snapshot conserva formule originali; training e wheel usano
+valori concreti calcolati dallo stesso risolutore dell'editor.
+
 Scegliere un nodo sul canvas riempie la tabella `Inspector` con colonne `Property` e `Value`. Senza nodo selezionato il pannello è vuoto. `Name` è un campo modificabile: premere Invio o uscire dal campo applica il nuovo nome. `Package` mostra `id@version`; passare il puntatore sulla riga mostra la descrizione del pacchetto.
 
 Quando l'analisi riesce, `Successful outputs` elenca ogni handle con il suo tipo, dtype e forma. Per i terminali compare invece `Consumed tensor` con dtype e forma del tensore ricevuto. Questi valori descrivono l'analisi di forma; non indicano che il modello sia stato addestrato.
@@ -111,14 +151,14 @@ Per una `Output` o `Loss Output` dentro una subflow, `Boundary mapping` permette
 
 `Parameters` contiene un controllo per ogni parametro definito dal pacchetto:
 
-- i parametri con scelte predefinite sono menu a discesa;
-- i valori booleani sono caselle da spuntare;
+- i parametri con scelte predefinite sono menu a discesa modificabili;
+- i valori booleani usano menu modificabili `true` / `false`;
 - interi, numeri, stringhe, dtype e valori JSON sono campi di testo, validati dal pacchetto quando si conferma il campo;
 - i parametri posizionati `top` o `bottom` possono comparire anche come righe sintetiche sulla scheda del nodo.
 
 Per significato, default, limiti e scelte di ogni campo dei pacchetti distribuiti, consulta il [catalogo dei parametri](parameters.md).
 
-Un parametro di tipo `stereotype` è composto da un selettore di pacchetto e dai campi dello schema di quel pacchetto. Il selettore mostra nome e identità esatta `id@version`, applica l'eventuale filtro per tipo, e ` (choose package)` rappresenta l'assenza di scelta. Scegliere un pacchetto inizializza i suoi parametri ai valori predefiniti; un riferimento già presente mantiene i propri valori. I campi interni usano caselle, menu o testo secondo il tipo. La selezione e ogni campo aggiornato vengono verificati dal progetto; se un valore non è valido il client segnala il rifiuto e conserva i valori confermati. I dati dell'Inspector si aggiornano dopo una modifica.
+Un parametro di tipo `stereotype` è composto da un selettore di pacchetto modificabile e dai campi dello schema di quel pacchetto. Il selettore mostra nome e identità esatta `id@version`, applica l'eventuale filtro per tipo, e ` (choose package)` rappresenta l'assenza di scelta. Scegliere un pacchetto inizializza i suoi parametri ai valori predefiniti; un riferimento già presente mantiene i propri valori. Puoi scrivere un riferimento/formula direttamente nel selettore. In quel caso i parametri risolti sono in sola lettura finché non sostituisci esplicitamente il riferimento; non modificano la dichiarazione condivisa. I campi interni di un riferimento letterale usano menu modificabili o testo secondo il tipo. La selezione e ogni campo aggiornato vengono verificati dal progetto; se un valore non è valido il client segnala il rifiuto e conserva i valori confermati. I dati dell'Inspector si aggiornano dopo una modifica.
 
 ![Inspector con un nodo selezionato](assets/inspector.png)
 
@@ -223,7 +263,7 @@ La sezione `Optional Lua inference` contiene l'editor sorgente. Il testo inizial
 
 ### Configurare e avviare il backend locale
 
-Premi `Configure backend…` nel dashboard Training. Si apre la finestra separata `Local backend service configuration`; il dashboard con connessione, controlli, cronologia e curve resta utilizzabile. Scegli `Docker-compatible runtime` oppure `SSH / Slurm`. Per Slurm servono alias SSH configurato, directory remota scrivibile e immagine Singularity `.sif` già preparata. `Partition` e alias SSH partono vuoti; CPU, memoria, tempo e GPU hanno valori generici. Il profilo condiviso è `~/.config/nnmodelling/config.json`, modificabile con `NNMODELLING_CONFIG`. L'app non raccoglie password SSH né prepara immagini o dipendenze.
+Premi `Configure backend…` nel dashboard Training. Si apre la finestra separata `Local backend service configuration`; il dashboard con connessione, controlli, cronologia e curve resta utilizzabile. Scegli `Docker-compatible runtime` oppure `SSH / Slurm`. Per Slurm servono alias SSH configurato, directory remota scrivibile e immagine Singularity `.sif`, selezionata oppure preparata con `Prepare and install worker…`. `Partition` e alias SSH partono vuoti; CPU, memoria, tempo e GPU hanno valori generici. Il profilo condiviso è `~/.config/nnmodelling/config.json`, modificabile con `NNMODELLING_CONFIG`. L'app non raccoglie password SSH.
 
 Premi `Save settings and start local backend`. La UI avvia FastAPI su loopback in un processo locale separato; con `SSH / Slurm`, soltanto i worker vengono inviati al cluster. `uv` e il workspace del repository devono essere disponibili, e l'immagine worker va preparata prima. La finestra di configurazione mostra gli errori di avvio e disponibilità del runtime; il dashboard verifica poi il servizio con `Connect / check health`. Le impostazioni non segrete vengono salvate per l'utente corrente; `Bearer token` resta in memoria per la sessione. Se colleghi un servizio avviato manualmente o un endpoint remoto, la UI non lo controlla. La procedura Slurm illustrata è nella [guida del backend](server.md#eseguire-i-job-su-un-cluster-slurm-dalla-ui).
 

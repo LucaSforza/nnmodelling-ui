@@ -1,5 +1,51 @@
 # Typed model and package contract
 
+## Model metavariables (accepted 2026-10-14)
+
+Explicit user request: project-level `Manage metavariables` mirrors Operations;
+users enter `$name` and `$(Lua expression)` directly in existing parameter fields.
+No separate value/reference/Lua mode selector. Model-wide variables are visible
+in all nested scopes. Names match `[A-Za-z_][A-Za-z0-9_-]*`, are unique, and are
+bounded to 128 bytes; at most 256 declarations. Each declaration is
+`{name,type,value}` in `manifest.metavariables`. Supported types are boolean,
+integer, number, string, dtype, json (array), and stereotype (active-catalog
+reference). Declaration values are literal typed values; formulas belong to node
+parameters, including parameters inside referenced stereotypes.
+
+An authored binding is an exact one-member NNValue object `{"$ref":"name"}`
+or `{"$lua":"expression"}`. Binding text is at most 64 KiB. Literal strings
+beginning with `$` use `$$` in the text editor; persistence keeps the literal
+string. JSON arrays and stereotype references retain their existing value
+representation. Lua uses `meta["num-heads"]` and `params.in_features`; params
+addresses siblings in the same stereotype application, including defaults.
+Dependency cycles, unknown names/fields, nonfinite results, wrong result types,
+and fractional results for integer fields are visible errors. Integral Lua
+numbers may become integer values only after exact range checking. Resolved
+results pass the destination's ordinary schema and reference validation.
+
+Projects using declarations or bindings persist schemaVersion 3; readers accept
+2 and 3, and literal schema-2 projects retain current behavior. Old readers
+must reject schema 3 rather than silently drop semantic metadata. Project owns
+declarations, model owns bindings. Variable setters are atomic and unchanged
+setters preserve dirty/history state. Like operation metadata, successful
+changed variable lists create an unsaved history barrier; later graph Undo/Redo
+must not erase those manifest changes. Parameter edits retain normal graph undo.
+Incomplete references remain editable/saveable, but prevent resolved export and
+training. Removing/renaming a declaration does not rewrite Lua source silently.
+
+Public C application queries: `nn_app_metavariables_json(app,error,capacity)`
+returns an owned JSON array; `nn_app_set_metavariables_json(app,json,error,capacity)`
+validates and copies it; `nn_app_resolved_model_json(app,error,capacity)` returns
+an owned concrete schema-2 execution model without modifying source/dirty/history.
+All texts are released by nn_app_free_text. Parameter preview is available via
+`nn_app_resolved_parameter_text(app,node,key,error,capacity)` with same ownership.
+Project supplies equivalent declaration get/set operations and
+`nn_project_model_json(project,error,capacity)`, an owned serialization query
+using the existing project writer. Application export consumes this public
+query, never another module's private header. Inference supplies
+`nn_inference_resolve_parameters(project,node,&parameters,&count,error,capacity)`
+returning a defaulted, validated owned list, freed with nn_catalog_parameters_free.
+
 ## State
 
 `NNModel` owns a graph of stable node IDs and edge IDs, a project manifest,

@@ -1,14 +1,14 @@
 # Tiny Decoder LLM
 
 A compact, executable decoder-only language model built from a blank native
-project. It keeps the decoder `Repeat` and its four-head `HorizontalRepeat`
+project. It keeps the decoder `Repeat` and its eight-head `HorizontalRepeat`
 editable while expressing attention as ordinary graph nodes.
 
-The model uses a 65-token vocabulary, context length 128, model width 64, two
-decoder blocks, four attention heads of width 16, and a 256-wide feed-forward
+The model uses a 65-token vocabulary, context length 128, model width 64, ten
+decoder blocks, eight attention heads of width 8, and a 256-wide feed-forward
 layer. Each attention head projects Q, K, and V separately, transposes K,
-computes `Q × Kᵀ / √16`, masks future positions, applies softmax, and multiplies
-by V. The four head outputs concatenate to width 64. A project-owned token
+computes `Q × Kᵀ / √8`, masks future positions, applies softmax, and multiplies
+by V. The eight head outputs concatenate to width 64. A project-owned token
 cross-entropy module accepts logits `[B,T,V]` and targets `[B,T]` and reduces
 them to a scalar mean loss.
 
@@ -23,6 +23,28 @@ The dataset is responsible for mapping raw text to token IDs and producing
 next-token targets. Its manifest carries the vocabulary as an inference asset;
 training samples stay separate from exported model resources. The graph is
 untrained until a backend training job writes weights.
+
+## Edit shared dimensions
+
+`model.json` is the authored schema-3 project, with integer metavariables
+`embedding-features=64` and `num-heads=8`. Open this directory in Qt and choose
+**Model > Manage metavariables** to change them. Inspector fields retain
+references and formulas and display their resolved values:
+
+* Model-width parameters use `$embedding-features`.
+* Horizontal Repeat uses `$num-heads`.
+* Q/K/V output width uses `$(params.in_features / meta["num-heads"])`.
+* Attention scale uses `$(1 / math.sqrt(meta["embedding-features"] / meta["num-heads"]))`.
+* Feed-forward hidden width is four times the model width.
+
+The model width must be divisible by the head count. Saving preserves the
+references/formulas; Qt resolves them afresh before each training submission.
+
+`execution-model.json` is the native C-generated concrete graph for the committed
+defaults, pinned to the exact `model.json` SHA256. Direct Python example tests
+stage that graph as their execution `model.json`; the cluster example tool sends
+both graphs. It rejects a stale compilation after authoring changes. Use Qt for
+edited models; neither Python nor the backend evaluates Lua formulas.
 
 ## Reproduce the full-corpus follow-up
 

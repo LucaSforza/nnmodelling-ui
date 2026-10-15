@@ -105,9 +105,11 @@ void WindowTest::stereotypeReferenceForm() {
     QVERIFY2(nn_app_add_node(app, "parallel", "core.horizontal-repeat", "0.1.0", "",
                             0, 0, error, sizeof(error)), error);
     QVERIFY2(nn_app_create_stereotype(app, "form.join", "1.0.0",
-        R"({"name":"Form join","kind":"join","view":{"color":"#4779c4","width":180,"height":100},"parameters":{"enabled":{"type":"boolean","default":true},"factor":{"type":"number","default":1.0,"minimum":0},"mode":{"type":"string","default":"sum","choices":["sum","mean"]}}})",
+        R"({"name":"Form join","kind":"join","view":{"color":"#4779c4","width":180,"height":100},"parameters":{"enabled":{"type":"boolean","default":true},"factor":{"type":"number","default":1.0,"minimum":0},"mode":{"type":"string","default":"sum","choices":["sum","mean","$literal"]}}})",
         "return function(c,p,s) return {status='success',output=c.inputs[1]} end",
         "{}", error, sizeof(error)), error);
+    const QByteArray variables = QByteArrayLiteral("[{\"name\":\"factor\",\"type\":\"number\",\"value\":3.5},{\"name\":\"enabledFlag\",\"type\":\"boolean\",\"value\":true},{\"name\":\"modeName\",\"type\":\"string\",\"value\":\"sum\"}]");
+    QVERIFY2(nn_app_set_metavariables_json(app, variables.constData(), error, sizeof(error)), error);
     MainWindow window(app);
     window.show();
     auto *scene = window.findChild<GraphScene *>();
@@ -118,8 +120,9 @@ void WindowTest::stereotypeReferenceForm() {
     auto *selector = window.findChild<QComboBox *>("stereotypeReference_join");
     auto *dimension = window.findChild<QLineEdit *>("stereotypeParameter_join_dim");
     QVERIFY(selector && dimension);
+    QVERIFY(!selector->currentText().startsWith(QLatin1Char('{')));
     QCOMPARE(dimension->text(), QStringLiteral("-1"));
-    QVERIFY(dimension->validator());
+    QVERIFY(!dimension->validator());
     QVERIFY(!window.findChild<QLineEdit *>("stereotypeParameters_join"));
     dimension->setText("0");
     QVERIFY(QMetaObject::invokeMethod(dimension, "editingFinished", Qt::DirectConnection));
@@ -138,6 +141,7 @@ void WindowTest::stereotypeReferenceForm() {
     }
     QVERIFY(add > 0);
     selector->setCurrentIndex(add);
+    QVERIFY(QMetaObject::invokeMethod(selector, "activated", Qt::DirectConnection, Q_ARG(int, add)));
     QCoreApplication::processEvents();
     QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
     QVERIFY(!window.findChild<QLineEdit *>("stereotypeParameter_join_dim"));
@@ -156,24 +160,130 @@ void WindowTest::stereotypeReferenceForm() {
         if (selector->itemData(i).toJsonObject().value("id").toString() == QStringLiteral("form.join")) custom = i;
     QVERIFY(custom > 0);
     selector->setCurrentIndex(custom);
+    QVERIFY(QMetaObject::invokeMethod(selector, "activated", Qt::DirectConnection, Q_ARG(int, custom)));
     QCoreApplication::processEvents();
     QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
-    auto *enabled = window.findChild<QCheckBox *>("stereotypeParameter_join_enabled");
+    auto *enabled = window.findChild<QComboBox *>("stereotypeParameter_join_enabled");
     auto *factor = window.findChild<QLineEdit *>("stereotypeParameter_join_factor");
     auto *mode = window.findChild<QComboBox *>("stereotypeParameter_join_mode");
     QVERIFY(enabled && factor && mode);
-    QVERIFY(enabled->isChecked());
-    QCOMPARE(mode->count(), 2);
+    QVERIFY(enabled->isEditable());
+    QCOMPARE(enabled->currentText(), QStringLiteral("true"));
+    QCOMPARE(mode->count(), 3);
     factor->setText("2.5");
     QVERIFY(QMetaObject::invokeMethod(factor, "editingFinished", Qt::DirectConnection));
-    enabled->setChecked(false);
+    enabled->setEditText(QStringLiteral("false"));
+    QVERIFY(QMetaObject::invokeMethod(enabled->lineEdit(), "editingFinished", Qt::DirectConnection));
     mode->setCurrentText("mean");
+    QVERIFY(QMetaObject::invokeMethod(mode->lineEdit(), "editingFinished", Qt::DirectConnection));
     reference = nn_app_parameter_text(app, "parallel", "join");
     const QJsonObject values = QJsonDocument::fromJson(reference).object().value("parameters").toObject();
     nn_app_free_text(reference);
     QCOMPARE(values.value("factor").toDouble(), 2.5);
     QCOMPARE(values.value("enabled").toBool(), false);
     QCOMPARE(values.value("mode").toString(), QStringLiteral("mean"));
+    bool invalidChoiceWasRejected = false;
+    QTimer::singleShot(0, &window, [&] {
+        auto *dialog = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+        if (dialog) {
+            invalidChoiceWasRejected = true;
+            dialog->accept();
+        }
+    });
+    mode->setEditText(QStringLiteral("not-a-choice"));
+    QVERIFY(QMetaObject::invokeMethod(mode->lineEdit(), "editingFinished", Qt::DirectConnection));
+    QVERIFY(invalidChoiceWasRejected);
+    reference = nn_app_parameter_text(app, "parallel", "join");
+    QCOMPARE(QJsonDocument::fromJson(reference).object().value("parameters").toObject()
+        .value("mode").toString(), QStringLiteral("mean"));
+    nn_app_free_text(reference);
+    mode = window.findChild<QComboBox *>("stereotypeParameter_join_mode");
+    QVERIFY(mode);
+    const int dollarChoice = mode->findText(QStringLiteral("$literal"), Qt::MatchExactly);
+    QVERIFY(dollarChoice > 0);
+    mode->setCurrentIndex(dollarChoice);
+    QVERIFY(QMetaObject::invokeMethod(mode, "activated", Qt::DirectConnection, Q_ARG(int, dollarChoice)));
+    reference = nn_app_parameter_text(app, "parallel", "join");
+    QCOMPARE(QJsonDocument::fromJson(reference).object().value("parameters").toObject()
+        .value("mode").toString(), QStringLiteral("$literal"));
+    nn_app_free_text(reference);
+    enabled->setEditText(QStringLiteral("$enabledFlag"));
+    QVERIFY(QMetaObject::invokeMethod(enabled->lineEdit(), "editingFinished", Qt::DirectConnection));
+    mode->setEditText(QStringLiteral("$modeName"));
+    QVERIFY(QMetaObject::invokeMethod(mode->lineEdit(), "editingFinished", Qt::DirectConnection));
+    reference = nn_app_parameter_text(app, "parallel", "join");
+    const QJsonObject boundFields = QJsonDocument::fromJson(reference).object()
+        .value("parameters").toObject();
+    nn_app_free_text(reference);
+    QCOMPARE(boundFields.value("enabled").toObject().value("$ref").toString(), QStringLiteral("enabledFlag"));
+    QCOMPARE(boundFields.value("mode").toObject().value("$ref").toString(), QStringLiteral("modeName"));
+    QCOMPARE(enabled->currentText(), QStringLiteral("$enabledFlag"));
+    QCOMPARE(mode->currentText(), QStringLiteral("$modeName"));
+    QVERIFY(!window.findChild<QLineEdit *>(QStringLiteral("stereotypeParameter_join_factor_binding")));
+    factor->setText(QStringLiteral("$factor"));
+    QVERIFY(QMetaObject::invokeMethod(factor, "editingFinished", Qt::DirectConnection));
+    QCoreApplication::processEvents();
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    reference = nn_app_parameter_text(app, "parallel", "join");
+    const QJsonValue factorSource = QJsonDocument::fromJson(reference).object()
+        .value("parameters").toObject().value("factor");
+    nn_app_free_text(reference);
+    QCOMPARE(factorSource.toObject().value(QStringLiteral("$ref")).toString(), QStringLiteral("factor"));
+    factor = window.findChild<QLineEdit *>("stereotypeParameter_join_factor");
+    QVERIFY(factor);
+    QCOMPARE(factor->text(), QStringLiteral("$factor"));
+    auto *inspector = window.findChild<QTreeWidget *>(QStringLiteral("inspector"));
+    QVERIFY(inspector);
+    bool foundResolvedFactor = false;
+    QTreeWidgetItem *factorRow = nullptr;
+    QTreeWidgetItem *factorResolvedRow = nullptr;
+    for (int i = 0; i < inspector->topLevelItemCount(); ++i) {
+        QTreeWidgetItem *top = inspector->topLevelItem(i);
+        if (top->text(0) != QStringLiteral("Parameters")) continue;
+        for (int j = 0; j < top->childCount(); ++j) {
+            QTreeWidgetItem *parameter = top->child(j);
+            if (parameter->text(0) != QStringLiteral("join")) continue;
+            for (int k = 0; k < parameter->childCount(); ++k) {
+                QTreeWidgetItem *field = parameter->child(k);
+                if (field->text(0) != QStringLiteral("factor")) continue;
+                for (int n = 0; n < field->childCount(); ++n) {
+                    QTreeWidgetItem *resolved = field->child(n);
+                    if (resolved->text(0) == QStringLiteral("Resolved") &&
+                        resolved->text(1).contains(QStringLiteral("3.5"))) {
+                        foundResolvedFactor = true;
+                        factorRow = field;
+                        factorResolvedRow = resolved;
+                    }
+                }
+            }
+        }
+    }
+    QVERIFY(foundResolvedFactor);
+    QVERIFY(factorRow && factorResolvedRow);
+    window.resize(700, 520);
+    QFont enlarged = inspector->font();
+    enlarged.setPointSize(enlarged.pointSize() + 5);
+    inspector->setFont(enlarged);
+    QCoreApplication::processEvents();
+    const QRect factorRect = inspector->visualItemRect(factorRow);
+    const QRect resolvedRect = inspector->visualItemRect(factorResolvedRow);
+    QVERIFY(factorRect.isValid() && resolvedRect.isValid());
+    QVERIFY(resolvedRect.top() >= factorRect.bottom());
+    QWidget *factorEditor = inspector->itemWidget(factorRow, 1);
+    QVERIFY(factorEditor);
+    QVERIFY(factorRect.contains(factorEditor->geometry()));
+    QVERIFY2(nn_app_undo(app, error, sizeof(error)), error);
+    reference = nn_app_parameter_text(app, "parallel", "join");
+    QVERIFY(reference);
+    QCOMPARE(QJsonDocument::fromJson(reference).object().value("parameters").toObject()
+        .value("factor").toDouble(), 2.5);
+    nn_app_free_text(reference);
+    QVERIFY2(nn_app_redo(app, error, sizeof(error)), error);
+    reference = nn_app_parameter_text(app, "parallel", "join");
+    QVERIFY(reference);
+    QCOMPARE(QJsonDocument::fromJson(reference).object().value("parameters").toObject()
+        .value("factor").toObject().value("$ref").toString(), QStringLiteral("factor"));
+    nn_app_free_text(reference);
     QVERIFY2(nn_app_save(app, error, sizeof(error)), error);
     window.close();
 }

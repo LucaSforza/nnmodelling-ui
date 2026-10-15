@@ -42,6 +42,12 @@ typedef struct {
     NNOperationEndpoint output;
 } NNModelOperation;
 
+typedef struct {
+    char *name;
+    char *type;
+    NNValue value;
+} NNMetavariable;
+
 /* Returned project owns graph, catalogs, strings and resource records. */
 NNProject *nn_project_open(const char *directory, const char *core_root,
                            char *error, size_t error_capacity);
@@ -63,6 +69,7 @@ const NNCatalog *nn_project_catalog(const NNProject *project);
 size_t nn_project_dataset_count(const NNProject *project);
 const NNDataset *nn_project_dataset_at(const NNProject *project, size_t index);
 const NNDataset *nn_project_active_dataset(const NNProject *project);
+char *nn_project_model_json(const NNProject *project, char *error, size_t capacity);
 bool nn_project_create_stereotype(NNProject *project, const char *id, const char *version,
                                   const char *definition_json, const char *inference_lua,
                                   const char *dependencies_json, char *error, size_t capacity);
@@ -81,6 +88,10 @@ char *nn_project_operations_json(const NNProject *project, char *error, size_t c
 /* Optional changed result is false for rejection or unchanged metadata. */
 bool nn_project_set_operations_json(NNProject *project, const char *json, bool *changed,
                                     char *error, size_t capacity);
+char *nn_project_metavariables_json(const NNProject *project, char *error, size_t capacity);
+bool nn_project_set_metavariables_json(NNProject *project, const char *json, bool *changed,
+                                       char *error, size_t capacity);
+const NNMetavariable *nn_project_metavariables(const NNProject *project, size_t *count);
 bool nn_project_create_vae(const char *parent, const char *id, const char *name,
                            const char *core_root, NNProject **result,
                            char *error, size_t capacity);

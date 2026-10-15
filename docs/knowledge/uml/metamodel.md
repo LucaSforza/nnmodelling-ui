@@ -1,5 +1,27 @@
 # Native neural-network metamodel
 
+## Metavariable resolution (accepted 2026-10-14)
+
+```mermaid
+  classDiagram
+    ModelManifest *-- Metavariable
+    Metavariable : name
+    Metavariable : type
+    Metavariable : literalValue
+    ParameterValue --> ParameterBinding : optional authored ref or Lua
+    ParameterBinding : source
+    NNProject --> ParameterResolver : immutable declaration and catalog views
+    ParameterResolver --> ResolvedParameters : defaulted validated owned values
+    ResolvedParameters --> InferenceReport
+    ResolvedParameters --> ParameterReport
+    ResolvedParameters --> ExecutionSnapshot
+```
+
+Schema 3 distinguishes authored bindings from literal values. Model-wide
+declarations are project metadata with an operation-style history barrier;
+parameter binding edits remain model history. Resolved values are disposable,
+never a second authoritative model.
+
 ## Purpose
 
 Define typed graph ownership and package application for native client. This
