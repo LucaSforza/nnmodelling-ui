@@ -23,7 +23,9 @@ except ModuleNotFoundError as error:
         and path.parts[0].isidentifier()
     }
     if len(legacy_packages) != 1:
-        raise ImportError("installed wheel has no unique legacy nnmodel_* import package") from error
+        raise ImportError(
+            "installed wheel has no unique legacy nnmodel_* import package"
+        ) from error
     Model = importlib.import_module(next(iter(legacy_packages))).Model
 
 CONTEXT_LENGTH = 128
@@ -36,7 +38,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "prompt",
         nargs="?",
-        default="ROMEO:\nThis is him\nGIULIETTA:",
+        default="ROMEO:\n",
         help="starting text (default: %(default)r)",
     )
     parser.add_argument(
