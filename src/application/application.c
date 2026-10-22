@@ -69,11 +69,11 @@ bool nn_app_open(NNApplication *app, const char *directory, char *error, size_t 
 }
 
 bool nn_app_create(NNApplication *app, const char *parent, const char *id,
-                   const char *name, bool mnist, char *error, size_t cap)
+                   const char *name, const char *version, bool mnist, char *error, size_t cap)
 {
     if (!app) return nn_fail(error, cap, "application is null");
     if (app->history.group_active) return nn_fail(error, cap, "cannot create a project during an edit group");
-    NNProject *staged = nn_project_create(parent, id, name, mnist,
+    NNProject *staged = nn_project_create(parent, id, name, version, mnist,
                                           app->core_root, error, cap);
     if (!staged) return false;
     NNProject *old = app->project;

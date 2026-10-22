@@ -42,7 +42,7 @@ int main(void)
     assert(app);
     char error[512] = "";
     assert(!nn_app_save(app, error, sizeof(error)));
-    assert(nn_app_create(app, root, "demo", "Demo", false, error, sizeof(error)));
+    assert(nn_app_create(app, root, "demo", "Demo", "0.1.0", false, error, sizeof(error)));
     const NNProject *project = nn_app_project(app);
     assert(nn_model_node_count(nn_app_model(app)) == 2);
     assert(project && !nn_project_dirty(project));

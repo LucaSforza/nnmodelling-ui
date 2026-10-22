@@ -52,7 +52,7 @@ typedef struct {
 NNProject *nn_project_open(const char *directory, const char *core_root,
                            char *error, size_t error_capacity);
 NNProject *nn_project_create(const char *parent, const char *id, const char *name,
-                             bool mnist_template, const char *core_root,
+                             const char *version, bool mnist_template, const char *core_root,
                              char *error, size_t error_capacity);
 bool nn_project_save(NNProject *project, char *error, size_t error_capacity);
 void nn_project_close(NNProject *project);
@@ -92,10 +92,10 @@ char *nn_project_metavariables_json(const NNProject *project, char *error, size_
 bool nn_project_set_metavariables_json(NNProject *project, const char *json, bool *changed,
                                        char *error, size_t capacity);
 const NNMetavariable *nn_project_metavariables(const NNProject *project, size_t *count);
-bool nn_project_create_vae(const char *parent, const char *id, const char *name,
+bool nn_project_create_vae(const char *parent, const char *id, const char *name, const char *version,
                            const char *core_root, NNProject **result,
                            char *error, size_t capacity);
-bool nn_project_create_llm(const char *parent, const char *id, const char *name,
+bool nn_project_create_llm(const char *parent, const char *id, const char *name, const char *version,
                            const char *core_root, NNProject **result,
                            char *error, size_t capacity);
 

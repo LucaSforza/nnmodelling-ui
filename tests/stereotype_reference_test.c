@@ -24,7 +24,7 @@ int main(void)
     assert(mkdtemp(directory));
     NNApplication *app = nn_app_new("stereotype-packages/core");
     char error[512] = "";
-    assert(app && nn_app_create(app, directory, "test", "Test", false, error, sizeof(error)));
+    assert(app && nn_app_create(app, directory, "test", "Test", "0.1.0", false, error, sizeof(error)));
     assert(nn_app_create_dataset(app, "test.features", "1.0.0",
         "{\"name\":\"Features\",\"batch\":{\"inputs\":{\"x\":{\"dtype\":\"float32\",\"shape\":[\"B\",4]}},\"targets\":{}}}",
         true, error, sizeof(error)));

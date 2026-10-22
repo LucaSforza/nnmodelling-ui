@@ -199,7 +199,7 @@ static void sweep_multi_output_analysis(void)
     NNApplication *app = nn_app_new("stereotype-packages/core");
     assert(app);
     char error[512] = "";
-    assert(nn_app_create(app, parent, "typed-output-sweep", "Typed Output Sweep",
+    assert(nn_app_create(app, parent, "typed-output-sweep", "Typed Output Sweep", "0.1.0",
                          false, error, sizeof(error)));
     assert(nn_app_create_dataset(app, "local.sweep-data", "0.1.0",
         "{\"name\":\"Sweep data\",\"batch\":{\"inputs\":{"
@@ -578,7 +578,7 @@ static void sweep_dataset_update(void)
     char error[512] = "";
     const char *before = "{\"name\":\"Before\",\"batch\":{\"inputs\":{\"x\":{\"dtype\":\"float32\",\"shape\":[\"B\",8]}},\"targets\":{}}}";
     const char *after = "{\"name\":\"After\",\"batch\":{\"inputs\":{\"x\":{\"dtype\":\"float32\",\"shape\":[\"B\",16]}},\"targets\":{}}}";
-    assert(nn_app_create(app, parent, "project", "Dataset sweep", false, error, sizeof(error)));
+    assert(nn_app_create(app, parent, "project", "Dataset sweep", "0.1.0", false, error, sizeof(error)));
     assert(nn_app_create_dataset(app, "data", "1.0.0", before, true, error, sizeof(error)));
     char definition_path[4096], model_path[4096];
     assert(snprintf(definition_path, sizeof(definition_path), "%s/project/datasets/data-1.0.0/dataset.json", parent) < (int)sizeof(definition_path));

@@ -431,7 +431,7 @@ private slots:
         NNApplication *application = nn_app_new(NN_SOURCE_DIR "/stereotype-packages/core");
         QVERIFY(application);
         char error[512] = {};
-        QVERIFY2(nn_app_create(application, temporary.path().toUtf8().constData(), "ui-test", "UI Test", false,
+        QVERIFY2(nn_app_create(application, temporary.path().toUtf8().constData(), "ui-test", "UI Test", "0.1.0", false,
                                error, sizeof(error)), error);
         const QByteArray declarations = QByteArrayLiteral("[{\"name\":\"width\",\"type\":\"integer\",\"value\":128}]");
         QVERIFY2(nn_app_set_metavariables_json(application, declarations.constData(), error, sizeof(error)), error);

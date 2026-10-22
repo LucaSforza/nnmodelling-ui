@@ -92,7 +92,7 @@ int main(void)
     assert(mkdir(parent, 0755) == 0);
     char error[256];
 
-    NNProject *blank = nn_project_create(parent, "blank", "Blank project", false,
+    NNProject *blank = nn_project_create(parent, "blank", "Blank project", "0.1.0", false,
                                          core, error, sizeof(error));
     assert(blank && !nn_project_dirty(blank));
     assert(!strcmp(nn_project_id(blank), "blank"));
@@ -242,7 +242,7 @@ int main(void)
     char cwd[4096];
     assert(getcwd(cwd, sizeof(cwd)));
     char *repo_core = path_join(cwd, "stereotype-packages/core");
-    NNProject *mnist = nn_project_create(parent, "editable-mnist", "Editable MNIST", true,
+    NNProject *mnist = nn_project_create(parent, "editable-mnist", "Editable MNIST", "0.1.0", true,
                                          repo_core, error, sizeof(error));
     assert(mnist);
     assert(!strcmp(nn_project_id(mnist), "editable-mnist"));

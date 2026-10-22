@@ -53,7 +53,7 @@ static void assert_instruction_budget(const char *core)
     assert(parent);
     char error[512] = "";
     NNApplication *app = nn_app_new(core);
-    assert(app && nn_app_create(app, parent, "instructions", "Instruction test",
+    assert(app && nn_app_create(app, parent, "instructions", "Instruction test", "0.1.0",
                                 false, error, sizeof(error)));
     assert(nn_app_create_dataset(app, "local.instruction-data", "1.0.0",
         "{\"name\":\"Instruction data\",\"batch\":{\"inputs\":{\"input\":{\"dtype\":\"float32\",\"shape\":[\"B\",8]}},\"targets\":{}}}",
@@ -183,7 +183,7 @@ int main(void)
     assert(snprintf(core, sizeof(core), "%s/stereotype-packages/core", cwd) <
            (int)sizeof(core));
     NNApplication *app = nn_app_new(core);
-    assert(app && nn_app_create(app, parent, "cache", "Cache test", false,
+    assert(app && nn_app_create(app, parent, "cache", "Cache test", "0.1.0", false,
                                 error, sizeof(error)));
     assert(nn_app_create_dataset(app, "local.cache-data", "1.0.0",
         "{\"name\":\"Cache data\",\"batch\":{\"inputs\":{\"input\":{\"dtype\":\"float32\",\"shape\":[\"B\",8]}},\"targets\":{}}}",

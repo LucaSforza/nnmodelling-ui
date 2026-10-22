@@ -152,7 +152,7 @@ int main(void)
     test_tiny_example_execution_model(core, cwd, error, sizeof(error));
     NNApplication *app = nn_app_new(core);
     assert(app);
-    assert(nn_app_create(app, root, "variables", "Variables", false, error, sizeof(error)));
+    assert(nn_app_create(app, root, "variables", "Variables", "0.1.0", false, error, sizeof(error)));
     assert(nn_app_add_node(app, "dense", "core.linear", "0.1.0", "", 0, 0,
                            error, sizeof(error)));
     assert(nn_app_create_dataset(app, "local.variables-data", "1.0.0",

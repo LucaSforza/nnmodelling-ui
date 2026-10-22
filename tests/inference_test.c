@@ -502,7 +502,7 @@ int main(void)
     char *root = mkdtemp(temporary);
     assert(root);
     NNProject *diagnostic_project = nn_project_create(root, "diagnostics", "Diagnostics",
-        false, "stereotype-packages/core", error, sizeof(error));
+        "0.1.0", false, "stereotype-packages/core", error, sizeof(error));
     assert(diagnostic_project);
     assert(nn_project_create_dataset(diagnostic_project, "local.data", "0.1.0",
         "{\"name\":\"Data\",\"batch\":{\"inputs\":{"

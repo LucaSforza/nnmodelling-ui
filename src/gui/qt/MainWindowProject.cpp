@@ -111,6 +111,7 @@ void MainWindow::createProject(const QString &initialTemplate) {
     auto *parent = new QLineEdit(QDir::homePath(), &dialog);
     parent->setObjectName(QStringLiteral("projectParent"));
     auto *browse = new QPushButton(tr("Browse…"), &dialog);
+    browse->setObjectName(QStringLiteral("projectBrowse"));
     auto *pathRow = new QWidget(&dialog);
     auto *pathLayout = new QHBoxLayout(pathRow);
     pathLayout->setContentsMargins(0, 0, 0, 0);
@@ -120,7 +121,8 @@ void MainWindow::createProject(const QString &initialTemplate) {
     id->setObjectName(QStringLiteral("projectId"));
     auto *name = new QLineEdit(tr("MNIST MLP"), &dialog);
     name->setObjectName(QStringLiteral("projectName"));
-    auto *version = new QLabel(QStringLiteral("0.1.0"), &dialog);
+    auto *version = new QLineEdit(QStringLiteral("0.1.0"), &dialog);
+    version->setObjectName(QStringLiteral("projectVersion"));
     auto *destination = new QLabel(&dialog);
     destination->setObjectName(QStringLiteral("projectDestination"));
     destination->setWordWrap(true);
@@ -150,9 +152,14 @@ void MainWindow::createProject(const QString &initialTemplate) {
     connect(templateChoice, qOverload<int>(&QComboBox::currentIndexChanged), &dialog, updateDefaults);
     connect(parent, &QLineEdit::textChanged, &dialog, updateDestination);
     connect(id, &QLineEdit::textChanged, &dialog, updateDestination);
-    connect(browse, &QPushButton::clicked, &dialog, [this, parent] {
-        const QString selected = QFileDialog::getExistingDirectory(this, tr("Choose project parent directory"), parent->text());
-        if (!selected.isEmpty()) parent->setText(selected);
+    connect(browse, &QPushButton::clicked, &dialog, [&dialog, parent] {
+        auto *picker = new QFileDialog(&dialog, tr("Choose project parent directory"), parent->text());
+        picker->setFileMode(QFileDialog::Directory);
+        picker->setOption(QFileDialog::ShowDirsOnly);
+        connect(picker, &QFileDialog::fileSelected, &dialog, [parent](const QString &path) {
+            parent->setText(path);
+        });
+        picker->open();
     });
     connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
@@ -164,8 +171,9 @@ void MainWindow::createProject(const QString &initialTemplate) {
     const QString parentPathText = QDir::cleanPath(rawParentPath);
     const QString projectIdText = id->text().trimmed();
     const QString projectNameText = name->text().trimmed();
-    if (rawParentPath.isEmpty() || projectIdText.isEmpty() || projectNameText.isEmpty()) {
-        QMessageBox::warning(this, tr("Create project"), tr("Parent directory, model ID and display name are required."));
+    const QString projectVersionText = version->text().trimmed();
+    if (rawParentPath.isEmpty() || projectIdText.isEmpty() || projectNameText.isEmpty() || projectVersionText.isEmpty()) {
+        QMessageBox::warning(this, tr("Create project"), tr("Parent directory, model ID, display name and version are required."));
         return;
     }
     if (QFileInfo::exists(QDir(parentPathText).filePath(projectIdText))) {
@@ -175,15 +183,16 @@ void MainWindow::createProject(const QString &initialTemplate) {
     const QByteArray parentPath = parentPathText.toUtf8();
     const QByteArray projectId = projectIdText.toUtf8();
     const QByteArray projectName = projectNameText.toUtf8();
+    const QByteArray projectVersion = projectVersionText.toUtf8();
     char error[ErrorCapacity] = {};
     const bool created = templateId == QStringLiteral("mnist-mlp")
         ? nn_app_create(application_.get(), parentPath.constData(), projectId.constData(),
-                        projectName.constData(), true, error, sizeof(error))
+                        projectName.constData(), projectVersion.constData(), true, error, sizeof(error))
         : templateId == QStringLiteral("mnist-vae")
             ? nn_app_create_vae(application_.get(), parentPath.constData(), projectId.constData(),
-                                projectName.constData(), error, sizeof(error))
+                                projectName.constData(), projectVersion.constData(), error, sizeof(error))
             : nn_app_create_llm(application_.get(), parentPath.constData(), projectId.constData(),
-                                projectName.constData(), error, sizeof(error));
+                                projectName.constData(), projectVersion.constData(), error, sizeof(error));
     if (!created) {
         QMessageBox::critical(this, tr("Create failed"), QString::fromUtf8(error));
         return;

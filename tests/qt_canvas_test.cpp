@@ -69,7 +69,7 @@ private slots:
             QUuid::createUuid().toString(QUuid::WithoutBraces)).toUtf8();
         projectPath_ = (directory_->path() + QLatin1Char('/') + QString::fromUtf8(projectId)).toUtf8();
         char error[512] = {};
-        QVERIFY2(nn_app_create(application_, parent.constData(), projectId.constData(), "Canvas", false,
+        QVERIFY2(nn_app_create(application_, parent.constData(), projectId.constData(), "Canvas", "0.1.0", false,
                                error, sizeof(error)), error);
         QVERIFY(addNode("source", "core.input", "", 100, 100));
         QVERIFY(addNode("target", "core.relu", "", 100, 280));

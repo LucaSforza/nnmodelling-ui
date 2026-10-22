@@ -81,7 +81,7 @@ int main(void)
     assert(snprintf(core, sizeof(core), "%s/stereotype-packages/core", cwd) < (int)sizeof(core));
     NNApplication *app = nn_app_new(core);
     char error[512] = "";
-    assert(app && nn_app_create(app, root, "count-demo", "Count demo", false,
+    assert(app && nn_app_create(app, root, "count-demo", "Count demo", "0.1.0", false,
                                 error, sizeof(error)));
     assert(nn_app_add_node(app, "dense", "core.linear", "0.1.0", "", 0, 0,
                            error, sizeof(error)));
