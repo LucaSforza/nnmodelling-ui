@@ -197,7 +197,8 @@ void MainWindow::createDataset(const QString &editId, const QString &editVersion
     contentLayout->addLayout(form);
 
     auto makeSlots = [content, contentLayout](const QString &title, const QString &objectName) {
-        auto *heading = new QLabel(title + QObject::tr(" — shape dimensions comma separated (B allowed); dtypes: float16, bfloat16, float32/64, int8/16/32/64, uint8, bool."), content);
+        auto *heading = new QLabel(title + QObject::tr(
+            " — Enter dimensions separated by commas. B is the batch dimension: B,4 means four values per sample; B,1 means one. Dtypes: float16, bfloat16, float32/64, int8/16/32/64, uint8, bool."), content);
         heading->setWordWrap(true);
         contentLayout->addWidget(heading);
         auto *table = new QTableWidget(0, 3, content);
