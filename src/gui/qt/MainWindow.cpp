@@ -8,6 +8,8 @@
 #include "BackendServiceManager.hpp"
 #include "application/application.h"
 #include "automation/automation.h"
+#include "catalog/catalog.h"
+#include "model/model.h"
 #include "project/project.h"
 
 #include <QAction>
@@ -228,13 +230,14 @@ void MainWindow::buildUi() {
         connect(action, &QAction::triggered, this, callback);
         return action;
     };
-    addAction(fileMenu, tr("New project…"), QKeySequence::New,
-              [this] { createProject(false); }, "newProjectAction");
+    addAction(fileMenu, tr("Create project…"), QKeySequence::New,
+              [this] { createProject(); }, "newProjectAction");
     auto *templatesMenu = new EditorMenu(tr("New from template"), fileMenu);
     fileMenu->addMenu(templatesMenu);
     templatesMenu->setObjectName(QStringLiteral("projectTemplatesMenu"));
-    addAction(templatesMenu, tr("MNIST MLP…"), {}, [this] { createProject(true); });
-    addAction(templatesMenu, tr("mini LLM…"), {}, [this] { createLlmProject(); });
+    addAction(templatesMenu, tr("MNIST MLP…"), {}, [this] { createProject(QStringLiteral("mnist-mlp")); });
+    addAction(templatesMenu, tr("MNIST VAE…"), {}, [this] { createProject(QStringLiteral("mnist-vae")); });
+    addAction(templatesMenu, tr("tiny LLM…"), {}, [this] { createProject(QStringLiteral("tiny-llm")); });
     fileMenu->addSeparator();
     addAction(fileMenu, tr("Open project…"), QKeySequence::Open, [this] {
         const QString directory = QFileDialog::getExistingDirectory(this, tr("Open project"));
@@ -284,17 +287,27 @@ void MainWindow::buildUi() {
     }, "backendPanelAction");
 
     auto *viewMenu = addMenu(tr("&View"));
-    addAction(viewMenu, tr("Fit graph"), QKeySequence(QStringLiteral("Ctrl+0")), [this] {
+    QAction *fitGraphAction = addAction(viewMenu, tr("Fit graph"), QKeySequence(QStringLiteral("Ctrl+F")), [this] {
         view_->fitGraph();
     }, "fitGraphAction");
-    addAction(viewMenu, tr("Zoom in"), QKeySequence::ZoomIn,
+    QAction *zoomInAction = addAction(viewMenu, tr("Zoom in"), QKeySequence(QStringLiteral("Ctrl++")),
               [this] { view_->zoomIn(); }, "zoomIn");
-    addAction(viewMenu, tr("Zoom out"), QKeySequence::ZoomOut,
+    QAction *zoomOutAction = addAction(viewMenu, tr("Zoom out"), QKeySequence(QStringLiteral("Ctrl+-")),
               [this] { view_->zoomOut(); }, "zoomOut");
+    for (QAction *action : {fitGraphAction, zoomInAction, zoomOutAction})
+        action->setShortcutContext(Qt::ApplicationShortcut);
     auto *arrangeMenu = new EditorMenu(tr("Arrange"), viewMenu);
     viewMenu->addMenu(arrangeMenu);
     QAction *verticalAction = arrangeMenu->addAction(tr("Vertical"));
     QAction *horizontalAction = arrangeMenu->addAction(tr("Horizontal"));
+    verticalAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+V")));
+    horizontalAction->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+H")));
+    verticalAction->setShortcutContext(Qt::ApplicationShortcut);
+    horizontalAction->setShortcutContext(Qt::ApplicationShortcut);
+    auto *panHint = viewMenu->addAction(tr("Pan with arrow keys"));
+    panHint->setEnabled(false);
+    verticalAction->setToolTip(tr("Arrange vertically (Ctrl+Shift+V)"));
+    horizontalAction->setToolTip(tr("Arrange horizontally (Ctrl+Shift+H)"));
 
     auto *toolbar = addToolBar(tr("Workspace"));
     toolbar->setMovable(false);
@@ -324,14 +337,16 @@ void MainWindow::buildUi() {
     connect(trainingAction, &QAction::triggered, backendPanelAction, &QAction::trigger);
     auto *fitButtonAction = toolbar->addAction(tr("Fit"));
     fitButtonAction->setObjectName(QStringLiteral("fitGraph"));
+    fitButtonAction->setToolTip(tr("Fit graph (Ctrl+F)"));
     auto *zoomInButtonAction = toolbar->addAction(tr("+"));
     zoomInButtonAction->setObjectName(QStringLiteral("zoomInButton"));
-    zoomInButtonAction->setToolTip(tr("Zoom in"));
+    zoomInButtonAction->setToolTip(tr("Zoom in (Ctrl++)"));
     auto *zoomOutButtonAction = toolbar->addAction(tr("−"));
     zoomOutButtonAction->setObjectName(QStringLiteral("zoomOutButton"));
-    zoomOutButtonAction->setToolTip(tr("Zoom out"));
+    zoomOutButtonAction->setToolTip(tr("Zoom out (Ctrl+-)"));
     auto *arrangeAction = toolbar->addAction(tr("Arrange"));
     arrangeAction->setObjectName(QStringLiteral("arrange"));
+    arrangeAction->setToolTip(tr("Arrange (Ctrl+Shift+V / Ctrl+Shift+H)"));
     auto *toolbarArrangeMenu = new EditorMenu(this);
     QAction *toolbarVertical = toolbarArrangeMenu->addAction(tr("Vertical"));
     QAction *toolbarHorizontal = toolbarArrangeMenu->addAction(tr("Horizontal"));
@@ -352,6 +367,11 @@ void MainWindow::buildUi() {
     paletteSearch_->setObjectName(QStringLiteral("paletteSearch"));
     paletteSearch_->setPlaceholderText(tr("Search packages"));
     leftLayout->addWidget(paletteSearch_);
+    componentGuide_ = new QLabel(tr("Component guide\nSelect a package to see its role and available parameters."), left);
+    componentGuide_->setObjectName(QStringLiteral("componentGuide"));
+    componentGuide_->setWordWrap(true);
+    componentGuide_->setMinimumHeight(62);
+    componentGuide_->setStyleSheet(QStringLiteral("background: #ffffff; border: 1px solid #c5ced8; padding: 6px;"));
     auto *paletteTree = new QTreeWidget(left);
     paletteTree_ = paletteTree;
     paletteTree->setHeaderHidden(true);
@@ -362,6 +382,7 @@ void MainWindow::buildUi() {
     addButton->setObjectName(QStringLiteral("addNodeButton"));
     addButton->setProperty("primary", true);
     leftLayout->addWidget(addButton);
+    leftLayout->addWidget(componentGuide_);
 
     scene_ = new GraphScene(application_.get(), this);
     view_ = new GraphView(scene_, workspace);
@@ -383,6 +404,11 @@ void MainWindow::buildUi() {
     inspector_->setColumnCount(2);
     inspector_->setHeaderLabels({tr("Property"), tr("Value")});
     inspector_->header()->setStretchLastSection(true);
+    selectedNodeDescription_ = new QLabel(tr("Select a graph node to inspect its package description."), inspectorPane);
+    selectedNodeDescription_->setObjectName(QStringLiteral("selectedNodeDescription"));
+    selectedNodeDescription_->setWordWrap(true);
+    selectedNodeDescription_->setStyleSheet(QStringLiteral("background: #ffffff; border: 1px solid #c5ced8; padding: 6px;"));
+    inspectorLayout->addWidget(selectedNodeDescription_);
     inspectorLayout->addWidget(inspector_, 1);
 
     auto *resourcePane = new QWidget(right);
@@ -472,6 +498,7 @@ void MainWindow::buildUi() {
     });
     connect(scene_, &GraphScene::selectionChanged, this, [this] {
         if (!refreshing_) refreshInspector();
+        updateDescriptions();
     });
     connect(scene_, &GraphScene::errorOccurred, this, [this](const QString &message) {
         auto *box = new QMessageBox(QMessageBox::Warning, tr("Operation rejected"), message,
@@ -491,6 +518,7 @@ void MainWindow::buildUi() {
             [this](QTreeWidgetItem *current) {
         selectedPaletteId_ = current && current->childCount() == 0
             ? current->data(0, IdRole).toString() : QString();
+        updateDescriptions();
     });
     connect(paletteTree, &QTreeWidget::itemDoubleClicked, this,
             [this](QTreeWidgetItem *item, int) {
@@ -529,4 +557,33 @@ void MainWindow::restoreEdit(bool redo) {
         return;
     }
     refreshAll();
+}
+
+void MainWindow::updateDescriptions() {
+    const NNProject *project = nn_app_project(application_.get());
+    const NNCatalog *catalog = project ? nn_project_catalog(project) : nullptr;
+    auto *palette = qobject_cast<QTreeWidget *>(paletteTree_);
+    const QTreeWidgetItem *selectedPackage = palette ? palette->currentItem() : nullptr;
+    const NNPackage *package = nullptr;
+    if (catalog && selectedPackage && selectedPackage->childCount() == 0) {
+        const QByteArray id = selectedPackage->data(0, IdRole).toString().toUtf8();
+        const QByteArray version = selectedPackage->data(0, PackageVersionRole).toString().toUtf8();
+        package = nn_catalog_find(catalog, id.constData(), version.constData());
+    }
+    componentGuide_->setText(package && package->description
+        ? QStringLiteral("%1\n%2").arg(QString::fromUtf8(package->name ? package->name : package->id),
+                                         QString::fromUtf8(package->description))
+        : tr("Component guide\nSelect a package to see its role and available parameters."));
+
+    const QString selectedId = scene_ ? scene_->selectedNodeId() : QString();
+    const NNModel *model = nn_app_model(application_.get());
+    const QByteArray nodeId = selectedId.toUtf8();
+    const NNNode *node = !selectedId.isEmpty() && model
+        ? nn_model_find_node(model, nodeId.constData()) : nullptr;
+    package = node && catalog
+        ? nn_catalog_find(catalog, node->package_id, node->package_version) : nullptr;
+    selectedNodeDescription_->setText(package && package->description
+        ? tr("%1\n%2").arg(QString::fromUtf8(package->name ? package->name : package->id),
+                             QString::fromUtf8(package->description))
+        : tr("Select a graph node to inspect its package description."));
 }

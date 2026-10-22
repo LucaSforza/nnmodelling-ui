@@ -19,8 +19,6 @@ that own its work. Structural ownership remains in [editor](editor.md),
   and restore.
 - [Python dataset and numerical graph runtime](sequences/python-runtime.md):
   adapter boundaries, generic DAG construction, training and standalone inference.
-- [Network 3D explorer](sequences/visualization-3d.md): read-only scene creation,
-  camera, picking and teardown.
 - [Development agents](sequences/development-agents.md): Codex delegation and
   OpenCode V2 mailbox flows.
 

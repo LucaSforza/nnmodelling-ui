@@ -28,7 +28,7 @@ private slots:
         QVERIFY(app);
         char error[512] = {};
         QVERIFY2(nn_app_create(app, temporary.path().toUtf8().constData(), "variables",
-                              "Variables", false, error, sizeof(error)), error);
+                              "Variables", "0.1.0", false, error, sizeof(error)), error);
         QVERIFY2(nn_app_save(app, error, sizeof(error)), error);
         MainWindow window(app);
         window.show();

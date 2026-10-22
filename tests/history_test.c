@@ -166,7 +166,7 @@ static void test_operation_history_barrier(NNApplication *app, const char *root,
     const char *operations = "[{\"name\":\"decode\","
         "\"input\":{\"node\":\"layer\",\"handle\":\"in\",\"codec\":\"tensor\"},"
         "\"output\":{\"node\":\"layer\",\"handle\":\"out\",\"codec\":\"tensor\"}}]";
-    assert(nn_app_create(app, root, "operations", "Operations", false, error, 512));
+    assert(nn_app_create(app, root, "operations", "Operations", "0.1.0", false, error, 512));
     add(app, "layer", "core.relu", "", error);
     assert(nn_app_save(app, error, 512));
     const NNProject *project = nn_app_project(app);
@@ -236,7 +236,7 @@ int main(void)
     NNApplication *app = nn_app_new(core);
     assert(app);
     char error[512] = "";
-    assert(nn_app_create(app, root, "history", "History", false,
+    assert(nn_app_create(app, root, "history", "History", "0.1.0", false,
                          error, sizeof(error)));
     test_commands_groups_and_revisions(app, root, error);
 

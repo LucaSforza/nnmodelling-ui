@@ -13,6 +13,7 @@
 #include <QAction>
 #include <QApplication>
 #include <QDir>
+#include <QLayout>
 #include <QImage>
 #include <QLineEdit>
 #include <QCheckBox>
@@ -57,6 +58,8 @@ private slots:
     void lifecycleAndInspector();
     void appDialogsContrastUnderDarkPalette();
     void miniLlmTemplateShortcut();
+    void componentGuideAppearsBelowAddButton();
+    void startupChooserShowsEditorOnlyAfterProjectCreation();
     void stereotypeReferenceForm();
     void modelProblemDiagnosticsAndNavigation();
     void currentScopeRetainsOutsideCauseContext();
@@ -75,24 +78,86 @@ void WindowTest::miniLlmTemplateShortcut() {
     NNApplication *app = nn_app_new(NN_SOURCE_DIR "/stereotype-packages/core");
     QVERIFY(app);
     MainWindow window(app);
-    bool foundTemplate = false;
+    bool foundMlp = false;
+    bool foundVae = false;
+    bool foundTinyLlm = false;
     for (QAction *action : window.findChildren<QAction *>()) {
-        if (action->text() == "mini LLM…") foundTemplate = true;
-        QVERIFY(action->text() != "MNIST VAE…");
+        if (action->text() == "MNIST MLP…") foundMlp = true;
+        if (action->text() == "MNIST VAE…") foundVae = true;
+        if (action->text() == "tiny LLM…") foundTinyLlm = true;
     }
-    QVERIFY(foundTemplate);
-    bool foundChooser = false;
+    QVERIFY(foundMlp);
+    QVERIFY(foundVae);
+    QVERIFY(foundTinyLlm);
+    bool foundCreate = false;
+    bool foundOpen = false;
     QTimer::singleShot(0, &window, [&] {
         auto *chooser = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
         if (!chooser) return;
         for (QAbstractButton *button : chooser->buttons()) {
-            if (button->text() == "New mini LLM") foundChooser = true;
-            QVERIFY(button->text() != "New MNIST VAE");
+            if (button->text() == "Create project") foundCreate = true;
+            if (button->text() == "Open project") foundOpen = true;
         }
-        chooser->reject();
+        chooser->button(QMessageBox::Close)->click();
     });
     window.showProjectChooser();
-    QVERIFY(foundChooser);
+    QVERIFY(foundCreate);
+    QVERIFY(foundOpen);
+}
+
+void WindowTest::componentGuideAppearsBelowAddButton() {
+    NNApplication *app = nn_app_new(NN_SOURCE_DIR "/stereotype-packages/core");
+    QVERIFY(app);
+    MainWindow window(app);
+    auto *guide = window.findChild<QLabel *>("componentGuide");
+    auto *addButton = window.findChild<QPushButton *>("addNodeButton");
+    QVERIFY(guide && addButton);
+    QCOMPARE(guide->parentWidget(), addButton->parentWidget());
+    QLayout *layout = guide->parentWidget()->layout();
+    QVERIFY(layout);
+    QVERIFY(layout->indexOf(addButton) < layout->indexOf(guide));
+}
+
+void WindowTest::startupChooserShowsEditorOnlyAfterProjectCreation() {
+    QTemporaryDir temporary;
+    QVERIFY(temporary.isValid());
+    NNApplication *app = nn_app_new(NN_SOURCE_DIR "/stereotype-packages/core");
+    QVERIFY(app);
+    MainWindow window(app);
+    bool editorHiddenAtChooser = false;
+    bool creationAccepted = false;
+
+    QTimer::singleShot(0, &window, [&] {
+        auto *chooser = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+        QVERIFY(chooser);
+        editorHiddenAtChooser = !window.isVisible();
+        QTimer::singleShot(0, &window, [&] {
+            auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+            QVERIFY(dialog);
+            auto *parent = dialog->findChild<QLineEdit *>("projectParent");
+            QVERIFY(parent);
+            parent->setText(temporary.path());
+            for (QPushButton *button : dialog->findChildren<QPushButton *>()) {
+                if (button->text() != QStringLiteral("Create")) continue;
+                creationAccepted = true;
+                button->click();
+                return;
+            }
+            QFAIL("Create button missing from project form");
+        });
+        for (QAbstractButton *button : chooser->buttons()) {
+            if (button->text() != QStringLiteral("Create project")) continue;
+            button->click();
+            return;
+        }
+        QFAIL("Create project button missing from startup chooser");
+    });
+
+    window.showProjectChooser(true);
+    QVERIFY(editorHiddenAtChooser);
+    QVERIFY(creationAccepted);
+    QVERIFY(nn_app_project(app));
+    QVERIFY(window.isVisible());
 }
 
 void WindowTest::stereotypeReferenceForm() {
@@ -101,7 +166,7 @@ void WindowTest::stereotypeReferenceForm() {
     QVERIFY(app);
     char error[512] = {};
     QVERIFY2(nn_app_create(app, temporary.path().toUtf8().constData(), "reference-form",
-                          "Reference form", false, error, sizeof(error)), error);
+                          "Reference form", "0.1.0", false, error, sizeof(error)), error);
     QVERIFY2(nn_app_add_node(app, "parallel", "core.horizontal-repeat", "0.1.0", "",
                             0, 0, error, sizeof(error)), error);
     QVERIFY2(nn_app_create_stereotype(app, "form.join", "1.0.0",
@@ -295,7 +360,7 @@ void WindowTest::arrangeMenuAndFitUseDirectedGridLayout() {
     QVERIFY(app);
     char error[512] = {};
     const QByteArray parent = temporary.path().toUtf8();
-    QVERIFY2(nn_app_create(app, parent.constData(), "layout-test", "Layout test", false,
+    QVERIFY2(nn_app_create(app, parent.constData(), "layout-test", "Layout test", "0.1.0", false,
                            error, sizeof(error)), error);
     auto add = [app, &error](const char *id, const char *package) {
         return nn_app_add_node(app, id, package, "0.1.0", "", 0, 0, error, sizeof(error));
@@ -467,7 +532,7 @@ void WindowTest::scopeTreeFollowsContainmentAndMenus() {
     QVERIFY(app);
     char error[512] = {};
     const QByteArray parent = temporary.path().toUtf8();
-    QVERIFY2(nn_app_create(app, parent.constData(), "scope-tree-test", "Scope tree", false,
+    QVERIFY2(nn_app_create(app, parent.constData(), "scope-tree-test", "Scope tree", "0.1.0", false,
                            error, sizeof(error)), error);
     QVERIFY2(nn_app_add_node(app, "outer", "core.subflow-proxy", "0.1.0", "", 0, 0,
                              error, sizeof(error)), error);
@@ -498,7 +563,7 @@ void WindowTest::scopeTreeFollowsContainmentAndMenus() {
     QCOMPARE(menuNames, QStringList({QStringLiteral("&File"), QStringLiteral("&Edit"), QStringLiteral("&Model"),
                                      QStringLiteral("&View")}));
     QMenu *templates = window.findChild<QMenu *>("projectTemplatesMenu");
-    QVERIFY(templates && templates->actions().size() == 2);
+    QVERIFY(templates && templates->actions().size() == 3);
     QAction *open = window.findChild<QAction *>("openProjectAction");
     QAction *save = window.findChild<QAction *>("saveProjectAction");
     QVERIFY(open && save);
@@ -589,7 +654,7 @@ void WindowTest::graphHistoryTracksEditsAndScopeFallback() {
     QVERIFY(app);
     char error[512] = {};
     const QByteArray parent = temporary.path().toUtf8();
-    QVERIFY2(nn_app_create(app, parent.constData(), "history-test", "History test", false,
+    QVERIFY2(nn_app_create(app, parent.constData(), "history-test", "History test", "0.1.0", false,
                            error, sizeof(error)), error);
     QVERIFY2(nn_app_add_node(app, "source", "core.input", "0.1.0", "", 20, 40,
                              error, sizeof(error)), error);
@@ -790,7 +855,7 @@ void WindowTest::lifecycleAndInspector() {
     QVERIFY(app);
     char error[512] = {};
     const QByteArray parent = temporary.path().toUtf8();
-    QVERIFY2(nn_app_create(app, parent.constData(), "qt-test", "Qt test", true,
+    QVERIFY2(nn_app_create(app, parent.constData(), "qt-test", "Qt test", "0.1.0", true,
                           error, sizeof(error)), error);
     const QPalette systemPalette = QApplication::palette();
     QPalette darkDesktop = systemPalette;
@@ -932,7 +997,7 @@ void WindowTest::appDialogsContrastUnderDarkPalette() {
     QVERIFY(app);
     char error[512] = {};
     const QByteArray parent = temporary.path().toUtf8();
-    QVERIFY2(nn_app_create(app, parent.constData(), "dialog-theme", "Dialog theme", false,
+    QVERIFY2(nn_app_create(app, parent.constData(), "dialog-theme", "Dialog theme", "0.1.0", false,
                            error, sizeof(error)), error);
     MainWindow window(app);
     window.show();
@@ -1090,7 +1155,7 @@ void WindowTest::retainedLuaValidationFormAndNonblockingRejection() {
     QVERIFY(app);
     char error[512] = {};
     const QByteArray parent = temporary.path().toUtf8();
-    QVERIFY2(nn_app_create(app, parent.constData(), "lua-retained", "Lua retained", false,
+    QVERIFY2(nn_app_create(app, parent.constData(), "lua-retained", "Lua retained", "0.1.0", false,
                            error, sizeof(error)), error);
     MainWindow window(app);
     QAction *action = nullptr;
@@ -1231,7 +1296,7 @@ void WindowTest::visualResourceAuthoringForms() {
     QVERIFY(app);
     char error[512] = {};
     const QByteArray parent = temporary.path().toUtf8();
-    QVERIFY2(nn_app_create(app, parent.constData(), "author-test", "Authoring test", false,
+    QVERIFY2(nn_app_create(app, parent.constData(), "author-test", "Authoring test", "0.1.0", false,
                            error, sizeof(error)), error);
     MainWindow window(app);
 
@@ -1392,7 +1457,7 @@ void WindowTest::datasetManagerEditFormAndRetainedValidation() {
     QVERIFY(app);
     char error[512] = {};
     const QByteArray parent = temporary.path().toUtf8();
-    QVERIFY2(nn_app_create(app, parent.constData(), "dataset-manager", "Dataset manager",
+    QVERIFY2(nn_app_create(app, parent.constData(), "dataset-manager", "Dataset manager", "0.1.0",
                            false, error, sizeof(error)), error);
     QVERIFY2(nn_app_create_dataset(app, "manager.data", "1.0.0",
         R"({"name":"Manager data","description":"Original","batch":{"inputs":{"features":{"dtype":"float32","shape":["B",4]}},"targets":{}}})",
@@ -1519,7 +1584,7 @@ void WindowTest::typedOutputAuthoringBoundariesAndInspector() {
     QVERIFY(app);
     char error[512] = {};
     const QByteArray parent = temporary.path().toUtf8();
-    QVERIFY2(nn_app_create(app, parent.constData(), "typed-qt", "Typed Qt", false,
+    QVERIFY2(nn_app_create(app, parent.constData(), "typed-qt", "Typed Qt", "0.1.0", false,
                            error, sizeof(error)), error);
     const QByteArray dataset = R"({"name":"Features","description":"","batch":{"inputs":{"features":{"dtype":"float32","shape":["B",4]}},"targets":{}}})";
     QVERIFY2(nn_app_create_dataset(app, "typed.features", "1.0.0", dataset.constData(), true,
@@ -1712,7 +1777,7 @@ void WindowTest::automationRejectsInvalidScopeAndCapturesCurrentScope() {
     QVERIFY(app);
     char error[512] = {};
     const QByteArray parent = temporary.path().toUtf8();
-    QVERIFY2(nn_app_create(app, parent.constData(), "scope-test", "Scope test", false,
+    QVERIFY2(nn_app_create(app, parent.constData(), "scope-test", "Scope test", "0.1.0", false,
                            error, sizeof(error)), error);
     QVERIFY2(nn_app_add_node(app, "flow", "core.subflow-proxy", "0.1.0", "", 100, 100,
                              error, sizeof(error)), error);

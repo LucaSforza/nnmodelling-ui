@@ -1,6 +1,6 @@
 {
   "name": "Input",
-  "description": "Introduces a declared tensor type as a model input.",
+  "description": "Reads a named input tensor from the selected dataset. Bind it to an input slot, then connect it to the model's first operation.",
   "kind": "input",
   "view": {
     "color": "#3f8f68",

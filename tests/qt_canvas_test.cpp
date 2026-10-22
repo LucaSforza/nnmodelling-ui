@@ -69,7 +69,7 @@ private slots:
             QUuid::createUuid().toString(QUuid::WithoutBraces)).toUtf8();
         projectPath_ = (directory_->path() + QLatin1Char('/') + QString::fromUtf8(projectId)).toUtf8();
         char error[512] = {};
-        QVERIFY2(nn_app_create(application_, parent.constData(), projectId.constData(), "Canvas", false,
+        QVERIFY2(nn_app_create(application_, parent.constData(), projectId.constData(), "Canvas", "0.1.0", false,
                                error, sizeof(error)), error);
         QVERIFY(addNode("source", "core.input", "", 100, 100));
         QVERIFY(addNode("target", "core.relu", "", 100, 280));
@@ -275,8 +275,12 @@ private slots:
         QCOMPARE(QString::fromUtf8(spawnedBoundary->boundary_handle_id), QStringLiteral("out"));
         scene_->setFlowDirection(FlowDirection::Horizontal);
         QSignalSpy scopeSpy(scene_, &GraphScene::scopeChanged);
-        const QPoint center = view_->mapFromScene(flow->sceneBoundingRect().center());
-        QTest::mouseDClick(view_->viewport(), Qt::LeftButton, Qt::NoModifier, center);
+        const auto *subflow = dynamic_cast<SubflowItem *>(flow);
+        QVERIFY(subflow);
+        const QRectF enterButton(10, subflow->boundingRect().height() - 33,
+                                 subflow->boundingRect().width() - 20, 26);
+        const QPoint enter = view_->mapFromScene(subflow->mapToScene(enterButton.center()));
+        QTest::mouseClick(view_->viewport(), Qt::LeftButton, Qt::NoModifier, enter);
         pumpEvents();
         QCOMPARE(scene_->scope(), QStringLiteral("flow"));
         QCOMPARE(scopeSpy.count(), 1);
@@ -296,10 +300,10 @@ private slots:
         QVERIFY(nn_model_find_node(nn_app_model(application_), "target") == nullptr);
     }
 
-    void expandedSubflowIsTranslatedReadOnlyAndDoesNotChangeModel() {
+    void enterSubflowButtonShowsChildrenWithoutPreview() {
         char error[512] = {};
-        QVERIFY2(addNode("child-two", "core.relu", "flow", 300, 100), "Could not add preview child");
-        QVERIFY2(nn_app_connect(application_, "preview-edge", "child", "out", "child-two", "in",
+        QVERIFY2(addNode("child-two", "core.relu", "flow", 300, 100), "Could not add second child");
+        QVERIFY2(nn_app_connect(application_, "child-edge", "child", "out", "child-two", "in",
                                 error, sizeof(error)), error);
         scene_->refresh();
         const NNNode *modelChild = nn_model_find_node(nn_app_model(application_), "child");
@@ -308,97 +312,62 @@ private slots:
         const NNNode *modelChildTwo = nn_model_find_node(nn_app_model(application_), "child-two");
         QVERIFY(modelChildTwo);
         const QPointF savedPositionTwo(modelChildTwo->x, modelChildTwo->y);
-        NodeItem *owner = scene_->nodeItem(QStringLiteral("flow"));
-        QVERIFY(dynamic_cast<SubflowItem *>(owner));
+        auto *owner = dynamic_cast<SubflowItem *>(scene_->nodeItem(QStringLiteral("flow")));
+        QVERIFY(owner);
         QVERIFY(!scene_->nodeItem(QStringLiteral("child")));
 
-        auto *flowItem = dynamic_cast<SubflowItem *>(owner);
-        const QPoint expand = view_->mapFromScene(flowItem->mapToScene(
-            QRectF(10, flowItem->boundingRect().height() - 30,
-                  flowItem->boundingRect().width() - 20, 21).center()));
-        QTest::mouseClick(view_->viewport(), Qt::LeftButton, Qt::NoModifier, expand);
+        const QRectF button(10, owner->boundingRect().height() - 33,
+                            owner->boundingRect().width() - 20, 26);
+        const QPoint enter = view_->mapFromScene(owner->mapToScene(button.center()));
+        QTest::mouseClick(view_->viewport(), Qt::LeftButton, Qt::NoModifier, enter);
         pumpEvents();
-        owner = scene_->nodeItem(QStringLiteral("flow"));
-        NodeItem *preview = scene_->nodeItem(QStringLiteral("child"));
-        QVERIFY(owner && preview);
-        QVERIFY(preview->isReadOnlyPreview());
-        NodeItem *previewTwo = scene_->nodeItem(QStringLiteral("child-two"));
-        QVERIFY(previewTwo && previewTwo->isReadOnlyPreview());
-        QCOMPARE(preview->scale(), previewTwo->scale());
-        QVERIFY(!(preview->flags() & QGraphicsItem::ItemIsMovable));
-        QVERIFY(!(preview->flags() & QGraphicsItem::ItemIsSelectable));
-        for (PortItem *port : preview->ports()) QCOMPARE(port->acceptedMouseButtons(), Qt::NoButton);
-        QCOMPARE(preview->parentItem(), owner);
-        QVERIFY(preview->scenePos() != savedPosition);
-        auto *expandedOwner = dynamic_cast<SubflowItem *>(owner);
-        QVERIFY(!expandedOwner->expandedPreviewRect().isEmpty());
-        QVERIFY(preview->mapRectToParent(preview->boundingRect()).top() >
-                expandedOwner->NodeItem::boundingRect().bottom());
-        const QRectF frame = expandedOwner->expandedPreviewRect();
-        QVERIFY(frame.width() <= 640.0 && frame.height() <= 560.0);
-        QCOMPARE(qAbs(frame.center().x() - owner->boundingRect().center().x()) < 2.0, true);
-        EdgeItem *previewEdge = scene_->edgeItem(QStringLiteral("preview-edge"));
-        QVERIFY(previewEdge && !previewEdge->routePoints().isEmpty());
-        for (const QPointF &point : previewEdge->routePoints())
-            QVERIFY(frame.contains(owner->mapFromScene(point)));
-        QVERIFY(!(previewEdge->flags() & QGraphicsItem::ItemIsSelectable));
+        QCOMPARE(scene_->scope(), QStringLiteral("flow"));
+        NodeItem *visibleChild = scene_->nodeItem(QStringLiteral("child"));
+        NodeItem *visibleChildTwo = scene_->nodeItem(QStringLiteral("child-two"));
+        QVERIFY(visibleChild && visibleChildTwo);
+        QVERIFY(!visibleChild->parentItem());
+        QVERIFY(!visibleChildTwo->parentItem());
+        QCOMPARE(visibleChild->pos(), savedPosition);
+        QCOMPARE(visibleChildTwo->pos(), savedPositionTwo);
+        EdgeItem *childEdge = scene_->edgeItem(QStringLiteral("child-edge"));
+        QVERIFY(childEdge && !childEdge->routePoints().isEmpty());
+        scene_->goToParentScope();
+        pumpEvents();
+        QVERIFY(!scene_->nodeItem(QStringLiteral("child")));
         QCOMPARE(nn_model_find_node(nn_app_model(application_), "child")->x, savedPosition.x());
         QCOMPARE(nn_model_find_node(nn_app_model(application_), "child")->y, savedPosition.y());
-        QCOMPARE(nn_model_find_node(nn_app_model(application_), "child-two")->x, savedPositionTwo.x());
-        QCOMPARE(nn_model_find_node(nn_app_model(application_), "child-two")->y, savedPositionTwo.y());
         QCOMPARE(scene_->scope(), QString());
-
-        scene_->toggleExpanded(QStringLiteral("flow"));
-        pumpEvents();
-        QVERIFY(!scene_->nodeItem(QStringLiteral("child")));
-        QCOMPARE(nn_model_find_node(nn_app_model(application_), "child")->x, savedPosition.x());
-        QCOMPARE(nn_model_find_node(nn_app_model(application_), "child")->y, savedPosition.y());
-        QCOMPARE(nn_model_find_node(nn_app_model(application_), "child-two")->x, savedPositionTwo.x());
-        QCOMPARE(nn_model_find_node(nn_app_model(application_), "child-two")->y, savedPositionTwo.y());
     }
 
-    void scaledPreviewKeepsInternalRoutesOpen() {
-        char error[512] = {};
-        QByteArray previous("child");
-        for (int i = 0; i < 12; ++i) {
-            const QByteArray id = QByteArray("chain-") + QByteArray::number(i);
-            const QByteArray edge = QByteArray("chain-edge-") + QByteArray::number(i);
-            QVERIFY(addNode(id.constData(), "core.relu", "flow", 100, 300 + i * 180));
-            QVERIFY2(nn_app_connect(application_, edge.constData(), previous.constData(), "out",
-                                    id.constData(), "in", error, sizeof(error)), error);
-            previous = id;
-        }
-        scene_->toggleExpanded(QStringLiteral("flow"));
+    void nestedSubflowContentsAppearOnlyAfterEnteringScope() {
+        QVERIFY(addNode("nested", "core.subflow-proxy", "flow", 300, 100));
+        QVERIFY(addNode("nested-child", "core.relu", "nested", 100, 100));
+        scene_->refresh();
+        QVERIFY(!scene_->nodeItem(QStringLiteral("nested-child")));
+        scene_->setScope(QStringLiteral("flow"));
         pumpEvents();
-        QVERIFY(scene_->nodeItem(QStringLiteral("child"))->scale() < 0.2);
-        for (int i = 0; i < 12; ++i) {
-            EdgeItem *edge = scene_->edgeItem(QStringLiteral("chain-edge-%1").arg(i));
-            QVERIFY(edge && !edge->routePoints().isEmpty());
-            for (int p = 1; p < edge->routePoints().size(); ++p) {
-                const QPointF a = edge->routePoints()[p - 1], b = edge->routePoints()[p];
-                QVERIFY(qFuzzyCompare(a.x() + 1, b.x() + 1) || qFuzzyCompare(a.y() + 1, b.y() + 1));
-            }
-        }
+        QVERIFY(scene_->nodeItem(QStringLiteral("nested")));
+        QVERIFY(!scene_->nodeItem(QStringLiteral("nested-child")));
+        scene_->setScope(QStringLiteral("nested"));
+        pumpEvents();
+        QVERIFY(scene_->nodeItem(QStringLiteral("nested-child")));
+        QCOMPARE(scene_->scope(), QStringLiteral("nested"));
     }
 
-    void expansionSpacesPeersWithoutPersistingOffsets() {
+    void subflowDoesNotShiftPeersOrShowChildren() {
         char error[512] = {};
         QVERIFY2(nn_app_move_node(application_, "target", 420, 280, error, sizeof(error)), error);
         QVERIFY2(nn_app_connect(application_, "root-edge", "flow", "out", "target", "in",
                                 error, sizeof(error)), error);
         scene_->refresh();
         const QPointF compact = scene_->nodeItem(QStringLiteral("target"))->pos();
-        scene_->toggleExpanded(QStringLiteral("flow"));
-        pumpEvents();
         NodeItem *target = scene_->nodeItem(QStringLiteral("target"));
-        const QPointF expanded = target->pos();
-        QVERIFY(expanded.y() > compact.y());
-        QVERIFY(!target->sceneBoundingRect().intersects(
-            scene_->nodeItem(QStringLiteral("flow"))->sceneBoundingRect()));
+        QCOMPARE(target->pos(), compact);
+        QVERIFY(!scene_->nodeItem(QStringLiteral("child")));
         QCOMPARE(nn_model_find_node(nn_app_model(application_), "target")->y, compact.y());
-        QVERIFY(!scene_->edgeItem(QStringLiteral("root-edge"))->routePoints().isEmpty());
+        QVERIFY(scene_->edgeItem(QStringLiteral("root-edge")));
         view_->fitGraph();
-        QCOMPARE(target->pos(), expanded);
+        QCOMPARE(target->pos(), compact);
         const QPoint start = view_->mapFromScene(target->sceneBoundingRect().center());
         const QPoint end = view_->mapFromScene(target->sceneBoundingRect().center() + QPointF(40, 0));
         QTest::mousePress(view_->viewport(), Qt::LeftButton, Qt::NoModifier, start);
@@ -409,8 +378,11 @@ private slots:
         QCOMPARE(nn_model_find_node(nn_app_model(application_), "target")->y, compact.y());
         QVERIFY2(nn_app_undo(application_, error, sizeof(error)), error);
         scene_->refresh();
-        QCOMPARE(scene_->nodeItem(QStringLiteral("target"))->pos(), expanded);
-        scene_->toggleExpanded(QStringLiteral("flow"));
+        QCOMPARE(scene_->nodeItem(QStringLiteral("target"))->pos(), compact);
+        scene_->setScope(QStringLiteral("flow"));
+        pumpEvents();
+        QVERIFY(scene_->nodeItem(QStringLiteral("child")));
+        scene_->goToParentScope();
         pumpEvents();
         QCOMPARE(scene_->nodeItem(QStringLiteral("target"))->pos(), compact);
     }

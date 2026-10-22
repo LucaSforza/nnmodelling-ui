@@ -21,6 +21,13 @@ block Codex work. Workers do not spawn agents. Give disjoint file ownership;
 serialize Git staging/commits when workers share a checkout. Review every
 required result and run relevant final checks.
 
+Before spawning any worker, the principal commits the accepted KB, contract and
+UML baseline for the assignment and records its commit SHA. Include that SHA in
+the delegation. Each worker must inspect the commit diff (`git show` or
+`git diff <sha>^ <sha>`) and confirm its implementation follows that baseline
+before editing code. Workers report contract conflicts to the principal; they
+do not revise normative documents unless explicitly assigned.
+
 ### Codex
 
 Use native `collaboration.spawn_agent`, `send_message`, `followup_task` and

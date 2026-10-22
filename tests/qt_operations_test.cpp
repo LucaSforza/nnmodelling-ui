@@ -26,7 +26,7 @@ int main(int argc, char **argv) {
     assert(application);
     char error[512] = {};
     assert(nn_app_create(application, parent.path().toUtf8().constData(), "operations-ui-test",
-                         "Operations UI Test", false, error, sizeof(error)));
+                         "Operations UI Test", "0.1.0", false, error, sizeof(error)));
     assert(nn_app_add_node(application, "source", "core.input", "0.1.0", "", 0, 0,
                            error, sizeof(error)));
     assert(nn_app_add_node(application, "layer", "core.relu", "0.1.0", "", 100, 0,

@@ -216,13 +216,13 @@ temporary parse/write state. Only project module owns filesystem mutations.
 Borrowed `nn_project_id/name/version` getters expose manifest identity to the
 read-only automation snapshot; no mutable project struct crosses the ABI.
 
-Accepted 2026-10-04: package manifest may declare independent visualization Lua
-entrypoint only for subflow kind per visualization-3d.md. It is catalog-owned
-resource data. Expanded scene/camera never enter schema-v2 persistence.
+Accepted 2026-10-04: package manifests may declare independent Lua entrypoints
+only for supported runtime services. Entrypoint metadata is catalog-owned
+resource data and runtime presentation state never enters schema-v2 persistence.
 
 C catalog shares `nn_catalog_resolve` (unique exact/caret active reference),
 `nn_catalog_parameters` (owned defaulted validated NNParameter list) and
-`nn_catalog_parameters_free` between inference, application and visualization.
+`nn_catalog_parameters_free` between inference and application.
 Catalog may use public NNValue types; no module includes another module's
 private header. JSON object keys are owned NNParameter entries.
 

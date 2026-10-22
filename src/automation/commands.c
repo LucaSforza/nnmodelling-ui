@@ -71,11 +71,11 @@ bool nn_automation_execute(NNApplication *app, const char *op, NNAutomationQuery
         if (nn_project_dirty(nn_app_project(app))) {
             nn_error_set(q->error, sizeof(q->error), "save or explicitly discard the dirty project before replacement"); return false;
         }
-        if (!strcmp(kind, "mnist-vae")) return nn_app_create_vae(app, parent, id, name, q->error, sizeof(q->error));
+        if (!strcmp(kind, "mnist-vae")) return nn_app_create_vae(app, parent, id, name, "0.1.0", q->error, sizeof(q->error));
         if (strcmp(kind, "blank") && strcmp(kind, "mnist-mlp")) {
             nn_error_set(q->error, sizeof(q->error), "unknown project template"); return false;
         }
-        return nn_app_create(app, parent, id, name, !strcmp(kind, "mnist-mlp"), q->error, sizeof(q->error));
+        return nn_app_create(app, parent, id, name, "0.1.0", !strcmp(kind, "mnist-mlp"), q->error, sizeof(q->error));
     }
     if (!strcmp(op, "stereotype.create") || !strcmp(op, "dataset.create")) {
         id = string_arg(q, "id", NULL);

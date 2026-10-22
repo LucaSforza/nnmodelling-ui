@@ -83,6 +83,8 @@ def main():
     parser.add_argument('action', choices=['start', 'stop', 'status'])
     parser.add_argument('project', nargs='?')
     parser.add_argument('--build', action='store_true')
+    parser.add_argument('--no-automation', action='store_true',
+                        help='launch Qt without the local automation socket')
     options = parser.parse_args()
     assets = Path(__file__).resolve().parent
     root = assets.parents[3]
@@ -135,7 +137,9 @@ def main():
     env = os.environ.copy()
     env.update(LD_PRELOAD=str(bridge / 'loopback.so'),
                QT_QPA_PLATFORM='vnc:size=1600x1000:port=5997', QT_STYLE_OVERRIDE='Fusion')
-    args = [str(executable), '--socket', str(path)]
+    args = [str(executable)]
+    if not options.no_automation:
+        args.extend(['--socket', str(path)])
     if options.project:
         args.append(str(Path(options.project).resolve()))
     qt = launch(args, bridge, 'qt', env)
@@ -145,7 +149,8 @@ def main():
         if qt.poll() is not None or web.poll() is not None:
             stop(bridge, executable)
             raise RuntimeError('Session failed; inspect qt.log and browser.log')
-        if listening('::1', 5997) and listening('127.0.0.1', 8797) and path.exists():
+        if (listening('::1', 5997) and listening('127.0.0.1', 8797) and
+                (options.no_automation or path.exists())):
             (bridge / 'session.json').write_text(json.dumps({
                 'qt_pid': qt.pid, 'browser_pid': web.pid,
                 'executable_sha256': hashlib.sha256(executable.read_bytes()).hexdigest()

@@ -105,11 +105,9 @@ To connect two nodes, drag from an output handle to the desired input handle. Th
 
 The `Scope` bar opens the scope tree. `Root` shows the main nodes; choose a subflow to show its immediate scope. `Orphan scopes` collects imported scopes without a reachable container; these remain selectable. Navigation shows one scope at a time and does not move or change nodes.
 
-A subflow has a card with its child count. Click the `Subflow · N nodes ›` footer to expand a read-only preview on the canvas; `▾` closes it. You can hover over nodes in the preview but cannot select, move or connect them or change join inputs. Double-click the subflow, or choose `Enter subflow` from its right-click context menu, to enter its scope. The same menu has `Expand preview` / `Collapse preview`. Use the scope tree's navigation arrow to return to `Root` or an ancestor scope. Expansion is a temporary view; child nodes retain their coordinates in their scope.
+A subflow card shows its child count and a prominent `Enter subflow` button. Click the button to open the subflow's scope. Use the scope tree's navigation arrow to return to `Root` or an ancestor scope.
 
 ![Scope tree](../assets/scope-tree.png)
-
-![Subflow context menu](../assets/subflow-menu.png)
 
 ![Decoder block scope](../assets/decoder.png)
 
@@ -310,7 +308,3 @@ threshold determine when to stop, while the lowest validation loss determines
 exported weights. Logs and metrics distinguish budgets, updates and processed
 tokens. A small budget is not full-corpus completion. For light trials keep CPU,
 Float32, Adam and early stopping disabled.
-
-## Features not exposed in the current interface
-
-The project describes a `Network 3D` explorer, but the current Qt window has no 3D tab, menu or command. Therefore its flight, display, occurrence selection, `Fit` and 3D `Home` controls are unavailable in this version. The 2D canvas is the only graph editor exposed.

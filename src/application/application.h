@@ -14,7 +14,7 @@ NNApplication *nn_app_new(const char *core_root);
 void nn_app_free(NNApplication *app);
 bool nn_app_open(NNApplication *app, const char *directory, char *error, size_t cap);
 bool nn_app_create(NNApplication *app, const char *parent, const char *id,
-                   const char *name, bool mnist, char *error, size_t cap);
+                   const char *name, const char *version, bool mnist, char *error, size_t cap);
 bool nn_app_create_stereotype(NNApplication *app, const char *id, const char *version,
                               const char *definition_json, const char *inference_lua,
                               const char *dependencies_json, char *error, size_t cap);
@@ -41,9 +41,9 @@ char *nn_app_resolved_parameter_text(NNApplication *app, const char *node,
 /* Returned UTF-8 text is owned; release with nn_app_free_text. */
 char *nn_app_parameter_counts_json(NNApplication *app, char *error, size_t cap);
 bool nn_app_create_vae(NNApplication *app, const char *parent, const char *id,
-                      const char *name, char *error, size_t cap);
+                      const char *name, const char *version, char *error, size_t cap);
 bool nn_app_create_llm(NNApplication *app, const char *parent, const char *id,
-                      const char *name, char *error, size_t cap);
+                      const char *name, const char *version, char *error, size_t cap);
 bool nn_app_save(NNApplication *app, char *error, size_t cap);
 bool nn_app_close(NNApplication *app, bool discard, char *error, size_t cap);
 bool nn_app_can_undo(const NNApplication *app);

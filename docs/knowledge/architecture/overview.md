@@ -81,12 +81,4 @@ C remains resource validator, catalog owner and filesystem writer.
 `justfile` owns developer recipes; CMake separates C and optional Qt targets.
 Tests live under tests; core tests never instantiate QApplication.
 
-## Expanded 3D explorer (accepted 2026-10-04)
-
-C `src/visualization/` derives an owned disposable scene from project/catalog.
-It owns generic subflow Lua composition, expanded occurrence identity, layout,
-camera, projection and picking. Qt paints its projected primitives in a 3D tab.
-See [3D contract](../contracts/visualization-3d.md). No model or file-format change
-for 3D presentation; object stereotype parameters now follow that contract.
-
 Accepted 2026-10-05: [backend contract](../contracts/backend.md) and [backend UML](../uml/backend.md) supersede earlier backend/training deferrals. Native C11 graph authority and Lua shape analysis remain unchanged.

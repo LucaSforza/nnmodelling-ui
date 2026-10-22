@@ -1,6 +1,6 @@
 {
   "name": "Output",
-  "description": "Marks the explicit prediction returned by a package model.",
+  "description": "Marks the model prediction returned to the caller. Connect the tensor you want the model to expose to this node.",
   "kind": "output",
   "view": { "color": "#4d9b72", "width": 140, "height": 80 },
   "parameters": {}

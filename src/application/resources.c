@@ -197,24 +197,24 @@ bool nn_app_select_dataset(NNApplication *app, const char *id, const char *versi
 }
 
 bool nn_app_create_vae(NNApplication *app, const char *parent, const char *id,
-                       const char *name, char *error, size_t cap)
+                       const char *name, const char *version, char *error, size_t cap)
 {
     if (!app) return nn_fail(error, cap, "application is null");
     if (app->history.group_active) return nn_fail(error, cap, "cannot replace a project during an edit group");
     NNProject *staged = NULL;
-    if (!nn_project_create_vae(parent, id, name, app->core_root, &staged, error, cap)) return false;
+    if (!nn_project_create_vae(parent, id, name, version, app->core_root, &staged, error, cap)) return false;
     NNProject *old = app->project; app->project = staged; nn_app_invalidate_analysis(app);
     nn_app_history_reset(app); nn_project_close(old);
     nn_error_set(error, cap, ""); return true;
 }
 
 bool nn_app_create_llm(NNApplication *app, const char *parent, const char *id,
-                       const char *name, char *error, size_t cap)
+                       const char *name, const char *version, char *error, size_t cap)
 {
     if (!app) return nn_fail(error, cap, "application is null");
     if (app->history.group_active) return nn_fail(error, cap, "cannot replace a project during an edit group");
     NNProject *staged = NULL;
-    if (!nn_project_create_llm(parent, id, name, app->core_root, &staged, error, cap)) return false;
+    if (!nn_project_create_llm(parent, id, name, version, app->core_root, &staged, error, cap)) return false;
     NNProject *old = app->project; app->project = staged; nn_app_invalidate_analysis(app);
     nn_app_history_reset(app); nn_project_close(old);
     nn_error_set(error, cap, ""); return true;

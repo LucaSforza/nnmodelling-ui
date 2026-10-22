@@ -60,8 +60,9 @@ int main(void)
     char *root = mkdtemp(temporary); assert(root);
     NNApplication *app = nn_app_new("stereotype-packages/core"); assert(app);
     char error[512] = "";
-    assert(!nn_app_create(app, root, "..", "Escape", false, error, sizeof(error)));
-    assert(nn_app_create(app, root, "resources", "Resources", false, error, sizeof(error)));
+    assert(!nn_app_create(app, root, "..", "Escape", "0.1.0", false, error, sizeof(error)));
+    assert(nn_app_create(app, root, "resources", "Resources", "0.1.0", false, error, sizeof(error)));
+    assert(!strcmp(nn_project_version(nn_app_project(app)), "0.1.0"));
     char directory[4096]; path(directory, sizeof(directory), root, "resources");
     char model_path[4096]; path(model_path, sizeof(model_path), directory, "model.json");
     char *before = read_text(model_path);
@@ -174,7 +175,7 @@ int main(void)
     assert(rmdir(model_path) == 0 && rename(backup, model_path) == 0);
 
     /* Symlink category directories are never followed, and never removed. */
-    assert(nn_app_create(app, root, "linked", "Linked", false, error, sizeof(error)));
+    assert(nn_app_create(app, root, "linked", "Linked", "0.1.0", false, error, sizeof(error)));
     char linked[4096]; path(linked, sizeof(linked), root, "linked/packages");
     assert(symlink(directory, linked) == 0);
     assert(!nn_app_create_stereotype(app, "escape", "0.1.0", definition, rule, "{}", error, sizeof(error)));
@@ -186,7 +187,8 @@ int main(void)
     path(check, sizeof(check), directory, "packages/local.affine-0.1.0/definition.json");
     char *text = read_text(check); assert(strstr(text, "\n  \"parameters\"")); assert(text[strlen(text)-1] == '\n'); free(text);
 
-    assert(nn_app_create_vae(app, root, "vae-copy", "VAE copy", error, sizeof(error)));
+    assert(nn_app_create_vae(app, root, "vae-copy", "VAE copy", "2.3.4", error, sizeof(error)));
+    assert(!strcmp(nn_project_version(nn_app_project(app)), "2.3.4"));
     assert(nn_model_node_count(nn_app_model(app)) == 23);
     assert(nn_app_node_is_subflow(app, "encoder") && nn_app_node_is_subflow(app, "decoder"));
     assert(nn_catalog_find(nn_project_catalog(nn_app_project(app)), "vae.reparameterize", "0.1.0"));
@@ -195,9 +197,10 @@ int main(void)
     for (size_t i = 0; i < nn_inference_count(report); ++i)
         if (nn_inference_at(report, i)->status == NN_INFERENCE_SUCCESS) ++successes;
     assert(successes == 23); nn_inference_free(report);
-    assert(nn_app_create_llm(app, root, "mini-llm", "mini LLM", error, sizeof(error)));
+    assert(nn_app_create_llm(app, root, "mini-llm", "mini LLM", "3.2.1", error, sizeof(error)));
     assert(!strcmp(nn_project_id(nn_app_project(app)), "mini-llm"));
     assert(!strcmp(nn_project_name(nn_app_project(app)), "mini LLM"));
+    assert(!strcmp(nn_project_version(nn_app_project(app)), "3.2.1"));
     assert(nn_project_active_dataset(nn_app_project(app)));
     assert(nn_catalog_find(nn_project_catalog(nn_app_project(app)),
                            "llm.causal-mask", "1.0.0"));
@@ -208,10 +211,17 @@ int main(void)
     for (size_t i = 0; i < nn_inference_count(report); ++i)
         assert(nn_inference_at(report, i)->status == NN_INFERENCE_SUCCESS);
     nn_inference_free(report);
+    assert(nn_app_create(app, root, "mlp-copy", "MLP copy", "5.6.7", true,
+                         error, sizeof(error)));
+    assert(!strcmp(nn_project_version(nn_app_project(app)), "5.6.7"));
+    path(directory, sizeof(directory), root, "mlp-copy");
+    assert(nn_app_close(app, false, error, sizeof(error)));
+    assert(nn_app_open(app, directory, error, sizeof(error)));
+    assert(!strcmp(nn_project_version(nn_app_project(app)), "5.6.7"));
     const NNProject *llm_project = nn_app_project(app);
-    assert(!nn_app_create_llm(app, root, "mini-llm", "Duplicate", error, sizeof(error)));
+    assert(!nn_app_create_llm(app, root, "mini-llm", "Duplicate", "0.1.0", error, sizeof(error)));
     assert(nn_app_project(app) == llm_project);
-    assert(!nn_app_create_llm(app, root, "../escape", "Invalid", error, sizeof(error)));
+    assert(!nn_app_create_llm(app, root, "../escape", "Invalid", "0.1.0", error, sizeof(error)));
     assert(nn_app_project(app) == llm_project);
     path(directory, sizeof(directory), root, "mini-llm");
     assert(nn_app_close(app, false, error, sizeof(error)));
@@ -220,7 +230,7 @@ int main(void)
     assert(!strcmp(nn_project_name(nn_app_project(app)), "mini LLM"));
 
     /* Dataset edits patch visible metadata while retaining opaque resource data. */
-    assert(nn_app_create(app, root, "dataset-edit", "Dataset edit", false,
+    assert(nn_app_create(app, root, "dataset-edit", "Dataset edit", "0.1.0", false,
                          error, sizeof(error)));
     path(directory, sizeof(directory), root, "dataset-edit");
     path(model_path, sizeof(model_path), directory, "model.json");

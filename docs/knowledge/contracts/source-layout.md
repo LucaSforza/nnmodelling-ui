@@ -72,8 +72,4 @@ The existing [architecture diagram](../architecture/overview.md) and
 [editor/graphics UML](../uml/editor.md) describe these boundaries; update those
 diagrams rather than creating another overlapping UML document.
 
-Accepted 2026-10-04: `visualization/` owns C11 expanded scene/composition,
-layout and camera/projection/picking per visualization-3d.md. Qt adapter stays
-in gui/qt. No graphics-library dependency enters core.
-
 Accepted 2026-10-05: [backend contract](backend.md) and [backend UML](../uml/backend.md) supersede earlier backend/training deferrals. Native C11 graph authority and Lua shape analysis remain unchanged.

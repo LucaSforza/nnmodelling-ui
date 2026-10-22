@@ -77,11 +77,12 @@ static char *repo_root_from_core(const char *core_root)
 }
 
 NNProject *nn_project_create(const char *parent, const char *id, const char *name,
-                             bool mnist_template, const char *core_root,
+                             const char *version, bool mnist_template, const char *core_root,
                              char *error, size_t capacity)
 {
     if (error && capacity) error[0] = '\0';
-    if (!parent || !nn_project_valid_id(id) || !name || !*name || !core_root) {
+    if (!parent || !nn_project_valid_id(id) || !name || !*name ||
+        !nn_project_valid_semver(version) || !core_root) {
         nn_errorf(error, capacity, "invalid project identity or parent"); return NULL;
     }
     struct stat parent_stat;
@@ -109,7 +110,7 @@ NNProject *nn_project_create(const char *parent, const char *id, const char *nam
         free(repo); free(template_root); free(source_model); free(destination_model);
         free(source_dataset); free(destination_dataset); free(destination_datasets);
     } else {
-        NNProject seed = { .directory = directory, .id = (char *)id, .version = "0.1.0",
+        NNProject seed = { .directory = directory, .id = (char *)id, .version = (char *)version,
             .name = (char *)name, .description = "", .layout_direction = "horizontal",
             .model = nn_model_new() };
         okay = seed.model != NULL;
@@ -139,16 +140,16 @@ NNProject *nn_project_create(const char *parent, const char *id, const char *nam
         if (failed) { nn_project_remove_tree(failed); free(failed); }
         return NULL;
     }
-    if (strcmp(project->id, id) || strcmp(project->name, name)) {
-        char *new_id = nn_text_copy(id), *new_name = nn_text_copy(name);
-        if (!new_id || !new_name) {
-            free(new_id); free(new_name); nn_project_close(project);
+    if (strcmp(project->id, id) || strcmp(project->name, name) || strcmp(project->version, version)) {
+        char *new_id = nn_text_copy(id), *new_name = nn_text_copy(name), *new_version = nn_text_copy(version);
+        if (!new_id || !new_name || !new_version) {
+            free(new_id); free(new_name); free(new_version); nn_project_close(project);
             char *failed = nn_path_join(parent, id);
             if (failed) { nn_project_remove_tree(failed); free(failed); }
             nn_errorf(error, capacity, "out of memory"); return NULL;
         }
-        free(project->id); free(project->name);
-        project->id = new_id; project->name = new_name;
+        free(project->id); free(project->name); free(project->version);
+        project->id = new_id; project->name = new_name; project->version = new_version;
         project->dirty = true;
         if (!nn_project_save(project, error, capacity)) {
             nn_project_close(project);
@@ -160,13 +161,13 @@ NNProject *nn_project_create(const char *parent, const char *id, const char *nam
     return project;
 }
 
-static bool create_template(const char *template_path, const char *parent, const char *id, const char *name,
+static bool create_template(const char *template_path, const char *parent, const char *id, const char *name, const char *version,
                            const char *core_root, NNProject **result,
                            char *error, size_t cap)
 {
     if (!result) { nn_errorf(error, cap, "invalid project result"); return false; }
     *result = NULL;
-    if (!parent || !nn_project_valid_id(id) || !name || !*name || !core_root) { nn_errorf(error, cap, "invalid project identity"); return false; }
+    if (!parent || !nn_project_valid_id(id) || !name || !*name || !nn_project_valid_semver(version) || !core_root) { nn_errorf(error, cap, "invalid project identity"); return false; }
     struct stat st; if (lstat(parent, &st) || !S_ISDIR(st.st_mode)) { nn_errorf(error, cap, "project parent unavailable or symlinked"); return false; }
     char *root = repo_root_from_core(core_root), *template = root ? nn_path_join(root, template_path) : NULL;
     char *destination = nn_path_join(parent, id);
@@ -177,25 +178,25 @@ static bool create_template(const char *template_path, const char *parent, const
     NNProject *project = nn_project_open(destination, core_root, error, cap);
     free(destination);
     if (!project) { char *failed = nn_path_join(parent, id); if (failed) { nn_project_remove_tree(failed); free(failed); } return false; }
-    char *new_name = nn_text_copy(name), *new_id = nn_text_copy(id);
-    if (!new_name || !new_id) { free(new_name); free(new_id); nn_project_close(project); char *failed = nn_path_join(parent, id); if (failed) { nn_project_remove_tree(failed); free(failed); } nn_errorf(error, cap, "out of memory"); return false; }
-    free(project->name); free(project->id); project->name = new_name; project->id = new_id; project->dirty = true;
+    char *new_name = nn_text_copy(name), *new_id = nn_text_copy(id), *new_version = nn_text_copy(version);
+    if (!new_name || !new_id || !new_version) { free(new_name); free(new_id); free(new_version); nn_project_close(project); char *failed = nn_path_join(parent, id); if (failed) { nn_project_remove_tree(failed); free(failed); } nn_errorf(error, cap, "out of memory"); return false; }
+    free(project->name); free(project->id); free(project->version); project->name = new_name; project->id = new_id; project->version = new_version; project->dirty = true;
     if (!nn_project_save(project, error, cap)) { nn_project_close(project); char *failed = nn_path_join(parent, id); if (failed) { nn_project_remove_tree(failed); free(failed); } return false; }
     *result = project; return true;
 }
 
-bool nn_project_create_vae(const char *parent, const char *id, const char *name,
+bool nn_project_create_vae(const char *parent, const char *id, const char *name, const char *version,
                            const char *core_root, NNProject **result,
                            char *error, size_t cap)
 {
-    return create_template("examples/models/mnist-vae", parent, id, name,
+    return create_template("examples/models/mnist-vae", parent, id, name, version,
                            core_root, result, error, cap);
 }
 
-bool nn_project_create_llm(const char *parent, const char *id, const char *name,
+bool nn_project_create_llm(const char *parent, const char *id, const char *name, const char *version,
                            const char *core_root, NNProject **result,
                            char *error, size_t cap)
 {
-    return create_template("examples/models/tiny-decoder-llm", parent, id, name,
+    return create_template("examples/models/tiny-decoder-llm", parent, id, name, version,
                            core_root, result, error, cap);
 }

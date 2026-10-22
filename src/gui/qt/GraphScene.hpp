@@ -25,8 +25,6 @@ public:
     void refresh();
     void recomputeRoutes();
     QRectF contentBounds() const;
-    bool isExpanded(const QString &id) const { return expandedSubflows_.contains(id); }
-    void toggleExpanded(const QString &id);
     void setScope(const QString &scopeId);
     void setFlowDirection(FlowDirection direction);
     FlowDirection flowDirection() const { return flowDirection_; }
@@ -55,7 +53,6 @@ private:
     friend class NodeItem;
     friend class PortItem;
     void updateEdgesForNode(const QString &nodeId);
-    void spaceExpandedScope();
     void beginNodeDrag(NodeItem *item);
     void commitNodeMoves();
     void cancelNodeDrag();
@@ -75,12 +72,10 @@ private:
     QHash<QString, NodeItem *> nodes_;
     QHash<QString, EdgeItem *> edges_;
     QHash<QString, QString> nodeScopes_;
-    QHash<QString, QPointF> viewOffsets_;
     QHash<QString, QString> edgeScopes_;
     QHash<QString, QString> problemCategories_;
     QHash<QString, QStringList> explicitJoinInputHandles_;
     QHash<QString, QStringList> occupiedJoinInputs_;
-    QSet<QString> expandedSubflows_;
     PortItem *draftSource_ = nullptr;
     QGraphicsPathItem *draftPath_ = nullptr;
     bool refreshing_ = false;

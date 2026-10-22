@@ -34,7 +34,7 @@ These flows follow `src/application/application.c`, `src/application/graph_comma
 `src/application/history.c`, `src/project/project.c`, `src/model/model.c` and the
 Qt entrypoints in `src/gui/qt/MainWindow*.cpp`, `GraphScene.cpp` and
 `DataflowLayout.cpp`. C owns the active model and persisted integer positions;
-Qt owns selection, scope, camera, drafts and presentation-only expansion state.
+Qt owns selection, scope, camera, drafts and other transient presentation state.
 
 ## Startup and project replacement
 
@@ -47,7 +47,9 @@ Qt owns selection, scope, camera, drafts and presentation-only expansion state.
     participant Catalog as Package and dataset catalogs
     participant Scene as GraphScene
     Qt->>App: create(core root)
-    opt Open a project
+    Qt->>Qt: keep editor window hidden
+    Qt-->>User: show startup chooser only
+    alt open existing project
       User->>Qt: choose project path
       Qt->>App: open(path)
       App->>Project: parse model.json and manifest
@@ -62,10 +64,33 @@ Qt owns selection, scope, camera, drafts and presentation-only expansion state.
         Scene->>App: query borrowed model/catalog snapshots
         App-->>Scene: authoritative state
         Scene->>Scene: copy IDs and synchronize items
+        Qt->>Qt: show editor window
       else parse, resolution or validation fails
         Project-->>App: error
         App-->>Qt: error and prior project remains active
+        Qt-->>User: show chooser again; editor stays hidden
       end
+    else create from template
+      Qt-->>User: choose MNIST MLP, MNIST VAE or tiny LLM
+      User->>Qt: select a template
+      Qt-->>User: show parent, ID, display name, editable version default 0.1.0 and destination preview
+      opt Browse for parent directory
+        User->>Qt: browse for parent
+        Qt->>Qt: open directory chooser owned by creation form
+        alt directory selected
+          Qt-->>User: update parent and destination preview
+        else selection canceled
+          Qt-->>User: keep creation form and entered values
+        end
+      end
+      User->>Qt: enter parent, ID, display name and version
+      Qt->>App: create selected template with version
+      App-->>Qt: project active after successful creation
+      Qt->>Scene: reset scope and refresh items
+      Qt->>Qt: show editor window
+    else dismiss startup chooser
+      User->>Qt: close chooser
+      Qt->>Qt: quit application
     end
 ```
 
@@ -83,8 +108,10 @@ IDs. Relevant owners are `nn_app_open` and project staging in
     participant App as NNApplication
     participant Project as NNProject
     participant Catalog as Resource catalogs
-    User->>Qt: create blank, MNIST MLP or mini LLM project
-    Qt->>App: create(parent, id, name, template)
+    User->>Qt: choose MNIST MLP, MNIST VAE or tiny LLM
+    Qt-->>User: show parent, ID, display name, editable version default 0.1.0 and destination preview
+    User->>Qt: confirm template details
+    Qt->>App: create(parent, id, name, version, template)
     App->>Project: stage directory and schema-v2 model
     Project->>Catalog: resolve copied dataset, custom and core packages
     Catalog-->>Project: exact active scope or error
@@ -109,6 +136,32 @@ IDs. Relevant owners are `nn_app_open` and project staging in
 
 Save failure retains both the old file and dirty state. Successful project
 replacement or close releases the previous catalog and resets scope to root.
+
+## Enter a subflow and remove an edge
+
+```mermaid
+  sequenceDiagram
+    actor User
+    participant Qt as SubflowItem/GraphScene
+    participant App as NNApplication
+    User->>Qt: click Enter subflow
+    Qt->>Qt: set active scope to subflow ID and refresh graph
+    Qt->>App: query nodes and edges in active scope
+    App-->>Qt: immediate scope contents
+    User->>Qt: right-click edge and choose Delete connection
+    Qt->>App: disconnect copied edge ID
+    alt disconnect succeeds
+      App-->>Qt: command success
+      Qt->>Qt: refresh graph and routes
+    else rejected
+      App-->>Qt: error without graph change
+      Qt->>Qt: show error dialog
+    end
+```
+
+Scope changes are view state. Connection removal is a normal C graph mutation;
+the context menu targets the edge under the pointer and routes through the
+application command API.
 
 ## Add and connect nodes
 

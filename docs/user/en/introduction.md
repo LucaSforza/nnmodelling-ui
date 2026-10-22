@@ -4,7 +4,7 @@ A neural network begins long before the first weight update. It begins with a qu
 
 The canvas is a workbench. Start with an empty project, choose a component from the palette, connect it to others, and change its parameters in the Inspector. Or open an example and follow its reasoning: from an image to the ten logits of an MNIST classifier, or from characters to the predictions of a small language model. Tensor shapes help you read the project: `[B, 128, 64]` means a batch of sequences with 128 positions and 64 features per position. `B` leaves the batch dimension open; the other numbers describe concrete network choices.
 
-This view becomes more useful as a model grows. A wrong connection can be hard to spot in a long definition; here it has a source and a destination. An inconsistent parameter appears beside the node that uses it. A subflow groups a block without hiding its contents: expand its preview or enter its scope to work with individual operators. In the tiny LLM, for example, attention remains readable as a sequence of Query, Key and Value projections, multiplications, a causal mask and Softmax.
+This view becomes more useful as a model grows. A wrong connection can be hard to spot in a long definition; here it has a source and a destination. An inconsistent parameter appears beside the node that uses it. A subflow groups a block; its `Enter subflow` button opens its scope, where you can work with individual operators. In the tiny LLM, for example, attention remains readable as a sequence of Query, Key and Value projections, multiplications, a causal mask and Softmax.
 
 ## From diagram to experiment
 

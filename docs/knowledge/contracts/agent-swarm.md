@@ -24,6 +24,12 @@ index/commit mutations in a shared checkout. Do not stage other agents' edits.
 Missing requested models or tools are explicit blockers, not permission to
 substitute models or invoke the other runtime silently.
 
+Before spawning workers, the principal commits the accepted KB, contract and
+UML baseline for their assignments and records its commit SHA. Every assignment
+includes that SHA; each worker reviews the baseline diff with `git show` or
+`git diff <sha>^ <sha>` before editing, then reports any conflict with the
+accepted contract. Workers do not amend normative documents unless assigned.
+
 Accepted 2026-09-30: repository-local OpenCode V2 tooling supports background
 implementation agents and messages between the principal and its direct children.
 This contract concerns development tooling, not the native client or its future

@@ -130,6 +130,7 @@ void MainWindow::refreshAll() {
     refreshInspector();
     refreshResources();
     refreshDiagnostics();
+    updateDescriptions();
     updateWindowTitle();
     undoAction_->setEnabled(nn_app_can_undo(application_.get()));
     redoAction_->setEnabled(nn_app_can_redo(application_.get()));

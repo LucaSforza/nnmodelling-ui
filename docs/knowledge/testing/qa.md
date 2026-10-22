@@ -6,23 +6,25 @@ not establish that visible application works.
 
 ## Environment and launch
 
-1. Run `just test`, `just test-ui`, `just build` and `git diff --check`; record
-   compiler, Qt version and failures.
-2. On actual desktop session, run client with `QT_QPA_PLATFORM=wayland` and
-   without driver override. Confirm window appears, responds, paints every
-   panel and closes cleanly. Record `XDG_SESSION_TYPE`, `WAYLAND_DISPLAY`, Qt
-   platform plugin and any compositor error. If Wayland fails, diagnose
-   Qt error and check X11 fallback separately; do not count offscreen plugin as
-   visible launch.
-3. Capture screenshot from visible window after a full frame. Inspect text
-   legibility, clipping, node/edge placement, panel bounds, contrast and font
-   glyphs. Test at 1280x800 and a smaller window; note display scale.
+1. Run `just test`, `just test-ui`, `CCACHE_DISABLE=1 just build` and
+   `git diff --check`; record compiler, Qt version and failures.
+2. For visible UI trials, follow `.agents/skills/nnmodelling-browser/SKILL.md`:
+   launch native Qt client through its noVNC browser bridge and interact with
+   the visible app. CLI or offscreen checks do not replace this trial. After
+   every code/build change, rebuild and restart client and bridge before more
+   GUI checks.
+3. Capture screenshot after a full frame. Inspect text legibility, clipping,
+   node/edge placement, panel bounds, contrast and glyphs at 1280x800 and a
+   smaller window; note display scale and screenshot path.
 
 ## Project lifecycle
 
-4. Start with no project: chooser appears. Create blank project and new MNIST
-   MLP under fresh parent. Verify folder names, `model.json`, dataset files,
-   editable graph and project title.
+4. Start with no project: choose Create or Open. Create offers MNIST MLP,
+   MNIST VAE and tiny LLM only. Check initial version `0.1.0` and live
+   destination `<parent>/<model ID>`; create each template under a fresh
+   parent, then verify folder names, `model.json`, project-owned resources,
+   editable graph and project title. Open a non-project directory and confirm
+   a specific explanation while the current project remains intact.
 5. Save, close, reopen through UI and startup path argument. Move node, rename
    node, edit parameter, connect/disconnect edge; save and compare reopened
    graph and manifest. Dirty state clears only after successful save.
@@ -35,11 +37,16 @@ not establish that visible application works.
 
 ## Graph, resources and analysis
 
-8. Palette lists exact active core/custom stereotypes. Add/select/move/delete
-   nodes; handles connect only valid same-scope endpoints. Reject cycles and
-   occupied target inputs. Verify viewport pan, zoom, fit and edge hit targets.
+8. Palette lists exact active core/custom stereotypes and component guide.
+   Verify descriptions for Input, Output, Loss and Loss Output. Add/select/
+   move/delete nodes; handles connect only valid same-scope endpoints. Reject
+   cycles and occupied target inputs. Verify visible Zoom In/Out/Fit, arrow-key
+   pan, vertical/horizontal Arrange shortcuts and mouse pan/zoom/fit. Right-click
+   edge and remove it from context menu. Enter a subflow using its visible
+   button; confirm editor shows only that scope, with no child preview.
 9. Inspector uses definition types, defaults, minimums and choices. Invalid
-   value leaves graph unchanged. Dataset panel shows MNIST `image` input
+   value leaves graph unchanged. Dataset authoring explains `B` inline with
+   examples `B,4` and `B,1`. Dataset panel shows MNIST `image` input
    `[B,1,28,28]` float32 and `target` `[B]` int64. Package panel shows exact
    identities and dependency links from project scope.
 10. MNIST path must infer `Flatten` to `[B,784]`, hidden layers to `[B,128]`

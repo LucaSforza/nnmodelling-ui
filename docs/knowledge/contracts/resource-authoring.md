@@ -32,11 +32,16 @@ All operations return bool with caller-owned error buffer; UTF-8 is borrowed:
   dataset, marks dirty; invalid identity makes no change.
   Binding mismatches remain unresolved diagnostics, not selection failures;
   incomplete graphs must permit choosing datasets before editing bindings.
-* `nn_app_create_llm(app,parent,id,name,error,cap)` copies
+* `nn_app_create(app,parent,id,name,version,mnist,error,cap)` accepts and
+  persists the project version. `nn_app_create_vae(app,parent,id,name,version,
+  error,cap)` copies
+  examples/models/mnist-vae into a new editable project, including its packages
+  and datasets.
+* `nn_app_create_llm(app,parent,id,name,version,error,cap)` copies
   examples/models/tiny-decoder-llm into a new editable project through the same
-  staged template transaction as VAE; Qt uses it for the mini LLM shortcut.
-* `nn_app_create_vae(app,parent,id,name,error,cap)` copies examples/models/mnist-vae
-  into a new editable project, including its packages and datasets.
+  staged template transaction as VAE; both template operations persist the
+  supplied version. Qt uses LLM creation for the mini LLM shortcut. The local
+  CLI continues to create template projects with version `0.1.0`.
 
 Qt builds boundary definition JSON from visual forms: stereotype name,
 description, kind, color, parameter rows (key, type, default, minimum, choices,
@@ -116,10 +121,10 @@ Accepted: above behavior and CLI integration per automation contract. Deferred:
 stereotype editing/resource deletion, object values and training. Typed output/subflow
 authoring follows typed-outputs.md.
 
-Accepted 2026-10-04: [3D contract](visualization-3d.md) supersedes Horizontal
-Repeat object/join limitations. Its generic inference service and separate
-subflow-only visualization Lua entrypoint are accepted; numerical execution
-and training remain deferred.
+Accepted 2026-10-04: Horizontal Repeat uses validated object-valued stereotype
+references and the generic `services.infer_stereotype` host service. No
+presentation-only visualization entrypoint or expanded network explorer is
+part of the native client contract.
 
 Accepted 2026-10-05: [backend contract](backend.md) and [backend UML](../uml/backend.md) supersede earlier backend/training deferrals. Native C11 graph authority and Lua shape analysis remain unchanged.
 

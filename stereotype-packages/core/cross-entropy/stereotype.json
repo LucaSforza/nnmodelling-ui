@@ -1,6 +1,6 @@
 {
   "name": "Cross Entropy",
-  "description": "Computes a scalar cross-entropy training objective.",
+  "description": "Compares model class scores with the dataset target and computes cross-entropy. Use for classification; connect scores here and connect this loss to Loss Output.",
   "kind": "loss",
   "objective": { "externalInputs": [{ "name": "target", "source": "batch.targets.target" }] },
   "view": {
