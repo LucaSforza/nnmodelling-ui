@@ -73,9 +73,18 @@ Qt owns selection, scope, camera, drafts and other transient presentation state.
     else create from template
       Qt-->>User: choose MNIST MLP, MNIST VAE or tiny LLM
       User->>Qt: select a template
-      Qt-->>User: show parent, ID, display name, version 0.1.0 and destination preview
-      User->>Qt: enter parent, ID and display name
-      Qt->>App: create selected template
+      Qt-->>User: show parent, ID, display name, editable version default 0.1.0 and destination preview
+      opt Browse for parent directory
+        User->>Qt: browse for parent
+        Qt->>Qt: open directory chooser owned by creation form
+        alt directory selected
+          Qt-->>User: update parent and destination preview
+        else selection canceled
+          Qt-->>User: keep creation form and entered values
+        end
+      end
+      User->>Qt: enter parent, ID, display name and version
+      Qt->>App: create selected template with version
       App-->>Qt: project active after successful creation
       Qt->>Scene: reset scope and refresh items
       Qt->>Qt: show editor window
@@ -100,9 +109,9 @@ IDs. Relevant owners are `nn_app_open` and project staging in
     participant Project as NNProject
     participant Catalog as Resource catalogs
     User->>Qt: choose MNIST MLP, MNIST VAE or tiny LLM
-    Qt-->>User: show parent, ID, display name, version 0.1.0 and destination preview
+    Qt-->>User: show parent, ID, display name, editable version default 0.1.0 and destination preview
     User->>Qt: confirm template details
-    Qt->>App: create(parent, id, name, template)
+    Qt->>App: create(parent, id, name, version, template)
     App->>Project: stage directory and schema-v2 model
     Project->>Catalog: resolve copied dataset, custom and core packages
     Catalog-->>Project: exact active scope or error

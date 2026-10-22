@@ -32,11 +32,16 @@ All operations return bool with caller-owned error buffer; UTF-8 is borrowed:
   dataset, marks dirty; invalid identity makes no change.
   Binding mismatches remain unresolved diagnostics, not selection failures;
   incomplete graphs must permit choosing datasets before editing bindings.
-* `nn_app_create_llm(app,parent,id,name,error,cap)` copies
+* `nn_app_create(app,parent,id,name,version,mnist,error,cap)` accepts and
+  persists the project version. `nn_app_create_vae(app,parent,id,name,version,
+  error,cap)` copies
+  examples/models/mnist-vae into a new editable project, including its packages
+  and datasets.
+* `nn_app_create_llm(app,parent,id,name,version,error,cap)` copies
   examples/models/tiny-decoder-llm into a new editable project through the same
-  staged template transaction as VAE; Qt uses it for the mini LLM shortcut.
-* `nn_app_create_vae(app,parent,id,name,error,cap)` copies examples/models/mnist-vae
-  into a new editable project, including its packages and datasets.
+  staged template transaction as VAE; both template operations persist the
+  supplied version. Qt uses LLM creation for the mini LLM shortcut. The local
+  CLI continues to create template projects with version `0.1.0`.
 
 Qt builds boundary definition JSON from visual forms: stereotype name,
 description, kind, color, parameter rows (key, type, default, minimum, choices,

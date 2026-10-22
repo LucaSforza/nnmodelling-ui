@@ -12,9 +12,11 @@ the chooser exits the application. A canceled or failed create/open returns to
 the chooser without exposing an empty editor. Startup first asks whether to
 create or open a project. Creation then offers only the bundled MNIST MLP,
 MNIST VAE and tiny LLM templates; the GUI never creates an empty project. The
-creation form shows parent directory, model ID,
-display name, initial version `0.1.0` and the exact destination
+creation form shows parent directory, model ID, display name, and editable
+initial version defaulting to `0.1.0`, plus the exact destination
 `<parent>/<model ID>`. It rejects an existing destination before copying.
+Canceling the parent-directory picker returns to the same creation form and
+retains all entered values.
 Opening accepts a project directory containing `model.json`; an invalid
 directory shows a specific explanation and leaves the current project intact.
 `Save` writes atomically and clears dirty state only on success. `Close project`
@@ -26,8 +28,8 @@ failure preserves the active project and removes only the new copy.
 
 Accepted 2026-10-22: project chooser exposes Create/Open, and Create proceeds to
 the three-template selection before opening the editor. Blank-project creation
-is not a GUI action. Version starts at `0.1.0`; the destination preview updates
-as parent or model ID changes.
+is not a GUI action. Initial version is editable and starts at `0.1.0`; the
+destination preview updates as parent or model ID changes.
 
 Native path chooser may be an in-window path field. Users can also pass a
 project directory as startup argument. Project folder, custom package and
