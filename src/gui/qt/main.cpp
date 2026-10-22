@@ -56,11 +56,13 @@ int main(int argc, char **argv) {
     if (!nativeApp) return 1;
     MainWindow window(nativeApp);
     if (!socketPath.isEmpty() && !window.startAutomation(socketPath)) return 1;
-    window.show();
     if (!projectPath.isEmpty()) {
+        window.show();
         QTimer::singleShot(0, &window, [&window, projectPath] { window.openProject(projectPath); });
     } else if (capturePath.isEmpty() && socketPath.isEmpty()) {
-        QTimer::singleShot(0, &window, [&window] { window.showProjectChooser(); });
+        QTimer::singleShot(0, &window, [&window] { window.showProjectChooser(true); });
+    } else {
+        window.show();
     }
     if (!capturePath.isEmpty()) {
         QTimer::singleShot(800, &window, [&application, &window, capturePath, exitAfterCapture] {

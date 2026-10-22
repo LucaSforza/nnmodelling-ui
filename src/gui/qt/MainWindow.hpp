@@ -28,7 +28,7 @@ public:
     ~MainWindow() override;
 
     bool openProject(const QString &directory);
-    void showProjectChooser();
+    void showProjectChooser(bool startup = false);
     bool startAutomation(const QString &socketPath);
 
 protected:

@@ -28,8 +28,10 @@ From repository root:
    separately; compiler flags already enforce warnings. No formatter/linter recipe
    currently exists. Local socket/network tests need execution outside sandbox
    when sandbox blocks bind; report actual failures.
-2. Start: `python3 .agents/skills/nnmodelling-browser/scripts/bridge.py start PROJECT_DIR`.
-   Optional `--build` runs `just build`; omit project for an empty app. Start
+2. Start: `python3 .agents/skills/nnmodelling-browser/scripts/bridge.py start [PROJECT_DIR]`.
+   Optional `--build` runs `just build`; omit project for an empty app. Use
+   `--no-automation` to launch without the local socket and exercise normal
+   startup chooser behavior. Start
    prepares existing `.computer-use/` integration, installs locked npm dependencies
    only if missing, compiles loopback confinement and waits up to 15 seconds for
    VNC/HTTP readiness. It refuses live managed processes; stop session first.

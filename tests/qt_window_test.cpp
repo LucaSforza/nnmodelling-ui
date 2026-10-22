@@ -59,6 +59,7 @@ private slots:
     void appDialogsContrastUnderDarkPalette();
     void miniLlmTemplateShortcut();
     void componentGuideAppearsBelowAddButton();
+    void startupChooserShowsEditorOnlyAfterProjectCreation();
     void stereotypeReferenceForm();
     void modelProblemDiagnosticsAndNavigation();
     void currentScopeRetainsOutsideCauseContext();
@@ -115,6 +116,48 @@ void WindowTest::componentGuideAppearsBelowAddButton() {
     QLayout *layout = guide->parentWidget()->layout();
     QVERIFY(layout);
     QVERIFY(layout->indexOf(addButton) < layout->indexOf(guide));
+}
+
+void WindowTest::startupChooserShowsEditorOnlyAfterProjectCreation() {
+    QTemporaryDir temporary;
+    QVERIFY(temporary.isValid());
+    NNApplication *app = nn_app_new(NN_SOURCE_DIR "/stereotype-packages/core");
+    QVERIFY(app);
+    MainWindow window(app);
+    bool editorHiddenAtChooser = false;
+    bool creationAccepted = false;
+
+    QTimer::singleShot(0, &window, [&] {
+        auto *chooser = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+        QVERIFY(chooser);
+        editorHiddenAtChooser = !window.isVisible();
+        QTimer::singleShot(0, &window, [&] {
+            auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+            QVERIFY(dialog);
+            auto *parent = dialog->findChild<QLineEdit *>("projectParent");
+            QVERIFY(parent);
+            parent->setText(temporary.path());
+            for (QPushButton *button : dialog->findChildren<QPushButton *>()) {
+                if (button->text() != QStringLiteral("Create")) continue;
+                creationAccepted = true;
+                button->click();
+                return;
+            }
+            QFAIL("Create button missing from project form");
+        });
+        for (QAbstractButton *button : chooser->buttons()) {
+            if (button->text() != QStringLiteral("Create project")) continue;
+            button->click();
+            return;
+        }
+        QFAIL("Create project button missing from startup chooser");
+    });
+
+    window.showProjectChooser(true);
+    QVERIFY(editorHiddenAtChooser);
+    QVERIFY(creationAccepted);
+    QVERIFY(nn_app_project(app));
+    QVERIFY(window.isVisible());
 }
 
 void WindowTest::stereotypeReferenceForm() {

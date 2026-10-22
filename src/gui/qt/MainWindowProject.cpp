@@ -4,6 +4,7 @@
 #include "MainWindowUtils.hpp"
 #include "application/application.h"
 #include "project/project.h"
+#include <QApplication>
 #include <QDir>
 #include <QFileDialog>
 #include <QFileInfo>
@@ -65,19 +66,35 @@ bool MainWindow::saveProject() {
     return true;
 }
 
-void MainWindow::showProjectChooser() {
-    QMessageBox chooser(this);
-    chooser.setWindowTitle(tr("NNModelling"));
-    chooser.setText(tr("Create a project from a template or open an existing project."));
-    QPushButton *create = chooser.addButton(tr("Create project"), QMessageBox::ActionRole);
-    QPushButton *open = chooser.addButton(tr("Open project"), QMessageBox::ActionRole);
-    chooser.addButton(QMessageBox::Close);
-    chooser.exec();
-    if (chooser.clickedButton() == create) createProject();
-    else if (chooser.clickedButton() == open) {
-        const QString directory = QFileDialog::getExistingDirectory(this, tr("Open project"));
-        if (!directory.isEmpty()) openProject(directory);
+void MainWindow::showProjectChooser(bool startup) {
+    if (startup) hide();
+    for (;;) {
+        QMessageBox chooser(this);
+        chooser.setWindowTitle(tr("NNModelling"));
+        chooser.setText(tr("Create a project from a template or open an existing project."));
+        QPushButton *create = chooser.addButton(tr("Create project"), QMessageBox::ActionRole);
+        QPushButton *open = chooser.addButton(tr("Open project"), QMessageBox::ActionRole);
+        chooser.addButton(QMessageBox::Close);
+        chooser.exec();
+
+        if (chooser.clickedButton() == create) {
+            createProject();
+            if (!startup || nn_app_project(application_.get())) break;
+            continue;
+        }
+        if (chooser.clickedButton() == open) {
+            const QString directory = QFileDialog::getExistingDirectory(this, tr("Open project"));
+            if (!directory.isEmpty() && openProject(directory)) break;
+            if (!startup) return;
+            continue;
+        }
+        if (startup) QApplication::quit();
+        return;
     }
+    if (!startup) return;
+    show();
+    raise();
+    activateWindow();
 }
 
 void MainWindow::createProject(const QString &initialTemplate) {
