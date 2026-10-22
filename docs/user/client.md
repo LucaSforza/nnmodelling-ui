@@ -69,11 +69,9 @@ I nodi `Input`, `Output` e `Loss Output` sono cerchi terminali con etichetta est
 
 La barra `Scope` apre l'albero degli ambiti. `Root` mostra i nodi principali; scegliere una subflow mostra il suo ambito immediato. `Orphan scopes` raccoglie ambiti importati senza contenitore raggiungibile, che restano selezionabili. La navigazione mostra un ambito alla volta e non sposta né modifica i nodi.
 
-Una subflow presenta un riquadro con conteggio dei figli. Il footer `Subflow · N nodes ›` si clicca per espandere un'anteprima in sola lettura dentro il canvas; `▾` la richiude. Nell'anteprima si possono passare i puntatori sui nodi, ma non selezionarli, spostarli, collegarli o modificare gli ingressi della join. Un doppio clic sulla subflow oppure il menu contestuale del tasto destro > `Enter subflow` entra nel suo ambito. Lo stesso menu offre `Expand preview` / `Collapse preview`. La freccia di navigazione dell'albero consente di tornare a `Root` o a un ambito antenato. L'espansione è solo una vista temporanea; i nodi figli conservano le proprie coordinate nell'ambito.
+La scheda della subflow mostra il conteggio dei figli e un pulsante prominente `Enter subflow`. Premi il pulsante per aprire l'ambito della subflow. La freccia di navigazione dell'albero consente di tornare a `Root` o a un ambito antenato.
 
 ![Albero degli ambiti](assets/scope-tree.png)
-
-![Menu contestuale della subflow](assets/subflow-menu.png)
 
 ![Ambito del blocco decoder](assets/decoder.png)
 

@@ -388,15 +388,11 @@
     ]
   },
   "subflow-menu.png": {
-    "caption": "Menu contestuale del sottoflusso",
+    "caption": "Ingresso nel sottoflusso",
     "callouts": [
       {
         "number": 1,
         "region": "Entra nel sottoflusso"
-      },
-      {
-        "number": 2,
-        "region": "Espandi e ispeziona"
       }
     ]
   },

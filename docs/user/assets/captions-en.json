@@ -22,7 +22,7 @@
   "training-dashboard.png": {"caption":"Dashboard after 12 training steps","callouts":[{"number":1,"region":"Backend connection"},{"number":2,"region":"Training configuration"},{"number":3,"region":"Job history and status"},{"number":4,"region":"Training and validation loss curves"},{"number":5,"region":"Curve visibility and scale"},{"number":6,"region":"Final test loss"},{"number":7,"region":"Training and worker log"},{"number":8,"region":"Download, restore, cancel and close actions"}],"details":"Completed in 3 epochs; final test loss 3.345268."},
   "training-scale.png": {"caption":"Choose a learning-curve scale","callouts":[{"number":1,"region":"Linear or logarithmic curve scale"}]},
   "download-wheel.png": {"caption":"Save a downloaded wheel file","callouts":[{"number":1,"region":"Wheel filename and destination"},{"number":2,"region":"Save the downloaded wheel"}]},
-  "subflow-menu.png": {"caption":"Subflow context menu","callouts":[{"number":1,"region":"Enter the subflow"},{"number":2,"region":"Expand and inspect"}]},
+  "subflow-menu.png": {"caption":"Subflow entry","callouts":[{"number":1,"region":"Enter the subflow"}]},
   "decoder.png": {"caption":"Decoder subflow graph","callouts":[{"number":1,"region":"Current nested scope"},{"number":2,"region":"Repeated subflow block"},{"number":3,"region":"Projection and activation layers"}]},
   "inspector-reference.png": {"caption":"Package reference in the Properties panel","callouts":[{"number":1,"region":"Referenced package"},{"number":2,"region":"Reference parameters"}]},
   "inspector-reference-menu.png": {"caption":"Choose a package reference","callouts":[{"number":1,"region":"Available packages"}]},
