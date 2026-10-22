@@ -52,9 +52,6 @@ Le suite backend (15 test), runtime (15) ed esempi (32) sono passate.
 Il percorso con corpus completo e 20 epoche è documentato dai file dell'esempio
 e dallo script di preparazione; non è stato rieseguito durante questa sessione.
 
-Il contratto descrive Network 3D, ma questa interfaccia non espone i relativi
-controlli: il manuale lo segnala, senza illustrare funzioni non accessibili.
-
 Il modulo stereotype è stato acquisito per intero usando un display virtuale
 alto 1600 pixel. Durante le prove di chiusura di questo modulo tramite bridge,
 Escape ha terminato la sessione Qt. La creazione e l'annullamento del modulo

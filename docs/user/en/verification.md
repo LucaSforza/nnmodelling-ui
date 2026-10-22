@@ -32,8 +32,6 @@ and examples (32) suites passed.
 
 The full-corpus, 20-epoch path is documented by the example files and preparation script; it was not rerun during this session.
 
-The contract describes Network 3D, but this interface does not expose its controls. The guide reports this without describing inaccessible features.
-
 The stereotype form was captured in full using a 1600-pixel-high virtual display. During tests to close this form through the bridge, Escape terminated the Qt session. Creation and cancellation are described from code; they are not reported as successful GUI operations. The illustrated dataset form is the edit form: creation shares its fields and tables, with the differences noted in the text.
 
 The checks did not modify original examples or the model excluded from the request. Original screenshots, the demonstration copy and artifacts remain outside versioned files. Temporary verification services were stopped when work ended.

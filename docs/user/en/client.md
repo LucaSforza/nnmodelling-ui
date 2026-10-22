@@ -310,7 +310,3 @@ threshold determine when to stop, while the lowest validation loss determines
 exported weights. Logs and metrics distinguish budgets, updates and processed
 tokens. A small budget is not full-corpus completion. For light trials keep CPU,
 Float32, Adam and early stopping disabled.
-
-## Features not exposed in the current interface
-
-The project describes a `Network 3D` explorer, but the current Qt window has no 3D tab, menu or command. Therefore its flight, display, occurrence selection, `Fit` and 3D `Home` controls are unavailable in this version. The 2D canvas is the only graph editor exposed.

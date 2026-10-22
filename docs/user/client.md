@@ -318,8 +318,3 @@ ed esportazione, anche quando finisce il budget. Patience e soglia decidono
 quando fermarsi, non quali pesi esportare. Log e metriche distinguono budget,
 aggiornamenti e token elaborati. Un budget breve non indica completamento del
 corpus. Per prove leggere lascia CPU, Float32, Adam e early stopping disattivato.
-
-
-## Funzioni non presenti nell'interfaccia corrente
-
-Il progetto descrive un esploratore `Network 3D`, ma la finestra Qt attuale non contiene una scheda, un menu o un comando 3D. Di conseguenza in questa versione non sono disponibili i controlli di volo, visualizzazione, selezione occorrenze, `Fit` o `Home` 3D. Il canvas 2D resta l'unico editor grafico esposto.
