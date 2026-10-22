@@ -5,6 +5,7 @@
 #include <string.h>
 
 #define NN_OPERATION_LIMIT 256
+static bool json_text(yyjson_val *object, const char *key, const char **text);
 
 static const char *const python_keywords[] = {
     "False", "None", "True", "and", "as", "assert", "async", "await",
@@ -27,6 +28,229 @@ void nn_project_operations_dispose(NNModelOperation *operations, size_t count)
         free(operations[i].output.codec);
     }
     free(operations);
+}
+
+void nn_project_metavariables_dispose(NNMetavariable *items, size_t count)
+{
+    if (!items) return;
+    for (size_t i = 0; i < count; ++i) {
+        free(items[i].name);
+        free(items[i].type);
+        nn_value_dispose(&items[i].value);
+    }
+    free(items);
+}
+
+static bool valid_metavariable_name(const char *name)
+{
+    if (!name || !*name || strlen(name) > 128 ||
+        !(name[0] == '_' || (name[0] >= 'A' && name[0] <= 'Z') ||
+          (name[0] >= 'a' && name[0] <= 'z'))) return false;
+    for (const unsigned char *p = (const unsigned char *)name + 1; *p; ++p)
+        if (!( (*p >= 'A' && *p <= 'Z') || (*p >= 'a' && *p <= 'z') ||
+               (*p >= '0' && *p <= '9') || *p == '_' || *p == '-')) return false;
+    return true;
+}
+
+static bool contains_binding(const NNValue *value)
+{
+    if (!value) return false;
+    if (value->type == NN_VALUE_OBJECT) {
+        if (value->as.object.count == 1 && value->as.object.items) {
+            const NNParameter *item = &value->as.object.items[0];
+            if (item->key && (!strcmp(item->key, "$ref") || !strcmp(item->key, "$lua")))
+                return true;
+        }
+        for (size_t i = 0; i < value->as.object.count; ++i)
+            if (contains_binding(&value->as.object.items[i].value)) return true;
+    } else if (value->type == NN_VALUE_ARRAY) {
+        for (size_t i = 0; i < value->as.array.count; ++i)
+            if (contains_binding(&value->as.array.items[i])) return true;
+    }
+    return false;
+}
+
+bool nn_project_parse_metavariables(NNProject *project, yyjson_val *value,
+                                    char *error, size_t capacity)
+{
+    if (!project) return nn_fail(error, capacity, "project is null");
+    if (!value) return true;
+    if (!yyjson_is_arr(value) || yyjson_arr_size(value) > 256)
+        return nn_fail(error, capacity, "invalid metavariable list");
+    size_t count = yyjson_arr_size(value);
+    NNMetavariable *items = calloc(count ? count : 1, sizeof(*items));
+    if (!items) return nn_fail(error, capacity, "out of memory loading metavariables");
+    bool okay = true;
+    for (size_t i = 0; okay && i < count; ++i) {
+        yyjson_val *entry = yyjson_arr_get(value, i);
+        const char *name = NULL, *type = NULL;
+        yyjson_val *raw = yyjson_obj_get(entry, "value");
+        if (!yyjson_is_obj(entry) || yyjson_obj_size(entry) != 3 || !json_text(entry, "name", &name) ||
+            !json_text(entry, "type", &type) || !raw || !valid_metavariable_name(name) ||
+            (strcmp(type, "boolean") && strcmp(type, "integer") &&
+             strcmp(type, "number") && strcmp(type, "string") &&
+             strcmp(type, "dtype") && strcmp(type, "json") &&
+             strcmp(type, "stereotype"))) {
+            nn_errorf(error, capacity, "invalid metavariable at index %zu", i);
+            okay = false;
+            break;
+        }
+        for (size_t j = 0; j < i; ++j)
+            if (!strcmp(name, items[j].name)) {
+                nn_errorf(error, capacity, "duplicate metavariable name: %s", name);
+                okay = false;
+                break;
+            }
+        if (!okay) break;
+        items[i].name = nn_text_copy(name);
+        items[i].type = nn_text_copy(type);
+        okay = items[i].name && items[i].type && nn_project_parse_value(raw, &items[i].value);
+        if (okay && !strcmp(type, "number") && items[i].value.type == NN_VALUE_INT) {
+            long long integer = items[i].value.as.integer;
+            if (integer > 9007199254740992LL || integer < -9007199254740992LL) {
+                nn_errorf(error, capacity, "number metavariable '%s' is not exactly representable", name);
+                okay = false;
+            } else {
+                items[i].value.type = NN_VALUE_REAL;
+                items[i].value.as.real = (double)integer;
+            }
+        }
+        if (okay && contains_binding(&items[i].value)) {
+            nn_errorf(error, capacity, "metavariable '%s' must contain literal values", name);
+            okay = false;
+        }
+        NNParameterDef definition = { .key = name, .type = type };
+        if (okay) okay = nn_catalog_validate_value(project->catalog, &definition,
+                                                     &items[i].value, error, capacity);
+        if (!okay && (!error || !capacity || !error[0]))
+            nn_errorf(error, capacity, "invalid value for metavariable '%s'", name);
+    }
+    if (!okay) {
+        nn_project_metavariables_dispose(items, count);
+        return false;
+    }
+    project->metavariables = items;
+    project->metavariable_count = count;
+    return true;
+}
+
+static bool values_equal(const NNValue *a, const NNValue *b)
+{
+    if (!a || !b || a->type != b->type) return false;
+    switch (a->type) {
+    case NN_VALUE_BOOL: return a->as.boolean == b->as.boolean;
+    case NN_VALUE_INT: return a->as.integer == b->as.integer;
+    case NN_VALUE_REAL: return a->as.real == b->as.real;
+    case NN_VALUE_STRING: return a->as.string && b->as.string && !strcmp(a->as.string, b->as.string);
+    case NN_VALUE_ARRAY:
+        if (a->as.array.count != b->as.array.count) return false;
+        for (size_t i = 0; i < a->as.array.count; ++i)
+            if (!values_equal(&a->as.array.items[i], &b->as.array.items[i])) return false;
+        return true;
+    case NN_VALUE_OBJECT:
+        if (a->as.object.count != b->as.object.count) return false;
+        for (size_t i = 0; i < a->as.object.count; ++i) {
+            const NNValue *right = nn_value_member(b, a->as.object.items[i].key);
+            if (!right || !values_equal(&a->as.object.items[i].value, right)) return false;
+        }
+        return true;
+    default: return false;
+    }
+}
+
+bool nn_project_set_metavariables_json(NNProject *project, const char *json, bool *changed,
+                                       char *error, size_t capacity)
+{
+    if (changed) *changed = false;
+    if (error && capacity) error[0] = '\0';
+    if (!project || !json) return nn_fail(error, capacity, "invalid metavariable JSON");
+    yyjson_doc *document = yyjson_read(json, strlen(json), 0);
+    if (!document) return nn_fail(error, capacity, "invalid metavariable JSON");
+    NNProject parsed = { .catalog = project->catalog };
+    bool okay = nn_project_parse_metavariables(&parsed, yyjson_doc_get_root(document), error, capacity);
+    yyjson_doc_free(document);
+    if (!okay) { nn_project_metavariables_dispose(parsed.metavariables, parsed.metavariable_count); return false; }
+    bool same = project->metavariable_count == parsed.metavariable_count;
+    for (size_t i = 0; same && i < parsed.metavariable_count; ++i) {
+        const NNMetavariable *a = &project->metavariables[i], *b = &parsed.metavariables[i];
+        same = !strcmp(a->name, b->name) && !strcmp(a->type, b->type) && values_equal(&a->value, &b->value);
+    }
+    if (!same) {
+        nn_project_metavariables_dispose(project->metavariables, project->metavariable_count);
+        project->metavariables = parsed.metavariables;
+        project->metavariable_count = parsed.metavariable_count;
+        parsed.metavariables = NULL;
+        parsed.metavariable_count = 0;
+        project->dirty = true;
+        if (changed) *changed = true;
+    }
+    nn_project_metavariables_dispose(parsed.metavariables, parsed.metavariable_count);
+    return true;
+}
+
+const NNMetavariable *nn_project_metavariables(const NNProject *project, size_t *count)
+{
+    if (count) *count = project ? project->metavariable_count : 0;
+    return project ? project->metavariables : NULL;
+}
+
+static yyjson_mut_val *write_value(yyjson_mut_doc *doc, const NNValue *value)
+{
+    switch (value->type) {
+    case NN_VALUE_BOOL: return yyjson_mut_bool(doc, value->as.boolean);
+    case NN_VALUE_INT: return yyjson_mut_sint(doc, value->as.integer);
+    case NN_VALUE_REAL: return yyjson_mut_real(doc, value->as.real);
+    case NN_VALUE_STRING: return value->as.string ? yyjson_mut_strcpy(doc, value->as.string) : NULL;
+    case NN_VALUE_ARRAY: {
+        yyjson_mut_val *array = yyjson_mut_arr(doc);
+        if (!array) return NULL;
+        for (size_t i = 0; i < value->as.array.count; ++i) {
+            yyjson_mut_val *item = write_value(doc, &value->as.array.items[i]);
+            if (!item || !yyjson_mut_arr_append(array, item)) return NULL;
+        }
+        return array;
+    }
+    case NN_VALUE_OBJECT: {
+        yyjson_mut_val *object = yyjson_mut_obj(doc);
+        if (!object) return NULL;
+        for (size_t i = 0; i < value->as.object.count; ++i) {
+            yyjson_mut_val *item = write_value(doc, &value->as.object.items[i].value);
+            if (!item || !yyjson_mut_obj_add_val(doc, object, value->as.object.items[i].key, item)) return NULL;
+        }
+        return object;
+    }
+    default: return NULL;
+    }
+}
+
+yyjson_mut_val *nn_project_write_metavariables(yyjson_mut_doc *doc, const NNProject *project)
+{
+    yyjson_mut_val *array = yyjson_mut_arr(doc);
+    if (!array) return NULL;
+    for (size_t i = 0; i < project->metavariable_count; ++i) {
+        const NNMetavariable *variable = &project->metavariables[i];
+        yyjson_mut_val *entry = yyjson_mut_obj(doc);
+        yyjson_mut_val *value = write_value(doc, &variable->value);
+        if (!entry || !value || !yyjson_mut_obj_add_str(doc, entry, "name", variable->name) ||
+            !yyjson_mut_obj_add_str(doc, entry, "type", variable->type) ||
+            !yyjson_mut_obj_add_val(doc, entry, "value", value) || !yyjson_mut_arr_append(array, entry)) return NULL;
+    }
+    return array;
+}
+
+char *nn_project_metavariables_json(const NNProject *project, char *error, size_t capacity)
+{
+    if (error && capacity) error[0] = '\0';
+    if (!project) { nn_errorf(error, capacity, "no active project"); return NULL; }
+    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
+    if (!doc) { nn_errorf(error, capacity, "out of memory serializing metavariables"); return NULL; }
+    yyjson_mut_val *array = nn_project_write_metavariables(doc, project);
+    if (!array) { yyjson_mut_doc_free(doc); nn_errorf(error, capacity, "unable to serialize metavariables"); return NULL; }
+    yyjson_mut_doc_set_root(doc, array);
+    char *text = yyjson_mut_write_opts(doc, YYJSON_WRITE_PRETTY_TWO_SPACES, NULL, NULL, NULL);
+    yyjson_mut_doc_free(doc);
+    if (!text) nn_errorf(error, capacity, "unable to serialize metavariables");
+    return text;
 }
 
 static bool json_text(yyjson_val *object, const char *key, const char **text)
@@ -202,6 +426,7 @@ void nn_project_close(NNProject *project)
     }
     for (size_t i = 0; project->datasets && i < project->dataset_count; ++i) nn_project_dataset_dispose(&project->datasets[i]);
     nn_project_operations_dispose(project->operations, project->operation_count);
+    nn_project_metavariables_dispose(project->metavariables, project->metavariable_count);
     free(project->packages); free(project->datasets);
     free(project->directory); free(project->core_root); free(project->id); free(project->version);
     free(project->name); free(project->description); free(project->layout_direction);

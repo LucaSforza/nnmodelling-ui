@@ -42,6 +42,7 @@ set(NN_PROJECT_SOURCES
 set(NN_INFERENCE_SOURCES
     src/inference/results.c src/inference/evaluation_utils.c src/inference/scope_cache.c
     src/inference/scope.c src/inference/lua_rule.c
+    src/inference/metavariables.c
     src/inference/parameter_counts.c
     src/inference/lua_runtime.c src/inference/lua_sandbox.c
     src/inference/lua_tensor_ops.c src/inference/owned_tensors.c
@@ -49,7 +50,8 @@ set(NN_INFERENCE_SOURCES
 set(NN_APPLICATION_SOURCES
     src/application/application.c src/application/resources.c
     src/application/history.c
-    src/application/graph_commands.c src/application/parameters.c src/application/ports.c)
+    src/application/graph_commands.c src/application/parameters.c src/application/ports.c
+    src/application/resolved_model.c)
 set(NN_AUTOMATION_SOURCES
     src/automation/dispatch.c src/automation/commands.c src/automation/snapshot.c
     src/automation/diagnostics.c src/automation/transport.c src/automation/automation_utils.c)
@@ -97,12 +99,17 @@ if(BUILD_TESTING)
     target_link_libraries(project_test PRIVATE nn_json nn_utils m)
     add_test(NAME project COMMAND project_test)
     set_tests_properties(project PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}" LABELS core)
+    add_executable(metavariable_test tests/metavariable_test.c)
+    target_include_directories(metavariable_test PRIVATE third_party/yyjson)
+    target_link_libraries(metavariable_test PRIVATE nnmodelling_core)
+    add_test(NAME metavariable COMMAND metavariable_test)
+    set_tests_properties(metavariable PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}" LABELS core)
     add_executable(lua_smoke tests/lua_smoke.c)
     target_link_libraries(lua_smoke PRIVATE nn_lua)
     add_test(NAME lua COMMAND lua_smoke)
     set_tests_properties(lua PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}" LABELS core)
     # Existing tests use assert for their checks, including in Release builds.
-    foreach(name IN ITEMS model_test catalog_test inference_test inference_cache_test application_test resources_test automation_test history_test project_test lua_smoke utils_test stereotype_reference_test parameter_count_test)
+    foreach(name IN ITEMS model_test catalog_test inference_test inference_cache_test application_test resources_test automation_test history_test project_test lua_smoke utils_test stereotype_reference_test parameter_count_test metavariable_test)
         if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
             target_compile_options(${name} PRIVATE -Wall -Wextra -Werror -pedantic -UNDEBUG)
         endif()
@@ -130,6 +137,7 @@ if(NN_BUILD_GUI)
         src/gui/qt/BackendServiceManager.cpp src/gui/qt/BackendServiceManager.hpp
         src/gui/qt/TrainingCurveWidget.cpp src/gui/qt/TrainingCurveWidget.hpp
         src/gui/qt/MainWindowProject.cpp src/gui/qt/MainWindowAutomation.cpp
+        src/gui/qt/MainWindowMetavariables.cpp
         src/gui/qt/MainWindowOperations.cpp
         src/gui/qt/MainWindowParameterCounts.cpp
         src/gui/qt/MainWindowStereotypeAuthoring.cpp src/gui/qt/MainWindowDatasetAuthoring.cpp
@@ -174,6 +182,17 @@ if(NN_BUILD_GUI)
         endif()
         add_test(NAME qt_operations COMMAND qt_operations_test)
         set_tests_properties(qt_operations PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+            ENVIRONMENT "QT_QPA_PLATFORM=offscreen" LABELS gui TIMEOUT 45)
+        add_executable(qt_metavariables_test tests/qt_metavariables_test.cpp ${QT_WINDOW_SOURCES})
+        set_target_properties(qt_metavariables_test PROPERTIES AUTOMOC ON)
+        target_include_directories(qt_metavariables_test PRIVATE src/gui/qt)
+        target_link_libraries(qt_metavariables_test PRIVATE nnmodelling_canvas Qt6::Network Qt6::Test)
+        target_compile_definitions(qt_metavariables_test PRIVATE NN_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+        if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+            target_compile_options(qt_metavariables_test PRIVATE -Wall -Wextra -Werror -pedantic)
+        endif()
+        add_test(NAME qt_metavariables COMMAND qt_metavariables_test)
+        set_tests_properties(qt_metavariables PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
             ENVIRONMENT "QT_QPA_PLATFORM=offscreen" LABELS gui TIMEOUT 45)
         add_executable(qt_canvas_test tests/qt_canvas_test.cpp)
         set_target_properties(qt_canvas_test PROPERTIES AUTOMOC ON)

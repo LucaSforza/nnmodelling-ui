@@ -52,7 +52,36 @@ static bool add_value(yyjson_mut_doc *doc, yyjson_mut_val *object,
     return serialized && yyjson_mut_obj_add_val(doc, object, key, serialized);
 }
 
-bool nn_project_write_project_document(NNProject *project, char **json, size_t *length)
+static bool value_is_binding(const NNValue *value)
+{
+    if (!value) return false;
+    if (value->type == NN_VALUE_OBJECT && value->as.object.count == 1 &&
+        value->as.object.items) {
+        const NNParameter *entry = &value->as.object.items[0];
+        if (entry->key && (!strcmp(entry->key, "$ref") || !strcmp(entry->key, "$lua")) &&
+            entry->value.type == NN_VALUE_STRING) return true;
+    }
+    if (value->type == NN_VALUE_ARRAY)
+        for (size_t i = 0; i < value->as.array.count; ++i)
+            if (value_is_binding(&value->as.array.items[i])) return true;
+    if (value->type == NN_VALUE_OBJECT)
+        for (size_t i = 0; i < value->as.object.count; ++i)
+            if (value_is_binding(&value->as.object.items[i].value)) return true;
+    return false;
+}
+
+static bool uses_metavariables(const NNProject *project)
+{
+    if (project->metavariable_count) return true;
+    for (size_t i = 0; i < nn_model_node_count(project->model); ++i) {
+        const NNNode *node = nn_model_node_at(project->model, i);
+        for (size_t j = 0; node && j < node->parameter_count; ++j)
+            if (value_is_binding(&node->parameters[j].value)) return true;
+    }
+    return false;
+}
+
+bool nn_project_write_project_document(const NNProject *project, char **json, size_t *length)
 {
     yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
     if (!doc) return false;
@@ -64,7 +93,7 @@ bool nn_project_write_project_document(NNProject *project, char **json, size_t *
         yyjson_mut_obj_add_val(doc, root, "edges", edges) &&
         add_string(doc, root, "layoutDirection", project->layout_direction ? project->layout_direction : "horizontal") &&
         yyjson_mut_obj_add_val(doc, root, "manifest", manifest) &&
-        yyjson_mut_obj_add_int(doc, manifest, "schemaVersion", 2) &&
+        yyjson_mut_obj_add_int(doc, manifest, "schemaVersion", uses_metavariables(project) ? 3 : 2) &&
         add_string(doc, manifest, "id", project->id) &&
         add_string(doc, manifest, "version", project->version) &&
         add_string(doc, manifest, "name", project->name) &&
@@ -72,10 +101,12 @@ bool nn_project_write_project_document(NNProject *project, char **json, size_t *
     yyjson_mut_val *packages = okay ? yyjson_mut_arr(doc) : NULL;
     yyjson_mut_val *datasets = okay ? yyjson_mut_arr(doc) : NULL;
     yyjson_mut_val *operations = okay ? nn_project_write_operations(doc, project) : NULL;
+    yyjson_mut_val *metavariables = okay ? nn_project_write_metavariables(doc, project) : NULL;
     okay = okay && packages && datasets &&
         yyjson_mut_obj_add_val(doc, manifest, "customPackages", packages) &&
         yyjson_mut_obj_add_val(doc, manifest, "customDatasets", datasets) && operations &&
-        yyjson_mut_obj_add_val(doc, manifest, "operations", operations);
+        yyjson_mut_obj_add_val(doc, manifest, "operations", operations) && metavariables &&
+        (!project->metavariable_count || yyjson_mut_obj_add_val(doc, manifest, "metavariables", metavariables));
     for (size_t i = 0; okay && i < project->package_count; ++i) {
         const NNResourceRef *ref = &project->packages[i];
         yyjson_mut_val *item = yyjson_mut_obj(doc);
@@ -141,6 +172,19 @@ bool nn_project_write_project_document(NNProject *project, char **json, size_t *
     }
     yyjson_mut_doc_free(doc);
     return okay;
+}
+
+char *nn_project_model_json(const NNProject *project, char *error, size_t capacity)
+{
+    if (error && capacity) error[0] = '\0';
+    char *json = NULL;
+    size_t length = 0;
+    if (!project || !nn_project_write_project_document(project, &json, &length)) {
+        nn_fail(error, capacity, "unable to serialize project model");
+        free(json);
+        return NULL;
+    }
+    return json;
 }
 
 bool nn_project_save(NNProject *project, char *error, size_t capacity)

@@ -47,7 +47,7 @@ The original project remains available for other experiments. To make a manual c
 
 ## 3. Read the graph before submitting
 
-The model uses a **65-character** vocabulary, context length **128**, width **64**, **two** decoder blocks, **four** attention heads of width **16**, and a feed-forward layer of width **256**. The root Input receives `tokens`; Embedding and Positional Encoding prepare the representations; Repeat applies the decoder blocks; LayerNorm and Linear produce logits; Token Cross Entropy feeds `Loss Output`. `Output` collects the prediction.
+The current model uses a **65-character** vocabulary, context length **128**, width **64**, **ten** decoder blocks, **eight** attention heads of width **8**, and a feed-forward layer of width **256**. **Model > Manage metavariables** contains `embedding-features = 64` and `num-heads = 8`; changing them recalculates shared dimensions through Inspector references and formulas. Model width must be divisible by the head count. The root Input receives `tokens`; Embedding and Positional Encoding prepare the representations; Repeat applies the decoder blocks; LayerNorm and Linear produce logits; Token Cross Entropy feeds `Loss Output`. `Output` collects the prediction. Graph screenshots show the historical two-block, four-head version.
 
 ![Root graph of the language model](../assets/overview.png)
 
@@ -60,7 +60,7 @@ Check `Project resources`: `llm.tokens@1.0.0` must be active. `Dataset… > Edit
 
 Choose `Cancel` if you are only inspecting. The included dataset contains **64** training, **16** validation and **16** test windows, taken from a Tiny Shakespeare excerpt. It is ready to use; the first training run does not need a corpus download.
 
-Select Repeat: the Inspector shows `times = 2` and output `float32[B, 128, 64]`. Open `Scope` and choose the decoder block; in its scope select HorizontalRepeat: `times = 4`, `join = Concat`, `dim = -1`. Enter the attention-head scope to see `Q × Kᵀ`, scale `0.25 = 1/√16`, causal mask, Softmax and multiplication by V. The join concatenates four width-16 results into a width-64 tensor.
+Select Repeat: the Inspector shows `times = 10` and output `float32[B, 128, 64]`. Open `Scope` and choose the decoder block; select HorizontalRepeat: `times = $num-heads`, resolved value `8`, `join = Concat`, `dim = -1`. In the attention-head scope Q/K/V use `$(params.in_features / meta["num-heads"])`, resolved to `8`. Scale uses `$(1 / math.sqrt(meta["embedding-features"] / meta["num-heads"]))`, resolved to approximately `0.353553`. Causal masking, Softmax and multiplication by V follow. The join concatenates eight width-8 results into a width-64 tensor.
 
 ![Explicit attention inside HorizontalRepeat](../assets/attention.png)
 

@@ -3,6 +3,7 @@
 
 #include <stddef.h>
 #include <stdbool.h>
+#include "catalog/catalog.h"
 
 typedef struct NNProject NNProject;
 typedef struct NNInferenceReport NNInferenceReport;
@@ -46,6 +47,9 @@ typedef struct {
 NNInferenceReport *nn_infer_project(const NNProject *project);
 bool nn_inference_validate_source(const char *source, char *error,
                                  size_t error_capacity);
+bool nn_inference_resolve_parameters(const NNProject *project, const char *node_id,
+                                     NNParameter **parameters, size_t *count,
+                                     char *error, size_t error_capacity);
 void nn_inference_free(NNInferenceReport *report);
 size_t nn_inference_count(const NNInferenceReport *report);
 const NNInferenceResult *nn_inference_at(const NNInferenceReport *report, size_t index);

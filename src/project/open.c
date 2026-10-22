@@ -53,9 +53,11 @@ NNProject *nn_project_open(const char *directory, const char *core_root,
     const char *version = nn_project_string_field(manifest, "version");
     const char *name = nn_project_string_field(manifest, "name");
     const char *description = nn_project_string_field(manifest, "description");
-    bool okay = yyjson_get_int(yyjson_obj_get(manifest, "schemaVersion")) == 2 &&
+    int schema_version = (int)yyjson_get_int(yyjson_obj_get(manifest, "schemaVersion"));
+    bool okay = (schema_version == 2 || schema_version == 3) &&
                 nn_project_valid_id(id) && nn_project_valid_id(version) && name && *name;
-    if (!okay) nn_error_set(error, capacity, "invalid schema-v2 project manifest");
+    if (!okay) nn_error_set(error, capacity, "invalid project manifest schema");
+    project->schema_version = schema_version;
     if (okay) {
         project->id = nn_text_copy(id);
         project->version = nn_text_copy(version);
@@ -125,6 +127,8 @@ NNProject *nn_project_open(const char *directory, const char *core_root,
     }
     if (okay) okay = nn_project_parse_operations(project,
         yyjson_obj_get(manifest, "operations"), error, capacity);
+    if (okay) okay = nn_project_parse_metavariables(project,
+        yyjson_obj_get(manifest, "metavariables"), error, capacity);
     if (okay) okay = nn_project_parse_graph(project, root, error, capacity);
     yyjson_doc_free(document);
     if (!okay) {

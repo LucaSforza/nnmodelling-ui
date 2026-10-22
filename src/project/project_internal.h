@@ -20,6 +20,9 @@ struct NNProject {
     size_t dataset_count;
     NNModelOperation *operations;
     size_t operation_count;
+    NNMetavariable *metavariables;
+    size_t metavariable_count;
+    int schema_version;
     NNModel *model;
     NNCatalog *catalog;
     bool dirty;
@@ -41,11 +44,16 @@ bool nn_project_edge_topology_valid(const NNModel *model, const NNCatalog *catal
                                     const NNEdge *edge, char *error, size_t capacity);
 bool nn_project_parse_graph(NNProject *project, yyjson_val *root,
                             char *error, size_t capacity);
-bool nn_project_write_project_document(NNProject *project, char **json, size_t *length);
+bool nn_project_write_project_document(const NNProject *project, char **json, size_t *length);
 bool nn_project_parse_operations(NNProject *project, yyjson_val *value,
                                  char *error, size_t capacity);
 void nn_project_operations_dispose(NNModelOperation *operations, size_t count);
 yyjson_mut_val *nn_project_write_operations(yyjson_mut_doc *doc,
                                            const NNProject *project);
+void nn_project_metavariables_dispose(NNMetavariable *items, size_t count);
+bool nn_project_parse_metavariables(NNProject *project, yyjson_val *value,
+                                    char *error, size_t capacity);
+yyjson_mut_val *nn_project_write_metavariables(yyjson_mut_doc *doc,
+                                               const NNProject *project);
 
 #endif

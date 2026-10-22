@@ -14,7 +14,7 @@ NNInferenceReport *nn_infer_project(const NNProject *project)
     report->items = calloc(count ? count : 1, sizeof(*report->items));
     if (!report->items) { free(report); return NULL; }
     report->count = count;
-    Evaluation evaluation = { .model = model,
+    Evaluation evaluation = { .project = project, .model = model,
         .catalog = nn_project_catalog(project), .report = report,
         .dataset = nn_project_active_dataset(project) };
     Tensor ignored = {0}; char *message = NULL;

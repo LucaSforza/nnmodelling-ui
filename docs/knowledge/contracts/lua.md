@@ -1,5 +1,24 @@
 # Embedded Lua contract
 
+## Parameter expressions (accepted 2026-10-14)
+
+The C/Lua parameter resolver is the only formula evaluator. `$name` resolves a
+model declaration; `$(...)` is a Lua expression compiled as `return <expression>`.
+The environment exposes math and read-only lookup views `meta` and `params`.
+It excludes file/process/network/module loading, random and model mutation.
+Use the existing 16 MiB memory and 200000-instruction per-state limits; resolution
+depth is bounded to 64, with explicit cycle detection and errors naming the node
+and parameter. Lua tables convert only to existing bounded NNValue trees.
+References inside stereotype parameters resolve against that application's own
+defaulted schema. Resolve before rule invocation and parameter-count invocation;
+both see identical concrete values. Errors remain structured per-node problems:
+unknown/missing dependencies are unresolved, cycles and wrong result types are
+semantic errors, Lua syntax errors are compilation errors, and sandbox execution
+or budget errors are runtime faults. Allocation failure discards the report.
+Classification is typed resolver state, never parsed from diagnostic text.
+Errors never produce fabricated defaults or stale successful values. Export uses this same
+resolver and freezes concrete values; Python never translates or evaluates Lua.
+
 Official Lua 5.5.1 source is compiled in-tree by `justfile` as a static C
 library. The build
 must not fetch Lua or link a system Lua. Its original MIT notice remains in

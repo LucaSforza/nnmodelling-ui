@@ -1,5 +1,35 @@
 # Project and editor sequences
 
+## Manage metavariables and use bindings (accepted 2026-10-14)
+
+```mermaid
+  sequenceDiagram
+    actor User
+    participant Qt as Metavariable manager and Inspector
+    participant App as C application
+    participant Project as Project declarations and model bindings
+    participant Resolve as Bounded C Lua resolver
+    User->>Qt: New/Edit/Remove staged declarations
+    User->>Qt: Save list
+    Qt->>App: set_metavariables_json
+    App->>Project: validate and atomically publish changed metadata
+    App->>App: unsaved history barrier and invalidate analysis
+    User->>Qt: enter $name or $(expression) in parameter field
+    Qt->>App: set_parameter_text
+    App->>Project: store explicit authored binding in normal graph history
+    Qt->>App: resolved_parameter_text and analysis
+    App->>Resolve: resolve meta and sibling params, validate destination
+    Resolve-->>Qt: concrete preview or named diagnostic through application
+    Qt->>Qt: show source in one value editor and size preview rows
+    Qt->>App: resolved_parameter_text for canvas parameter rows
+    App-->>Qt: concrete value or error
+    Qt->>Qt: paint computed value or unknown marker and retain source binding
+    User->>Qt: submit training
+    Qt->>App: resolved_model_json
+    App->>Resolve: compile all defaulted parameters without source mutation
+    Resolve-->>Qt: schema-2 execution graph or error
+```
+
 These flows follow `src/application/application.c`, `src/application/graph_commands.c`,
 `src/application/history.c`, `src/project/project.c`, `src/model/model.c` and the
 Qt entrypoints in `src/gui/qt/MainWindow*.cpp`, `GraphScene.cpp` and

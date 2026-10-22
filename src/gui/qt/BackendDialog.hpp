@@ -37,6 +37,9 @@ private:
     void openBackendConfiguration();
     void createBackendConfiguration();
     void startManagedBackend();
+    void startWorkerPreparation(bool checkOnly);
+    bool savePreparationProfile(bool checkOnly);
+    void updateWorkerPreparationState(bool running);
     void checkJobsBeforeRestart();
     void setMessage(const QString &message, bool error = false);
     QUrl endpointUrl(const QString &path) const;
@@ -89,6 +92,11 @@ private:
     QLineEdit *slurmSsh_ = nullptr;
     QLabel *configurationPath_ = nullptr;
     QPushButton *managedBackendButton_ = nullptr;
+    QPushButton *prepareWorkerButton_ = nullptr;
+    QPushButton *checkWorkerButton_ = nullptr;
+    QPushButton *cancelWorkerButton_ = nullptr;
+    QLabel *workerPreparationStatus_ = nullptr;
+    QPlainTextEdit *workerPreparationLog_ = nullptr;
     QString selectedJob_;
     QString jobsEndpointInFlight_;
     bool jobsRequestInFlight_ = false;

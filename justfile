@@ -31,6 +31,12 @@ backend-sync:
 backend-image:
     "${NNMODELLING_CONTAINER_RUNTIME:-docker}" build -f backend/Dockerfile -t "${NNMODELLING_WORKER_IMAGE:-nnmodelling-worker:local}" .
 
+backend-prepare-worker *args:
+    uv run --no-sync python -m backend.prepare_worker --profile "${NNMODELLING_CONFIG:-${XDG_CONFIG_HOME:-$HOME/.config}/nnmodelling/config.json}" {{args}}
+
+backend-check-worker *args:
+    uv run --no-sync python -m backend.prepare_worker --profile "${NNMODELLING_CONFIG:-${XDG_CONFIG_HOME:-$HOME/.config}/nnmodelling/config.json}" --check {{args}}
+
 backend-run:
     uv run --package nnmodelling-backend --no-sync uvicorn backend.app:app --host "${NNMODELLING_BACKEND_HOST:-127.0.0.1}" --port "${NNMODELLING_BACKEND_PORT:-8765}"
 

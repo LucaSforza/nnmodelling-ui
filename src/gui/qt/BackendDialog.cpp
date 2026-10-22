@@ -26,6 +26,7 @@
 #include <QNetworkReply>
 #include <QNetworkRequest>
 #include <QPlainTextEdit>
+#include <QProgressBar>
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QSaveFile>
@@ -444,6 +445,7 @@ BackendDialog::BackendDialog(NNApplication *application, std::function<bool()> s
     auto *actions = new QHBoxLayout;
     for (const auto &entry : {qMakePair(tr("Download weights"), QStringLiteral("weights")),
                                qMakePair(tr("Download wheel"), QStringLiteral("wheel")),
+                               qMakePair(tr("Download Python package"), QStringLiteral("package")),
                                qMakePair(tr("Restore snapshot…"), QStringLiteral("restore")),
                                qMakePair(tr("Cancel job"), QStringLiteral("cancel"))}) {
         auto *button = new QPushButton(entry.first, this);
@@ -512,7 +514,7 @@ void BackendDialog::createBackendConfiguration()
     configurationDialog_->setObjectName(QStringLiteral("backendConfigurationWindow"));
     configurationDialog_->setWindowTitle(tr("Local backend service configuration"));
     configurationDialog_->setModal(false);
-    configurationDialog_->resize(560, 520);
+    configurationDialog_->resize(620, 740);
 
     auto *layout = new QVBoxLayout(configurationDialog_);
     auto *description = new QLabel(
@@ -634,6 +636,118 @@ void BackendDialog::createBackendConfiguration()
         managedBackendButton_->setText(tr("Restart local backend safely"));
     layout->addWidget(managedBackendButton_);
     connect(managedBackendButton_, &QPushButton::clicked, this, &BackendDialog::startManagedBackend);
+    prepareWorkerButton_ = new QPushButton(tr("Prepare and install worker"), configurationDialog_);
+    prepareWorkerButton_->setObjectName(QStringLiteral("prepareWorkerButton"));
+    checkWorkerButton_ = new QPushButton(tr("Check worker"), configurationDialog_);
+    checkWorkerButton_->setObjectName(QStringLiteral("checkWorkerButton"));
+    cancelWorkerButton_ = new QPushButton(tr("Cancel preparation"), configurationDialog_);
+    cancelWorkerButton_->setObjectName(QStringLiteral("cancelWorkerButton"));
+    cancelWorkerButton_->setEnabled(false);
+    auto *workerActions = new QHBoxLayout;
+    workerActions->addWidget(prepareWorkerButton_);
+    workerActions->addWidget(checkWorkerButton_);
+    workerActions->addWidget(cancelWorkerButton_);
+    layout->addLayout(workerActions);
+    workerPreparationStatus_ = new QLabel(tr("Worker preparation runs separately from the local API."), configurationDialog_);
+    workerPreparationStatus_->setObjectName(QStringLiteral("workerPreparationStatus"));
+    workerPreparationStatus_->setWordWrap(true);
+    layout->addWidget(workerPreparationStatus_);
+    workerPreparationLog_ = new QPlainTextEdit(configurationDialog_);
+    workerPreparationLog_->setObjectName(QStringLiteral("workerPreparationLog"));
+    workerPreparationLog_->setReadOnly(true);
+    workerPreparationLog_->setMaximumBlockCount(100);
+    workerPreparationLog_->setMaximumHeight(110);
+    layout->addWidget(workerPreparationLog_);
+    connect(prepareWorkerButton_, &QPushButton::clicked, this, [this] { startWorkerPreparation(false); });
+    connect(checkWorkerButton_, &QPushButton::clicked, this, [this] { startWorkerPreparation(true); });
+    connect(cancelWorkerButton_, &QPushButton::clicked, this, [this] {
+        if (serviceManager_) serviceManager_->cancelWorkerPreparation();
+    });
+    if (serviceManager_) {
+        connect(serviceManager_, &BackendServiceManager::workerPreparationProgress, this,
+                [this](const QString &phase, const QString &message, qint64 current, qint64 total) {
+            const QString progress = total > 0 ? QStringLiteral(" (%1 / %2)").arg(current).arg(total) : QString();
+            workerPreparationStatus_->setText(QStringLiteral("%1: %2%3").arg(phase, message, progress));
+            if (!message.isEmpty()) workerPreparationLog_->appendPlainText(QStringLiteral("%1: %2").arg(phase, message));
+        });
+        connect(serviceManager_, &BackendServiceManager::workerPreparationFinished, this,
+                [this](bool success, const QString &message) {
+            updateWorkerPreparationState(false);
+            workerPreparationStatus_->setText(message);
+            workerPreparationStatus_->setStyleSheet(success ? QString() : QStringLiteral("color: #a22; font-weight: 600;"));
+            if (success) {
+                QString path, error;
+                QJsonObject profile;
+                if (serviceManager_->loadUserConfig(&path, &profile, &error))
+                    slurmImage_->setText(profile.value(QStringLiteral("slurm")).toObject().value(QStringLiteral("image")).toString());
+                if (!path.isEmpty()) configurationPath_->setText(tr("Profile: %1").arg(path));
+            }
+        });
+        updateWorkerPreparationState(serviceManager_->workerPreparationRunning());
+    }
+}
+
+void BackendDialog::updateWorkerPreparationState(bool running)
+{
+    if (prepareWorkerButton_) prepareWorkerButton_->setEnabled(!running && serviceManager_ && profileReady_);
+    if (checkWorkerButton_) checkWorkerButton_->setEnabled(!running && serviceManager_ && profileReady_);
+    if (cancelWorkerButton_) cancelWorkerButton_->setEnabled(running);
+    if (managedBackendButton_) managedBackendButton_->setEnabled(!running && serviceManager_ && profileReady_);
+    if (!configurationDialog_) return;
+    const QList<QWidget *> fields{executor_, jobRoot_, dockerRuntime_, dockerImage_, slurmHost_,
+        slurmRoot_, slurmImage_, slurmPartition_, slurmCpus_, slurmMemory_, slurmTime_, slurmGpus_, slurmSsh_};
+    for (QWidget *field : fields)
+        if (field) field->setEnabled(!running);
+}
+
+bool BackendDialog::savePreparationProfile(bool checkOnly)
+{
+    if (!serviceManager_ || !profileReady_) return false;
+    QString root = jobRoot_->text().trimmed();
+    if (root == QStringLiteral("~")) root = QDir::homePath();
+    else if (root.startsWith(QStringLiteral("~/"))) root = QDir::homePath() + root.mid(1);
+    const QJsonObject profile{
+        {QStringLiteral("backend"), QJsonObject{
+            {QStringLiteral("executor"), executor_->currentData().toString()},
+            {QStringLiteral("job_root"), QDir::cleanPath(root)},
+            {QStringLiteral("container_runtime"), dockerRuntime_->text().trimmed()},
+            {QStringLiteral("worker_image"), dockerImage_->text().trimmed()}}},
+        {QStringLiteral("slurm"), QJsonObject{
+            {QStringLiteral("host"), slurmHost_->text().trimmed()},
+            {QStringLiteral("root"), slurmRoot_->text().trimmed()},
+            {QStringLiteral("image"), slurmImage_->text().trimmed()},
+            {QStringLiteral("partition"), slurmPartition_->text().trimmed()},
+            {QStringLiteral("cpus"), slurmCpus_->text().trimmed().toInt()},
+            {QStringLiteral("memory"), slurmMemory_->text().trimmed()},
+            {QStringLiteral("time"), slurmTime_->text().trimmed()},
+            {QStringLiteral("gpus"), slurmGpus_->text().trimmed().toInt()},
+            {QStringLiteral("ssh_executable"), slurmSsh_->text().trimmed()}}}};
+    QString path, error;
+    if (!serviceManager_->saveUserConfig(profile, &path, &error)) {
+        setMessage(error, true);
+        return false;
+    }
+    configurationPath_->setText(tr("Profile: %1").arg(path));
+    QString startError;
+    const NNProject *activeProject = application_ ? nn_app_project(application_) : nullptr;
+    const QString projectDirectory = activeProject && nn_project_directory(activeProject)
+        ? QString::fromUtf8(nn_project_directory(activeProject)) : QString();
+    if (!serviceManager_->prepareWorker(checkOnly, projectDirectory, &startError)) {
+        setMessage(startError, true);
+        return false;
+    }
+    updateWorkerPreparationState(true);
+    workerPreparationStatus_->setText(checkOnly ? tr("Checking configured worker…") : tr("Preparing worker image…"));
+    return true;
+}
+
+void BackendDialog::startWorkerPreparation(bool checkOnly)
+{
+    if (!serviceManager_ || !profileReady_ || executor_->currentData().toString() != QStringLiteral("slurm")) {
+        setMessage(tr("Configure the SSH / Slurm executor before preparing its worker."), true);
+        return;
+    }
+    savePreparationProfile(checkOnly);
 }
 
 QUrl BackendDialog::endpointUrl(const QString &path) const
@@ -1002,7 +1116,7 @@ void BackendDialog::submitJob()
             }
         }
     }
-    const QJsonObject payload{
+    QJsonObject payload{
         {QStringLiteral("project"), modelDocument.object()},
         {QStringLiteral("files"), files},
         {QStringLiteral("training"), QJsonObject{{QStringLiteral("epochs"), epochs},
@@ -1020,9 +1134,37 @@ void BackendDialog::submitJob()
             {QStringLiteral("early_stopping_patience"), earlyStoppingPatience},
             {QStringLiteral("early_stopping_min_delta"), earlyStoppingMinDelta}}}
     };
+    if (manifest.value(QStringLiteral("schemaVersion")).toInt() >= 3) {
+        char resolveError[512] = {};
+        char *executionText = nn_app_resolved_model_json(application_, resolveError, sizeof(resolveError));
+        if (!executionText) {
+            setMessage(tr("Cannot resolve model parameters for training: %1").arg(QString::fromUtf8(resolveError)), true);
+            return;
+        }
+        size_t executionSize = 0;
+        while (executionSize <= static_cast<size_t>(MaxModelBytes) && executionText[executionSize])
+            ++executionSize;
+        if (executionSize > static_cast<size_t>(MaxModelBytes)) {
+            nn_app_free_text(executionText);
+            setMessage(tr("Resolved execution model exceeds the 8 MiB upload limit."), true);
+            return;
+        }
+        const QByteArray executionBytes = QByteArray::fromRawData(executionText,
+            static_cast<qsizetype>(executionSize));
+        QJsonParseError executionError;
+        const QJsonDocument executionDocument = QJsonDocument::fromJson(executionBytes, &executionError);
+        nn_app_free_text(executionText);
+        if (!executionDocument.isObject() ||
+            executionDocument.object().value(QStringLiteral("manifest")).toObject()
+                .value(QStringLiteral("schemaVersion")).toInt() != 2) {
+            setMessage(tr("The resolved execution model is invalid: %1").arg(executionError.errorString()), true);
+            return;
+        }
+        payload.insert(QStringLiteral("execution_project"), executionDocument.object());
+    }
     setMessage(tr("Submitting saved project snapshot…"));
     const QByteArray body = QJsonDocument(payload).toJson(QJsonDocument::Compact);
-    const qint64 maxRequestBytes = MaxResourceBytes * 4 / 3 + MaxModelBytes + 1024 * 1024;
+    const qint64 maxRequestBytes = MaxResourceBytes * 4 / 3 + MaxModelBytes * 2 + 1024 * 1024;
     if (body.size() > maxRequestBytes) { setMessage(tr("Encoded upload exceeds the backend request limit."), true); return; }
     request(QStringLiteral("/v1/jobs"), QByteArrayLiteral("POST"), body);
 }
@@ -1080,8 +1222,9 @@ void BackendDialog::download(const QString &kind)
             reply->property("token").toString() != token_->text();
         const bool okay = !stale && !reply->property("downloadFailed").toBool() &&
             reply->error() == QNetworkReply::NoError && file && file->flush();
-        QString suggested = kind == QStringLiteral("wheel")
-            ? QStringLiteral("model.whl") : QStringLiteral("weights.safetensors");
+        QString suggested = kind == QStringLiteral("wheel") ? QStringLiteral("model.whl")
+            : kind == QStringLiteral("package") ? QStringLiteral("model.zip")
+            : QStringLiteral("weights.safetensors");
         const QByteArray disposition = reply->rawHeader("Content-Disposition");
         const QRegularExpression filenamePattern(QStringLiteral("filename\\*?=(?:UTF-8''|\\\"?)([^\\\";]+)"),
                                                    QRegularExpression::CaseInsensitiveOption);

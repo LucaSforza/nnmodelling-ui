@@ -35,6 +35,43 @@ def canonical_json(value: Any) -> bytes:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
 
 
+def load_execution_artifact(root: Path, project: dict[str, Any], model_bytes: bytes) -> tuple[dict[str, Any] | None, str | None]:
+    manifest = project.get("manifest")
+    if not isinstance(manifest, dict):
+        raise TrainingError(f"{root}: model manifest is missing")
+    source_version = manifest.get("schemaVersion", 2)
+    if type(source_version) is not int or source_version not in {2, 3}:
+        raise TrainingError(f"{root}: unsupported model schema version")
+    if source_version == 2:
+        return None, None
+
+    path = root / "execution-model.json"
+    if path.is_symlink() or not path.is_file():
+        raise TrainingError(f"{path}: required native execution artifact is missing or a symlink")
+    raw = path.read_bytes()
+    try:
+        wrapper = json.loads(raw)
+    except (UnicodeError, json.JSONDecodeError) as error:
+        raise TrainingError(f"{path}: malformed native execution artifact: {error}") from error
+    if not isinstance(wrapper, dict) or set(wrapper) != {"source_sha256", "execution_project"}:
+        raise TrainingError(f"{path}: native execution artifact must contain source_sha256 and execution_project")
+    source_digest = wrapper.get("source_sha256")
+    if not isinstance(source_digest, str) or not re.fullmatch(r"[0-9a-f]{64}", source_digest):
+        raise TrainingError(f"{path}: native execution artifact has an invalid source hash")
+    if source_digest != sha256(model_bytes):
+        raise TrainingError(f"{path}: native execution artifact does not match the exact model.json bytes")
+    execution = wrapper.get("execution_project")
+    if not isinstance(execution, dict):
+        raise TrainingError(f"{path}: execution_project must be an object")
+    execution_manifest = execution.get("manifest")
+    if (not isinstance(execution_manifest, dict)
+            or type(execution_manifest.get("schemaVersion")) is not int
+            or execution_manifest["schemaVersion"] != 2
+            or "metavariables" in execution_manifest):
+        raise TrainingError(f"{path}: execution_project must be a concrete schema-2 project")
+    return execution, sha256(raw)
+
+
 def safe_relative(value: Any) -> PurePosixPath:
     if not isinstance(value, str) or not value or "\\" in value:
         raise TrainingError(f"Unsafe project resource path: {value!r}")
@@ -266,13 +303,20 @@ def run(args: argparse.Namespace) -> int:
     snapshots = []
     for name, root, project in projects:
         model_bytes = (root / "model.json").read_bytes()
+        execution_project, execution_artifact_sha256 = load_execution_artifact(root, project, model_bytes)
         files = project_files(root, project)
         file_hashes = [(path, sha256(base64.b64decode(encoded))) for path, encoded in files.items()]
-        snapshot_hash = sha256(canonical_json({"model_sha256": sha256(model_bytes), "files": file_hashes}))
-        requested.append({"name": name, "project_path": str((root / "model.json").resolve()),
+        snapshot_identity = {"model_sha256": sha256(model_bytes), "files": file_hashes}
+        if execution_artifact_sha256 is not None:
+            snapshot_identity["execution_model_sha256"] = execution_artifact_sha256
+        snapshot_hash = sha256(canonical_json(snapshot_identity))
+        request_record = {"name": name, "project_path": str((root / "model.json").resolve()),
                           "model_sha256": sha256(model_bytes), "snapshot_sha256": snapshot_hash,
-                          "training": config})
-        snapshots.append(files)
+                          "training": config}
+        if execution_artifact_sha256 is not None:
+            request_record["execution_model_sha256"] = execution_artifact_sha256
+        requested.append(request_record)
+        snapshots.append((files, execution_project))
     if report_path.exists():
         try:
             report = json.loads(report_path.read_text(encoding="utf-8"))
@@ -292,9 +336,11 @@ def run(args: argparse.Namespace) -> int:
         atomic_json(report_path, report)
 
     deadline = time.monotonic() + args.wait_timeout
-    for entry, (_name, root, project), files in zip(entries, projects, snapshots):
+    for entry, (_name, root, project), (files, execution_project) in zip(entries, projects, snapshots):
         if entry.get("job_id") is None:
             body = {"project": project, "files": files, "training": config}
+            if execution_project is not None:
+                body["execution_project"] = execution_project
             status, _headers, response = request(args.base_url, "POST", "/v1/jobs", payload=body)
             if status not in {200, 202}:
                 raise TrainingError(f"Unexpected submission status {status} for {entry['name']}")

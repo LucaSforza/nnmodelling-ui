@@ -21,6 +21,7 @@
 #include <QTemporaryDir>
 #include <QFileInfo>
 #include <QTest>
+#include <QSignalSpy>
 #include <QTreeWidget>
 
 class FakeBackend final : public QObject {
@@ -143,6 +144,102 @@ public:
 class BackendDialogTest final : public QObject {
     Q_OBJECT
 private slots:
+    void workerPreparationStreamsEventsAndPublishesOnlySuccess()
+    {
+        QTemporaryDir temporary;
+        QVERIFY(temporary.isValid());
+        const QByteArray oldConfig = qgetenv("NNMODELLING_CONFIG");
+        const QByteArray oldPath = qgetenv("PATH");
+        const bool hadConfig = qEnvironmentVariableIsSet("NNMODELLING_CONFIG");
+        const bool hadPath = qEnvironmentVariableIsSet("PATH");
+        struct RestoreEnvironment {
+            QByteArray config, path;
+            bool hadConfig, hadPath;
+            ~RestoreEnvironment() {
+                if (hadConfig) qputenv("NNMODELLING_CONFIG", config); else qunsetenv("NNMODELLING_CONFIG");
+                if (hadPath) qputenv("PATH", path); else qunsetenv("PATH");
+            }
+        } restore{oldConfig, oldPath, hadConfig, hadPath};
+
+        const QString bin = QDir(temporary.path()).filePath(QStringLiteral("bin"));
+        QVERIFY(QDir().mkpath(bin));
+        const QString executable = QDir(bin).filePath(QStringLiteral("uv"));
+        const QString source = QDir(temporary.path()).filePath(QStringLiteral("source"));
+        QVERIFY(QDir().mkpath(QDir(source).filePath(QStringLiteral("backend"))));
+        QFile helper(QDir(source).filePath(QStringLiteral("backend/prepare_worker.py")));
+        QVERIFY(helper.open(QIODevice::WriteOnly));
+        helper.close();
+        QFile runner(executable);
+        QVERIFY(runner.open(QIODevice::WriteOnly));
+        const QByteArray success = QByteArrayLiteral("#!/bin/sh\nprintf '%s\\n' '{\"phase\":\"build\",\"message\":\"Building image\",\"current\":1,\"total\":2}' '{\"phase\":\"success\",\"message\":\"Installed\",\"image\":\"/cluster/images/worker-hash.sif\"}'\n");
+        QCOMPARE(runner.write(success), qint64(success.size()));
+        runner.close();
+        QVERIFY(runner.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
+
+        const QString profilePath = QDir(temporary.path()).filePath(QStringLiteral("config.json"));
+        QFile profileFile(profilePath);
+        QVERIFY(profileFile.open(QIODevice::WriteOnly));
+        const QJsonObject profile{{QStringLiteral("backend"), QJsonObject{{QStringLiteral("executor"), QStringLiteral("slurm")}}},
+            {QStringLiteral("slurm"), QJsonObject{{QStringLiteral("image"), QStringLiteral("/cluster/images/old.sif")}}}};
+        const QByteArray profileBytes = QJsonDocument(profile).toJson(QJsonDocument::Compact);
+        QCOMPARE(profileFile.write(profileBytes), qint64(profileBytes.size()));
+        profileFile.close();
+        qputenv("NNMODELLING_CONFIG", profilePath.toUtf8());
+        qputenv("PATH", (bin + QLatin1Char(':') + QString::fromLocal8Bit(oldPath)).toLocal8Bit());
+
+        BackendServiceManager manager(source);
+        QSignalSpy progress(&manager, &BackendServiceManager::workerPreparationProgress);
+        QSignalSpy finished(&manager, &BackendServiceManager::workerPreparationFinished);
+        QString error;
+        QVERIFY2(manager.prepareWorker(false, {}, &error), qPrintable(error));
+        QTRY_COMPARE_WITH_TIMEOUT(finished.count(), 1, 5000);
+        QVERIFY(finished.takeFirst().at(0).toBool());
+        QVERIFY(progress.count() >= 2);
+        QJsonObject loaded;
+        QString loadedPath;
+        QVERIFY2(manager.loadUserConfig(&loadedPath, &loaded, &error), qPrintable(error));
+        QCOMPARE(loaded.value(QStringLiteral("slurm")).toObject().value(QStringLiteral("image")).toString(),
+                 QStringLiteral("/cluster/images/worker-hash.sif"));
+
+        runner.resize(0);
+        QVERIFY(runner.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        const QByteArray failure = QByteArrayLiteral("#!/bin/sh\nprintf '%s\\n' '{\"phase\":\"error\",\"message\":\"Check failed\",\"error\":\"Worker check failed\"}'\nexit 1\n");
+        QCOMPARE(runner.write(failure), qint64(failure.size()));
+        runner.close();
+        QVERIFY(manager.prepareWorker(true, {}, &error));
+        QTRY_COMPARE_WITH_TIMEOUT(finished.count(), 1, 5000);
+        QVERIFY(!finished.takeFirst().at(0).toBool());
+        QVERIFY2(manager.loadUserConfig(&loadedPath, &loaded, &error), qPrintable(error));
+        QCOMPARE(loaded.value(QStringLiteral("slurm")).toObject().value(QStringLiteral("image")).toString(),
+                 QStringLiteral("/cluster/images/worker-hash.sif"));
+
+        runner.resize(0);
+        QVERIFY(runner.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        const QByteArray cleanup = QByteArrayLiteral(
+            "#!/bin/sh\n"
+            "trap 'sleep 2; echo \"{\\\"phase\\\":\\\"success\\\",\\\"message\\\":\\\"late success\\\",\\\"image\\\":\\\"/cluster/images/late.sif\\\"}\"; exit 0' TERM\n"
+            "echo '{\"phase\":\"build\",\"message\":\"Long cleanup\",\"current\":1,\"total\":1}'\n"
+            "while :; do sleep 0.1; done\n");
+        QCOMPARE(runner.write(cleanup), qint64(cleanup.size()));
+        runner.close();
+        QVERIFY(runner.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
+        const int previousEvents = progress.count();
+        QVERIFY(manager.prepareWorker(false, {}, &error));
+        QTRY_VERIFY_WITH_TIMEOUT(manager.workerPreparationRunning(), 3000);
+        QTRY_VERIFY_WITH_TIMEOUT(progress.count() > previousEvents, 3000);
+        manager.cancelWorkerPreparation();
+        QTRY_COMPARE_WITH_TIMEOUT(finished.count(), 1, 5000);
+        QVERIFY(!finished.takeFirst().at(0).toBool());
+        bool announcedCancellation = false;
+        for (const QList<QVariant> &event : progress)
+            if (!event.isEmpty() && event[0].toString() == QStringLiteral("cancelling"))
+                announcedCancellation = true;
+        QVERIFY(announcedCancellation);
+        QVERIFY2(manager.loadUserConfig(&loadedPath, &loaded, &error), qPrintable(error));
+        QCOMPARE(loaded.value(QStringLiteral("slurm")).toObject().value(QStringLiteral("image")).toString(),
+                 QStringLiteral("/cluster/images/worker-hash.sif"));
+    }
+
     void localBackendConfigurationValidationAndPersistence()
     {
         QTemporaryDir temporary;
@@ -336,6 +433,12 @@ private slots:
         char error[512] = {};
         QVERIFY2(nn_app_create(application, temporary.path().toUtf8().constData(), "ui-test", "UI Test", false,
                                error, sizeof(error)), error);
+        const QByteArray declarations = QByteArrayLiteral("[{\"name\":\"width\",\"type\":\"integer\",\"value\":128}]");
+        QVERIFY2(nn_app_set_metavariables_json(application, declarations.constData(), error, sizeof(error)), error);
+        QVERIFY2(nn_app_add_node(application, "dense1", "core.linear", "0.1.0", "", 0, 0,
+                                 error, sizeof(error)), error);
+        QVERIFY2(nn_app_set_parameter_text(application, "dense1", "out_features", "$width",
+                                            error, sizeof(error)), error);
         const QByteArray dataset = QByteArrayLiteral("{\"name\":\"Test data\",\"batch\":{\"inputs\":{\"x\":{\"dtype\":\"float32\",\"shape\":[1]}},\"targets\":{}}}");
         QVERIFY2(nn_app_create_dataset(application, "test.data", "0.1.0", dataset.constData(), false,
                                        error, sizeof(error)), error);
@@ -434,7 +537,10 @@ private slots:
         QCOMPARE(backend.submitCount, 0);
         earlyStoppingMinDelta->setText(QStringLiteral("0.01"));
         QTest::mouseClick(dialog.findChild<QPushButton *>(QStringLiteral("backendSubmit")), Qt::LeftButton);
-        QTRY_COMPARE_WITH_TIMEOUT(backend.submitCount, 1, 5000);
+        auto *backendStatus = dialog.findChild<QLabel *>(QStringLiteral("backendStatus"));
+        QTRY_VERIFY_WITH_TIMEOUT(backend.submitCount == 1 ||
+            (backendStatus && !backendStatus->text().contains(QStringLiteral("Submitting"))), 5000);
+        QVERIFY2(backend.submitCount == 1, qPrintable(backendStatus->text()));
         const QJsonObject training = backend.submitted.value(QStringLiteral("training")).toObject();
         QCOMPARE(training.value(QStringLiteral("epochs")).toInt(), 7);
         QCOMPARE(training.value(QStringLiteral("batch_size")).toInt(), 8);
@@ -453,8 +559,16 @@ private slots:
         QCOMPARE(training.value(QStringLiteral("early_stopping_min_delta")).toDouble(), 0.01);
         QCOMPARE(backend.authorization, QByteArrayLiteral("Bearer secret-for-test"));
         const QJsonObject project = backend.submitted.value(QStringLiteral("project")).toObject();
-        QVERIFY(project.value(QStringLiteral("manifest")).toObject().value(QStringLiteral("schemaVersion")).isDouble());
+        QVERIFY(project.value(QStringLiteral("manifest")).toObject().value(QStringLiteral("schemaVersion")).toInt() >= 3);
         QVERIFY(project.value(QStringLiteral("nodes")).isArray());
+        const QByteArray authoredProject = QJsonDocument(project).toJson(QJsonDocument::Compact);
+        QVERIFY(authoredProject.contains("\"$ref\":\"width\""));
+        const QJsonObject executionProject = backend.submitted.value(QStringLiteral("execution_project")).toObject();
+        QCOMPARE(executionProject.value(QStringLiteral("manifest")).toObject()
+                     .value(QStringLiteral("schemaVersion")).toInt(), 2);
+        const QByteArray executionBytes = QJsonDocument(executionProject).toJson(QJsonDocument::Compact);
+        QVERIFY(executionBytes.contains("\"out_features\":128"));
+        QVERIFY(!executionBytes.contains("$ref"));
         const QJsonObject files = backend.submitted.value(QStringLiteral("files")).toObject();
         const QByteArray datasetCode = QByteArray::fromBase64(files.value(QStringLiteral("datasets/test.data-0.1.0/dataset.py")).toString().toLatin1());
         QVERIFY(datasetCode.contains("NotImplementedError"));

@@ -772,6 +772,7 @@ def test_dataset_adapter_and_standalone_wheels_support_weight_override_and_isola
         build_wheel(root, core, selected_weights, tmp_path / f"out-{index}", f"job-{index}")
         for index, selected_weights in enumerate((weights, alternate))
     ]
+    package_archives = [tmp_path / f"out-{index}" / "python-package.zip" for index in range(2)]
     import zipfile
     for wheel in wheels:
         with zipfile.ZipFile(wheel) as archive:
@@ -829,6 +830,24 @@ if not torch.cuda.is_available():
         result = subprocess.run([sys.executable, "-c", script, str(target), f"nnmodel_job_{index}", str(6 + index * 9)], cwd=tmp_path, capture_output=True, text=True)
         assert result.returncode == 0, result.stderr
         assert result.stdout == ""
+
+        import zipfile
+        portable = tmp_path / f"portable-{index}"
+        with zipfile.ZipFile(package_archives[index]) as archive:
+            names = archive.namelist()
+            assert "nnm_fixture/__init__.py" in names
+            assert not any(".dist-info/" in name or name.startswith("nnmodel_") for name in names)
+            archive.extractall(portable)
+        portable_script = '''import importlib, sys, torch
+sys.path = [p for p in sys.path if "/python/nnmodelling-runtime/src" not in p]
+sys.path.insert(0, sys.argv[1])
+assert importlib.util.find_spec("nnmodelling_runtime") is None
+model = importlib.import_module("nnm_fixture").Model()
+assert model.logits(torch.tensor([3.0])).item() == float(sys.argv[2])
+assert "nnmodelling_runtime" not in sys.modules
+'''
+        result = subprocess.run([sys.executable, "-c", portable_script, str(portable), str(6 + index * 9)], cwd=tmp_path, capture_output=True, text=True)
+        assert result.returncode == 0, result.stderr
 
 
 def test_llm_consumer_replaces_a_same_version_wheel_at_the_stable_import(tmp_path):

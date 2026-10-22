@@ -80,7 +80,13 @@ def read_input(path: Path | None) -> np.ndarray:
 
 def load_model(weights: Path | None) -> Any:
     artifact = load_artifact(ARTIFACT)
-    model_class = getattr(importlib.import_module(artifact["module"]), "Model")
+    try:
+        model_class = getattr(importlib.import_module("nnm_mnist_vae"), "Model")
+    except ModuleNotFoundError as error:
+        if error.name != "nnm_mnist_vae":
+            raise
+        # The pinned historical wheel predates the stable public import name.
+        model_class = getattr(importlib.import_module(artifact["module"]), "Model")
     return model_class(weights_path=weights)
 
 

@@ -1,5 +1,41 @@
 # NNModelling client guide
 
+## Model metavariables
+
+`Model > Manage metavariables…` opens an Operations-style staged list with New,
+Edit, Remove, Save and Cancel. Each declaration has Name, Type and a literal
+Value. Types match stereotype parameters: integer, number, boolean, string,
+dtype, json arrays and stereotype references. Names may include hyphens.
+Declarations are shared across all model scopes.
+
+Enter references/formulas directly in ordinary Inspector parameter fields:
+
+```text
+embedding_dim = $embedding-features
+times = $num-heads
+in_features = $embedding-features
+out_features = $(params.in_features / meta["num-heads"])
+factor = $(1 / math.sqrt(meta["embedding-features"] / meta["num-heads"]))
+```
+
+`meta["name"]` reads a declaration; `params.name` reads a sibling parameter,
+including its default. Lua expressions must return a value satisfying the
+destination type and constraints; fractional integers are errors. Enter `$$`
+for a literal string beginning with `$`. Every parameter has one value editor.
+Boolean, choice and reference menus are editable: type a reference or formula
+directly into their text area. A visible Parameters hint explains the syntax,
+including nested fields. Inspector shows stored source and a resolved value/error
+below it. Node cards show calculated values such as `64`, never internal binding
+JSON or Lua source. An unresolved value shows `?` with its diagnostic in a tooltip.
+Missing references, cycles and
+invalid results block training, while the project remains editable/saveable.
+
+Saving a changed declaration list creates the same unsaved history barrier as
+Operations. Parameter binding edits retain ordinary Undo/Redo. Projects using
+metavariables/bindings use schema 3 and require an updated client. Training
+snapshots retain authored source for restore and freeze concrete values from
+the same C/Lua resolver used by native analysis.
+
 This guide describes the Qt client controls and how they affect a project. Interface labels are shown in English as they appear on screen. Graph edits become part of the project with `File > Save`; resource creation and dataset metadata edits save the project when the operation completes.
 
 ![Main window and workspace areas](../assets/overview.png)
@@ -111,14 +147,14 @@ For an `Output` or `Loss Output` inside a subflow, `Boundary mapping` associates
 
 `Parameters` contains one control for each parameter defined by the package:
 
-- parameters with preset choices use drop-down menus;
-- Boolean values use checkboxes;
+- parameters with preset choices use editable drop-down menus;
+- Boolean values use editable `true` / `false` menus;
 - integers, numbers, strings, dtypes and JSON values use text fields, validated by the package when you confirm the field;
 - parameters placed at `top` or `bottom` can also appear as synthetic rows on the node card.
 
 For the meaning, defaults, limits and choices of every field in distributed packages, see the [parameter catalog](parameters.md).
 
-A `stereotype` parameter consists of a package selector and fields from that package's schema. The selector shows the name and exact `id@version` identity, applies any kind filter, and uses ` (choose package)` when no package is selected. Choosing a package initializes its parameters to their defaults; an existing reference keeps its values. Inner fields use checkboxes, menus or text according to their type. The project validates the selection and every changed field. If a value is invalid, the client reports the rejection and keeps the last confirmed values. Inspector data refreshes after an edit.
+A `stereotype` parameter consists of an editable package selector and fields from that package's schema. The selector shows the name and exact `id@version` identity, applies any kind filter, and uses ` (choose package)` when no package is selected. Choosing a package initializes its parameters to their defaults; an existing reference keeps its values. Type a reference/formula directly into the selector; its resolved nested values then remain read-only until explicitly replacing that reference, without editing the shared declaration. Literal-reference inner fields use editable menus or text according to their type. The project validates the selection and every changed field. If a value is invalid, the client reports the rejection and keeps the last confirmed values. Inspector data refreshes after an edit.
 
 ![Inspector with a selected node](../assets/inspector.png)
 

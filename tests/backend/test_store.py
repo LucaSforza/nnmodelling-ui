@@ -56,6 +56,7 @@ def test_final_result_requires_epoch_and_finite_test_metrics(tmp_path):
     output = store.job_dir(job["id"]) / "output"
     (output / "weights.safetensors").write_bytes(b"weights")
     (output / "model-0.1.0-py3-none-any.whl").write_bytes(b"wheel")
+    (output / "python-package.zip").write_bytes(b"package")
     path = output / "metrics.json"
     path.write_text(json.dumps({"epochs": [], "steps": [], "test_loss": None}))
     metrics, error = store.validated_result(job["id"])

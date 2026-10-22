@@ -16,6 +16,9 @@
 #include <QGraphicsSceneContextMenuEvent>
 #include <QGraphicsView>
 #include <QKeyEvent>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonParseError>
 #include <QPainterPath>
 #include <QPainter>
 #include <QMenu>
@@ -75,6 +78,28 @@ void sortInputHandles(QStringList *handles) {
         const quint64 a = inputNumber(left), b = inputNumber(right);
         return a == b ? left < right : a < b;
     });
+}
+QString canvasParameterValue(const NNParameterDef &definition, const char *text,
+                             const NNCatalog *catalog, QString *error) {
+    const QString value = copyText(text);
+    if (!definition.type || std::strcmp(definition.type, "stereotype") != 0) return value;
+
+    QJsonParseError parseError;
+    const QJsonDocument document = QJsonDocument::fromJson(value.toUtf8(), &parseError);
+    if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
+        *error = QStringLiteral("Could not format resolved package reference");
+        return {};
+    }
+    const QJsonObject reference = document.object();
+    const QByteArray id = reference.value(QStringLiteral("id")).toString().toUtf8();
+    const QByteArray version = reference.value(QStringLiteral("version")).toString().toUtf8();
+    const NNPackage *package = catalog
+        ? nn_catalog_resolve(catalog, id.constData(), version.constData()) : nullptr;
+    if (!package || !package->name || !*package->name) {
+        *error = QStringLiteral("Resolved package is not in the active catalog");
+        return {};
+    }
+    return copyText(package->name);
 }
 }
 
@@ -178,6 +203,7 @@ void GraphScene::refresh() {
     draftSource_ = nullptr;
     draftPath_ = nullptr;
     QHash<QString, QString> visibleScopes;
+    QHash<QString, QStringList> parameterDiagnostics;
     std::function<void(const NodeSnapshot &, const QPointF &, QGraphicsItem *, bool,
                        QSet<QString>, int)> addNode;
     addNode = [&](const NodeSnapshot &data, const QPointF &position, QGraphicsItem *parent,
@@ -192,16 +218,29 @@ void GraphScene::refresh() {
         const QByteArray packageId = data.packageId.toUtf8();
         const NNPackage *package = catalog
             ? nn_catalog_find(catalog, packageId.constData(), node->package_version) : nullptr;
+        QStringList diagnostics;
         for (size_t i = 0; package && i < package->parameter_count; ++i) {
             const NNParameterDef &definition = package->parameters[i];
             if (!definition.position || !definition.key) continue;
             const QByteArray id = data.id.toUtf8();
-            char *raw = nn_app_parameter_text(application_, id.constData(), definition.key);
-            const QString value = copyText(raw);
-            nn_app_free_text(raw);
+            char error[512] = {};
+            char *resolved = nn_app_resolved_parameter_text(application_, id.constData(),
+                definition.key, error, sizeof(error));
+            const bool resolvedSuccessfully = resolved != nullptr;
+            QString displayError;
+            QString value = resolved
+                ? canvasParameterValue(definition, resolved, catalog, &displayError) : QString();
+            nn_app_free_text(resolved);
+            if (!resolvedSuccessfully || !displayError.isEmpty()) {
+                value = QStringLiteral("?");
+                const QString reason = displayError.isEmpty() ? copyText(error) : displayError;
+                diagnostics.append(QStringLiteral("%1: %2")
+                    .arg(QString::fromUtf8(definition.key), reason));
+            }
             auto &rows = std::strcmp(definition.position, "top") == 0 ? topParameters : bottomParameters;
             rows.append(qMakePair(QString::fromUtf8(definition.key), value));
         }
+        if (!diagnostics.isEmpty()) parameterDiagnostics.insert(data.id, diagnostics);
         NodeItem *item = data.subflow
             ? static_cast<NodeItem *>(new SubflowItem(this, data.id, data.label, data.packageId,
                                                        position, color, topParameters, bottomParameters))
@@ -385,6 +424,8 @@ void GraphScene::refresh() {
             it.value()->setTensorSummary(lines.join(QLatin1Char('\n')));
         }
     }
+    for (auto it = nodes_.begin(); it != nodes_.end(); ++it)
+        it.value()->setToolTip(parameterDiagnostics.value(it.key()).join(QLatin1Char('\n')));
     const QRectF content = contentBounds().adjusted(-5090, -5090, 5090, 5090);
     if (content.isValid() && !content.isEmpty()) setSceneRect(content);
     refreshing_ = false;

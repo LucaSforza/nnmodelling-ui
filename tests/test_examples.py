@@ -15,6 +15,7 @@ torch = pytest.importorskip("torch")
 
 from nnmodelling_runtime import GraphModule
 from nnmodelling_runtime import Batch, build_wheel, load_dataset
+from tools.train_cluster_examples import load_execution_artifact
 
 
 REPOSITORY = Path(__file__).resolve().parents[1]
@@ -28,8 +29,21 @@ EXAMPLES = (
 )
 
 
-def test_tiny_decoder_runs_training_and_causal_inference():
-    graph = GraphModule(REPOSITORY / "examples" / "models" / "tiny-decoder-llm", CORE)
+def concrete_python_project(source: Path, destination: Path) -> Path:
+    model_bytes = (source / "model.json").read_bytes()
+    authored = json.loads(model_bytes)
+    execution, _artifact_hash = load_execution_artifact(source, authored, model_bytes)
+    if execution is None:
+        return source
+    shutil.copytree(source, destination, ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "execution-model.json"))
+    (destination / "model.json").write_text(json.dumps(execution, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return destination
+
+
+def test_tiny_decoder_runs_training_and_causal_inference(tmp_path):
+    source = REPOSITORY / "examples" / "models" / "tiny-decoder-llm"
+    project = concrete_python_project(source, tmp_path / "llm-project")
+    graph = GraphModule(project, CORE)
     tokens = torch.randint(0, 65, (2, 12))
     prediction = graph(tokens)["prediction"]
     assert prediction.shape == (2, 12, 65)
@@ -48,10 +62,18 @@ def test_tiny_decoder_runs_training_and_causal_inference():
     torch.testing.assert_close(first_result[:, :3], second_result[:, :3])
 
 
-def test_tiny_decoder_repeat_and_attention_parameters_are_independent():
-    graph = GraphModule(REPOSITORY / "examples" / "models" / "tiny-decoder-llm", CORE)
+def test_tiny_decoder_repeat_and_attention_parameters_are_independent(tmp_path):
+    source = REPOSITORY / "examples" / "models" / "tiny-decoder-llm"
+    project = concrete_python_project(source, tmp_path / "llm-project")
+    graph = GraphModule(project, CORE)
     repeat = graph.node_modules[graph._node_modules["blocks"]]
-    assert len(repeat.subflows) >= 2
+    assert len(repeat.subflows) == 10
+    model = json.loads((project / "model.json").read_text(encoding="utf-8"))
+    nodes = {node["id"]: node for node in model["nodes"]}
+    embedding_dim = nodes["embedding"]["data"]["params"]["embedding_dim"]
+    assert embedding_dim == 64
+    assert nodes["position"]["data"]["params"]["d_model"] == embedding_dim
+    assert nodes["heads"]["data"]["params"]["times"] == 8
     first = repeat.subflows[0].node_modules["n4"].weight
     second = repeat.subflows[1].node_modules["n4"].weight
     assert first.data_ptr() != second.data_ptr()
@@ -63,7 +85,7 @@ def test_tiny_decoder_repeat_and_attention_parameters_are_independent():
     heads = repeat.subflows[0].node_modules["n1"]
     stacked = [parameter for parameter in heads.parameters() if parameter.ndim >= 3]
     assert stacked
-    parameter = next((value for value in stacked if torch.unique(value.detach(), dim=0).shape[0] == 4), None)
+    parameter = next((value for value in stacked if value.shape[0] == 8 and torch.unique(value.detach(), dim=0).shape[0] == 8), None)
     assert parameter is not None
     other_heads = parameter.detach()[1:].clone()
     with torch.no_grad():
@@ -74,10 +96,11 @@ def test_tiny_decoder_repeat_and_attention_parameters_are_independent():
 @pytest.mark.parametrize("times", [43, 64])
 def test_tiny_decoder_large_repeat_preserves_training_and_causality(tmp_path, times):
     source = REPOSITORY / "examples" / "models" / "tiny-decoder-llm"
-    model = json.loads((source / "model.json").read_text())
+    project = concrete_python_project(source, tmp_path / "compiled-source")
+    model = json.loads((project / "model.json").read_text())
     next(node for node in model["nodes"] if node["id"] == "blocks")["data"]["params"]["times"] = times
     (tmp_path / "model.json").write_text(json.dumps(model))
-    shutil.copytree(source / "packages", tmp_path / "packages")
+    shutil.copytree(project / "packages", tmp_path / "packages")
     threads = torch.get_num_threads()
     torch.set_num_threads(2)
     try:
@@ -108,7 +131,8 @@ def test_bundled_examples_train_and_export_isolated_inference_wheels(tmp_path):
     installed = []
     stable_packages = []
     for index, name in enumerate(EXAMPLES):
-        project = REPOSITORY / "examples" / "models" / name
+        source = REPOSITORY / "examples" / "models" / name
+        project = concrete_python_project(source, tmp_path / f"project-{name}")
         adapter = load_dataset(project)
         batch = next(iter(adapter.load("train", batch_size=2)))
         assert isinstance(batch, Batch)
