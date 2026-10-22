@@ -62,9 +62,10 @@ their owning subflow's stable ID. Existing named scopes remain accessible even
 without a matching parent, without silently reparenting imported data. Show one
 immediate scope at a time. SubflowItem is a visually distinct framed card with
 child count and a prominent `Enter subflow` button. It never expands child
-previews; the button enters its scope, and scope navigation returns to
-parent/root. Leaving a scope never mutates its children. Item parentage is
-graphical only; never infer graph membership from a QGraphicsItem parent.
+previews; from the card, this button is the only entry action. Double-click and
+context menus do not enter the scope. Scope navigation returns to parent/root.
+Leaving a scope never mutates its children. Item parentage is graphical only;
+never infer graph membership from a QGraphicsItem parent.
 Child positions remain scope-local C values.
 Boundary nodes remain package-backed and edges remain same-scope. Accepted
 2026-10-01: typed-outputs.md governs mapped internal terminals, spawning, circles
@@ -211,9 +212,9 @@ presentation state only; model coordinates remain unchanged. Native scrollbar
 rounding is tolerated within two scene units by interaction tests.
 
 Right-clicking a node or edge opens an item-specific menu. A node menu includes
-Delete and, for subflows, `Enter subflow`; an edge menu includes Delete
-connection. Menus select the target item before action and submit changes through
-the existing C application API and edit history.
+Delete; an edge menu includes Delete connection. Menus select the target item
+before action and submit changes through the existing C application API and
+edit history. Subflow scope entry remains the card's explicit button action.
 
 Accepted 2026-10-22: the palette's component guide updates from package selection,
 and the Inspector shows a selected node's package description. Visible shortcuts

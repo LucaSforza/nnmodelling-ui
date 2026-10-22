@@ -129,8 +129,9 @@ Package names/IDs do not select junction behavior.
 C owns graph, coordinates and application mutations. Edge endpoints follow
 PortItem scene positions only for rendering. Release commits positions to C;
 failure restores committed positions. Painting is read-only. SubflowItem owns
-no child model; its `Enter subflow` button changes the active scope through
-GraphScene. It does not render child previews.
+no child model; its `Enter subflow` button is the only card action that changes
+active scope through GraphScene. Double-click and context menu do not enter it.
+It does not render child previews.
 The graphical entry point is `src/gui/qt/main.cpp`. The former NNPlatform,
 nn_editor_run, SDL adapter and lifecycle smoke test were removed 2026-09-30.
 No SDL draw list, custom camera math or C++ graph remains.
