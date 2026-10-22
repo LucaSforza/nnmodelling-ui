@@ -20,8 +20,8 @@ row at normal and enlarged fonts, without overlapping following rows. Core owns
 parsing, resolution and validation. Literal strings starting with $ use $$.
 Refresh after variable edits updates shapes, counts and Inspector previews.
 
-Positioned parameter rows on canvas nodes, including subflows and expanded
-preview children, display concrete values from the C resolved-parameter query.
+Positioned parameter rows on canvas nodes in the active scope display concrete
+values from the C resolved-parameter query.
 They never display internal `$ref`/`$lua` JSON or Lua source. Stereotype values
 display friendly package names; arrays retain compact readable list notation.
 Resolution failure displays `?` with the diagnostic in a tooltip and normal
@@ -61,10 +61,11 @@ Persisted data.scope remains unchanged: empty means root; child nodes reference
 their owning subflow's stable ID. Existing named scopes remain accessible even
 without a matching parent, without silently reparenting imported data. Show one
 immediate scope at a time. SubflowItem is a visually distinct framed card with
-child count and an entry affordance; double-click enters its scope, scope
-navigation returns to parent/root. Collapsing or leaving a scope never mutates
-its children. Item parentage is graphical only; never infer graph membership
-from a QGraphicsItem parent. Child positions remain scope-local C values.
+child count and a prominent `Enter subflow` button. It never expands child
+previews; the button enters its scope, and scope navigation returns to
+parent/root. Leaving a scope never mutates its children. Item parentage is
+graphical only; never infer graph membership from a QGraphicsItem parent.
+Child positions remain scope-local C values.
 Boundary nodes remain package-backed and edges remain same-scope. Accepted
 2026-10-01: typed-outputs.md governs mapped internal terminals, spawning, circles
 and black/red handles/fanout. No cross-scope edges or compiler are introduced.
@@ -103,10 +104,9 @@ must not begin a node drag or connection and refresh is queued after events.
 
 2026-09-30 additions: [resource authoring](resource-authoring.md) governs
 positioned parameter rows, theme-independent contrast, visual creation dialogs,
-dataset selection and template creation. Accepted 2026-10-05: mini LLM
-replaces the VAE shortcut in startup chooser and File template menu. [Automation](automation.md) governs local
-CLI integration. Subflow navigation remains scope-local; recursive type analysis
-now delegates through the existing Proxy Lua rule.
+dataset selection and template creation. [Automation](automation.md) governs
+local CLI integration. Subflow navigation remains scope-local; recursive type
+analysis now delegates through the existing Proxy Lua rule.
 
 Accepted 2026-10-05: the shared MainWindow stylesheet owns an explicit light
 background and dark foreground for all app-owned QDialog surfaces, including
@@ -139,46 +139,39 @@ order and remain separate. Horizontal arrangement flows towards the left:
 incoming handles on the right and outgoing handles on the left for all node kinds. Committed and draft connections use only horizontal/vertical segments aligned with the selected port direction.
 
 Accepted 2026-10-03 editor revision: Fit is camera-only. It first updates routes,
-then frames nodes, labels, inline previews and routed edges with margin. It never
+then frames nodes, labels and routed edges with margin. It never
 moves nodes or changes flow direction. Arrange retains Vertical/Horizontal choices,
 uses deterministic DAG ranks, barycentric branch ordering, port-centered lanes and spaced corridors,
 commits positions through C, refreshes routes and frames content. Node rectangles
 must not overlap. Direction is session Qt presentation state, default vertical.
 No edge/handle/tensor semantics or other-scope coordinates change.
 
-## Inline previews, tensors and navigation
+## Descriptions, tensors and navigation
 
-Expand/collapse and enter are separate actions. Subflow cards expose expand/collapse;
-double-click and an Enter action still navigate scope. Expansion retains current scope,
-shows real immediate children and edges within a labelled boundary and may recursively
-show expanded nested owners. Child items borrow model identity, never create another
-NNModel; preview geometry uses the same dataflow layout as Arrange, normalized and uniformly
-scaled to a bounded preview area, without persisting child coordinates. Put the
-owner header above its contents; align external ports with the container center.
-Expanding temporarily pushes overlapping current-scope peers along flow direction,
-with grid-aligned visual offsets derived from C positions and item bounds. Recompute
-these offsets on refresh; collapse restores compact model-backed placement. Drag
-commits subtract the visual offset; Arrange persists its computed scope layout,
-then refreshes offsets (zero for nonoverlapping placement). Fit never computes a
-new placement. These offsets are Qt presentation only, not another graph/history.
-Preview is read-only:
-no drag, selection mutation, edge drafting or join-slot mutation inside it. Hover remains
-available. Expansion IDs survive refresh/navigation during the project session and reset
-on project replacement; deleting an owner removes its expansion state.
+The left palette includes a component guide. It starts with concise instructions,
+then shows the selected package description. Selecting a graph node shows its
+package description in the right Inspector. Package descriptions are user-facing
+and explain Input dataset binding, Output model result, Loss computation and
+Loss Output objective. Descriptions do not replace package identity or parameter
+schemas.
 
-Node hover shows all successful C-inferred outputs beside the node: handle name, dtype,
-shape. Terminal consumed tensors may also be shown. Copy report text; retain no borrowed
-report pointers across mutation. Leave hides popup; refresh clears it. No Qt inference.
-This applies to current-scope nodes and preview children. Hover popup is excluded from Fit.
+Node hover shows all successful C-inferred outputs beside the node: handle name,
+dtype and shape. Terminal consumed tensors may also be shown. Copy report text;
+retain no borrowed report pointers across mutation. Leave hides popup; refresh
+clears it. No Qt inference.
 
 Scope selector uses a real Qt tree/model-view with Root and actual scope_id containment,
 current item highlighted, and refreshed labels/membership after rename/add/remove.
 Imported orphan scopes remain explicitly accessible; malformed/cyclic containment must
-not hang tree building or preview recursion.
+not hang tree building.
 
-Application actions use File, Model and View QMenuBar/QMenu/QAction menus with standard
-shortcuts. File includes template submenu; Save As remains omitted until supported.
-Graph toolbar retains compact scope/fit/zoom/arrange controls without application buttons.
+Application actions use File, Model and View QMenuBar/QMenu/QAction menus with
+standard shortcuts. File includes template submenu; Save As remains omitted
+until supported. Visible graph controls show Ctrl++ for Zoom In, Ctrl+- for
+Zoom Out, Ctrl+F for Fit, arrow keys for panning, Ctrl+Shift+V for vertical
+Arrange and Ctrl+Shift+H for horizontal Arrange. Arrow keys pan while the graph
+view has focus. Graph toolbar retains compact scope/fit/zoom/arrange controls
+without application buttons.
 On the Qt VNC platform, recreate closed popup containers before reuse to avoid
 stale window composition. Preserve their QAction and tree objects and state;
 the frontend still owns them. This does not change desktop menu semantics.
@@ -187,11 +180,11 @@ the frontend still owns them. This does not change desktop menu semantics.
 
 Routes are explicit Qt editor polylines, separate from painting and C graph semantics.
 Only horizontal/vertical segments and right-angle bends; no Bezier/diagonal connection
-segments. Rectangles including labels and preview boundaries plus a small margin are
+segments. Rectangles including labels plus a small margin are
 obstacles. Source/target allow only port escape/entry; unrelated interiors are forbidden.
-Route current and preview scopes independently, excluding graphical ancestor boundaries
-from their internal obstacles. Recompute all affected routes on geometry/direction,
-expansion, refresh and drag (including unrelated obstacle movement), before Fit.
+Route scopes independently, excluding graphical ancestor boundaries from their
+internal obstacles. Recompute all affected routes on geometry/direction, refresh
+and drag (including unrelated obstacle movement), before Fit.
 Deterministic rectilinear visibility routing prefers obstacle-free paths first, then
 penalizes shared tracks and crossings, bends and distance. Use parallel tracks where
 space permits. Shared source stems may be unavoidable; crossings show no junction dots.
@@ -217,6 +210,17 @@ not global cursor state (which is unavailable in offscreen tests). This is Qt
 presentation state only; model coordinates remain unchanged. Native scrollbar
 rounding is tolerated within two scene units by interaction tests.
 
+Right-clicking a node or edge opens an item-specific menu. A node menu includes
+Delete and, for subflows, `Enter subflow`; an edge menu includes Delete
+connection. Menus select the target item before action and submit changes through
+the existing C application API and edit history.
+
+Accepted 2026-10-22: the palette's component guide updates from package selection,
+and the Inspector shows a selected node's package description. Visible shortcuts
+include Ctrl++, Ctrl+-, Ctrl+F, arrow-key panning, Ctrl+Shift+V vertical Arrange
+and Ctrl+Shift+H horizontal Arrange. Menus and toolbar tooltips display each
+shortcut.
+
 ## Undo and redo (accepted 2026-10-03)
 
 C NNApplication owns one bounded, project-local graph edit history (100 edits).
@@ -228,7 +232,7 @@ committing one history entry or rolling back the entire group on failure.
 Qt exposes Edit > Undo/Redo using standard shortcuts and enabled state from C;
 Qt stores no parallel command/model history. Undo/redo restore owned C snapshots,
 invalidate analysis, refresh graph/tree/inspector/diagnostics and recompute routes.
-If restored graph removes current scope, return to Root. Camera, expansion, hover,
+If restored graph removes current scope, return to Root. Camera, hover,
 selection and flow direction remain transient UI state and are not semantic history.
 
 Save retains history and marks the saved revision; undo/redo dirty state reflects
@@ -260,12 +264,6 @@ normal C parameter validation; rejection preserves graph/history and fields.
 No package-ID switches or string-encoded object storage. Core owns reference
 resolution, validation, defaults and bounded inference; Qt owns controls only.
 
-## Network 3D tab (accepted 2026-10-04)
-
-[3D contract](visualization-3d.md) governs whole-network expanded read-only
-exploration, flight, Fit/Home, picking and transient camera. Existing scope-local
-2D gestures/layout remain unchanged; Qt only paints C-projected scene primitives.
-
 ## Dataset manager (accepted 2026-10-05)
 
 Accepted 2026-10-08: Model > Parameter counts opens a read-only network total
@@ -278,4 +276,7 @@ parameter edits; closing the dialog writes nothing.
 Project resources retains New dataset and adds Dataset, opening the manager in
 resource-authoring.md. Exact dataset identity is stable while a shared prefilled
 form edits metadata/tensor slots. C validates, persists and refreshes analysis;
-Qt only owns form/selection state. No dataset deletion or Python/data editor.
+Qt only owns form/selection state. Shape fields accept comma-separated
+dimensions; `B` means batch dimension. Explain `B,4` as four features per
+example and `B,1` as one scalar per example beside the field. No dataset
+deletion or Python/data editor.

@@ -267,7 +267,7 @@ discarded successful tensors. The CLI complete flag conjuncts root/per-node
 success. Report-construction allocation failure is an explicit whole-report
 failure, not partial successful state.
 
-## Presentation occurrences (2026-10-04)
+## Stereotype parameter count reports (2026-10-08)
 
 Accepted 2026-10-08: Stereotype optionally owns an independent parameter-count
 Lua rule. Application derives a disposable ParameterReport containing
@@ -275,21 +275,6 @@ total/trainable counts, completeness and per-node results. Subflow count rules
 request one recursively counted body and express independent replication;
 referenced joins use the same active catalog. Qt displays the C-owned report.
 Counts and UI state never enter NNModel persistence.
-
-```mermaid
-  classDiagram
-    NNModel --> ExpandedScene : read-only derivation
-    ExpandedScene *-- Occurrence
-    ExpandedScene *-- OccurrenceGroup
-    Occurrence : sourceNodeId
-    Occurrence : instancePath
-    OccurrenceGroup : ownerNodeId
-    OccurrenceGroup : parentGroup
-    Stereotype --> VisualizationLua : optional kind=subflow only
-```
-
-Occurrences are not NNModel nodes. Generic Lua plans describe body instances,
-synthetic operators, edges and owner output mapping per visualization-3d.md.
 
 Referenced parameter-count modules reuse caller graph context; package kind
 controls parameter validation, while actual graph node kind controls incoming

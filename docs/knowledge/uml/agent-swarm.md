@@ -7,13 +7,17 @@ interaction sequences are maintained in [development-agents](sequences/developme
 
 ```mermaid
   flowchart TD
-      Request[User requests delegation] --> KB[Principal reads KB and assigns bounded work]
-      KB --> Runtime{Current runtime}
+      Request[User requests delegation] --> KB[Principal reads and updates accepted KB]
+      KB --> Baseline[Commit KB contract and UML baseline]
+      Baseline --> Runtime{Current runtime}
       Runtime -->|OpenCode V2| Init[Discover swarm tools and complete swarm.init]
       Init --> Native[Launch native background subagent]
       Runtime -->|Codex| Spawn[collaboration.spawn_agent: Luna high implementation worker]
-      Spawn --> Messages[Native collaboration messages and completion]
-      Native --> Mailbox[OpenCode mailbox and native completion]
+      Spawn --> Diff[Worker reviews baseline commit diff]
+      Native --> Diff
+      Diff --> Implement[Implement assigned files only]
+      Implement --> Messages[Native collaboration messages and completion]
+      Implement --> Mailbox[OpenCode mailbox and native completion]
       Messages --> Review[Principal reviews results and runs final checks]
       Mailbox --> Review
 ```

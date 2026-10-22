@@ -90,9 +90,10 @@ numerical tensor comparison and never mutates either argument.
 No numerical embedding/cast or model mutation is introduced. Core package
 rules remain unchanged; the host must supply these declared primitives.
 
-Accepted 2026-10-04: generic infer_stereotype reference service and separate
-subflow visualization recipe runtime follow [3D contract](visualization-3d.md).
-Inference never executes visualization entrypoints.
+Accepted 2026-10-04: `services.infer_stereotype` resolves an active catalog
+reference and invokes its bounded shape rule with validated parameters and
+ordered tensors. Package manifests have no visualization entrypoint; the
+native client does not build an expanded presentation scene.
 
 ## Repeated shape analysis and work budgets (accepted 2026-10-12)
 

@@ -288,8 +288,7 @@ See editor.md for UI behavior, save revisions and resource barriers.
 
 ## Stereotype objects (accepted 2026-10-04)
 
-[3D contract](visualization-3d.md) supersedes the earlier unsupported object
-parameter limitation: owned NNValue objects preserve stereotype references,
+Owned NNValue objects preserve stereotype references,
 parameters, history and schema-v2 JSON. C validates active package identity,
 version constraint, expected kind and referenced parameters.
 

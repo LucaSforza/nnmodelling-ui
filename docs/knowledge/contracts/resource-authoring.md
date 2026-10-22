@@ -116,10 +116,10 @@ Accepted: above behavior and CLI integration per automation contract. Deferred:
 stereotype editing/resource deletion, object values and training. Typed output/subflow
 authoring follows typed-outputs.md.
 
-Accepted 2026-10-04: [3D contract](visualization-3d.md) supersedes Horizontal
-Repeat object/join limitations. Its generic inference service and separate
-subflow-only visualization Lua entrypoint are accepted; numerical execution
-and training remain deferred.
+Accepted 2026-10-04: Horizontal Repeat uses validated object-valued stereotype
+references and the generic `services.infer_stereotype` host service. No
+presentation-only visualization entrypoint or expanded network explorer is
+part of the native client contract.
 
 Accepted 2026-10-05: [backend contract](backend.md) and [backend UML](../uml/backend.md) supersede earlier backend/training deferrals. Native C11 graph authority and Lua shape analysis remain unchanged.
 

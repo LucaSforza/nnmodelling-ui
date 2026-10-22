@@ -2,7 +2,7 @@
 
 Accepted 2026-10-14: MainWindow owns staged Manage metavariables and direct
 Inspector single-field binding text/preview. GraphScene asks C for resolved
-positioned parameter values for nodes and preview children; it never paints
+positioned parameter values for nodes in the active scope; it never paints
 internal binding JSON. NNProject owns declarations, NNModel owns
 binding values, and C parameter resolver feeds shape/count/export consumers.
 Changed declaration lists use the same unsaved history barrier as Operations.
@@ -88,7 +88,8 @@ contracts/diagnostics.md and the analysis sequence in sequences.md.
 Typed output forms, spawned subflow terminals, mapped boundaries and circles
 follow contracts/typed-outputs.md and metamodel.md (2026-10-01).
 Accepted 2026-10-03: a new subflow seeds exactly one Input along with its mapped
-terminals in the same C transaction; Qt refresh displays all children on entry.
+terminals in the same C transaction; Qt refresh displays children after explicit
+scope entry.
 
 ## Graphics and report lifetimes
 
@@ -109,14 +110,10 @@ Direction is GraphScene presentation state: Vertical top/bottom, Horizontal righ
 DataflowLayout computes DAG ranks with barycentric ordering, port-centered lanes
 and corridor spacing. MainWindow uses it for Arrange,
 committing scope-local positions through C. Fit only recomputes routes and frames
-content including labels and expanded boundaries; never commits coordinates.
-GraphScene derives visual offsets to push overlapping peers downstream on expansion,
-subtracts those offsets on drag commit and restores compact placement on collapse.
-GraphScene owns expanded IDs and read-only model-backed preview items, copied tensor
+content including labels; never commits coordinates. GraphScene owns copied tensor
 hover text and route caches. OrthogonalRouter computes explicit polylines from item
 rectangles/port positions and existing tracks; EdgeItem paints them. All affected
 routes update when any obstacle moves. Scope QTreeWidget reflects real containment.
-Read-only previews reuse DataflowLayout and uniformly scale temporary child geometry.
 C history restores model snapshots; Edit Undo/Redo refreshes Qt without Qt history.
 QMenuBar owns File/Edit/Model/View actions; compact toolbar owns graph controls.
 GraphScene paints the 20-unit grid; GraphView exposes centered Zoom In/Out. NodeItem
@@ -132,7 +129,8 @@ Package names/IDs do not select junction behavior.
 C owns graph, coordinates and application mutations. Edge endpoints follow
 PortItem scene positions only for rendering. Release commits positions to C;
 failure restores committed positions. Painting is read-only. SubflowItem owns
-no child model; scope navigation filters C nodes, collapse is transient.
+no child model; its `Enter subflow` button changes the active scope through
+GraphScene. It does not render child previews.
 The graphical entry point is `src/gui/qt/main.cpp`. The former NNPlatform,
 nn_editor_run, SDL adapter and lifecycle smoke test were removed 2026-09-30.
 No SDL draw list, custom camera math or C++ graph remains.
@@ -149,18 +147,3 @@ shown as a non-navigable Root problem with null node identity; it never erases
 successful local tensors. CommandAdapter queries the same application report.
 No SDS or third-party API types: global utils owns bounded errors/path joining;
 yyjson owns escaping/serialization.
-
-## Expanded explorer ownership (2026-10-04)
-
-```mermaid
-  flowchart LR
-    Project[C Project/model/catalog] --> Expansion[C Lua composition / occurrence scene]
-    Expansion --> Layout[C 3D layout and groups]
-    Layout --> Camera[C camera / projection / depth ordering / picking]
-    Camera --> Tab[Qt Network 3D tab: input translation and painting]
-```
-
-Scene is owned disposable presentation data. No write-back, persistence or
-parallel graph authority. Source IDs and instance paths identify occurrences.
-Qt translates mouse look, arrow-key turning, flight, Fit and Home into the same
-C camera API; projected geometry and picking remain in C.

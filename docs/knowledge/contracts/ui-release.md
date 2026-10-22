@@ -6,20 +6,24 @@ snapshot restore and downloads; Python training runs in backend containers.
 
 ## Project lifecycle and workspace
 
-Startup displays project chooser. `New project` asks parent directory, valid
-model ID, version and display name; creates a new child directory named by ID
-and `model.json`, rejecting existing child. `Open project` accepts a project
-directory containing `model.json`; invalid project leaves current session
-unchanged. `Save` writes atomically and clears dirty state only on success.
-`Close project` returns to chooser after saving; save failure keeps project
-open with visible error. An explicit `Discard` path may close dirty project
-without saving. `New MNIST MLP` creates a copied editable project from bundled
-template with its own dataset metadata and model graph. No backend is contacted.
-Accepted 2026-10-05: startup chooser and File template menu replace the VAE
-shortcut with `New mini LLM` / `mini LLM…`. This creates and opens an editable
-copy of `examples/models/tiny-decoder-llm`, including packages and token dataset,
-with default ID `mini-llm` and name `mini LLM`. Source template stays unchanged.
-Creation failure preserves the active project and removes only the new copy.
+Startup first asks whether to create or open a project. Creation then offers
+only the bundled MNIST MLP, MNIST VAE and tiny LLM templates; the GUI never
+creates an empty project. The creation form shows parent directory, model ID,
+display name, initial version `0.1.0` and the exact destination
+`<parent>/<model ID>`. It rejects an existing destination before copying.
+Opening accepts a project directory containing `model.json`; an invalid
+directory shows a specific explanation and leaves the current project intact.
+`Save` writes atomically and clears dirty state only on success. `Close project`
+returns to the chooser after saving; save failure keeps the project open with a
+visible error. An explicit `Discard` path may close dirty project without
+saving. Each template creates an editable copy with its own resources and graph;
+the bundled source stays unchanged and no backend is contacted. Template copy
+failure preserves the active project and removes only the new copy.
+
+Accepted 2026-10-22: project chooser exposes Create/Open, and Create proceeds to
+the three-template selection before opening the editor. Blank-project creation
+is not a GUI action. Version starts at `0.1.0`; the destination preview updates
+as parent or model ID changes.
 
 Native path chooser may be an in-window path field. Users can also pass a
 project directory as startup argument. Project folder, custom package and
@@ -32,10 +36,17 @@ bindings use its named input slots.
 
 ## Graph editor
 
-Main window has toolbar, package palette, graph viewport, node inspector,
-project resources panel and status/diagnostics. User can create package-backed
+Main window has toolbar, package palette, contextual component guide, graph
+viewport, node inspector, project resources panel and status/diagnostics.
+The selected package guide and selected node Inspector show their definition
+description; core Input, Output, Loss and Loss Output descriptions explain
+dataset binding, model result and objective roles. User can create package-backed
 nodes, select/delete/move them, pan/zoom/fit/arrange view, connect/disconnect
 handles, edit names and typed parameters, save, close and reopen project.
+Visible shortcuts are Ctrl++, Ctrl+-, Ctrl+F, arrow keys for viewport panning,
+Ctrl+Shift+V for vertical Arrange and Ctrl+Shift+H for horizontal Arrange.
+Right-clicking a node or edge opens actions for that item; edge context menu
+supports mouse-only connection removal.
 Edges render under nodes; input handle occupancy and cycle/scope validation
 apply before commit. Accepted 2026-10-01: typed-outputs.md governs root's exactly
 one Output/one Loss Output, spawned subflow boundaries and circle/edge visuals.
@@ -43,9 +54,11 @@ Multiple Input nodes are allowed with distinct named
 bindings. Palette comes from active catalog, never package-ID switches.
 Inspector controls follow stereotype parameter schema, defaults and choices.
 Selected dataset exposes its named input/target tensor slots to client type
-analysis. Package and dataset panels show project-owned resources and exact
-identities/dependencies; authoring/deletion require project transaction rules
-in [project UML](../uml/project.md).
+analysis. Dataset creation explains shape entry inline: comma-separated
+dimensions, `B` for batch, with `B,4` and `B,1` examples. Package and dataset
+panels show project-owned resources and exact identities/dependencies;
+authoring/deletion require project transaction rules in
+[project UML](../uml/project.md).
 
 Graph view and inspector remain usable with unresolved tensors or Lua semantic
 errors. Diagnostics identify node and category. Native client does not execute

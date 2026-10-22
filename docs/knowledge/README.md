@@ -23,7 +23,6 @@ semantics or ownership. [UI rewrite plan](../plans/ui-rewrite.md) tracks work;
 | Verification | [Testing strategy](testing/strategy.md), [release QA](testing/qa.md), [computer-use LLM trial](testing/ui-llm-authoring-2026-10-03.md), [training dashboard and examples](testing/training-dashboard-progress.md), [full LLM training and quality](testing/full-llm-training.md), [Slurm training and wheels](testing/cluster-training.md) |
 | Development tooling | [OpenCode/Codex agent contract](contracts/agent-swarm.md), [agent sequence](uml/agent-swarm.md) |
 | Resources, VAE, exported operations and LLM commands | [Authoring and subflows](contracts/resource-authoring.md), [operations and wheel execution](contracts/backend.md), [local CLI protocol](contracts/automation.md), [command use cases](uml/automation.md) |
-| Expanded 3D explorer | [Composition, occurrences and camera](contracts/visualization-3d.md), [ownership UML](uml/editor.md) |
 | Typed outputs and terminals | [Output/loss contract](contracts/typed-outputs.md), [boundary and output UML](uml/metamodel.md), [implementation plan](../plans/typed-outputs.md) |
 | Errors and strings | [Diagnostics and common helpers](contracts/diagnostics.md), [report ownership](uml/editor.md), [UI sequence](uml/sequences.md#analysis-cache-and-problem-navigation) |
 
