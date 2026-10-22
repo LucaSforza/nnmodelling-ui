@@ -6,9 +6,13 @@ snapshot restore and downloads; Python training runs in backend containers.
 
 ## Project lifecycle and workspace
 
-Startup first asks whether to create or open a project. Creation then offers
-only the bundled MNIST MLP, MNIST VAE and tiny LLM templates; the GUI never
-creates an empty project. The creation form shows parent directory, model ID,
+On a normal launch without a project path, show only the startup chooser; keep
+the editor window hidden until project creation or opening succeeds. Dismissing
+the chooser exits the application. A canceled or failed create/open returns to
+the chooser without exposing an empty editor. Startup first asks whether to
+create or open a project. Creation then offers only the bundled MNIST MLP,
+MNIST VAE and tiny LLM templates; the GUI never creates an empty project. The
+creation form shows parent directory, model ID,
 display name, initial version `0.1.0` and the exact destination
 `<parent>/<model ID>`. It rejects an existing destination before copying.
 Opening accepts a project directory containing `model.json`; an invalid

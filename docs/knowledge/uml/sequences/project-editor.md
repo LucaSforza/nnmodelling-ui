@@ -47,7 +47,8 @@ Qt owns selection, scope, camera, drafts and other transient presentation state.
     participant Catalog as Package and dataset catalogs
     participant Scene as GraphScene
     Qt->>App: create(core root)
-    Qt-->>User: choose Open project or Create project
+    Qt->>Qt: keep editor window hidden
+    Qt-->>User: show startup chooser only
     alt open existing project
       User->>Qt: choose project path
       Qt->>App: open(path)
@@ -63,9 +64,11 @@ Qt owns selection, scope, camera, drafts and other transient presentation state.
         Scene->>App: query borrowed model/catalog snapshots
         App-->>Scene: authoritative state
         Scene->>Scene: copy IDs and synchronize items
+        Qt->>Qt: show editor window
       else parse, resolution or validation fails
         Project-->>App: error
         App-->>Qt: error and prior project remains active
+        Qt-->>User: show chooser again; editor stays hidden
       end
     else create from template
       Qt-->>User: choose MNIST MLP, MNIST VAE or tiny LLM
@@ -73,6 +76,12 @@ Qt owns selection, scope, camera, drafts and other transient presentation state.
       Qt-->>User: show parent, ID, display name, version 0.1.0 and destination preview
       User->>Qt: enter parent, ID and display name
       Qt->>App: create selected template
+      App-->>Qt: project active after successful creation
+      Qt->>Scene: reset scope and refresh items
+      Qt->>Qt: show editor window
+    else dismiss startup chooser
+      User->>Qt: close chooser
+      Qt->>Qt: quit application
     end
 ```
 
