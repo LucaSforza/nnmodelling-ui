@@ -451,13 +451,6 @@ void NodeItem::addPort(PortItem *port) {
 
 void NodeItem::setChildCount(int) {}
 
-void NodeItem::setReadOnlyPreview(bool preview) {
-    readOnlyPreview_ = preview;
-    setFlag(ItemIsMovable, !preview);
-    setFlag(ItemIsSelectable, !preview);
-    for (PortItem *port : ports_) port->setReadOnlyPreview(preview);
-}
-
 void NodeItem::setTensorSummary(const QString &summary) {
     tensorSummary_ = summary;
     if (!tensorSummary_.isEmpty() && !tensorPopupBackground_) {
@@ -555,7 +548,6 @@ QVariant NodeItem::itemChange(GraphicsItemChange change, const QVariant &value) 
 }
 
 void NodeItem::mousePressEvent(QGraphicsSceneMouseEvent *event) {
-    if (readOnlyPreview_) { event->accept(); return; }
     if (joinNode_ && owner_ && event->button() == Qt::LeftButton) {
         if (joinRemoveRect_.contains(event->pos())) {
             owner_->adjustJoinInputSlots(id_, false);
@@ -573,7 +565,6 @@ void NodeItem::mousePressEvent(QGraphicsSceneMouseEvent *event) {
 }
 
 void NodeItem::mouseReleaseEvent(QGraphicsSceneMouseEvent *event) {
-    if (readOnlyPreview_) { event->accept(); return; }
     QGraphicsObject::mouseReleaseEvent(event);
     if (owner_) owner_->commitNodeMoves();
 }

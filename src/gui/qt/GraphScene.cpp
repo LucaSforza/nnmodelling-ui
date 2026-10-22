@@ -1,7 +1,6 @@
 #include "GraphScene.hpp"
 
 #include "EdgeItem.hpp"
-#include "DataflowLayout.hpp"
 #include "OrthogonalRouter.hpp"
 #include "NodeItem.hpp"
 #include "PortItem.hpp"
@@ -30,7 +29,6 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
-#include <functional>
 
 namespace {
 struct NodeSnapshot {
@@ -150,7 +148,6 @@ void GraphScene::refresh() {
         flowDirection_ = FlowDirection::Vertical;
         explicitJoinInputHandles_.clear();
         occupiedJoinInputs_.clear();
-        expandedSubflows_.clear();
     }
     refreshing_ = true;
     QSignalBlocker signalBlocker(this);
@@ -189,26 +186,17 @@ void GraphScene::refresh() {
         }
     }
 
-    QSet<QString> liveSubflows;
-    for (const NodeSnapshot &data : nodeData)
-        if (data.subflow) liveSubflows.insert(data.id);
-    expandedSubflows_.intersect(liveSubflows);
-
     clear();
     nodes_.clear();
     edges_.clear();
     nodeScopes_.clear();
-    viewOffsets_.clear();
     edgeScopes_.clear();
     draftSource_ = nullptr;
     draftPath_ = nullptr;
     QHash<QString, QString> visibleScopes;
     QHash<QString, QStringList> parameterDiagnostics;
-    std::function<void(const NodeSnapshot &, const QPointF &, QGraphicsItem *, bool,
-                       QSet<QString>, int)> addNode;
-    addNode = [&](const NodeSnapshot &data, const QPointF &position, QGraphicsItem *parent,
-                  bool preview, QSet<QString> ancestry, int depth) {
-        if (nodes_.contains(data.id) || depth > 24 || ancestry.contains(data.id)) return;
+    auto addNode = [&](const NodeSnapshot &data, const QPointF &position) {
+        if (nodes_.contains(data.id)) return;
         const NNNode *node = nn_model_find_node(nn_app_model(application_), data.id.toUtf8().constData());
         if (!node) return;
         const QColor color = packageColor(application_, data.packageId, copyText(node->package_version));
@@ -251,16 +239,11 @@ void GraphScene::refresh() {
         const bool join = data.kind == QStringLiteral("join");
         item->setJoinNode(join);
         item->setFlowDirection(flowDirection_);
-        if (parent) {
-            item->setParentItem(parent);
-            item->setPos(position);
-        }
-        item->setReadOnlyPreview(preview);
         nodes_.insert(data.id, item);
         visibleScopes.insert(data.id, data.scopeId);
         nodeScopes_.insert(data.id, data.scopeId);
         item->setProblemCategory(problemCategories_.value(data.id));
-        if (!parent) addItem(item);
+        addItem(item);
         for (bool output : {true, false}) {
             const QByteArray id = data.id.toUtf8();
             QStringList handles;
@@ -294,7 +277,6 @@ void GraphScene::refresh() {
                     type = copyText(definition->type);
                 }
                 auto *port = new PortItem(this, data.id, handle, output, handle, type, item);
-                port->setReadOnlyPreview(preview);
                 item->addPort(port);
             }
             if (join) {
@@ -308,70 +290,10 @@ void GraphScene::refresh() {
                 return child.scopeId == data.id;
             }));
             subflow->setChildCount(count);
-            if (expandedSubflows_.contains(data.id) && count > 0) {
-                ancestry.insert(data.id);
-                for (const NodeSnapshot &child : nodeData) {
-                    if (child.scopeId != data.id) continue;
-                    addNode(child, child.position, subflow, true, ancestry, depth + 1);
-                }
-
-                QVector<DataflowLayout::Node> layoutNodes;
-                QVector<DataflowLayout::Edge> layoutEdges;
-                for (const NodeSnapshot &child : nodeData) {
-                    if (child.scopeId != data.id) continue;
-                    NodeItem *visible = nodes_.value(child.id);
-                    if (!visible) continue;
-                    qreal anchor = flowDirection_ == FlowDirection::Vertical
-                        ? visible->boundingRect().center().x() : visible->boundingRect().center().y();
-                    const QList<PortItem *> ports = visible->ports();
-                    if (!ports.isEmpty()) {
-                        anchor = 0.0;
-                        for (PortItem *port : ports)
-                            anchor += flowDirection_ == FlowDirection::Vertical ? port->x() : port->y();
-                        anchor /= ports.size();
-                    }
-                    const bool terminal = child.kind == QStringLiteral("output") ||
-                        child.kind == QStringLiteral("loss-output");
-                    layoutNodes.append({child.id, visible->boundingRect(), anchor, terminal});
-                }
-                for (const EdgeSnapshot &edge : edgeData)
-                    if (edge.scopeId == data.id)
-                        layoutEdges.append({edge.source, edge.target});
-                const QHash<QString, QPointF> layout = DataflowLayout::arrange(
-                    layoutNodes, layoutEdges, flowDirection_);
-                QRectF layoutBounds;
-                for (const DataflowLayout::Node &entry : layoutNodes) {
-                    if (!layout.contains(entry.id)) continue;
-                    layoutBounds = layoutBounds.united(QRectF(layout.value(entry.id) + entry.bounds.topLeft(),
-                                                               entry.bounds.size()));
-                }
-                if (!layoutBounds.isEmpty()) {
-                    const qreal contentMaxWidth = 580.0;
-                    const qreal contentMaxHeight = 304.0;
-                    const qreal scale = qMin<qreal>(1.0, qMin(contentMaxWidth / layoutBounds.width(),
-                                                              contentMaxHeight / layoutBounds.height()));
-                    const qreal contentWidth = layoutBounds.width() * scale;
-                    const qreal contentHeight = layoutBounds.height() * scale;
-                    const QPointF contentOrigin((subflow->boundingRect().width() - contentWidth) / 2.0,
-                                                subflow->boundingRect().bottom() + 60.0);
-                    for (const DataflowLayout::Node &entry : layoutNodes) {
-                        NodeItem *visible = nodes_.value(entry.id);
-                        if (!visible || !layout.contains(entry.id)) continue;
-                        visible->setScale(scale);
-                        const QPointF position(
-                            contentOrigin.x() + (layout.value(entry.id).x() - layoutBounds.left()) * scale,
-                            contentOrigin.y() + (layout.value(entry.id).y() - layoutBounds.top()) * scale);
-                        visible->setPos(position);
-                    }
-                    const QRectF contentRect(contentOrigin, QSizeF(contentWidth, contentHeight));
-                    subflow->setExpandedPreviewRect(contentRect);
-                }
-            }
         }
     };
     for (const NodeSnapshot &data : nodeData)
-        if (data.scopeId == scopeId_) addNode(data, data.position, nullptr, false, {}, 0);
-    spaceExpandedScope();
+        if (data.scopeId == scopeId_) addNode(data, data.position);
     for (const EdgeSnapshot &data : edgeData) {
         if (data.scopeId != visibleScopes.value(data.source) ||
             data.scopeId != visibleScopes.value(data.target)) continue;
@@ -442,43 +364,6 @@ void GraphScene::setScope(const QString &scopeId) {
     emit scopeChanged(scopeId_);
 }
 
-void GraphScene::spaceExpandedScope() {
-    QVector<NodeItem *> peers;
-    bool expanded = false;
-    for (NodeItem *item : nodes_) {
-        if (nodeScopes_.value(item->id()) != scopeId_) continue;
-        peers.append(item);
-        auto *subflow = dynamic_cast<SubflowItem *>(item);
-        expanded |= subflow && !subflow->expandedPreviewRect().isEmpty();
-    }
-    if (!expanded) return;
-    const bool vertical = flowDirection_ == FlowDirection::Vertical;
-    std::sort(peers.begin(), peers.end(), [vertical](NodeItem *a, NodeItem *b) {
-        const qreal first = vertical ? a->sceneBoundingRect().top() : -a->sceneBoundingRect().right();
-        const qreal second = vertical ? b->sceneBoundingRect().top() : -b->sceneBoundingRect().right();
-        return first == second ? a->id() < b->id() : first < second;
-    });
-    QVector<QRectF> placed;
-    for (NodeItem *item : peers) {
-        const QPointF original = item->pos();
-        // Only push downstream. Derived offsets disappear on collapse and never enter C history.
-        for (int pass = 0; pass < placed.size(); ++pass) {
-            const QRectF bounds = item->sceneBoundingRect();
-            qreal shift = 0.0;
-            for (const QRectF &obstacle : placed) {
-                if (!bounds.intersects(obstacle.adjusted(-36, -36, 36, 36))) continue;
-                shift = qMax(shift, vertical ? obstacle.bottom() + 36 - bounds.top()
-                                            : bounds.right() - obstacle.left() + 36);
-            }
-            if (shift <= 0.0) break;
-            shift = std::ceil(shift / NN_MODEL_GRID_SPACING) * NN_MODEL_GRID_SPACING;
-            item->setPos(item->pos() + (vertical ? QPointF(0, shift) : QPointF(-shift, 0)));
-        }
-        viewOffsets_.insert(item->id(), item->pos() - original);
-        placed.append(item->sceneBoundingRect());
-    }
-}
-
 void GraphScene::setFlowDirection(FlowDirection direction) {
     if (flowDirection_ == direction) return;
     flowDirection_ = direction;
@@ -512,7 +397,6 @@ void GraphScene::deleteSelection() {
         reportError(error);
         return;
     }
-    QStringList removedSubflows;
     bool failed = false;
     for (const QString &id : edgeIds) {
         const QByteArray utf8 = id.toUtf8();
@@ -530,7 +414,6 @@ void GraphScene::deleteSelection() {
                 break;
             }
             changed = true;
-            removedSubflows.append(id);
         }
     }
     char endError[512] = {};
@@ -544,7 +427,6 @@ void GraphScene::deleteSelection() {
         scheduleRefresh();
         return;
     }
-    for (const QString &id : removedSubflows) expandedSubflows_.remove(id);
     if (changed) {
         emit modelChanged();
         scheduleRefresh();
@@ -612,13 +494,6 @@ void GraphScene::recomputeRoutes() {
     }
 }
 
-void GraphScene::toggleExpanded(const QString &id) {
-    if (!dynamic_cast<SubflowItem *>(nodes_.value(id, nullptr))) return;
-    if (expandedSubflows_.contains(id)) expandedSubflows_.remove(id);
-    else expandedSubflows_.insert(id);
-    scheduleRefresh();
-}
-
 QColor GraphScene::connectionDraftColor() const {
     return draftPath_ ? draftPath_->pen().color() : QColor();
 }
@@ -661,18 +536,21 @@ void GraphScene::keyPressEvent(QKeyEvent *event) {
 }
 
 void GraphScene::contextMenuEvent(QGraphicsSceneContextMenuEvent *event) {
-    auto *subflow = dynamic_cast<SubflowItem *>(itemAt(event->scenePos(), QTransform()));
-    if (!subflow) {
+    QGraphicsItem *target = itemAt(event->scenePos(), QTransform());
+    while (target && !dynamic_cast<NodeItem *>(target) && !dynamic_cast<EdgeItem *>(target))
+        target = target->parentItem();
+    auto *node = dynamic_cast<NodeItem *>(target);
+    auto *edge = dynamic_cast<EdgeItem *>(target);
+    if (!node && !edge) {
         QGraphicsScene::contextMenuEvent(event);
         return;
     }
+    clearSelection();
+    target->setSelected(true);
     QMenu menu;
-    QAction *enter = subflow->isReadOnlyPreview() ? nullptr : menu.addAction(tr("Enter subflow"));
-    QAction *expand = menu.addAction(isExpanded(subflow->id()) ? tr("Collapse preview")
-                                                               : tr("Expand preview"));
+    QAction *remove = menu.addAction(edge ? tr("Delete connection") : tr("Delete"));
     QAction *chosen = menu.exec(event->screenPos());
-    if (enter && chosen == enter) setScope(subflow->id());
-    else if (chosen == expand) toggleExpanded(subflow->id());
+    if (chosen == remove) deleteSelection();
     event->accept();
 }
 
@@ -713,7 +591,7 @@ void GraphScene::commitNodeMoves() {
         if (!item || (qFuzzyCompare(item->x() + 1.0, it.value().x() + 1.0) &&
                       qFuzzyCompare(item->y() + 1.0, it.value().y() + 1.0))) continue;
         const QByteArray id = it.key().toUtf8();
-        const QPointF position = item->pos() - viewOffsets_.value(it.key());
+        const QPointF position = item->pos();
         if (!nn_app_move_node(application_, id.constData(), position.x(), position.y(), error, sizeof(error))) {
             failed = true;
             break;

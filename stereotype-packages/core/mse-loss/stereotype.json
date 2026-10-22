@@ -1,6 +1,6 @@
 {
   "name": "MSE Loss",
-  "description": "Computes a scalar mean-squared-error regression objective.",
+  "description": "Compares model predictions with the dataset target and computes mean-squared error. Use for regression; connect prediction here and connect this loss to Loss Output.",
   "kind": "loss",
   "objective": { "externalInputs": [{ "name": "target", "source": "batch.targets.target", "transform": "flatten_batch" }] },
   "view": {

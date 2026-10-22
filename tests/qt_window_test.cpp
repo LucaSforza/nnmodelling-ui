@@ -13,6 +13,7 @@
 #include <QAction>
 #include <QApplication>
 #include <QDir>
+#include <QLayout>
 #include <QImage>
 #include <QLineEdit>
 #include <QCheckBox>
@@ -57,6 +58,7 @@ private slots:
     void lifecycleAndInspector();
     void appDialogsContrastUnderDarkPalette();
     void miniLlmTemplateShortcut();
+    void componentGuideAppearsBelowAddButton();
     void stereotypeReferenceForm();
     void modelProblemDiagnosticsAndNavigation();
     void currentScopeRetainsOutsideCauseContext();
@@ -75,24 +77,44 @@ void WindowTest::miniLlmTemplateShortcut() {
     NNApplication *app = nn_app_new(NN_SOURCE_DIR "/stereotype-packages/core");
     QVERIFY(app);
     MainWindow window(app);
-    bool foundTemplate = false;
+    bool foundMlp = false;
+    bool foundVae = false;
+    bool foundTinyLlm = false;
     for (QAction *action : window.findChildren<QAction *>()) {
-        if (action->text() == "mini LLM…") foundTemplate = true;
-        QVERIFY(action->text() != "MNIST VAE…");
+        if (action->text() == "MNIST MLP…") foundMlp = true;
+        if (action->text() == "MNIST VAE…") foundVae = true;
+        if (action->text() == "tiny LLM…") foundTinyLlm = true;
     }
-    QVERIFY(foundTemplate);
-    bool foundChooser = false;
+    QVERIFY(foundMlp);
+    QVERIFY(foundVae);
+    QVERIFY(foundTinyLlm);
+    bool foundCreate = false;
+    bool foundOpen = false;
     QTimer::singleShot(0, &window, [&] {
         auto *chooser = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
         if (!chooser) return;
         for (QAbstractButton *button : chooser->buttons()) {
-            if (button->text() == "New mini LLM") foundChooser = true;
-            QVERIFY(button->text() != "New MNIST VAE");
+            if (button->text() == "Create project") foundCreate = true;
+            if (button->text() == "Open project") foundOpen = true;
         }
-        chooser->reject();
+        chooser->button(QMessageBox::Close)->click();
     });
     window.showProjectChooser();
-    QVERIFY(foundChooser);
+    QVERIFY(foundCreate);
+    QVERIFY(foundOpen);
+}
+
+void WindowTest::componentGuideAppearsBelowAddButton() {
+    NNApplication *app = nn_app_new(NN_SOURCE_DIR "/stereotype-packages/core");
+    QVERIFY(app);
+    MainWindow window(app);
+    auto *guide = window.findChild<QLabel *>("componentGuide");
+    auto *addButton = window.findChild<QPushButton *>("addNodeButton");
+    QVERIFY(guide && addButton);
+    QCOMPARE(guide->parentWidget(), addButton->parentWidget());
+    QLayout *layout = guide->parentWidget()->layout();
+    QVERIFY(layout);
+    QVERIFY(layout->indexOf(addButton) < layout->indexOf(guide));
 }
 
 void WindowTest::stereotypeReferenceForm() {
@@ -498,7 +520,7 @@ void WindowTest::scopeTreeFollowsContainmentAndMenus() {
     QCOMPARE(menuNames, QStringList({QStringLiteral("&File"), QStringLiteral("&Edit"), QStringLiteral("&Model"),
                                      QStringLiteral("&View")}));
     QMenu *templates = window.findChild<QMenu *>("projectTemplatesMenu");
-    QVERIFY(templates && templates->actions().size() == 2);
+    QVERIFY(templates && templates->actions().size() == 3);
     QAction *open = window.findChild<QAction *>("openProjectAction");
     QAction *save = window.findChild<QAction *>("saveProjectAction");
     QVERIFY(open && save);

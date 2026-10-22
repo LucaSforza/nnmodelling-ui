@@ -1,6 +1,6 @@
 {
   "name": "Loss Output",
-  "description": "Collects one explicit loss result; combine contributions with a designer-selected join first.",
+  "description": "Marks the training objective used to evaluate the model. Connect one loss here; combine multiple loss contributions with a join first. Required for training, separate from the model Output.",
   "kind": "loss-output",
   "outputs": [],
   "view": { "color": "#d32f2f", "width": 140, "height": 80 },

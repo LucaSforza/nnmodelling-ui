@@ -40,8 +40,6 @@ public:
     QRectF junctionRect() const { return junctionRect_; }
     QString boundaryKind() const { return boundaryKind_; }
     QString problemCategory() const { return problemCategory_; }
-    void setReadOnlyPreview(bool preview);
-    bool isReadOnlyPreview() const { return readOnlyPreview_; }
     void setTensorSummary(const QString &summary);
     QString tensorSummary() const { return tensorSummary_; }
     void setTensorPopupVisible(bool visible);
@@ -64,7 +62,6 @@ protected:
     QString problemCategory_;
     QString boundaryKind_;
     bool joinNode_ = false;
-    bool readOnlyPreview_ = false;
     bool externalPortsOnBoundary_ = false;
     QString tensorSummary_;
     QGraphicsRectItem *tensorPopupBackground_ = nullptr;

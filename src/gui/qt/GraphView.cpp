@@ -124,7 +124,15 @@ void GraphView::keyPressEvent(QKeyEvent *event) {
         event->accept();
         return;
     }
-    QGraphicsView::keyPressEvent(event);
+    constexpr int panStep = 48;
+    switch (event->key()) {
+    case Qt::Key_Left: horizontalScrollBar()->setValue(horizontalScrollBar()->value() - panStep); break;
+    case Qt::Key_Right: horizontalScrollBar()->setValue(horizontalScrollBar()->value() + panStep); break;
+    case Qt::Key_Up: verticalScrollBar()->setValue(verticalScrollBar()->value() - panStep); break;
+    case Qt::Key_Down: verticalScrollBar()->setValue(verticalScrollBar()->value() + panStep); break;
+    default: QGraphicsView::keyPressEvent(event); return;
+    }
+    event->accept();
 }
 
 void GraphView::keyReleaseEvent(QKeyEvent *event) {
