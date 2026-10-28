@@ -144,7 +144,7 @@ return errors without partial mutation.
     end
 ```
 
-## Edit a project stereotype rule
+## Edit project stereotype source
 
 ```mermaid
 sequenceDiagram
@@ -152,12 +152,12 @@ sequenceDiagram
     participant Qt as Inspector and Lua editor
     participant App as NNApplication
     participant Project as Project resources
-    User->>Qt: select local stereotype node and edit Lua
-    Qt->>App: stereotype_lua(exact id, version)
-    App->>Project: read confined project-owned inference source
+    User->>Qt: select local stereotype node and choose Lua or Python
+    Qt->>App: stereotype_source(exact id, version, kind)
+    App->>Project: read confined project-owned declared source
     User->>Qt: apply draft
-    Qt->>App: update_stereotype_lua(id, version, source)
-    App->>App: validate bounded Lua source
+    Qt->>App: update_stereotype_source(id, version, kind, source)
+    App->>App: validate bounded Lua source; bound Python text
     App->>Project: stage and replace source, save project
     alt success
         App->>App: history barrier and invalidate analysis

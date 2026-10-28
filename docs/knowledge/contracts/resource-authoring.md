@@ -169,21 +169,25 @@ Accepted 2026-10-12: bundled examples remain portable and bounded. Large V4
 example, dedicated consumer and probes are removed from the shipped tree.
 Generic runtime and parameter-count contracts remain unchanged.
 
-## Project stereotype Lua editing (accepted 2026-10-28)
+## Project stereotype source editing (accepted 2026-10-28)
 
-Creation already exposes the inference Lua editor. A selected node whose exact
-package identity is declared as a project-owned resource exposes an inference
-Lua editor in the inspector. Core packages cannot be edited, even through C APIs.
+Creation exposes inference Lua and PyTorch Python editors, with an editable Python
+stub by default. Both files are created in the same resource transaction. A selected node whose exact
+package identity is declared as a project-owned resource exposes a source
+editor in the inspector, with Lua and Python views and simple syntax coloring. Core packages cannot be edited, even through C APIs.
 The editor identifies the package, explains that all its nodes share the rule,
 and applies explicitly; cancel or validation failure preserves the draft and
 original. Successful apply immediately invalidates analysis and refreshes results.
 
-`nn_app_stereotype_lua` returns owned source (free with `nn_app_free_text`);
-`nn_app_update_stereotype_lua` accepts exact ID/version and source. Both reject
-non-project resources, unsafe paths, symlinks and nonregular files. Only the
-declared inference entrypoint is edited; no parameter-count or Python file is
-changed. Source is bounded and validated with the existing Lua validator before
-writing. C stages a flushed sibling and backup, atomically replaces the source,
+`nn_app_stereotype_source` returns owned source (free with `nn_app_free_text`);
+`nn_app_update_stereotype_source` accepts exact ID/version, source kind and text.
+The kind is restricted to inference Lua or PyTorch Python. `nn_app_create_stereotype_with_python`
+accepts both sources; the existing create API retains its default scaffold. Both reject
+non-project resources, unsafe paths, symlinks and nonregular files. Only declared inference and PyTorch entrypoints may be edited; parameter-count
+files are unchanged. Both sources are bounded to 1 MiB. Lua is validated with
+the existing bounded validator before writing. Python is saved as text and never
+executed or syntax-checked by the native client; training uses it in the existing
+worker and existing jobs retain their snapshots. C stages a flushed sibling and backup, atomically replaces the source,
 then saves current project edits; on failure restore original bytes and dirty
 state, reporting rollback failure and recovery path. Successful apply is a saved
 history barrier, and affects every node using that exact package.
