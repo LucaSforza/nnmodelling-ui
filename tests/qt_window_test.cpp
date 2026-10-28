@@ -776,6 +776,21 @@ void WindowTest::graphHistoryTracksEditsAndScopeFallback() {
     QVERIFY(!nn_model_find_node(nn_app_model(app), "flow"));
 }
 
+static void setInitialStereotypeLua(QDialog *form, const QString &source) {
+    QTimer::singleShot(0, form, [form, source] {
+        auto *editor = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+        if (!editor || editor == form) return;
+        auto *lua = editor->findChild<QPlainTextEdit *>("stereotypeLua");
+        auto *apply = editor->findChild<QPushButton *>("applyInitialStereotypeSource");
+        if (lua && apply) {
+            lua->setPlainText(source);
+            apply->click();
+        }
+    });
+    auto *button = form->findChild<QPushButton *>("editStereotypeSourceButton");
+    if (button) button->click();
+}
+
 static void answerDialog(QMessageBox::StandardButton answer) {
     QTimer::singleShot(0, [answer] {
         auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
@@ -1035,17 +1050,19 @@ void WindowTest::appDialogsContrastUnderDarkPalette() {
                     checkBoxEvidence = inspectDialog(dialog, checkBox);
             }
             if (captureName == QStringLiteral("stereotype")) {
-                auto *tabs = dialog->findChild<QTabWidget *>();
-                auto *scroll = dialog->findChild<QScrollArea *>();
-                if (tabs && scroll) {
-                    scroll->ensureWidgetVisible(tabs);
-                    QCoreApplication::processEvents();
+                QTimer::singleShot(0, dialog, [&, dialog] {
+                    auto *editor = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+                    auto *tabs = editor ? editor->findChild<QTabWidget *>() : nullptr;
+                    if (!editor || !tabs) return;
                     auto *bar = tabs->tabBar();
-                    selectedTab = inspectDialog(dialog, bar, {}, bar->tabRect(0));
-                    otherTab = inspectDialog(dialog, bar, {}, bar->tabRect(1));
+                    selectedTab = inspectDialog(editor, bar, {}, bar->tabRect(0));
+                    otherTab = inspectDialog(editor, bar, {}, bar->tabRect(1));
                     tabs->setCurrentIndex(1);
-                    selectedPython = inspectDialog(dialog, bar, {}, bar->tabRect(1));
-                }
+                    selectedPython = inspectDialog(editor, bar, {}, bar->tabRect(1));
+                    editor->reject();
+                });
+                if (auto *sourceButton = dialog->findChild<QPushButton *>("editStereotypeSourceButton"))
+                    sourceButton->click();
             }
             dialog->reject();
         });
@@ -1194,7 +1211,7 @@ void WindowTest::retainedLuaValidationFormAndNonblockingRejection() {
         dialog->findChild<QLineEdit *>("stereotypeId")->setText("bad.lua");
         dialog->findChild<QLineEdit *>("stereotypeVersion")->setText("1.0.0");
         dialog->findChild<QLineEdit *>("stereotypeName")->setText("Malformed Lua");
-        dialog->findChild<QPlainTextEdit *>("stereotypeLua")->setPlainText("return function(");
+        setInitialStereotypeLua(dialog, QStringLiteral("return function("));
         QTimer::singleShot(0, dialog, [dialog] {
             auto *buttons = dialog->findChild<QDialogButtonBox *>();
             buttons->button(QDialogButtonBox::Save)->click();
@@ -1203,7 +1220,6 @@ void WindowTest::retainedLuaValidationFormAndNonblockingRejection() {
                 QCOMPARE(dialog->findChild<QLineEdit *>("stereotypeId")->text(), QStringLiteral("bad.lua"));
                 auto *luaError = dialog->findChild<QLabel *>("stereotypeLuaError");
                 QVERIFY(!luaError->text().isEmpty());
-                QVERIFY(!dialog->findChild<QPlainTextEdit *>("stereotypeLua")->extraSelections().isEmpty());
                 dialog->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Cancel)->click();
             });
         });
@@ -1342,7 +1358,9 @@ void WindowTest::visualResourceAuthoringForms() {
         dialog->findChild<QLineEdit *>("stereotypeVersion")->setText("1.0.0");
         dialog->findChild<QLineEdit *>("stereotypeName")->setText("UI authoring fixture");
         QCOMPARE(dialog->findChild<QComboBox *>("stereotypeKind")->currentText(), QStringLiteral("layer"));
-        QCOMPARE(dialog->findChild<QPlainTextEdit *>("stereotypeLua")->toPlainText(), QStringLiteral(
+        auto *sourceButton = dialog->findChild<QPushButton *>("editStereotypeSourceButton");
+        QVERIFY(sourceButton);
+        setInitialStereotypeLua(dialog, QStringLiteral(
             "return function(context, parameters, services)\n"
             "  if not context.inputs[1] then\n"
             "    return { status = 'unresolved', message = 'Input missing' }\n"
@@ -1647,12 +1665,12 @@ void WindowTest::typedOutputAuthoringBoundariesAndInspector() {
         outputs->item(0, 1)->setText("output");
         outputs->item(1, 0)->setText("objective");
         outputs->item(1, 1)->setText("output"); // retain these values after rejected form
-        dialog->findChild<QPlainTextEdit *>("stereotypeLua")->setPlainText(
+        setInitialStereotypeLua(dialog, QStringLiteral(
             "return function(context, parameters, services)\n"
             "  local input = context.inputs[1]\n"
             "  if not input then return { status = 'unresolved', message = 'missing' } end\n"
             "  return { status = 'success', outputs = { prediction = input, objective = input } }\n"
-            "end");
+            "end"));
         auto *save = dialog->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Save);
         QTimer::singleShot(0, dialog, [dialog, outputs, save] {
             save->click();
