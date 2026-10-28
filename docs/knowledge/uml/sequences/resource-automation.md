@@ -167,3 +167,22 @@ sequenceDiagram
         App-->>Qt: error, retain draft
     end
 ```
+
+## Author source before stereotype creation
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Form as Stereotype creation form
+    participant Editor as Lua/Python source editor
+    participant App as NNApplication
+    participant Project as Project resource transaction
+    User->>Form: edit initial source
+    Form->>Editor: open with current Lua and Python drafts
+    User->>Editor: edit source in language tab
+    User->>Editor: apply drafts
+    Editor-->>Form: Lua and Python text
+    User->>Form: Create and save project
+    Form->>App: createStereotype(definition, Lua, Python, dependencies)
+    App->>Project: create files and save candidate model atomically
+```

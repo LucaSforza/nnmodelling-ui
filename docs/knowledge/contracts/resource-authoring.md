@@ -171,8 +171,10 @@ Generic runtime and parameter-count contracts remain unchanged.
 
 ## Project stereotype source editing (accepted 2026-10-28)
 
-Creation exposes inference Lua and PyTorch Python editors, with an editable Python
-stub by default. Both files are created in the same resource transaction. A selected node whose exact
+Creation form exposes an Edit initial source button. It opens a separate editor dialog
+with Lua and Python tabs and an editable Python stub. Applying copies both drafts
+back to the form without creating files. Only Create and save project submits
+the drafts through the same resource transaction as metadata. A selected node whose exact
 package identity is declared as a project-owned resource exposes a source
 editor in the inspector, with Lua and Python views and simple syntax coloring. Core packages cannot be edited, even through C APIs.
 The editor identifies the package, explains that all its nodes share the rule,
