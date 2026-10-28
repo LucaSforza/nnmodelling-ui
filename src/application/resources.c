@@ -12,14 +12,16 @@
 #include <stdlib.h>
 #include <string.h>
 
-bool nn_app_create_stereotype(NNApplication *app, const char *id, const char *version,
-                              const char *definition_json, const char *inference_lua,
-                              const char *dependencies_json, char *error, size_t cap)
+bool nn_app_create_stereotype_with_python(NNApplication *app, const char *id, const char *version,
+                                          const char *definition_json, const char *inference_lua,
+                                          const char *pytorch_python,
+                                          const char *dependencies_json, char *error, size_t cap)
 {
     nn_error_set(error, cap, "");
     if (!app || !app->project) return nn_fail(error, cap, "no active project");
     if (app->history.group_active) return nn_fail(error, cap, "cannot create a resource during an edit group");
-    if (!id || !version || !definition_json || !inference_lua || strlen(inference_lua) > 1024 * 1024)
+    if (!id || !version || !definition_json || !inference_lua || !pytorch_python ||
+        strlen(inference_lua) > 1024 * 1024 || strlen(pytorch_python) > 1024 * 1024)
         return nn_fail(error, cap, "invalid stereotype payload");
     if (!nn_inference_validate_source(inference_lua, error, cap)) return false;
     yyjson_doc *definition = yyjson_read(definition_json, strlen(definition_json), 0);
@@ -89,14 +91,25 @@ bool nn_app_create_stereotype(NNApplication *app, const char *id, const char *ve
     }
     yyjson_doc_free(definition); if (dependencies) yyjson_doc_free(dependencies);
     if (!valid) return nn_fail(error, cap, "invalid stereotype schema, parameter, type or position");
-    bool okay = nn_project_create_stereotype(app->project, id, version, definition_json,
-                                             inference_lua, dependencies_json, error, cap);
+    bool okay = nn_project_create_stereotype_with_python(app->project, id, version, definition_json,
+        inference_lua, pytorch_python, dependencies_json, error, cap);
     if (okay) {
         nn_app_history_barrier(app, true);
         nn_app_invalidate_analysis(app);
         nn_error_set(error, cap, "");
     }
     return okay;
+}
+
+bool nn_app_create_stereotype(NNApplication *app, const char *id, const char *version,
+                              const char *definition_json, const char *inference_lua,
+                              const char *dependencies_json, char *error, size_t cap)
+{
+    static const char python_scaffold[] =
+        "def build(parameters, context, services):\n"
+        "    raise NotImplementedError(\"Implement the PyTorch stereotype build function.\")\n";
+    return nn_app_create_stereotype_with_python(app, id, version, definition_json,
+        inference_lua, python_scaffold, dependencies_json, error, cap);
 }
 
 static bool dataset_definition_valid(const char *definition_json, char *error, size_t cap)
@@ -171,6 +184,41 @@ bool nn_app_update_dataset(NNApplication *app, const char *id, const char *versi
     if (!id || !version || !definition_json) return nn_fail(error, cap, "invalid dataset payload");
     if (!dataset_definition_valid(definition_json, error, cap)) return false;
     bool okay = nn_project_update_dataset(app->project, id, version, definition_json, error, cap);
+    if (okay) {
+        nn_app_history_barrier(app, true);
+        nn_app_invalidate_analysis(app);
+        nn_error_set(error, cap, "");
+    }
+    return okay;
+}
+
+char *nn_app_stereotype_source(const NNApplication *app, const char *id,
+                               const char *version, const char *kind,
+                               char *error, size_t cap)
+{
+    nn_error_set(error, cap, "");
+    if (!app || !app->project) { nn_fail(error, cap, "no active project"); return NULL; }
+    return nn_project_stereotype_source(app->project, id, version, kind, error, cap);
+}
+
+bool nn_app_update_stereotype_source(NNApplication *app, const char *id,
+                                     const char *version, const char *kind,
+                                     const char *source, char *error, size_t cap)
+{
+    nn_error_set(error, cap, "");
+    if (!app || !app->project) return nn_fail(error, cap, "no active project");
+    if (app->history.group_active) return nn_fail(error, cap, "cannot update a stereotype during an edit group");
+    bool inference = kind && !strcmp(kind, "inference");
+    bool pytorch = kind && !strcmp(kind, "pytorch");
+    if (!id || !version || !source || (!inference && !pytorch) || strlen(source) > 1024u * 1024u)
+        return nn_fail(error, cap, "invalid stereotype source payload or kind");
+    if (inference && !nn_inference_validate_source(source, error, cap)) return false;
+    char *current = nn_project_stereotype_source(app->project, id, version, kind, error, cap);
+    if (!current) return false;
+    bool changed = strcmp(current, source) != 0;
+    free(current);
+    if (!changed) return true;
+    bool okay = nn_project_update_stereotype_source(app->project, id, version, kind, source, error, cap);
     if (okay) {
         nn_app_history_barrier(app, true);
         nn_app_invalidate_analysis(app);

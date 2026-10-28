@@ -340,6 +340,163 @@ int main(void)
     unchanged = read_text(model_path); assert(!strcmp(unchanged, saved_model)); free(unchanged);
     free(old_definition); free(saved_model);
 
+    /* Project stereotype Lua edits are package-wide, atomic and persistent. */
+    const char *shared_rule =
+        "return function(context, parameters, services) "
+        "return {status='error',message='shared rule'} end";
+    const char *edited_rule =
+        "return function(context, parameters, services) "
+        "return {status='error',message='edited shared rule'} end";
+    const char *initial_python = "# authored source\nthis is deliberately not Python syntax\n";
+    assert(nn_app_create_stereotype_with_python(app, "local.shared-rule", "1.0.0",
+        definition, shared_rule, initial_python, "{}", error, sizeof(error)));
+    assert(nn_app_add_node(app, "shared-one", "local.shared-rule", "1.0.0", "",
+                           0, 0, error, sizeof(error)));
+    assert(nn_app_add_node(app, "shared-two", "local.shared-rule", "1.0.0", "",
+                           0, 0, error, sizeof(error)));
+    assert(nn_app_add_node(app, "shared-input", "core.input", "0.1.0", "",
+                           0, 0, error, sizeof(error)));
+    assert(nn_app_set_parameter_text(app, "shared-input", "binding", "image",
+                                     error, sizeof(error)));
+    assert(nn_app_connect(app, "shared-edge-one", "shared-input", "out",
+                          "shared-one", "in", error, sizeof(error)));
+    assert(nn_app_connect(app, "shared-edge-two", "shared-input", "out",
+                          "shared-two", "in", error, sizeof(error)));
+    char lua_path[4096];
+    path(lua_path, sizeof(lua_path), directory,
+         "packages/local.shared-rule-1.0.0/inference.lua");
+    char *original_lua = read_text(lua_path);
+    char *lua_copy = nn_app_stereotype_source(app, "local.shared-rule", "1.0.0",
+        "inference", error, sizeof(error));
+    assert(lua_copy && !strcmp(lua_copy, original_lua));
+    nn_app_free_text(lua_copy);
+    assert(!nn_app_update_stereotype_source(app, "local.shared-rule", "1.0.0",
+        "inference", "while true do end", error, sizeof(error)));
+    unchanged = read_text(lua_path); assert(!strcmp(unchanged, original_lua));
+    free(unchanged);
+    assert(!nn_app_update_stereotype_source(app, "core.relu", "0.1.0",
+        "inference", edited_rule, error, sizeof(error)));
+    assert(!nn_app_update_stereotype_source(app, "missing.package", "1.0.0",
+        "inference", edited_rule, error, sizeof(error)));
+    unchanged = read_text(lua_path); assert(!strcmp(unchanged, original_lua));
+    free(unchanged);
+    const NNInferenceReport *before_lua_edit = nn_app_analysis(app, error, sizeof(error));
+    assert(before_lua_edit);
+    assert(nn_app_update_stereotype_source(app, "local.shared-rule", "1.0.0",
+        "inference", edited_rule, error, sizeof(error)));
+    assert(!nn_project_dirty(nn_app_project(app)) && !nn_app_can_undo(app));
+    unchanged = read_text(lua_path); assert(strcmp(unchanged, original_lua));
+    assert(!strcmp(unchanged, edited_rule)); free(unchanged); free(original_lua);
+    const NNInferenceReport *after_lua_edit = nn_app_analysis(app, error, sizeof(error));
+    assert(after_lua_edit && after_lua_edit != before_lua_edit);
+    bool saw_shared_one = false, saw_shared_two = false;
+    for (size_t i = 0; i < nn_inference_count(after_lua_edit); ++i) {
+        const NNInferenceResult *result = nn_inference_at(after_lua_edit, i);
+        if (!strcmp(result->node_id, "shared-one")) {
+            saw_shared_one = true; assert(strstr(result->message, "edited shared rule"));
+        } else if (!strcmp(result->node_id, "shared-two")) {
+            saw_shared_two = true; assert(strstr(result->message, "edited shared rule"));
+        }
+    }
+    assert(saw_shared_one && saw_shared_two);
+    assert(nn_app_close(app, false, error, sizeof(error)));
+    assert(nn_app_open(app, directory, error, sizeof(error)));
+    lua_copy = nn_app_stereotype_source(app, "local.shared-rule", "1.0.0",
+        "inference", error, sizeof(error));
+    assert(lua_copy && !strcmp(lua_copy, edited_rule)); nn_app_free_text(lua_copy);
+    char python_path[4096];
+    path(python_path, sizeof(python_path), directory,
+         "packages/local.shared-rule-1.0.0/pytorch.py");
+    char *python_copy = nn_app_stereotype_source(app, "local.shared-rule", "1.0.0",
+        "pytorch", error, sizeof(error));
+    assert(python_copy && !strcmp(python_copy, initial_python)); nn_app_free_text(python_copy);
+    const char *edited_python = "# edited\ndef build(: this is also not syntax\n";
+    assert(nn_app_update_stereotype_source(app, "local.shared-rule", "1.0.0",
+        "pytorch", edited_python, error, sizeof(error)));
+    unchanged = read_text(python_path); assert(!strcmp(unchanged, edited_python));
+    free(unchanged);
+    assert(!nn_app_update_stereotype_source(app, "core.relu", "0.1.0",
+        "pytorch", edited_python, error, sizeof(error)));
+    python_copy = nn_app_stereotype_source(app, "local.shared-rule", "1.0.0",
+        "pytorch", error, sizeof(error));
+    assert(python_copy && !strcmp(python_copy, edited_python)); nn_app_free_text(python_copy);
+    assert(nn_app_close(app, false, error, sizeof(error)));
+    assert(nn_app_open(app, directory, error, sizeof(error)));
+    python_copy = nn_app_stereotype_source(app, "local.shared-rule", "1.0.0",
+        "pytorch", error, sizeof(error));
+    assert(python_copy && !strcmp(python_copy, edited_python)); nn_app_free_text(python_copy);
+
+    /* Neither a symlinked package directory nor entrypoint can redirect edits. */
+    char package_backup[4096], outside_lua[4096];
+    path(package_backup, sizeof(package_backup), directory, "shared-rule.backup");
+    path(outside_lua, sizeof(outside_lua), directory, "outside.lua");
+    write_text(outside_lua, "outside bytes\n");
+    assert(rename(lua_path, package_backup) == 0);
+    assert(symlink(outside_lua, lua_path) == 0);
+    assert(!nn_app_stereotype_source(app, "local.shared-rule", "1.0.0",
+        "inference", error, sizeof(error)));
+    assert(!nn_app_update_stereotype_source(app, "local.shared-rule", "1.0.0",
+        "inference", shared_rule, error, sizeof(error)));
+    unchanged = read_text(outside_lua); assert(!strcmp(unchanged, "outside bytes\n"));
+    free(unchanged);
+    assert(unlink(lua_path) == 0 && rename(package_backup, lua_path) == 0);
+    char lua_manifest[4096];
+    path(lua_manifest, sizeof(lua_manifest), directory,
+         "packages/local.shared-rule-1.0.0/manifest.json");
+    char *manifest_text = read_text(lua_manifest);
+    write_text(lua_manifest,
+        "{\"schemaVersion\":1,\"id\":\"local.shared-rule\",\"version\":\"1.0.0\","
+        "\"entrypoints\":{\"definition\":\"definition.json\",\"inference\":{"
+        "\"language\":\"lua\",\"file\":\"../outside.lua\"},"
+        "\"pytorch\":\"pytorch.py\"}}\n");
+    assert(!nn_app_stereotype_source(app, "local.shared-rule", "1.0.0",
+        "inference", error, sizeof(error)));
+    assert(!nn_app_update_stereotype_source(app, "local.shared-rule", "1.0.0",
+        "inference", shared_rule, error, sizeof(error)));
+    write_text(lua_manifest, manifest_text); free(manifest_text);
+    assert(!nn_app_update_stereotype_source(app, "local.shared-rule", "2.0.0",
+        "inference", shared_rule, error, sizeof(error)));
+    char python_backup[4096], outside_python[4096];
+    path(python_backup, sizeof(python_backup), directory, "shared-rule-python.backup");
+    path(outside_python, sizeof(outside_python), directory, "outside.py");
+    write_text(outside_python, "outside python bytes\n");
+    assert(rename(python_path, python_backup) == 0);
+    assert(symlink(outside_python, python_path) == 0);
+    assert(!nn_app_stereotype_source(app, "local.shared-rule", "1.0.0",
+        "pytorch", error, sizeof(error)));
+    assert(!nn_app_update_stereotype_source(app, "local.shared-rule", "1.0.0",
+        "pytorch", "changed", error, sizeof(error)));
+    unchanged = read_text(outside_python);
+    assert(!strcmp(unchanged, "outside python bytes\n")); free(unchanged);
+    assert(unlink(python_path) == 0 && rename(python_backup, python_path) == 0);
+    manifest_text = read_text(lua_manifest);
+    write_text(lua_manifest,
+        "{\"schemaVersion\":1,\"id\":\"local.shared-rule\",\"version\":\"1.0.0\","
+        "\"entrypoints\":{\"definition\":\"definition.json\",\"inference\":{"
+        "\"language\":\"lua\",\"file\":\"inference.lua\"},\"pytorch\":{"
+        "\"language\":\"python\",\"file\":\"../outside.py\"}}}\n");
+    assert(!nn_app_stereotype_source(app, "local.shared-rule", "1.0.0",
+        "pytorch", error, sizeof(error)));
+    assert(!nn_app_update_stereotype_source(app, "local.shared-rule", "1.0.0",
+        "pytorch", "changed", error, sizeof(error)));
+    write_text(lua_manifest, manifest_text); free(manifest_text);
+    char package_dir[4096], package_dir_backup[4096], external_package_dir[4096];
+    path(package_dir, sizeof(package_dir), directory, "packages/local.shared-rule-1.0.0");
+    path(package_dir_backup, sizeof(package_dir_backup), directory, "shared-package.backup");
+    path(external_package_dir, sizeof(external_package_dir), directory, "outside-package");
+    assert(mkdir(external_package_dir, 0755) == 0);
+    path(outside_lua, sizeof(outside_lua), external_package_dir, "inference.lua");
+    write_text(outside_lua, shared_rule);
+    assert(rename(package_dir, package_dir_backup) == 0);
+    assert(symlink(external_package_dir, package_dir) == 0);
+    assert(!nn_app_stereotype_source(app, "local.shared-rule", "1.0.0",
+        "inference", error, sizeof(error)));
+    assert(!nn_app_update_stereotype_source(app, "local.shared-rule", "1.0.0",
+        "inference", edited_rule, error, sizeof(error)));
+    unchanged = read_text(outside_lua); assert(!strcmp(unchanged, shared_rule));
+    free(unchanged);
+    assert(unlink(package_dir) == 0 && rename(package_dir_backup, package_dir) == 0);
+
     nn_app_free(app); remove_tree(root);
     puts("resource authoring and persistence: ok"); return 0;
 }

@@ -6,10 +6,199 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
+
+#define NN_STEREOTYPE_LUA_LIMIT (1024u * 1024u)
+#define NN_STEREOTYPE_PYTHON_LIMIT (1024u * 1024u)
+
+static char *stereotype_source_path(const NNProject *project, const char *id,
+                                    const char *version, const char *kind,
+                                    char *error, size_t capacity)
+{
+    bool inference = kind && !strcmp(kind, "inference");
+    bool pytorch = kind && !strcmp(kind, "pytorch");
+    if (!project || !id || !version || (!inference && !pytorch)) {
+        nn_errorf(error, capacity, "invalid stereotype identity or source kind");
+        return NULL;
+    }
+    const NNResourceRef *reference = NULL;
+    for (size_t i = 0; i < project->package_count; ++i) {
+        if (!strcmp(project->packages[i].id, id) &&
+            !strcmp(project->packages[i].version, version)) {
+            reference = &project->packages[i];
+            break;
+        }
+    }
+    if (!reference) {
+        nn_errorf(error, capacity, "stereotype is not a project-owned resource");
+        return NULL;
+    }
+    const NNPackage *package = nn_catalog_find(project->catalog, id, version);
+    char *directory = package ? nn_project_safe_resource_dir(project->directory,
+        reference->path, error, capacity) : NULL;
+    char *manifest_path = directory ? nn_path_join(directory, "manifest.json") : NULL;
+    yyjson_doc *manifest = manifest_path ? nn_project_read_document(manifest_path, error, capacity) : NULL;
+    yyjson_val *root = manifest ? yyjson_doc_get_root(manifest) : NULL;
+    yyjson_val *entrypoints = root ? yyjson_obj_get(root, "entrypoints") : NULL;
+    yyjson_val *source_entry = entrypoints ? yyjson_obj_get(entrypoints, inference ? "inference" : "pytorch") : NULL;
+    const char *file = nn_project_string_field(source_entry, "file");
+    const char *language = nn_project_string_field(source_entry, "language");
+    bool valid = package && package->directory && directory && !strcmp(package->directory, directory) &&
+        manifest && yyjson_get_int(yyjson_obj_get(root, "schemaVersion")) == 1 &&
+        !strcmp(nn_project_string_field(root, "id") ? nn_project_string_field(root, "id") : "", id) &&
+        !strcmp(nn_project_string_field(root, "version") ? nn_project_string_field(root, "version") : "", version) &&
+        yyjson_is_obj(source_entry) && file && language &&
+        !strcmp(language, inference ? "lua" : "python") &&
+        (!inference || (package->inference_file && !strcmp(file, package->inference_file))) &&
+        file[0] && file[0] != '/' && strlen(file) <= 512;
+    char *path = NULL;
+    if (valid) {
+        path = nn_text_copy(directory);
+        const char *part = file;
+        for (const char *end = file;; ++end) {
+            if (*end != '/' && *end != '\0') continue;
+            size_t length = (size_t)(end - part);
+            if (!length || (length == 1 && part[0] == '.') ||
+                (length == 2 && part[0] == '.' && part[1] == '.')) { valid = false; break; }
+            for (size_t j = 0; j < length; ++j) {
+                unsigned char c = (unsigned char)part[j];
+                if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                      (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.')) valid = false;
+            }
+            if (!valid) break;
+            char *segment = malloc(length + 1);
+            if (!segment) { valid = false; break; }
+            memcpy(segment, part, length); segment[length] = '\0';
+            char *next = nn_path_join(path, segment);
+            free(segment); free(path); path = next;
+            if (!path) { valid = false; break; }
+            struct stat st;
+            if (lstat(path, &st) || (*end == '\0' ? !S_ISREG(st.st_mode) : !S_ISDIR(st.st_mode))) {
+                valid = false; break;
+            }
+            if (*end == '\0') break;
+            part = end + 1;
+        }
+    }
+    if (manifest) yyjson_doc_free(manifest);
+    free(manifest_path); free(directory);
+    if (!valid) {
+        free(path);
+        if (!error || !capacity || !error[0]) nn_errorf(error, capacity, "invalid or unsafe project stereotype source file");
+        return NULL;
+    }
+    return path;
+}
+
+static bool read_source(const char *path, char **source, size_t *length,
+                        size_t limit, char *error, size_t capacity)
+{
+    struct stat st;
+    if (lstat(path, &st) || !S_ISREG(st.st_mode) || st.st_size < 0 ||
+        (uintmax_t)st.st_size > limit) {
+        nn_errorf(error, capacity, "stereotype source is not a regular file or exceeds 1 MiB");
+        return false;
+    }
+    int fd = open(path, O_RDONLY | O_NOFOLLOW);
+    if (fd < 0) { nn_errorf(error, capacity, "cannot open stereotype source: %s", strerror(errno)); return false; }
+    size_t size = (size_t)st.st_size;
+    char *text = malloc(size + 1);
+    if (!text) { close(fd); return nn_fail(error, capacity, "out of memory reading stereotype source"); }
+    size_t offset = 0;
+    while (offset < size) {
+        ssize_t count = read(fd, text + offset, size - offset);
+        if (count < 0 && errno == EINTR) continue;
+        if (count <= 0) break;
+        offset += (size_t)count;
+    }
+    bool okay = offset == size && close(fd) == 0;
+    if (!okay) {
+        if (offset != size) close(fd);
+        free(text); return nn_fail(error, capacity, "cannot read complete stereotype source");
+    }
+    text[size] = '\0'; *source = text; *length = size;
+    return true;
+}
+
+static bool write_source_sibling(const char *path, const char *bytes, size_t length,
+                                 mode_t mode, char **temporary, char *error, size_t capacity)
+{
+    static const char suffix[] = ".nn-update-XXXXXX";
+    size_t n = strlen(path);
+    char *name = malloc(n + sizeof(suffix));
+    if (!name) return nn_fail(error, capacity, "out of memory staging stereotype source");
+    memcpy(name, path, n); memcpy(name + n, suffix, sizeof(suffix));
+    int fd = mkstemp(name);
+    if (fd < 0) { free(name); nn_errorf(error, capacity, "cannot stage stereotype source: %s", strerror(errno)); return false; }
+    bool okay = fchmod(fd, mode & 0777) == 0 && nn_project_write_all(fd, bytes, length) && fsync(fd) == 0;
+    if (close(fd)) okay = false;
+    if (!okay) { unlink(name); free(name); return nn_fail(error, capacity, "cannot flush staged stereotype source"); }
+    *temporary = name;
+    return true;
+}
+
+char *nn_project_stereotype_source(const NNProject *project, const char *id,
+                                   const char *version, const char *kind,
+                                   char *error, size_t capacity)
+{
+    if (error && capacity) error[0] = '\0';
+    size_t limit = kind && !strcmp(kind, "pytorch") ? NN_STEREOTYPE_PYTHON_LIMIT : NN_STEREOTYPE_LUA_LIMIT;
+    char *path = stereotype_source_path(project, id, version, kind, error, capacity);
+    char *source = NULL; size_t length = 0;
+    if (!path || !read_source(path, &source, &length, limit, error, capacity)) source = NULL;
+    free(path);
+    return source;
+}
+
+bool nn_project_update_stereotype_source(NNProject *project, const char *id,
+                                         const char *version, const char *kind,
+                                         const char *source, char *error, size_t capacity)
+{
+    if (error && capacity) error[0] = '\0';
+    size_t limit = kind && !strcmp(kind, "pytorch") ? NN_STEREOTYPE_PYTHON_LIMIT : NN_STEREOTYPE_LUA_LIMIT;
+    if (!source || strlen(source) > limit)
+        return nn_fail(error, capacity, "stereotype source exceeds 1 MiB");
+    char *path = stereotype_source_path(project, id, version, kind, error, capacity);
+    if (!path) return false;
+    char *original = NULL; size_t original_length = 0;
+    bool okay = read_source(path, &original, &original_length, limit, error, capacity);
+    if (okay && original_length == strlen(source) && !memcmp(original, source, original_length)) {
+        free(original); free(path); return true;
+    }
+    struct stat original_stat;
+    if (okay && lstat(path, &original_stat)) { nn_errorf(error, capacity, "cannot inspect stereotype source: %s", strerror(errno)); okay = false; }
+    char *temporary = NULL, *backup = NULL;
+    if (okay) okay = write_source_sibling(path, source, strlen(source), original_stat.st_mode, &temporary, error, capacity) &&
+        write_source_sibling(path, original, original_length, original_stat.st_mode, &backup, error, capacity);
+    bool replaced = false, backup_moved = false, keep_backup = false;
+    bool old_dirty = project->dirty;
+    if (okay) {
+        if (rename(temporary, path)) { nn_errorf(error, capacity, "cannot replace stereotype source: %s", strerror(errno)); okay = false; }
+        else replaced = true;
+    }
+    if (okay) { project->dirty = true; okay = nn_project_save(project, error, capacity); }
+    if (okay) {
+        if (backup) unlink(backup);
+    } else {
+        if (replaced) {
+            if (backup && rename(backup, path) == 0) backup_moved = true;
+            else {
+                keep_backup = backup != NULL;
+                nn_errorf(error, capacity, "stereotype update failed; original source retained for recovery at %s", backup ? backup : path);
+            }
+        }
+        project->dirty = old_dirty;
+    }
+    if (temporary) { unlink(temporary); free(temporary); }
+    if (backup && !backup_moved && !keep_backup) unlink(backup);
+    free(backup); free(original); free(path);
+    if (!okay && error && capacity && !error[0]) nn_errorf(error, capacity, "stereotype update failed");
+    return okay;
+}
 
 static bool write_new_text(const char *path, const char *text)
 {
@@ -143,13 +332,15 @@ static bool make_resource_directory(const char *root, const char *category,
     *relative = rel; *absolute = dir; return true;
 }
 
-bool nn_project_create_stereotype(NNProject *p, const char *id, const char *version,
-                                  const char *definition_json, const char *lua,
-                                  const char *dependencies_json, char *error, size_t cap)
+bool nn_project_create_stereotype_with_python(NNProject *p, const char *id, const char *version,
+                                              const char *definition_json, const char *lua,
+                                              const char *python,
+                                              const char *dependencies_json, char *error, size_t cap)
 {
     if (error && cap) error[0] = '\0';
     if (!p || !nn_project_valid_id(id) || !version || !definition_json || !lua || strlen(definition_json) > 4u * 1024u * 1024u ||
-        (dependencies_json && strlen(dependencies_json) > 4u * 1024u * 1024u) || strlen(lua) > 1024 * 1024 ||
+        !python || strlen(python) > NN_STEREOTYPE_PYTHON_LIMIT ||
+        (dependencies_json && strlen(dependencies_json) > 4u * 1024u * 1024u) || strlen(lua) > NN_STEREOTYPE_LUA_LIMIT ||
         !nn_project_valid_semver(version)) { nn_errorf(error, cap, "invalid stereotype identity or payload"); return false; }
     if (p->package_count >= 128) { nn_errorf(error, cap, "package catalog limit reached"); return false; }
     for (size_t i = 0; i < p->package_count; ++i) if (!strcmp(p->packages[i].id, id) && !strcmp(p->packages[i].version, version)) { nn_errorf(error, cap, "duplicate package identity"); return false; }
@@ -166,7 +357,7 @@ bool nn_project_create_stereotype(NNProject *p, const char *id, const char *vers
     char *py = nn_path_join(dir, "pyproject.toml"), *pt = nn_path_join(dir, "pytorch.py");
     char *pyproject = python_pyproject(id, version);
     bool okay = mp && dp && lp && py && pt && write_new_text(mp, manifest) && write_new_text(dp, definition) &&
-        pyproject && write_new_text(lp, lua) && write_new_text(py, pyproject) && write_new_text(pt, pytorch_scaffold());
+        pyproject && write_new_text(lp, lua) && write_new_text(py, pyproject) && write_new_text(pt, python);
     free(manifest); free(definition); free(mp); free(dp); free(lp); free(py); free(pt); free(pyproject);
     NNResourceRef *refs = NULL; NNCatalog *candidate = NULL;
     if (okay) {
@@ -201,6 +392,14 @@ bool nn_project_create_stereotype(NNProject *p, const char *id, const char *vers
     free(rel); free(dir);
     if (!okay && error && cap && !error[0]) nn_errorf(error, cap, "stereotype creation failed");
     return okay;
+}
+
+bool nn_project_create_stereotype(NNProject *p, const char *id, const char *version,
+                                  const char *definition_json, const char *lua,
+                                  const char *dependencies_json, char *error, size_t cap)
+{
+    return nn_project_create_stereotype_with_python(p, id, version, definition_json,
+        lua, pytorch_scaffold(), dependencies_json, error, cap);
 }
 
 bool nn_project_create_dataset(NNProject *p, const char *id, const char *version,

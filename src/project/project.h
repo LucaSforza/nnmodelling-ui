@@ -73,6 +73,11 @@ char *nn_project_model_json(const NNProject *project, char *error, size_t capaci
 bool nn_project_create_stereotype(NNProject *project, const char *id, const char *version,
                                   const char *definition_json, const char *inference_lua,
                                   const char *dependencies_json, char *error, size_t capacity);
+bool nn_project_create_stereotype_with_python(NNProject *project, const char *id,
+                                              const char *version, const char *definition_json,
+                                              const char *inference_lua, const char *pytorch_python,
+                                              const char *dependencies_json,
+                                              char *error, size_t capacity);
 bool nn_project_create_dataset(NNProject *project, const char *id, const char *version,
                                const char *definition_json, bool select,
                                char *error, size_t capacity);
@@ -83,6 +88,13 @@ char *nn_project_dataset_definition(const NNProject *project, const char *id,
                                     const char *version, char *error, size_t capacity);
 bool nn_project_update_dataset(NNProject *project, const char *id, const char *version,
                                const char *definition_json, char *error, size_t capacity);
+/* Returns owned source; release with free(). kind is "inference" or "pytorch". */
+char *nn_project_stereotype_source(const NNProject *project, const char *id,
+                                   const char *version, const char *kind,
+                                   char *error, size_t capacity);
+bool nn_project_update_stereotype_source(NNProject *project, const char *id,
+                                         const char *version, const char *kind,
+                                         const char *source, char *error, size_t capacity);
 /* Returns owned formatted JSON array text; release with free(). */
 char *nn_project_operations_json(const NNProject *project, char *error, size_t capacity);
 /* Optional changed result is false for rejection or unchanged metadata. */
