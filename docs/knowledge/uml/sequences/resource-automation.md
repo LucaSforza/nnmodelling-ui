@@ -143,3 +143,27 @@ return errors without partial mutation.
       App-->>Qt: inline error, keep form fields
     end
 ```
+
+## Edit a project stereotype rule
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Qt as Inspector and Lua editor
+    participant App as NNApplication
+    participant Project as Project resources
+    User->>Qt: select local stereotype node and edit Lua
+    Qt->>App: stereotype_lua(exact id, version)
+    App->>Project: read confined project-owned inference source
+    User->>Qt: apply draft
+    Qt->>App: update_stereotype_lua(id, version, source)
+    App->>App: validate bounded Lua source
+    App->>Project: stage and replace source, save project
+    alt success
+        App->>App: history barrier and invalidate analysis
+        App-->>Qt: refresh all nodes and diagnostics
+    else failure
+        Project->>Project: restore original source and dirty state
+        App-->>Qt: error, retain draft
+    end
+```
