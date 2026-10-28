@@ -37,6 +37,9 @@
 #include <QTableWidgetItem>
 #include <QPlainTextEdit>
 #include <QPalette>
+#include <QScrollArea>
+#include <QTabBar>
+#include <QTabWidget>
 #include <cmath>
 #include <QAbstractButton>
 #include <QTemporaryDir>
@@ -811,16 +814,19 @@ static qreal contrastRatio(const QColor &foreground, const QColor &background) {
 }
 
 static DialogRenderEvidence inspectDialog(QDialog *dialog, QWidget *textWidget,
-                                          const QString &capturePath = {}) {
+                                          const QString &capturePath = {}, const QRect &region = {}) {
     dialog->ensurePolished();
     QApplication::processEvents();
     const QImage image = dialog->grab().toImage().convertToFormat(QImage::Format_ARGB32);
     DialogRenderEvidence evidence;
     if (image.isNull()) return evidence;
 
+    const QPoint textOrigin = textWidget->mapTo(dialog, QPoint(0, 0));
+    const QRect textRect = (region.isNull() ? QRect(textOrigin, textWidget->size())
+                                             : region.translated(textOrigin)).intersected(image.rect());
     QMap<QRgb, int> cornerColors;
-    for (int y = 2; y < qMin(10, image.height()); ++y)
-        for (int x = 2; x < qMin(10, image.width()); ++x)
+    for (int y = textRect.top(); y <= textRect.bottom(); ++y)
+        for (int x = textRect.left(); x <= textRect.right(); ++x)
             ++cornerColors[image.pixel(x, y)];
     int mostCommon = 0;
     for (auto it = cornerColors.cbegin(); it != cornerColors.cend(); ++it) {
@@ -831,8 +837,6 @@ static DialogRenderEvidence inspectDialog(QDialog *dialog, QWidget *textWidget,
     }
 
     evidence.foreground = textWidget->palette().color(QPalette::WindowText);
-    const QPoint textOrigin = textWidget->mapTo(dialog, QPoint(0, 0));
-    const QRect textRect = QRect(textOrigin, textWidget->size()).intersected(image.rect());
     for (int y = textRect.top(); y <= textRect.bottom() && !evidence.textRendered; ++y) {
         for (int x = textRect.left(); x <= textRect.right(); ++x) {
             const QColor pixel = image.pixelColor(x, y);
@@ -1017,6 +1021,7 @@ void WindowTest::appDialogsContrastUnderDarkPalette() {
     auto openAuthoringDialog = [&](const char *buttonName, const char *checkBoxName,
                                    const QString &captureName) {
         DialogRenderEvidence labelEvidence, checkBoxEvidence;
+        DialogRenderEvidence selectedTab, otherTab, selectedPython;
         QTimer::singleShot(0, &window, [&] {
             auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
             if (!dialog) return;
@@ -1029,6 +1034,19 @@ void WindowTest::appDialogsContrastUnderDarkPalette() {
                 if (auto *checkBox = dialog->findChild<QCheckBox *>(checkBoxName))
                     checkBoxEvidence = inspectDialog(dialog, checkBox);
             }
+            if (captureName == QStringLiteral("stereotype")) {
+                auto *tabs = dialog->findChild<QTabWidget *>();
+                auto *scroll = dialog->findChild<QScrollArea *>();
+                if (tabs && scroll) {
+                    scroll->ensureWidgetVisible(tabs);
+                    QCoreApplication::processEvents();
+                    auto *bar = tabs->tabBar();
+                    selectedTab = inspectDialog(dialog, bar, {}, bar->tabRect(0));
+                    otherTab = inspectDialog(dialog, bar, {}, bar->tabRect(1));
+                    tabs->setCurrentIndex(1);
+                    selectedPython = inspectDialog(dialog, bar, {}, bar->tabRect(1));
+                }
+            }
             dialog->reject();
         });
         auto *button = window.findChild<QPushButton *>(buttonName);
@@ -1037,9 +1055,17 @@ void WindowTest::appDialogsContrastUnderDarkPalette() {
         checkEvidence(labelEvidence, "dialog label text needs 4.5:1 contrast against the rendered surface");
         if (checkBoxName)
             checkEvidence(checkBoxEvidence, "dialog checkbox text needs 4.5:1 contrast against the rendered surface");
+        if (captureName == QStringLiteral("stereotype")) {
+            for (const auto &tab : {selectedTab, otherTab, selectedPython}) {
+                QVERIFY(tab.background.isValid());
+                QVERIFY(tab.textRendered);
+                QVERIFY2(contrastRatio(tab.foreground, tab.background) >= 4.5,
+                         "tab text needs 4.5:1 contrast against its rendered surface");
+            }
+        }
     };
 
-    openAuthoringDialog("createStereotypeButton", nullptr, QStringLiteral("stereotype"));
+    openAuthoringDialog("createStereotypeButton", "stereotypeOutputOverride", QStringLiteral("stereotype"));
     openAuthoringDialog("createDatasetButton", "datasetSelect", QStringLiteral("dataset"));
 
     DialogRenderEvidence chooserEvidence;

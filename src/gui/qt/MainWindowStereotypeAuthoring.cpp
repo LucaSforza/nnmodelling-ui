@@ -58,6 +58,10 @@ void MainWindow::createStereotype() {
     auto *scroll = new QScrollArea(&dialog);
     scroll->setWidgetResizable(true);
     auto *contents = new QWidget(scroll);
+    contents->setObjectName(QStringLiteral("stereotypeEditorContent"));
+    scroll->setStyleSheet(QStringLiteral(
+        "QScrollArea { background: #eceff3; }"
+        "QWidget#stereotypeEditorContent { background: #eceff3; color: #263446; }"));
     auto *layout = new QVBoxLayout(contents);
     scroll->setWidget(contents);
     outer->addWidget(scroll, 1);
