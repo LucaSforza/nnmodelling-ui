@@ -1,5 +1,11 @@
 # Graphics and editor contract
 
+Startup chooser owns the application lifetime while the editor is hidden.
+Temporarily suppress automatic quit-on-last-window-closed across chooser,
+directory picker, validation and creation dialogs, restoring the previous policy
+after the editor is shown or startup is explicitly cancelled. Closing a transient
+startup dialog must not quit the application or its nested event loops.
+
 Accepted 2026-11-01: toolbar provides Delete next to Arrange. It invokes the
 same grouped deletion as Delete/Backspace for selected graph nodes and edges,
 is disabled with no deletable selection, and visibly red when enabled.
