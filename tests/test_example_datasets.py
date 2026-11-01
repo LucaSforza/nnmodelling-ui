@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import hashlib
 import json
 import tomllib
 from pathlib import Path
@@ -82,6 +83,28 @@ def test_mnist_payloads_are_verified_bounded_and_split_disjoint(example: str, ta
     assert batch.targets["target"].shape == target_shape
     assert sum(item.inputs["image"].shape[0] for item in batches(dataset, "validation")) == 16
     assert sum(item.inputs["image"].shape[0] for item in batches(dataset, "test")) == 16
+
+
+@pytest.mark.parametrize("example", ["examples/models/mnist-mlp", "examples/models/mnist-vae"])
+def test_full_mnist_has_verified_original_data_and_complete_splits(example: str):
+    directory = ROOT / example / "datasets/mnist-full"
+    hashes = {
+        "train-images-idx3-ubyte.gz": "f68b3c2dcbeaaa9fbdd348bbdeb94873",
+        "train-labels-idx1-ubyte.gz": "d53e105ee54ea40749a09fcbcd1e9432",
+        "t10k-images-idx3-ubyte.gz": "9fb629c4189551a2d022fa330f9573f3",
+        "t10k-labels-idx1-ubyte.gz": "ec29112dd5afa0611ce80d1b7f02629c",
+    }
+    for name, expected in hashes.items():
+        assert hashlib.md5((directory / name).read_bytes()).hexdigest() == expected
+    dataset = adapter(example, "datasets/mnist-full")
+    for split, expected in [("train", 55000), ("validation", 5000), ("test", 10000)]:
+        count = 0
+        for batch in dataset.load(split, 512):
+            images, targets = batch.inputs["image"], batch.targets["target"]
+            assert images.shape[1:] == (1, 28, 28)
+            assert targets.shape == ((len(images), 784) if example.endswith("vae") else (len(images),))
+            count += len(images)
+        assert count == expected
 
 
 def test_mnist_classification_raw_images_normalize_and_decode(tmp_path: Path):

@@ -55,6 +55,8 @@ private:
     void selectResource(QTreeWidgetItem *item, int column);
     void createStereotype();
     void createDataset(const QString &id = QString(), const QString &version = QString());
+    void importDataset();
+    void activateSelectedDataset();
     void manageDatasets();
     void manageOperations();
     void manageMetavariables();

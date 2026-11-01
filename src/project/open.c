@@ -130,6 +130,10 @@ NNProject *nn_project_open(const char *directory, const char *core_root,
     if (okay) okay = nn_project_parse_metavariables(project,
         yyjson_obj_get(manifest, "metavariables"), error, capacity);
     if (okay) okay = nn_project_parse_graph(project, root, error, capacity);
+    if (okay && project->active_dataset_id) {
+        const NNDataset *active = nn_project_active_dataset(project);
+        okay = active && nn_project_sync_dataset_input(project, active, error, capacity);
+    }
     yyjson_doc_free(document);
     if (!okay) {
         if (error && capacity && !error[0]) nn_error_set(error, capacity, "unable to load project resources");

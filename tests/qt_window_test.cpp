@@ -28,6 +28,7 @@
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QEventLoop>
+#include <QFileDialog>
 #include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -65,10 +66,13 @@ private slots:
     void startupChooserShowsEditorOnlyAfterProjectCreation();
     void stereotypeReferenceForm();
     void modelProblemDiagnosticsAndNavigation();
+    void toolbarDeleteTracksSelection();
     void currentScopeRetainsOutsideCauseContext();
     void retainedLuaValidationFormAndNonblockingRejection();
     void visualResourceAuthoringForms();
     void datasetManagerEditFormAndRetainedValidation();
+    void datasetImportFromEmptyDirectory();
+    void automaticDatasetBindingInspectorAndActivation();
     void typedOutputAuthoringBoundariesAndInspector();
     void automationRejectsInvalidScopeAndCapturesCurrentScope();
     void arrangeMenuAndFitUseDirectedGridLayout();
@@ -122,21 +126,31 @@ void WindowTest::componentGuideAppearsBelowAddButton() {
 }
 
 void WindowTest::startupChooserShowsEditorOnlyAfterProjectCreation() {
+    struct NativeDialogSetting {
+        bool previous = QCoreApplication::testAttribute(Qt::AA_DontUseNativeDialogs);
+        NativeDialogSetting() { QCoreApplication::setAttribute(Qt::AA_DontUseNativeDialogs, true); }
+        ~NativeDialogSetting() { QCoreApplication::setAttribute(Qt::AA_DontUseNativeDialogs, previous); }
+    } nativeDialogSetting;
     QTemporaryDir temporary;
     QVERIFY(temporary.isValid());
     NNApplication *app = nn_app_new(NN_SOURCE_DIR "/stereotype-packages/core");
     QVERIFY(app);
     MainWindow window(app);
+    const bool originalQuitPolicy = QApplication::quitOnLastWindowClosed();
     bool editorHiddenAtChooser = false;
     bool creationAccepted = false;
+    bool quitSuppressedAtChooser = false;
+    bool quitSuppressedAtCreation = false;
 
     QTimer::singleShot(0, &window, [&] {
         auto *chooser = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
         QVERIFY(chooser);
         editorHiddenAtChooser = !window.isVisible();
+        quitSuppressedAtChooser = !QApplication::quitOnLastWindowClosed();
         QTimer::singleShot(0, &window, [&] {
             auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
             QVERIFY(dialog);
+            quitSuppressedAtCreation = !QApplication::quitOnLastWindowClosed();
             auto *parent = dialog->findChild<QLineEdit *>("projectParent");
             QVERIFY(parent);
             parent->setText(temporary.path());
@@ -159,8 +173,11 @@ void WindowTest::startupChooserShowsEditorOnlyAfterProjectCreation() {
     window.showProjectChooser(true);
     QVERIFY(editorHiddenAtChooser);
     QVERIFY(creationAccepted);
+    QVERIFY(quitSuppressedAtChooser);
+    QVERIFY(quitSuppressedAtCreation);
     QVERIFY(nn_app_project(app));
     QVERIFY(window.isVisible());
+    QCOMPARE(QApplication::quitOnLastWindowClosed(), originalQuitPolicy);
     QCoreApplication::processEvents();
     auto *view = window.findChild<GraphView *>();
     auto *scene = window.findChild<GraphScene *>();
@@ -168,6 +185,34 @@ void WindowTest::startupChooserShowsEditorOnlyAfterProjectCreation() {
     const QRectF visibleBounds = view->mapToScene(view->viewport()->rect()).boundingRect();
     QVERIFY2(visibleBounds.contains(scene->contentBounds()),
         "Startup project graph should fit after editor window is shown");
+
+    bool quitSuppressedAtOpenChooser = false;
+    bool quitSuppressedAtPicker = false;
+    QTimer::singleShot(0, &window, [&] {
+        auto *chooser = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+        QVERIFY(chooser);
+        quitSuppressedAtOpenChooser = !QApplication::quitOnLastWindowClosed();
+        QTimer::singleShot(0, &window, [&] {
+            auto *picker = qobject_cast<QFileDialog *>(QApplication::activeModalWidget());
+            QVERIFY(picker);
+            quitSuppressedAtPicker = !QApplication::quitOnLastWindowClosed();
+            picker->setDirectory(temporary.path());
+            picker->selectFile(QStringLiteral("mnist-mlp"));
+            QVERIFY(QMetaObject::invokeMethod(picker, "accept", Qt::DirectConnection));
+        });
+        for (QAbstractButton *button : chooser->buttons()) {
+            if (button->text() != QStringLiteral("Open project")) continue;
+            button->click();
+            return;
+        }
+        QFAIL("Open project button missing from startup chooser");
+    });
+    window.showProjectChooser(true);
+    QVERIFY(quitSuppressedAtOpenChooser);
+    QVERIFY(quitSuppressedAtPicker);
+    QVERIFY(window.isVisible());
+    QCOMPARE(QString::fromUtf8(nn_project_id(nn_app_project(app))), QStringLiteral("mnist-mlp"));
+    QCOMPARE(QApplication::quitOnLastWindowClosed(), originalQuitPolicy);
 }
 
 void WindowTest::stereotypeReferenceForm() {
@@ -1114,7 +1159,7 @@ void WindowTest::modelProblemDiagnosticsAndNavigation() {
     char error[512] = {};
     const QByteArray example = QByteArray(NN_SOURCE_DIR) + "/examples/models/mnist-mlp";
     QVERIFY2(nn_app_open(app, example.constData(), error, sizeof(error)), error);
-    QVERIFY2(nn_app_set_parameter_text(app, "dense1", "in_features", "800",
+    QVERIFY2(nn_app_set_parameter_text(app, "dense1", "in_features", "785",
                                        error, sizeof(error)), error);
     const NNInferenceReport *report = nn_app_analysis(app, error, sizeof(error));
     QVERIFY2(report, error);
@@ -1133,6 +1178,11 @@ void WindowTest::modelProblemDiagnosticsAndNavigation() {
                              error, sizeof(error)), error);
     QVERIFY2(nn_app_add_node(app, "flow-child", "core.relu", "0.1.0", "flow", 20, 20,
                              error, sizeof(error)), error);
+    QVERIFY2(nn_app_remove_node(app, "loss-output", error, sizeof(error)), error);
+    QVERIFY2(nn_app_add_node(app, "late-input", "core.input", "0.1.0", "", 20, 360,
+                             error, sizeof(error)), error);
+    QVERIFY2(nn_app_set_parameter_text(app, "late-input", "binding", "missing",
+                                       error, sizeof(error)), error);
 
     MainWindow window(app);
     auto *scene = window.findChild<GraphScene *>();
@@ -1140,6 +1190,20 @@ void WindowTest::modelProblemDiagnosticsAndNavigation() {
     auto *filter = window.findChild<QCheckBox *>("currentScopeProblems");
     QVERIFY(scene && diagnostics && filter);
     QVERIFY(diagnostics->topLevelItemCount() >= 2);
+    int lateInputIndex = -1;
+    int denseIndex = -1;
+    for (int i = 0; i < diagnostics->topLevelItemCount(); ++i) {
+        const QString id = diagnostics->topLevelItem(i)->data(0, Qt::UserRole).toString();
+        if (id == QStringLiteral("late-input")) lateInputIndex = i;
+        if (id == QStringLiteral("dense1")) denseIndex = i;
+    }
+    QVERIFY(lateInputIndex >= 0 && denseIndex >= 0);
+    QVERIFY2(lateInputIndex < denseIndex,
+             "A newly appended source problem must precede older downstream errors.");
+    QVERIFY(diagnostics->topLevelItem(diagnostics->topLevelItemCount() - 1)
+                ->data(0, Qt::UserRole).toString().isEmpty());
+    QVERIFY(diagnostics->topLevelItem(diagnostics->topLevelItemCount() - 1)
+                ->text(0).contains(QStringLiteral("Root")));
     QTreeWidgetItem *root = nullptr;
     for (int i = 0; i < diagnostics->topLevelItemCount(); ++i)
         if (diagnostics->topLevelItem(i)->data(0, Qt::UserRole).toString() == QStringLiteral("dense1"))
@@ -1196,6 +1260,32 @@ void WindowTest::modelProblemDiagnosticsAndNavigation() {
     diagnostics->itemClicked(root, 0);
     QTRY_COMPARE(scene->scope(), QString());
     QTRY_COMPARE(scene->selectedNodeId(), QStringLiteral("dense1"));
+}
+
+void WindowTest::toolbarDeleteTracksSelection() {
+    QTemporaryDir temporary;
+    QVERIFY(temporary.isValid());
+    NNApplication *app = nn_app_new(NN_SOURCE_DIR "/stereotype-packages/core");
+    QVERIFY(app);
+    char error[512] = {};
+    const QByteArray parent = temporary.path().toUtf8();
+    QVERIFY2(nn_app_create(app, parent.constData(), "delete-toolbar", "Delete toolbar", "0.1.0",
+                           false, error, sizeof(error)), error);
+    QVERIFY2(nn_app_add_node(app, "layer", "core.relu", "0.1.0", "", 100, 100,
+                             error, sizeof(error)), error);
+
+    MainWindow window(app);
+    auto *scene = window.findChild<GraphScene *>();
+    auto *action = window.findChild<QAction *>("deleteSelection");
+    auto *button = window.findChild<QToolButton *>("deleteSelectionButton");
+    QVERIFY(scene && action && button);
+    QVERIFY(!action->isEnabled());
+    scene->nodeItem(QStringLiteral("layer"))->setSelected(true);
+    QCoreApplication::processEvents();
+    QVERIFY(action->isEnabled());
+    QVERIFY(button->styleSheet().contains(QStringLiteral("#b23b35")));
+    action->trigger();
+    QTRY_VERIFY(!nn_model_find_node(nn_app_model(app), "layer"));
 }
 
 void WindowTest::retainedLuaValidationFormAndNonblockingRejection() {
@@ -1516,14 +1606,14 @@ void WindowTest::datasetManagerEditFormAndRetainedValidation() {
     MainWindow window(app);
     auto *manage = window.findChild<QPushButton *>("manageDatasetsButton");
     QVERIFY(manage);
-    QTimer::singleShot(0, &window, [&window] {
+    QTimer::singleShot(0, &window, [&window, &app] {
         auto *manager = qobject_cast<QDialog *>(QApplication::activeModalWidget());
         QVERIFY(manager);
         QCOMPARE(manager->objectName(), QStringLiteral("datasetManager"));
         auto *list = manager->findChild<QListWidget *>("datasetManagerList");
         QVERIFY(list && list->count() == 1);
         auto *edit = manager->findChild<QPushButton *>("datasetManagerEdit");
-        auto *select = manager->findChild<QPushButton *>("datasetManagerSelect");
+        auto *select = manager->findChild<QPushButton *>("datasetManagerActivate");
         auto *create = manager->findChild<QPushButton *>("datasetManagerNew");
         QVERIFY(edit && select && create);
         list->clearSelection();
@@ -1554,9 +1644,13 @@ void WindowTest::datasetManagerEditFormAndRetainedValidation() {
                 newDataset = list->item(i);
         QVERIFY(newDataset);
         list->setCurrentItem(newDataset);
+        QCOMPARE(QString::fromUtf8(nn_project_active_dataset(nn_app_project(app))->id),
+                 QStringLiteral("manager.data"));
         QVERIFY(select->isEnabled());
         select->click();
-        QVERIFY(!select->isEnabled());
+        QVERIFY(select->isEnabled());
+        select->click(); // Re-selecting the active row still reaches C synchronization.
+        QVERIFY(select->isEnabled());
 
         QListWidgetItem *existing = nullptr;
         for (int i = 0; i < list->count(); ++i)
@@ -1580,6 +1674,26 @@ void WindowTest::datasetManagerEditFormAndRetainedValidation() {
         manager->reject();
     });
     manage->click();
+    auto *resources = window.findChild<QTreeWidget *>("resources");
+    auto *activateFromPanel = window.findChild<QPushButton *>("activateDatasetButton");
+    QVERIFY(resources && activateFromPanel);
+    QTreeWidgetItem *managerDataset = nullptr;
+    for (int i = 0; i < resources->topLevelItemCount(); ++i) {
+        QTreeWidgetItem *group = resources->topLevelItem(i);
+        for (int j = 0; group && j < group->childCount(); ++j)
+            if (group->child(j)->text(0).contains(QStringLiteral("manager.data")))
+                managerDataset = group->child(j);
+    }
+    QVERIFY(managerDataset);
+    resources->setCurrentItem(managerDataset);
+    QVERIFY(QMetaObject::invokeMethod(resources, "itemClicked", Qt::DirectConnection,
+                                      Q_ARG(QTreeWidgetItem *, managerDataset), Q_ARG(int, 0)));
+    QCOMPARE(QString::fromUtf8(nn_project_active_dataset(nn_app_project(app))->id),
+             QStringLiteral("created.via.manager"));
+    QVERIFY(activateFromPanel->isEnabled());
+    activateFromPanel->click();
+    QCOMPARE(QString::fromUtf8(nn_project_active_dataset(nn_app_project(app))->id),
+             QStringLiteral("manager.data"));
     char *definition = nn_app_dataset_definition(app, "manager.data", "1.0.0", error, sizeof(error));
     QVERIFY(definition);
     QCOMPARE(QJsonDocument::fromJson(definition).object().value("name").toString(),
@@ -1625,7 +1739,172 @@ void WindowTest::datasetManagerEditFormAndRetainedValidation() {
     nn_app_free_text(definition);
     QVERIFY(nn_project_active_dataset(nn_app_project(app)));
     QCOMPARE(QString::fromUtf8(nn_project_active_dataset(nn_app_project(app))->id),
-             QStringLiteral("created.via.manager"));
+             QStringLiteral("manager.data"));
+}
+
+void WindowTest::datasetImportFromEmptyDirectory() {
+    struct NativeDialogSetting {
+        bool previous = QCoreApplication::testAttribute(Qt::AA_DontUseNativeDialogs);
+        NativeDialogSetting() { QCoreApplication::setAttribute(Qt::AA_DontUseNativeDialogs, true); }
+        ~NativeDialogSetting() { QCoreApplication::setAttribute(Qt::AA_DontUseNativeDialogs, previous); }
+    } nativeDialogSetting;
+    QTemporaryDir projectParent;
+    QTemporaryDir source;
+    QVERIFY(projectParent.isValid() && source.isValid());
+    NNApplication *app = nn_app_new(NN_SOURCE_DIR "/stereotype-packages/core");
+    QVERIFY(app);
+    char error[512] = {};
+    const QByteArray parent = projectParent.path().toUtf8();
+    QVERIFY2(nn_app_create(app, parent.constData(), "empty-import", "Empty import", "0.1.0",
+                           false, error, sizeof(error)), error);
+    MainWindow window(app);
+    auto *manage = window.findChild<QPushButton *>("manageDatasetsButton");
+    QVERIFY(manage);
+
+    QTimer::singleShot(0, &window, [&window, &source] {
+        auto *manager = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+        QVERIFY(manager);
+        auto *importButton = manager->findChild<QPushButton *>("datasetManagerImport");
+        QVERIFY(importButton);
+        QTimer::singleShot(0, manager, [manager, &source] {
+            auto *picker = qobject_cast<QFileDialog *>(QApplication::activeModalWidget());
+            QVERIFY(picker);
+            picker->setDirectory(source.path());
+            picker->selectFile(source.path());
+            QVERIFY(QMetaObject::invokeMethod(picker, "accept", Qt::DirectConnection));
+            QTimer::singleShot(0, manager, [manager] {
+                auto *form = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+                QVERIFY(form);
+                QCOMPARE(form->objectName(), QStringLiteral("datasetImportDialog"));
+                QVERIFY(form->findChild<QLabel *>("datasetImportNotice")->text().contains(
+                    QStringLiteral("nonfunctional scaffold")));
+                auto *inputs = form->findChild<QTableWidget *>("datasetImportInputs");
+                QVERIFY(inputs && inputs->rowCount() == 0);
+                form->findChild<QLineEdit *>("datasetImportId")->setText("empty.dataset");
+                form->findChild<QLineEdit *>("datasetImportName")->setText("Empty dataset");
+                QPushButton *addRow = nullptr;
+                for (QPushButton *button : form->findChildren<QPushButton *>())
+                    if (button->text() == QStringLiteral("Add row")) { addRow = button; break; }
+                QVERIFY(addRow);
+                addRow->click();
+                inputs->item(0, 0)->setText("features");
+                inputs->item(0, 2)->setText("B, 4");
+                form->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Save)->click();
+            });
+        });
+        importButton->click();
+        QCOMPARE(manager->findChild<QListWidget *>("datasetManagerList")->count(), 1);
+        manager->reject();
+    });
+    manage->click();
+    QCOMPARE(nn_project_dataset_count(nn_app_project(app)), size_t(1));
+    QVERIFY(nn_project_active_dataset(nn_app_project(app)));
+    QCOMPARE(QString::fromUtf8(nn_project_active_dataset(nn_app_project(app))->id),
+             QStringLiteral("empty.dataset"));
+}
+
+void WindowTest::automaticDatasetBindingInspectorAndActivation() {
+    QTemporaryDir temporary;
+    QVERIFY(temporary.isValid());
+    NNApplication *app = nn_app_new(NN_SOURCE_DIR "/stereotype-packages/core");
+    QVERIFY(app);
+    char error[512] = {};
+    const QByteArray parent = temporary.path().toUtf8();
+    QVERIFY2(nn_app_create(app, parent.constData(), "auto-binding", "Automatic binding", "0.1.0",
+                           false, error, sizeof(error)), error);
+    const QByteArray first = R"({"name":"First","batch":{"inputs":{"features":{"dtype":"float32","shape":["B",4]}},"targets":{}}})";
+    const QByteArray second = R"({"name":"Second","batch":{"inputs":{"pixels":{"dtype":"float32","shape":["B",784]}},"targets":{}}})";
+    const QByteArray multiple = R"({"name":"Multiple","batch":{"inputs":{"features":{"dtype":"float32","shape":["B",4]},"target":{"dtype":"float32","shape":["B",1]}},"targets":{}}})";
+    QVERIFY2(nn_app_create_dataset(app, "auto.first", "1.0.0", first.constData(), true,
+                                   error, sizeof(error)), error);
+    QVERIFY2(nn_app_create_dataset(app, "auto.second", "1.0.0", second.constData(), false,
+                                   error, sizeof(error)), error);
+    QVERIFY2(nn_app_create_dataset(app, "auto.multiple", "1.0.0", multiple.constData(), false,
+                                   error, sizeof(error)), error);
+    QVERIFY2(nn_app_add_node(app, "single-input", "core.input", "0.1.0", "", 0, 0,
+                             error, sizeof(error)), error);
+    auto binding = [app] {
+        char *value = nn_app_parameter_text(app, "single-input", "binding");
+        const QString result = value ? QString::fromUtf8(value) : QString();
+        nn_app_free_text(value);
+        return result;
+    };
+    QCOMPARE(binding(), QStringLiteral("features"));
+
+    MainWindow window(app);
+    window.show();
+    auto *scene = window.findChild<GraphScene *>();
+    auto *resources = window.findChild<QTreeWidget *>("resources");
+    auto *activate = window.findChild<QPushButton *>("activateDatasetButton");
+    auto *inspector = window.findChild<QTreeWidget *>("inspector");
+    QVERIFY(scene && resources && activate && inspector);
+    auto bindingEditor = [inspector]() -> QLineEdit * {
+        for (int i = 0; i < inspector->topLevelItemCount(); ++i) {
+            QTreeWidgetItem *parameters = inspector->topLevelItem(i);
+            if (parameters->text(0) != QStringLiteral("Parameters")) continue;
+            for (int j = 0; j < parameters->childCount(); ++j) {
+                QTreeWidgetItem *row = parameters->child(j);
+                if (row->text(0) == QStringLiteral("binding"))
+                    return qobject_cast<QLineEdit *>(inspector->itemWidget(row, 1));
+            }
+        }
+        return nullptr;
+    };
+    scene->nodeItem(QStringLiteral("single-input"))->setSelected(true);
+    QCoreApplication::processEvents();
+    QLineEdit *editor = bindingEditor();
+    QVERIFY(editor);
+    QVERIFY(editor->isReadOnly());
+    QCOMPARE(editor->text(), QStringLiteral("features"));
+    QVERIFY(editor->toolTip().contains(QStringLiteral("only input slot")));
+    QTreeWidgetItem *bindingRow = nullptr;
+    for (int i = 0; i < inspector->topLevelItemCount(); ++i) {
+        QTreeWidgetItem *parameters = inspector->topLevelItem(i);
+        if (parameters->text(0) != QStringLiteral("Parameters")) continue;
+        for (int j = 0; j < parameters->childCount(); ++j)
+            if (parameters->child(j)->text(0) == QStringLiteral("binding"))
+                bindingRow = parameters->child(j);
+    }
+    QVERIFY(bindingRow && bindingRow->childCount() == 1);
+    QVERIFY(bindingRow->child(0)->text(1).contains(QStringLiteral("only input slot")));
+
+    QTreeWidgetItem *secondDataset = nullptr;
+    for (int i = 0; i < resources->topLevelItemCount(); ++i) {
+        QTreeWidgetItem *group = resources->topLevelItem(i);
+        for (int j = 0; group && j < group->childCount(); ++j)
+            if (group->child(j)->data(0, MainWindowUtils::PackageVersionRole).toString() ==
+                    QStringLiteral("auto.second"))
+                secondDataset = group->child(j);
+    }
+    QVERIFY(secondDataset);
+    resources->setCurrentItem(secondDataset);
+    QVERIFY(activate->isEnabled());
+    activate->click();
+    QTRY_COMPARE(binding(), QStringLiteral("pixels"));
+    QTRY_VERIFY(bindingEditor() && bindingEditor()->text() == QStringLiteral("pixels"));
+    editor = bindingEditor();
+    QVERIFY(editor->isReadOnly());
+
+    QTreeWidgetItem *multipleDataset = nullptr;
+    for (int i = 0; i < resources->topLevelItemCount(); ++i) {
+        QTreeWidgetItem *group = resources->topLevelItem(i);
+        for (int j = 0; group && j < group->childCount(); ++j)
+            if (group->child(j)->data(0, MainWindowUtils::PackageVersionRole).toString() ==
+                    QStringLiteral("auto.multiple"))
+                multipleDataset = group->child(j);
+    }
+    QVERIFY(multipleDataset);
+    resources->setCurrentItem(multipleDataset);
+    activate->click();
+    QTRY_COMPARE(QString::fromUtf8(nn_project_active_dataset(nn_app_project(app))->id),
+                 QStringLiteral("auto.multiple"));
+    QTRY_VERIFY(bindingEditor() && !bindingEditor()->isReadOnly());
+    editor = bindingEditor();
+    editor->setText(QStringLiteral("target"));
+    QVERIFY(QMetaObject::invokeMethod(editor, "editingFinished", Qt::DirectConnection));
+    QTRY_COMPARE(binding(), QStringLiteral("target"));
+    answerDialog(QMessageBox::Discard);
+    window.close();
 }
 
 void WindowTest::typedOutputAuthoringBoundariesAndInspector() {

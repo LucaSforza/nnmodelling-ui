@@ -81,6 +81,9 @@ bool nn_project_create_stereotype_with_python(NNProject *project, const char *id
 bool nn_project_create_dataset(NNProject *project, const char *id, const char *version,
                                const char *definition_json, bool select,
                                char *error, size_t capacity);
+bool nn_project_import_dataset(NNProject *project, const char *source_dir,
+                               const char *manifest_json, const char *definition_json,
+                               bool select, char *error, size_t capacity);
 bool nn_project_select_dataset(NNProject *project, const char *id, const char *version,
                                char *error, size_t capacity);
 /* Returns owned formatted JSON; release with free(). */

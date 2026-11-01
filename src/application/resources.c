@@ -158,7 +158,8 @@ bool nn_app_create_dataset(NNApplication *app, const char *id, const char *versi
     if (app->history.group_active) return nn_fail(error, cap, "cannot create a resource during an edit group");
     if (!id || !version || !definition_json) return nn_fail(error, cap, "invalid dataset payload");
     if (!dataset_definition_valid(definition_json, error, cap)) return false;
-    bool okay = nn_project_create_dataset(app->project, id, version, definition_json, select, error, cap);
+    bool activate = select || nn_project_active_dataset(app->project) == NULL;
+    bool okay = nn_project_create_dataset(app->project, id, version, definition_json, activate, error, cap);
     if (okay) {
         nn_app_history_barrier(app, true);
         nn_app_invalidate_analysis(app);
@@ -234,14 +235,67 @@ bool nn_app_select_dataset(NNApplication *app, const char *id, const char *versi
     if (!app || !app->project) return nn_fail(error, cap, "no active project");
     if (app->history.group_active) return nn_fail(error, cap, "cannot select a dataset during an edit group");
     const NNDataset *active = nn_project_active_dataset(app->project);
-    if (active && !strcmp(active->id, id ? id : "") &&
-        !strcmp(active->version, version ? version : "")) return true;
-    bool okay = nn_project_select_dataset(app->project, id, version, error, cap);
+    const bool already_active = active && id && version && !strcmp(active->id, id) &&
+        !strcmp(active->version, version);
+    const NNDataset *selected = NULL;
+    for (size_t i = 0; i < nn_project_dataset_count(app->project); ++i) {
+        const NNDataset *item = nn_project_dataset_at(app->project, i);
+        if (id && version && !strcmp(item->id, id) && !strcmp(item->version, version)) selected = item;
+    }
+    if (!selected) return nn_fail(error, cap, "dataset identity is not declared");
+    NNModel *model = nn_project_model(app->project);
+    size_t input_count = 0;
+    const NNNode *input_node = NULL;
+    for (size_t i = 0; i < nn_model_node_count(model); ++i) {
+        const NNNode *node = nn_model_node_at(model, i);
+        if (!node->scope_id[0] && nn_app_kind_is(nn_app_find_package(app, node), "input")) {
+            input_node = node;
+            ++input_count;
+        }
+    }
+    if (selected->input_count == 1 && input_count > 1)
+        return nn_fail(error, cap, "cannot activate a single-input dataset with multiple root Input nodes");
+    const NNValue *current_binding = NULL;
+    if (input_node && selected->input_count == 1)
+        for (size_t i = 0; i < input_node->parameter_count; ++i)
+            if (!strcmp(input_node->parameters[i].key, "binding"))
+                current_binding = &input_node->parameters[i].value;
+    bool bind = selected->input_count == 1 && input_count == 1 &&
+        (!current_binding || current_binding->type != NN_VALUE_STRING ||
+         !current_binding->as.string || strcmp(current_binding->as.string, selected->inputs[0].name));
+    if (already_active && !bind) return true;
+    NNModel *backup = bind ? nn_model_copy(model) : NULL;
+    if (bind && !backup) return nn_fail(error, cap, "out of memory staging dataset activation");
+    bool okay = true;
+    if (bind) {
+        NNValue value = {.type = NN_VALUE_STRING, .as.string = selected->inputs[0].name};
+        okay = nn_model_set_parameter(model, input_node->id, "binding", &value, error, cap);
+    }
+    if (okay) okay = nn_project_select_dataset(app->project, id, version, error, cap);
+    if (!okay && backup) nn_model_swap(model, backup);
+    if (backup) nn_model_free(backup);
     if (okay) {
+        nn_project_mark_dirty(app->project);
         nn_app_history_barrier(app, false);
         nn_app_invalidate_analysis(app);
     }
     return okay;
+}
+
+bool nn_app_import_dataset(NNApplication *app, const char *source_dir,
+                           const char *manifest_json, const char *definition_json,
+                           char *error, size_t cap)
+{
+    nn_error_set(error, cap, "");
+    if (!app || !app->project) return nn_fail(error, cap, "no active project");
+    if (app->history.group_active) return nn_fail(error, cap, "cannot import a dataset during an edit group");
+    const bool select = nn_project_active_dataset(app->project) == NULL;
+    if (!nn_project_import_dataset(app->project, source_dir, manifest_json, definition_json,
+                                   select, error, cap)) return false;
+    nn_app_history_barrier(app, true);
+    nn_app_invalidate_analysis(app);
+    nn_error_set(error, cap, "");
+    return true;
 }
 
 bool nn_app_create_vae(NNApplication *app, const char *parent, const char *id,

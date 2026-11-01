@@ -1,5 +1,21 @@
 # Local backend and Python execution
 
+## Single-input dataset adaptation (accepted 2026-11-01)
+
+The runtime dataset loader reads the active definition through its declared
+entrypoint. When its batch.inputs declares exactly one slot and an adapter batch
+returns exactly one named input tensor, associate that tensor with the declared
+slot regardless of the adapter's key. Apply the same rule to named maps from
+tokenize; a bare Tensor keeps existing single-input inference behavior. Do not
+mutate adapter mappings or Python source. Targets are not renamed. Zero/multiple
+returned inputs for a single declared slot fail with a clear dataset-input error;
+multi-slot definitions require exact declared input names. This boundary is shared
+by training, validation, test and newly exported wheels, including external
+batch.inputs consumers. GraphModule named-map semantics remain strict.
+
+Old immutable jobs/wheels retain their original runtime. Rebuild the worker
+image and submit a new job to exercise changed dataset adaptation.
+
 ## Authored and concrete training snapshots (accepted 2026-10-14)
 
 Bundled metavariable examples keep their authored schema-3 graph in `model.json`.

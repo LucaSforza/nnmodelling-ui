@@ -288,6 +288,21 @@ bool nn_app_set_parameter(NNApplication *app, const char *node_id, const char *k
         if (app->history.group_active) app->history.group_failed = true;
         return false;
     }
+    if (!strcmp(key, "binding") && !node->scope_id[0] && nn_app_kind_is(package, "input")) {
+        const NNDataset *dataset = nn_project_active_dataset(app->project);
+        size_t root_inputs = 0;
+        for (size_t i = 0; i < nn_model_node_count(nn_project_model(app->project)); ++i) {
+            const NNNode *candidate = nn_model_node_at(nn_project_model(app->project), i);
+            if (!candidate->scope_id[0] && nn_app_kind_is(nn_app_find_package(app, candidate), "input"))
+                ++root_inputs;
+        }
+        if (dataset && dataset->input_count == 1 && root_inputs == 1 &&
+            (value->type != NN_VALUE_STRING || !value->as.string ||
+             strcmp(value->as.string, dataset->inputs[0].name))) {
+            if (app->history.group_active) app->history.group_failed = true;
+            return nn_fail(error, cap, "binding is controlled by the active single-input dataset");
+        }
+    }
     if (!nn_app_history_prepare(app, error, cap)) return false;
     const bool okay = nn_model_set_parameter(nn_project_model(app->project), node_id,
                                               key, value, error, cap);

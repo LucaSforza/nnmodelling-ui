@@ -1,8 +1,25 @@
 {
-  "name":"MNIST",
-  "description":"Verified MNIST IDX subset: 64 train, 16 validation, and 16 official test images.",
-  "batch":{
-    "inputs":{"image":{"dtype":"float32","shape":["B",1,28,28]}},
-    "targets":{"target":{"dtype":"int64","shape":["B"]}}
+  "name": "MNIST small",
+  "description": "Verified MNIST IDX subset: 64 train, 16 validation, and 16 official test images.",
+  "batch": {
+    "inputs": {
+      "image": {
+        "dtype": "float32",
+        "shape": [
+          "B",
+          1,
+          28,
+          28
+        ]
+      }
+    },
+    "targets": {
+      "target": {
+        "dtype": "int64",
+        "shape": [
+          "B"
+        ]
+      }
+    }
   }
 }

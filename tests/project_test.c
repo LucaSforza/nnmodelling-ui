@@ -247,7 +247,12 @@ int main(void)
     assert(mnist);
     assert(!strcmp(nn_project_id(mnist), "editable-mnist"));
     assert(!strcmp(nn_project_name(mnist), "Editable MNIST"));
-    assert(nn_project_dataset_count(mnist) == 1 && nn_project_active_dataset(mnist));
+    assert(nn_project_dataset_count(mnist) == 2 && nn_project_active_dataset(mnist));
+    assert(nn_project_dataset_at(mnist, 0) && nn_project_dataset_at(mnist, 1));
+    assert((!strcmp(nn_project_dataset_at(mnist, 0)->id, "mnist") &&
+            !strcmp(nn_project_dataset_at(mnist, 1)->id, "mnist-full")) ||
+           (!strcmp(nn_project_dataset_at(mnist, 1)->id, "mnist") &&
+            !strcmp(nn_project_dataset_at(mnist, 0)->id, "mnist-full")));
     assert(nn_model_node_count(nn_project_model(mnist)) == 10);
     assert(nn_model_edge_count(nn_project_model(mnist)) == 9);
     nn_project_close(mnist);

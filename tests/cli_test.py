@@ -76,6 +76,16 @@ def main():
                     }},
                 })
                 command("node.add", {"id": "input", "package": "core.input", "version": "0.1.0"})
+                command("node.parameter", {"id": "input", "key": "binding", "value": "missing-input"}, expected=1)
+                command("dataset.create", {
+                    "id": "local.images-multi", "version": "0.1.0", "select": True,
+                    "definition": {"name": "Images with auxiliary slot", "batch": {
+                        "inputs": {
+                            "image": {"dtype": "float32", "shape": ["B", 8]},
+                            "unused": {"dtype": "float32", "shape": ["B", 8]},
+                        }, "targets": {},
+                    }},
+                })
                 command("node.add", {"id": "local", "package": "local.shape", "version": "0.1.0", "y": 200})
                 command("edge.connect", {"id": "edge", "source": "input", "sourceHandle": "out", "target": "local", "targetHandle": "in"})
                 command("edge.connect", {"id": "prediction-output", "source": "local", "sourceHandle": "prediction", "target": output, "targetHandle": "in"})

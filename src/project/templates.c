@@ -101,14 +101,13 @@ NNProject *nn_project_create(const char *parent, const char *id, const char *nam
         char *template_root = repo ? nn_path_join(repo, "examples/models/mnist-mlp") : NULL;
         char *source_model = template_root ? nn_path_join(template_root, "model.json") : NULL;
         char *destination_model = nn_path_join(directory, "model.json");
-        char *source_dataset = template_root ? nn_path_join(template_root, "datasets/mnist") : NULL;
-        char *destination_dataset = nn_path_join(directory, "datasets/mnist");
+        char *source_datasets = template_root ? nn_path_join(template_root, "datasets") : NULL;
         char *destination_datasets = nn_path_join(directory, "datasets");
-        okay = source_model && destination_model && source_dataset && destination_dataset &&
-            destination_datasets && copy_file(source_model, destination_model) &&
-            mkdir(destination_datasets, 0755) == 0 && copy_tree(source_dataset, destination_dataset);
+        okay = source_model && destination_model && source_datasets && destination_datasets &&
+            copy_file(source_model, destination_model) && mkdir(destination_datasets, 0755) == 0 &&
+            copy_tree_contents(source_datasets, destination_datasets);
         free(repo); free(template_root); free(source_model); free(destination_model);
-        free(source_dataset); free(destination_dataset); free(destination_datasets);
+        free(source_datasets); free(destination_datasets);
     } else {
         NNProject seed = { .directory = directory, .id = (char *)id, .version = (char *)version,
             .name = (char *)name, .description = "", .layout_direction = "horizontal",

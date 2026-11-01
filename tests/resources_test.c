@@ -128,9 +128,63 @@ int main(void)
     assert(!nn_project_dirty(nn_app_project(app)));
     assert(nn_project_active_dataset(nn_app_project(app)));
     assert(nn_app_add_node(app, "input", "core.input", "0.1.0", "", 0, 0, error, sizeof(error)));
-    assert(nn_app_set_parameter_text(app, "input", "binding", "missing", error, sizeof(error)));
-    assert(nn_app_select_dataset(app, "local.images", "0.1.0", error, sizeof(error))); /* unresolved allowed */
+    char *initial_binding = nn_app_parameter_text(app, "input", "binding");
+    assert(initial_binding && !strcmp(initial_binding, "image")); nn_app_free_text(initial_binding);
+    assert(!nn_app_set_parameter_text(app, "input", "binding", "missing", error, sizeof(error)));
+    assert(nn_app_set_parameter_text(app, "input", "binding", "image", error, sizeof(error)));
+    assert(nn_app_select_dataset(app, "local.images", "0.1.0", error, sizeof(error)));
+    initial_binding = nn_app_parameter_text(app, "input", "binding");
+    assert(initial_binding && !strcmp(initial_binding, "image")); nn_app_free_text(initial_binding);
     assert(!nn_app_select_dataset(app, "missing", "0.1.0", error, sizeof(error)));
+
+    char import_source[4096], imported_file[4096];
+    path(import_source, sizeof(import_source), root, "import-source");
+    assert(mkdir(import_source, 0755) == 0);
+    path(imported_file, sizeof(imported_file), import_source, "sample.bin");
+    write_text(imported_file, "source bytes\n");
+    const char *import_manifest =
+        "{\"schemaVersion\":1,\"id\":\"imported.samples\",\"version\":\"1.2.3\","
+        "\"entrypoints\":{\"definition\":\"metadata/dataset.json\","
+        "\"python\":{\"language\":\"python\",\"file\":\"python/adapter.py\"}}}";
+    assert(nn_app_import_dataset(app, import_source, import_manifest, dataset, error, sizeof(error)));
+    assert(nn_project_dataset_count(nn_app_project(app)) == 2);
+    assert(!strcmp(nn_project_active_dataset(nn_app_project(app))->id, "local.images"));
+    path(check, sizeof(check), directory, "datasets/imported.samples-1.2.3/sample.bin");
+    scaffold = read_text(check); assert(!strcmp(scaffold, "source bytes\n")); free(scaffold);
+    path(check, sizeof(check), directory, "datasets/imported.samples-1.2.3/python/adapter.py");
+    scaffold = read_text(check); assert(strstr(scaffold, "NotImplementedError")); free(scaffold);
+    path(check, sizeof(check), directory, "datasets/imported.samples-1.2.3/metadata/dataset.json");
+    assert(access(check, F_OK) == 0);
+    char *imported_definition = nn_app_dataset_definition(app, "imported.samples", "1.2.3", error, sizeof(error));
+    assert(imported_definition && strstr(imported_definition, "image")); nn_app_free_text(imported_definition);
+    path(check, sizeof(check), import_source, "python/adapter.py"); assert(access(check, F_OK) != 0);
+    assert(nn_app_select_dataset(app, "imported.samples", "1.2.3", error, sizeof(error)));
+    value = nn_app_parameter_text(app, "input", "binding"); assert(value && !strcmp(value, "image")); nn_app_free_text(value);
+    bool dirty_before_ancestor_import = nn_project_dirty(nn_app_project(app));
+    size_t count_before_ancestor_import = nn_project_dataset_count(nn_app_project(app));
+    char active_before_ancestor_import[128];
+    snprintf(active_before_ancestor_import, sizeof(active_before_ancestor_import), "%s",
+             nn_project_active_dataset(nn_app_project(app))->id);
+    value = nn_app_parameter_text(app, "input", "binding"); assert(value);
+    char binding_before_ancestor_import[128];
+    snprintf(binding_before_ancestor_import, sizeof(binding_before_ancestor_import), "%s", value);
+    nn_app_free_text(value);
+    assert(!nn_app_import_dataset(app, root, import_manifest, dataset, error, sizeof(error)));
+    assert(nn_project_dataset_count(nn_app_project(app)) == count_before_ancestor_import);
+    assert(!strcmp(nn_project_active_dataset(nn_app_project(app))->id, active_before_ancestor_import));
+    assert(nn_project_dirty(nn_app_project(app)) == dirty_before_ancestor_import);
+    value = nn_app_parameter_text(app, "input", "binding");
+    assert(value && !strcmp(value, binding_before_ancestor_import)); nn_app_free_text(value);
+    assert(!nn_app_import_dataset(app, import_source, import_manifest, dataset, error, sizeof(error)));
+    assert(nn_project_dataset_count(nn_app_project(app)) == 2);
+    char link_path[4096]; path(link_path, sizeof(link_path), import_source, "unsafe-link");
+    assert(symlink("sample.bin", link_path) == 0);
+    const char *link_manifest =
+        "{\"schemaVersion\":1,\"id\":\"imported.symlink\",\"version\":\"1.0.0\","
+        "\"entrypoints\":{\"definition\":\"dataset.json\"}}";
+    assert(!nn_app_import_dataset(app, import_source, link_manifest, dataset, error, sizeof(error)));
+    assert(nn_project_dataset_count(nn_app_project(app)) == 2);
+    assert(unlink(link_path) == 0);
 
     const char *loss_definition =
         "{\"name\":\"Local loss\",\"kind\":\"layer\",\"outputs\":["
@@ -168,11 +222,21 @@ int main(void)
     char backup[4096]; path(backup, sizeof(backup), directory, "model.backup");
     assert(rename(model_path, backup) == 0 && mkdir(model_path, 0755) == 0);
     assert(!nn_app_create_dataset(app, "rollback", "0.1.0", dataset, true, error, sizeof(error)));
-    assert(nn_project_dataset_count(nn_app_project(app)) == 1);
-    assert(!strcmp(nn_project_active_dataset(nn_app_project(app))->id, "local.images"));
+    const char *rollback_manifest =
+        "{\"schemaVersion\":1,\"id\":\"rollback.import\",\"version\":\"1.0.0\","
+        "\"entrypoints\":{\"definition\":\"dataset.json\"}}";
+    assert(!nn_app_import_dataset(app, import_source, rollback_manifest, dataset, error, sizeof(error)));
+    assert(nn_project_dataset_count(nn_app_project(app)) == 2);
+    assert(!strcmp(nn_project_active_dataset(nn_app_project(app))->id, "imported.samples"));
     assert(nn_project_dirty(nn_app_project(app)));
     path(check, sizeof(check), directory, "datasets/rollback-0.1.0"); assert(access(check, F_OK) != 0);
+    path(check, sizeof(check), directory, "datasets/rollback.import-1.0.0"); assert(access(check, F_OK) != 0);
     assert(rmdir(model_path) == 0 && rename(backup, model_path) == 0);
+
+    assert(nn_app_add_node(app, "input-second", "core.input", "0.1.0", "", 40, 0,
+                           error, sizeof(error)));
+    assert(!nn_app_select_dataset(app, "local.images", "0.1.0", error, sizeof(error)));
+    assert(!strcmp(nn_project_active_dataset(nn_app_project(app))->id, "imported.samples"));
 
     /* Symlink category directories are never followed, and never removed. */
     assert(nn_app_create(app, root, "linked", "Linked", "0.1.0", false, error, sizeof(error)));
@@ -180,10 +244,16 @@ int main(void)
     assert(symlink(directory, linked) == 0);
     assert(!nn_app_create_stereotype(app, "escape", "0.1.0", definition, rule, "{}", error, sizeof(error)));
     struct stat info; assert(lstat(linked, &info) == 0 && S_ISLNK(info.st_mode));
+    assert(nn_app_create(app, root, "first-dataset", "First dataset", "0.1.0",
+                         false, error, sizeof(error)));
+    assert(nn_app_create_dataset(app, "first.unselected", "1.0.0", dataset, false,
+                                 error, sizeof(error)));
+    assert(nn_project_active_dataset(nn_app_project(app)) &&
+           !strcmp(nn_project_active_dataset(nn_app_project(app))->id, "first.unselected"));
     assert(nn_app_open(app, directory, error, sizeof(error)));
     assert(nn_model_find_node(nn_app_model(app), "local"));
     assert(nn_model_find_node(nn_app_model(app), "unsaved"));
-    assert(nn_project_dataset_count(nn_app_project(app)) == 1);
+    assert(nn_project_dataset_count(nn_app_project(app)) == 2);
     path(check, sizeof(check), directory, "packages/local.affine-0.1.0/definition.json");
     char *text = read_text(check); assert(strstr(text, "\n  \"parameters\"")); assert(text[strlen(text)-1] == '\n'); free(text);
 
@@ -214,6 +284,13 @@ int main(void)
     assert(nn_app_create(app, root, "mlp-copy", "MLP copy", "5.6.7", true,
                          error, sizeof(error)));
     assert(!strcmp(nn_project_version(nn_app_project(app)), "5.6.7"));
+    assert(nn_project_dataset_count(nn_app_project(app)) == 2);
+    bool has_full_mnist = false;
+    for (size_t i = 0; i < nn_project_dataset_count(nn_app_project(app)); ++i) {
+        const NNDataset *item = nn_project_dataset_at(nn_app_project(app), i);
+        if (!strcmp(item->id, "mnist-full")) has_full_mnist = true;
+    }
+    assert(has_full_mnist);
     path(directory, sizeof(directory), root, "mlp-copy");
     assert(nn_app_close(app, false, error, sizeof(error)));
     assert(nn_app_open(app, directory, error, sizeof(error)));
@@ -239,6 +316,10 @@ int main(void)
         "\"batch\":{\"customBatch\":17,\"inputs\":{\"image\":{\"dtype\":\"float32\","
         "\"shape\":[\"B\",8],\"normalization\":\"unit\"}},\"targets\":{}}}",
         true, error, sizeof(error)));
+    assert(nn_app_add_node(app, "dataset-input", "core.input", "0.1.0", "", 0, 0,
+                           error, sizeof(error)));
+    value = nn_app_parameter_text(app, "dataset-input", "binding");
+    assert(value && !strcmp(value, "image")); nn_app_free_text(value);
     char dataset_dir[4096], manifest_path[4096], definition_path[4096];
     path(dataset_dir, sizeof(dataset_dir), directory, "datasets/editable.data-1.2.0");
     path(manifest_path, sizeof(manifest_path), dataset_dir, "manifest.json");
@@ -285,7 +366,7 @@ int main(void)
 
     assert(nn_app_update_dataset(app, "editable.data", "1.2.0",
         "{\"name\":\"After\",\"description\":\"new\",\"batch\":{"
-        "\"inputs\":{\"image\":{\"dtype\":\"float64\",\"shape\":[\"B\",16]}},"
+        "\"inputs\":{\"features\":{\"dtype\":\"float64\",\"shape\":[\"B\",16],\"normalization\":\"unit\"}},"
         "\"targets\":{\"class\":{\"dtype\":\"int64\",\"shape\":[\"B\"]}}}}",
         error, sizeof(error)));
     assert(!nn_project_dirty(nn_app_project(app)) && !nn_app_can_undo(app));
@@ -293,21 +374,56 @@ int main(void)
     assert(active && !strcmp(active->id, "editable.data") && !strcmp(active->version, "1.2.0"));
     char *updated = read_text(definition_path);
     assert(strstr(updated, "\"custom\"") && strstr(updated, "\"keep\": true"));
-    assert(strstr(updated, "\"customBatch\": 17") && strstr(updated, "\"normalization\": \"unit\""));
+    assert(strstr(updated, "\"customBatch\": 17"));
     assert(strstr(updated, "\"class\"")); free(updated);
     path(asset_path, sizeof(asset_path), dataset_dir, "dataset.py");
     unchanged = read_text(asset_path); assert(!strcmp(unchanged, "# adapter stays byte-for-byte\n")); free(unchanged);
     path(asset_path, sizeof(asset_path), dataset_dir, "sample.bin");
     unchanged = read_text(asset_path); assert(!strcmp(unchanged, "sample bytes\n")); free(unchanged);
     assert(nn_model_find_node(nn_app_model(app), "pending"));
+    value = nn_app_parameter_text(app, "dataset-input", "binding");
+    assert(value && !strcmp(value, "features")); nn_app_free_text(value);
     assert(nn_app_analysis(app, error, sizeof(error)));
     assert(nn_app_close(app, false, error, sizeof(error)));
     assert(nn_app_open(app, directory, error, sizeof(error)));
     assert(!strcmp(nn_project_active_dataset(nn_app_project(app))->id, "editable.data"));
     assert(nn_model_find_node(nn_app_model(app), "pending"));
+    value = nn_app_parameter_text(app, "dataset-input", "binding");
+    assert(value && !strcmp(value, "features")); nn_app_free_text(value);
     definition_copy = nn_app_dataset_definition(app, "editable.data", "1.2.0", error, sizeof(error));
     assert(definition_copy && strstr(definition_copy, "After") && strstr(definition_copy, "customBatch"));
     nn_app_free_text(definition_copy);
+
+    /* Opening repairs a stale single-root binding and leaves an ambiguous graph loadable. */
+    char *persisted_model = read_text(model_path);
+    char *binding_text = strstr(persisted_model, "\"binding\": \"features\"");
+    assert(binding_text);
+    memcpy(binding_text, "\"binding\": \"obsolete\"", strlen("\"binding\": \"obsolete\""));
+    write_text(model_path, persisted_model);
+    free(persisted_model);
+    assert(nn_app_close(app, false, error, sizeof(error)));
+    assert(nn_app_open(app, directory, error, sizeof(error)));
+    assert(nn_project_dirty(nn_app_project(app)));
+    value = nn_app_parameter_text(app, "dataset-input", "binding");
+    assert(value && !strcmp(value, "features")); nn_app_free_text(value);
+    assert(nn_app_save(app, error, sizeof(error)));
+    assert(!nn_project_dirty(nn_app_project(app)));
+
+    assert(nn_app_add_node(app, "dataset-input-second", "core.input", "0.1.0", "", 40, 0,
+                           error, sizeof(error)));
+    assert(nn_app_close(app, false, error, sizeof(error)));
+    persisted_model = read_text(model_path);
+    binding_text = strstr(persisted_model, "\"binding\": \"features\"");
+    assert(binding_text);
+    memcpy(binding_text, "\"binding\": \"obsolete\"", strlen("\"binding\": \"obsolete\""));
+    write_text(model_path, persisted_model);
+    free(persisted_model);
+    assert(nn_app_open(app, directory, error, sizeof(error)));
+    assert(!nn_project_dirty(nn_app_project(app)));
+    value = nn_app_parameter_text(app, "dataset-input", "binding");
+    assert(value && !strcmp(value, "obsolete")); nn_app_free_text(value);
+    assert(nn_app_close(app, false, error, sizeof(error)));
+    assert(nn_app_open(app, directory, error, sizeof(error)));
 
     /* The declared definition entrypoint is confined and must remain a regular file. */
     char symlink_target[4096], definition_backup[4096];
@@ -324,6 +440,9 @@ int main(void)
     assert(unlink(definition_path) == 0 && rename(definition_backup, definition_path) == 0);
 
     /* A failed final model save restores the old metadata and app history. */
+    assert(nn_app_remove_node(app, "dataset-input-second", error, sizeof(error)));
+    assert(nn_app_set_parameter_text(app, "dataset-input", "binding", "features",
+                                     error, sizeof(error)));
     assert(nn_app_add_node(app, "rollback-pending", "core.relu", "0.1.0", "", 0, 0,
                            error, sizeof(error)));
     char *old_definition = read_text(definition_path);
@@ -331,11 +450,13 @@ int main(void)
     char model_backup[4096]; path(model_backup, sizeof(model_backup), directory, "model.backup");
     assert(rename(model_path, model_backup) == 0 && mkdir(model_path, 0755) == 0);
     assert(!nn_app_update_dataset(app, "editable.data", "1.2.0",
-        "{\"name\":\"Must roll back\",\"description\":\"rollback\",\"batch\":{\"inputs\":{\"image\":{\"dtype\":\"float32\",\"shape\":[\"B\",8]}},\"targets\":{}}}",
+        "{\"name\":\"Must roll back\",\"description\":\"rollback\",\"batch\":{\"inputs\":{\"rollback_slot\":{\"dtype\":\"float32\",\"shape\":[\"B\",8]}},\"targets\":{}}}",
         error, sizeof(error)));
     assert(nn_project_dirty(nn_app_project(app)) && nn_app_can_undo(app));
     unchanged = read_text(definition_path); assert(!strcmp(unchanged, old_definition)); free(unchanged);
     assert(nn_model_find_node(nn_app_model(app), "rollback-pending"));
+    value = nn_app_parameter_text(app, "dataset-input", "binding");
+    assert(value && !strcmp(value, "features")); nn_app_free_text(value);
     assert(rmdir(model_path) == 0 && rename(model_backup, model_path) == 0);
     unchanged = read_text(model_path); assert(!strcmp(unchanged, saved_model)); free(unchanged);
     free(old_definition); free(saved_model);
@@ -356,7 +477,7 @@ int main(void)
                            0, 0, error, sizeof(error)));
     assert(nn_app_add_node(app, "shared-input", "core.input", "0.1.0", "",
                            0, 0, error, sizeof(error)));
-    assert(nn_app_set_parameter_text(app, "shared-input", "binding", "image",
+    assert(nn_app_set_parameter_text(app, "shared-input", "binding", "features",
                                      error, sizeof(error)));
     assert(nn_app_connect(app, "shared-edge-one", "shared-input", "out",
                           "shared-one", "in", error, sizeof(error)));
@@ -496,6 +617,46 @@ int main(void)
     unchanged = read_text(outside_lua); assert(!strcmp(unchanged, shared_rule));
     free(unchanged);
     assert(unlink(package_dir) == 0 && rename(package_dir_backup, package_dir) == 0);
+
+    /* Multi-slot datasets retain manual binding edits. */
+    assert(nn_app_create_dataset(app, "multi.data", "1.0.0",
+        "{\"name\":\"Multi\",\"batch\":{\"inputs\":{"
+        "\"left\":{\"dtype\":\"float32\",\"shape\":[1]},"
+        "\"right\":{\"dtype\":\"float32\",\"shape\":[1]}},\"targets\":{}}}",
+        false, error, sizeof(error)));
+    assert(nn_app_select_dataset(app, "multi.data", "1.0.0", error, sizeof(error)));
+    assert(nn_app_set_parameter_text(app, "dataset-input", "binding", "right",
+                                     error, sizeof(error)));
+    value = nn_app_parameter_text(app, "dataset-input", "binding");
+    assert(value && !strcmp(value, "right")); nn_app_free_text(value);
+
+    NNApplication *delete_app = nn_app_new("stereotype-packages/core");
+    assert(delete_app);
+    assert(nn_app_create(delete_app, root, "delete-binding", "Delete binding", "0.1.0",
+                         false, error, sizeof(error)));
+    assert(nn_app_create_dataset(delete_app, "delete.data", "1.0.0",
+        "{\"name\":\"Delete\",\"batch\":{\"inputs\":{"
+        "\"image\":{\"dtype\":\"float32\",\"shape\":[\"B\",8]}},\"targets\":{}}}",
+        true, error, sizeof(error)));
+    assert(nn_app_add_node(delete_app, "delete-first", "core.input", "0.1.0", "",
+                           0, 0, error, sizeof(error)));
+    assert(nn_app_add_node(delete_app, "delete-second", "core.input", "0.1.0", "",
+                           0, 0, error, sizeof(error)));
+    assert(nn_app_set_parameter_text(delete_app, "delete-first", "binding", "manual",
+                                     error, sizeof(error)));
+    assert(nn_app_remove_node(delete_app, "delete-second", error, sizeof(error)));
+    value = nn_app_parameter_text(delete_app, "delete-first", "binding");
+    assert(value && !strcmp(value, "image")); nn_app_free_text(value);
+    assert(!nn_model_find_node(nn_app_model(delete_app), "delete-second"));
+    assert(nn_app_undo(delete_app, error, sizeof(error)));
+    value = nn_app_parameter_text(delete_app, "delete-first", "binding");
+    assert(value && !strcmp(value, "manual")); nn_app_free_text(value);
+    assert(nn_model_find_node(nn_app_model(delete_app), "delete-second"));
+    assert(nn_app_redo(delete_app, error, sizeof(error)));
+    value = nn_app_parameter_text(delete_app, "delete-first", "binding");
+    assert(value && !strcmp(value, "image")); nn_app_free_text(value);
+    assert(!nn_model_find_node(nn_app_model(delete_app), "delete-second"));
+    nn_app_free(delete_app);
 
     nn_app_free(app); remove_tree(root);
     puts("resource authoring and persistence: ok"); return 0;

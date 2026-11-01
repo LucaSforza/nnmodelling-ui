@@ -1,5 +1,17 @@
 # Project, dataset and stereotype dependency model
 
+Dataset import copies source into a staged project-owned directory, completes
+missing user-provided metadata, and publishes only with successful project save.
+Activation atomically updates an unambiguous root Input binding; multiple root
+Inputs reject automatic single-slot activation. Existing inactive projects remain
+readable. See resource-authoring.md for full interaction contract.
+
+Single-slot binding is read-only in Qt. C synchronizes an unambiguous root Input
+on open, activation and active metadata edits; metadata/binding save and rollback
+are one transaction. A stale binding repaired on open marks the project dirty.
+Removing a root Input restores the survivor's unambiguous binding in the same
+graph history entry; undo/redo restore that binding together with topology.
+
 ## Purpose
 
 Define one writable project as ownership boundary for model, datasets and

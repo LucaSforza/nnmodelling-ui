@@ -1,5 +1,57 @@
 # Resource authoring, presentation and VAE
 
+## Dataset import and explicit activation (accepted 2026-11-01)
+
+The dataset manager imports a user-selected local dataset directory into the
+project. The source is never modified. Existing schema-1 manifest, definition,
+adapter and data are retained. When metadata is absent or incomplete, the UI
+asks for missing identity, name and input/target tensor slot information using
+the existing dataset form; it preserves valid supplied metadata. A missing
+Python adapter is explicitly identified and a nonfunctional scaffold is created;
+the UI must never imply arbitrary raw data became trainable. Malformed metadata,
+unsafe paths, symlinks, duplicate identities and destination collisions fail
+visibly. Only C project code writes project files. Import stages a confined copy,
+validates the candidate, atomically saves the project and publishes it; failure
+rolls back created files and preserves prior model, resources and dirty state.
+Successful import saves current edits and creates a history barrier. First import
+is activated; later imports retain the active dataset. Legacy projects with no
+active dataset remain loadable, but UI offers no deactivation action.
+
+Resource-list clicks only select. A clearly labelled Activate action selects an
+exact dataset; the active identity is prominent in both resources and manager.
+If the selected dataset has exactly one input slot and the root graph has exactly
+one Input node, activation updates its binding to that slot. With more than one
+root Input, activation fails visibly without changing dataset or bindings. With
+zero Input nodes activation succeeds. Multiple-slot datasets keep authored
+bindings for manual editing. Nested subflow Inputs are inherited, not bound.
+Dataset activation and binding update are one atomic operation and failed
+activation preserves project state. New root Input with an active single-slot
+dataset receives that binding when unambiguous; otherwise diagnostics guide the
+user. No selection operation silently deactivates the only active dataset.
+
+Accepted refinement 2026-11-01: with one active dataset input and exactly one
+root Input, binding is automatic and displayed read-only with an explanation.
+Synchronize the persisted binding on import/creation/activation, active dataset
+metadata edits and opening a project with a stale binding (mark changed graph
+dirty). Reject manual writes of a different binding in this unambiguous case.
+Nested Inputs and multi-slot datasets retain their existing semantics. Opening
+an incomplete graph with multiple root Inputs remains allowed; activating a
+single-slot dataset against that graph still fails. Dataset metadata edits and
+their binding change share the existing save/rollback transaction. The UI must
+not bypass binding synchronization merely because the dataset is already active.
+Runtime adapts a single returned input to the single declared slot as specified
+in backend.md; this does not rewrite adapter Python source.
+Deleting a root Input that leaves exactly one root Input restores the automatic
+binding of that survivor within the same graph history transaction. Undo/redo
+restore both topology and binding together.
+
+MNIST MLP and VAE examples offer both the existing small sample and a complete
+MNIST resource. Full data includes all 60,000 official training and 10,000 test
+images, with deterministic non-overlapping 55,000/5,000 train/validation split;
+adapters produce each model's existing tensor and target semantics. Data is
+available offline in the repository. The `examples/Test` example contains the MLP graph
+without a declared dataset, for importing a bundled dataset through the UI.
+
 Accepted 2026-09-30 from user request. Supersedes migration-only limits for
 resource creation, positioned parameters and single-tensor subflow analysis.
 Accepted 2026-10-01: typed-outputs.md supersedes single-output limits, boundary

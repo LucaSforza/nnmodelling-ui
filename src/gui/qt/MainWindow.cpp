@@ -352,6 +352,16 @@ void MainWindow::buildUi() {
     auto *arrangeAction = toolbar->addAction(tr("Arrange"));
     arrangeAction->setObjectName(QStringLiteral("arrange"));
     arrangeAction->setToolTip(tr("Arrange (Ctrl+Shift+V / Ctrl+Shift+H)"));
+    auto *deleteAction = toolbar->addAction(tr("Delete"));
+    deleteAction->setObjectName(QStringLiteral("deleteSelection"));
+    deleteAction->setToolTip(tr("Delete selected graph nodes and edges"));
+    deleteAction->setEnabled(false);
+    if (auto *button = qobject_cast<QToolButton *>(toolbar->widgetForAction(deleteAction))) {
+        button->setObjectName(QStringLiteral("deleteSelectionButton"));
+        button->setStyleSheet(QStringLiteral(
+            "QToolButton { color: #b23b35; font-weight: 600; }"
+            "QToolButton:disabled { color: #929ba7; }"));
+    }
     auto *toolbarArrangeMenu = new EditorMenu(this);
     QAction *toolbarVertical = toolbarArrangeMenu->addAction(tr("Vertical"));
     QAction *toolbarHorizontal = toolbarArrangeMenu->addAction(tr("Horizontal"));
@@ -434,9 +444,13 @@ void MainWindow::buildUi() {
     auto *manageDatasetsButton = new QPushButton(tr("Dataset…"), resourcePane);
     manageDatasetsButton->setObjectName(QStringLiteral("manageDatasetsButton"));
     manageDatasetsButton->setToolTip(tr("Manage project datasets"));
+    auto *activateDatasetButton = new QPushButton(tr("Activate selected dataset"), resourcePane);
+    activateDatasetButton->setObjectName(QStringLiteral("activateDatasetButton"));
+    activateDatasetButton->setEnabled(false);
     resourceActions->addWidget(stereotypeButton);
     resourceActions->addWidget(datasetButton);
     resourceLayout->addWidget(manageDatasetsButton);
+    resourceLayout->addWidget(activateDatasetButton);
     resourceLayout->addLayout(resourceActions);
 
     auto *diagnosticPane = new QWidget(right);
@@ -505,6 +519,16 @@ void MainWindow::buildUi() {
         if (!refreshing_) refreshInspector();
         updateDescriptions();
     });
+    const auto updateDeleteAction = [this, deleteAction] {
+        deleteAction->setEnabled(!scene_->selectedItems().isEmpty());
+    };
+    connect(scene_, &GraphScene::selectionChanged, this, updateDeleteAction);
+    connect(scene_, &GraphScene::scopeChanged, this, [this, updateDeleteAction] {
+        QTimer::singleShot(0, this, updateDeleteAction);
+    });
+    connect(scene_, &GraphScene::modelChanged, this, [this, updateDeleteAction] {
+        QTimer::singleShot(0, this, updateDeleteAction);
+    });
     connect(scene_, &GraphScene::errorOccurred, this, [this](const QString &message) {
         auto *box = new QMessageBox(QMessageBox::Warning, tr("Operation rejected"), message,
                                     QMessageBox::Ok, this);
@@ -535,9 +559,16 @@ void MainWindow::buildUi() {
     connect(stereotypeButton, &QPushButton::clicked, this, &MainWindow::createStereotype);
     connect(datasetButton, &QPushButton::clicked, this, [this] { createDataset(); });
     connect(manageDatasetsButton, &QPushButton::clicked, this, &MainWindow::manageDatasets);
+    connect(activateDatasetButton, &QPushButton::clicked, this, &MainWindow::activateSelectedDataset);
+    connect(resources_, &QTreeWidget::currentItemChanged, this,
+            [activateDatasetButton](QTreeWidgetItem *item) {
+        while (item && item->data(0, PackageVersionRole).toString().isEmpty()) item = item->parent();
+        activateDatasetButton->setEnabled(item != nullptr);
+    });
     connect(arrangeAction, &QAction::triggered, this, [this] {
         arrangeCurrentScope(FlowDirection::Vertical);
     });
+    connect(deleteAction, &QAction::triggered, scene_, &GraphScene::deleteSelection);
     connect(verticalAction, &QAction::triggered, this, [this] {
         arrangeCurrentScope(FlowDirection::Vertical);
     });

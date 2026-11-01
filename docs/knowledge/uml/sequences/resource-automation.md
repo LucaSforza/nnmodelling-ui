@@ -1,5 +1,24 @@
 # Resource authoring and local automation
 
+## Import and activate a dataset
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Qt as Dataset manager
+    participant App as Application
+    participant Project as Project transaction
+    User->>Qt: Choose dataset directory
+    Qt->>Qt: Request missing metadata and disclose missing adapter
+    Qt->>App: Import source with completed metadata
+    App->>Project: Stage confined copy and validate candidate
+    Project->>Project: Save model and publish, or roll back
+    User->>Qt: Select row then Activate
+    Qt->>App: Activate exact identity
+    App->>App: Validate Input count and update unambiguous binding atomically
+    App-->>Qt: Refresh active identity or show error
+```
+
 Project resources are written by C project code only. Qt forms and
 `nnmodelctl` submit typed payloads to the same `NNApplication` operations.
 Sources: `src/application/resources.c`, `src/project/resources.c`,
@@ -157,7 +176,7 @@ sequenceDiagram
     App->>Project: read confined project-owned declared source
     User->>Qt: apply draft
     Qt->>App: update_stereotype_source(id, version, kind, source)
-    App->>App: validate bounded Lua source; bound Python text
+    App->>App: validate bounded Lua source and bound Python text
     App->>Project: stage and replace source, save project
     alt success
         App->>App: history barrier and invalidate analysis

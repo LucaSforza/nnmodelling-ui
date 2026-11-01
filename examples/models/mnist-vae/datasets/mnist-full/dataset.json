@@ -1,0 +1,26 @@
+{
+  "name": "MNIST full",
+  "description": "Complete official MNIST: 55,000 train, 5,000 validation, 10,000 test images.",
+  "batch": {
+    "inputs": {
+      "image": {
+        "dtype": "float32",
+        "shape": [
+          "B",
+          1,
+          28,
+          28
+        ]
+      }
+    },
+    "targets": {
+      "target": {
+        "dtype": "float32",
+        "shape": [
+          "B",
+          784
+        ]
+      }
+    }
+  }
+}

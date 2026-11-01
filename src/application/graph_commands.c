@@ -59,6 +59,15 @@ bool nn_app_add_node(NNApplication *app, const char *id, const char *package_id,
     const NNPackage *package = nn_catalog_find(nn_project_catalog(app->project),
                                                 package_id, version);
     if (!package) return nn_app_history_fail(app, error, cap, "package is not active in this project");
+    const NNDataset *active_dataset = nn_project_active_dataset(app->project);
+    size_t root_inputs = 0;
+    if (nn_app_kind_is(package, "input") && !*scope)
+        for (size_t i = 0; i < nn_model_node_count(nn_project_model(app->project)); ++i) {
+            const NNNode *existing = nn_model_node_at(nn_project_model(app->project), i);
+            if (!existing->scope_id[0] && nn_app_kind_is(nn_app_find_package(app, existing), "input")) ++root_inputs;
+        }
+    const bool bind_new_input = nn_app_kind_is(package, "input") && !*scope && root_inputs == 0 &&
+        active_dataset && active_dataset->input_count == 1;
     const NNCatalog *catalog = nn_project_catalog(app->project);
     const NNPackage *input_package = nn_app_kind_is(package, "subflow")
         ? nn_catalog_find(catalog, "core.input", "0.1.0") : NULL;
@@ -80,6 +89,15 @@ bool nn_app_add_node(NNApplication *app, const char *id, const char *package_id,
     for (size_t i = 0; i < package->parameter_count; ++i) {
         const NNParameterDef *definition = &package->parameters[i];
         if (!nn_app_add_default(app, model, id, package, definition, error, cap)) {
+            char ignored[64];
+            (void)nn_model_remove_node(model, id, ignored, sizeof(ignored));
+            nn_app_history_finish(app, false);
+            return false;
+        }
+    }
+    if (bind_new_input) {
+        NNValue binding = {.type = NN_VALUE_STRING, .as.string = active_dataset->inputs[0].name};
+        if (!nn_model_set_parameter(model, id, "binding", &binding, error, cap)) {
             char ignored[64];
             (void)nn_model_remove_node(model, id, ignored, sizeof(ignored));
             nn_app_history_finish(app, false);
@@ -168,8 +186,31 @@ bool nn_app_remove_node(NNApplication *app, const char *id, char *error, size_t 
                 return nn_app_history_fail(app, error, cap, "subflow still contains nodes");
         }
     }
-    if (!nn_app_history_prepare(app, error, cap)) return false;
-    const bool okay = nn_model_remove_node(model, id, error, cap);
+    char *survivor_id = NULL;
+    const NNDataset *dataset = nn_project_active_dataset(app->project);
+    if (!node->scope_id[0] && nn_app_kind_is(nn_app_find_package(app, node), "input") &&
+        dataset && dataset->input_count == 1) {
+        const NNNode *survivor = NULL;
+        size_t remaining_inputs = 0;
+        for (size_t i = 0; i < nn_model_node_count(model); ++i) {
+            const NNNode *candidate = nn_model_node_at(model, i);
+            if (!strcmp(candidate->id, id) || candidate->scope_id[0] ||
+                !nn_app_kind_is(nn_app_find_package(app, candidate), "input")) continue;
+            survivor = candidate;
+            ++remaining_inputs;
+        }
+        if (remaining_inputs == 1) {
+            survivor_id = nn_text_copy(survivor->id);
+            if (!survivor_id) return nn_app_history_fail(app, error, cap, "out of memory staging input binding update");
+        }
+    }
+    if (!nn_app_history_prepare(app, error, cap)) { free(survivor_id); return false; }
+    bool okay = nn_model_remove_node(model, id, error, cap);
+    if (okay && survivor_id) {
+        NNValue binding = {.type = NN_VALUE_STRING, .as.string = dataset->inputs[0].name};
+        okay = nn_model_set_parameter(model, survivor_id, "binding", &binding, error, cap);
+    }
+    free(survivor_id);
     nn_app_history_finish(app, okay);
     if (!okay) return false;
     nn_app_invalidate_analysis(app);

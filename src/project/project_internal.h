@@ -38,6 +38,10 @@ bool nn_project_write_all(int fd, const char *data, size_t length);
 void nn_project_remove_tree(const char *path);
 bool nn_project_load_dataset(NNProject *project, NNDataset *dataset,
                              char *error, size_t capacity);
+bool nn_project_bind_dataset_input(NNProject *project, const NNDataset *dataset,
+                                  char *error, size_t capacity);
+bool nn_project_sync_dataset_input(NNProject *project, const NNDataset *dataset,
+                                   char *error, size_t capacity);
 void nn_project_dataset_dispose(NNDataset *dataset);
 bool nn_project_parse_value(yyjson_val *source, NNValue *target);
 bool nn_project_edge_topology_valid(const NNModel *model, const NNCatalog *catalog,

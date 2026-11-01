@@ -1,5 +1,9 @@
 # Editor and C application boundary
 
+Diagnostics presentation sorts problem roots by graph dependency depth (source
+zero, target one plus maximum incoming depth), then stable model order. Root
+boundary summaries remain last; root-cause grouping and scope filters remain.
+
 Accepted 2026-10-14: MainWindow owns staged Manage metavariables and direct
 Inspector single-field binding text/preview. GraphScene asks C for resolved
 positioned parameter values for nodes in the active scope; it never paints

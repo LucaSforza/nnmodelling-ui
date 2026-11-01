@@ -48,6 +48,7 @@ Qt owns selection, scope, camera, drafts and other transient presentation state.
     participant Scene as GraphScene
     Qt->>App: create(core root)
     Qt->>Qt: keep editor window hidden
+    Qt->>Qt: suppress automatic quit while startup dialogs own lifetime
     Qt-->>User: show startup chooser only
     alt open existing project
       User->>Qt: choose project path
@@ -65,10 +66,11 @@ Qt owns selection, scope, camera, drafts and other transient presentation state.
         App-->>Scene: authoritative state
         Scene->>Scene: copy IDs and synchronize items
         Qt->>Qt: show editor window
+        Qt->>Qt: restore previous automatic quit policy
       else parse, resolution or validation fails
         Project-->>App: error
         App-->>Qt: error and prior project remains active
-        Qt-->>User: show chooser again; editor stays hidden
+        Qt-->>User: show chooser again, editor stays hidden
       end
     else create from template
       Qt-->>User: choose MNIST MLP, MNIST VAE or tiny LLM

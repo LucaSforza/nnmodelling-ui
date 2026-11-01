@@ -1,12 +1,26 @@
 {
-  "name": "MNIST reconstruction",
+  "name": "MNIST small",
   "description": "Verified MNIST IDX subset: normalized images with flattened reconstruction targets; 64 train, 16 validation, 16 official test.",
   "batch": {
     "inputs": {
-      "image": { "dtype": "float32", "shape": ["B", 1, 28, 28] }
+      "image": {
+        "dtype": "float32",
+        "shape": [
+          "B",
+          1,
+          28,
+          28
+        ]
+      }
     },
     "targets": {
-      "target": { "dtype": "float32", "shape": ["B", 784] }
+      "target": {
+        "dtype": "float32",
+        "shape": [
+          "B",
+          784
+        ]
+      }
     }
   }
 }

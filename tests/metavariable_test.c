@@ -156,7 +156,9 @@ int main(void)
     assert(nn_app_add_node(app, "dense", "core.linear", "0.1.0", "", 0, 0,
                            error, sizeof(error)));
     assert(nn_app_create_dataset(app, "local.variables-data", "1.0.0",
-        "{\"name\":\"Variables data\",\"batch\":{\"inputs\":{\"input\":{\"dtype\":\"float32\",\"shape\":[\"B\",8]}},\"targets\":{}}}",
+        "{\"name\":\"Variables data\",\"batch\":{\"inputs\":{"
+        "\"input\":{\"dtype\":\"float32\",\"shape\":[\"B\",8]},"
+        "\"slot\":{\"dtype\":\"float32\",\"shape\":[\"B\",8]}},\"targets\":{}}}",
         true, error, sizeof(error)));
     assert(nn_app_add_node(app, "source", "core.input", "0.1.0", "", 0, 0,
                            error, sizeof(error)));

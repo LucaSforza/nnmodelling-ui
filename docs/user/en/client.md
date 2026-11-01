@@ -113,6 +113,10 @@ A subflow card shows its child count and a prominent `Enter subflow` button. Cli
 
 ### Graph toolbar and direction
 
+`Delete`, beside `Arrange`, removes selected nodes and connections. It becomes
+enabled and red for a deletable selection; without one it stays disabled.
+It performs the same deletion as the Delete and Backspace keys.
+
 The `Workspace` toolbar provides `Scope`, `Training`, `Fit`, `+`, `−` and `Arrange`. `Training` opens the same panel as `Model > Training backend…`. `Fit` frames the content; `+` and `−` zoom in or out. `Arrange` applies the default vertical layout. Its arrow offers `Vertical` or `Horizontal`; the same choices are under `View > Arrange`. Arrangement recalculates node positions in the current scope, updates the in-memory project and marks it modified, then fits the result. Use `File > Save` to persist it to disk. Vertical flow goes from top to bottom; horizontal flow goes to the left. Changing direction is a session presentation choice; `Arrange` is the action that lays out and records positions.
 
 ![Layout direction menu](../assets/menu-arrange.png)
@@ -166,7 +170,7 @@ A `stereotype` parameter consists of an editable package selector and fields fro
 
 `Project resources` displays three expandable groups:
 
-- `Datasets` lists names and `id@version`. A `✓` marks the active dataset. Child rows show `Input: name [dtype]` and `Target: name [dtype]`. Selecting a dataset row makes it active, refreshes analysis and marks the project modified. Clicking an informational child row displays the resource path in the status bar.
+- `Datasets` lists names and `id@version`. A `✓` marks the active dataset. Child rows show `Input: name [dtype]` and `Target: name [dtype]`. Selecting a row does not activate it: use `Activate selected dataset` to activate it and refresh analysis. Clicking an informational child row displays the resource path in the status bar.
 - `Packages` lists active packages with their exact identities. Expand a package to see dependencies in the format `Requires id version-constraint`. These rows are informational; they do not activate or deactivate resources.
 - `Operations` lists public methods that will be included in the wheel, with endpoint status. Each row's tooltip shows its nodes and codecs. Invalid endpoints remain editable in the manager and prevent training submission until fixed or removed.
 
@@ -184,9 +188,18 @@ Operations are saved in `model.json` with the project. Graph edits can make an e
 
 ### Dataset manager
 
-`Dataset…` / `Manage datasets…` opens `Project datasets`, a single-selection list. Each row shows `id@version — name`; the active dataset is marked `✓ (active)`. `New dataset` opens a blank form. `Edit` opens the selected dataset; double-clicking a row also runs `Edit`. `Select` activates the selected dataset and is disabled if it is already active. `Edit` and `Select` are disabled when no row is selected. `Close` closes the manager without further changes.
+`Dataset…` / `Manage datasets…` opens `Project datasets`, a single-selection list. Each row shows `id@version — name`; the active dataset is marked `✓ (active)`. `New dataset` opens a blank form. `Edit` opens the selected dataset; clicking a row only selects it. `Import dataset…` copies a dataset directory into the project and asks for missing metadata; if the Python adapter is missing, it creates a scaffold that must be completed before training. The first imported dataset becomes active. `Activate` activates the selected dataset and synchronizes binding even when it is already active. A single dataset input automatically binds the sole root Input node; multiple root Input nodes produce an error. `Edit` and `Activate` are disabled when no row is selected. `Close` closes the manager without further changes.
 
 ![Dataset manager](../assets/dataset-manager.png)
+
+With one dataset input slot and one root Input node, `binding` is automatic
+and read-only in the Inspector. Changing the dataset or renaming its slot
+updates the binding. Opening a project with an old binding synchronizes it and
+marks the project modified. Multi-slot datasets retain manual binding.
+When the adapter returns exactly one input, the runtime associates it with the
+sole declared slot even when its returned name differs. This applies to train,
+validation, test and tokenization; targets are not renamed. Incompatible input
+counts fail explicitly.
 
 ### Create or edit a dataset
 
@@ -242,6 +255,11 @@ The metadata fields have distinct meanings in both the stereotype and dataset fo
 ![Dependencies, Lua and stereotype confirmation](../assets/stereotype-form-bottom.png)
 
 ## Model problems
+
+Problem roots are ordered by graph depth: sources first, then downstream nodes.
+Equal depths retain stable model order, including sources added after older
+layers. The general `Root` summary stays last; blocked descendants remain
+grouped under their cause.
 
 `Model problems` lists shape-analysis problems; it does not list successful rows. Each row shows category, node name, scope and reason. Categories distinguish `Lua compilation error`, `Model error`, `Incomplete` and `Analysis unavailable` by icon, text and color. Primary causes are grouped; blocked descendants appear as expandable child rows. When available, `Technical details` opens stable codes, source file/line or technical details.
 
