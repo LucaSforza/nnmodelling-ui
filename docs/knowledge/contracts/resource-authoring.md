@@ -29,6 +29,19 @@ activation preserves project state. New root Input with an active single-slot
 dataset receives that binding when unambiguous; otherwise diagnostics guide the
 user. No selection operation silently deactivates the only active dataset.
 
+Accepted refinement 2026-11-01: with one active dataset input and exactly one
+root Input, binding is automatic and displayed read-only with an explanation.
+Synchronize the persisted binding on import/creation/activation, active dataset
+metadata edits and opening a project with a stale binding (mark changed graph
+dirty). Reject manual writes of a different binding in this unambiguous case.
+Nested Inputs and multi-slot datasets retain their existing semantics. Opening
+an incomplete graph with multiple root Inputs remains allowed; activating a
+single-slot dataset against that graph still fails. Dataset metadata edits and
+their binding change share the existing save/rollback transaction. The UI must
+not bypass binding synchronization merely because the dataset is already active.
+Runtime adapts a single returned input to the single declared slot as specified
+in backend.md; this does not rewrite adapter Python source.
+
 MNIST MLP and VAE examples offer both the existing small sample and a complete
 MNIST resource. Full data includes all 60,000 official training and 10,000 test
 images, with deterministic non-overlapping 55,000/5,000 train/validation split;

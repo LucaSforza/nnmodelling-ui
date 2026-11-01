@@ -23,6 +23,8 @@ wheel. Sources: `python/nnmodelling-runtime/src/nnmodelling_runtime/`,
     Adapter->>Catalog: import declared Dataset entrypoint
     Catalog-->>Adapter: DatasetAdapter subclass
     Adapter-->>Worker: instantiate with dataset directory
+    Adapter->>Project: read definition and declared input slots
+    Note over Adapter: Loader wraps load/tokenize; one returned input maps to one declared slot
     Worker->>Graph: GraphModule(project root, frozen core directory)
     Graph->>Catalog: resolve node package and dependency closure
     Catalog-->>Graph: exact manifests, definitions and Python entrypoints
@@ -62,6 +64,7 @@ bound nested scopes.
     loop Each training epoch and train batch
       Worker->>Adapter: load train split with batch size
       Adapter-->>Worker: Batch(inputs, targets)
+      Note over Worker,Adapter: Normalize input names at loader boundary; preserve targets
       Worker->>Worker: zero gradients
       Worker->>Graph: forward(inputs, targets, include_loss=true)
       Graph->>Graph: bind root Input nodes by declared dataset slot

@@ -6,6 +6,10 @@ Activation atomically updates an unambiguous root Input binding; multiple root
 Inputs reject automatic single-slot activation. Existing inactive projects remain
 readable. See resource-authoring.md for full interaction contract.
 
+Single-slot binding is read-only in Qt. C synchronizes an unambiguous root Input
+on open, activation and active metadata edits; metadata/binding save and rollback
+are one transaction. A stale binding repaired on open marks the project dirty.
+
 ## Purpose
 
 Define one writable project as ownership boundary for model, datasets and
