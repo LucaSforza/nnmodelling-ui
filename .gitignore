@@ -12,4 +12,5 @@ __pycache__/
 *.dylib
 *.dll
 *.exe
+output/
 .DS_Store
