@@ -425,6 +425,9 @@ bool nn_project_create_dataset(NNProject *p, const char *id, const char *version
     free(manifest); free(definition); free(mp); free(dp); free(py); free(ds); free(pyproject);
     NNDataset candidate = { .id = nn_text_copy(id), .version = nn_text_copy(version), .path = nn_text_copy(rel) };
     if (okay) okay = candidate.id && candidate.version && candidate.path && nn_project_load_dataset(p, &candidate, error, cap);
+    NNModel *model_backup = okay && select ? nn_model_copy(p->model) : NULL;
+    if (okay && select && !model_backup) okay = nn_fail(error, cap, "out of memory staging dataset activation");
+    if (okay && select) okay = nn_project_bind_dataset_input(p, &candidate, error, cap);
     NNDataset *grown = okay ? malloc((p->dataset_count + 1) * sizeof(*grown)) : NULL;
     if (okay && !grown) okay = false;
     if (okay) {
@@ -443,6 +446,8 @@ bool nn_project_create_dataset(NNProject *p, const char *id, const char *version
             free(grown);
         }
     }
+    if (!okay && model_backup) nn_model_swap(p->model, model_backup);
+    nn_model_free(model_backup);
     nn_project_dataset_dispose(&candidate);
     if (!okay) { nn_project_remove_tree(dir); if (category_created) { char *base = nn_path_join(p->directory, "datasets"); if (base) { rmdir(base); free(base); } } }
     free(rel); free(dir);

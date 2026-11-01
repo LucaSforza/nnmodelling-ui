@@ -658,7 +658,11 @@ void MainWindow::refreshResources() {
     resources_->clear();
     const NNProject *project = nn_app_project(application_.get());
     if (!project) return;
-    auto *datasets = new QTreeWidgetItem(resources_, {tr("Datasets")});
+    const NNDataset *activeDataset = nn_project_active_dataset(project);
+    const QString activeIdentity = activeDataset
+        ? QStringLiteral("%1@%2").arg(QString::fromUtf8(activeDataset->id), QString::fromUtf8(activeDataset->version))
+        : tr("none");
+    auto *datasets = new QTreeWidgetItem(resources_, {tr("Datasets — Active: %1").arg(activeIdentity)});
     datasets->setExpanded(true);
     for (size_t i = 0; i < nn_project_dataset_count(project); ++i) {
         const NNDataset *dataset = nn_project_dataset_at(project, i);
@@ -670,7 +674,7 @@ void MainWindow::refreshResources() {
         datasetItem->setData(0, IdRole, identity);
         datasetItem->setData(0, PackageVersionRole, QString::fromUtf8(dataset->id));
         datasetItem->setData(0, DatasetVersionRole, QString::fromUtf8(dataset->version));
-        if (nn_project_active_dataset(project) == dataset)
+        if (activeDataset == dataset)
             datasetItem->setText(0, QStringLiteral("✓  %1").arg(datasetItem->text(0)));
         datasetItem->setToolTip(0, dataset->path ? QString::fromUtf8(dataset->path) : QString());
         for (size_t j = 0; j < dataset->input_count; ++j) {
@@ -816,13 +820,8 @@ void MainWindow::selectDataset(QTreeWidgetItem *item, int column) {
         selectResource(item, column);
         return;
     }
-    const QByteArray id = item->data(0, PackageVersionRole).toString().toUtf8();
-    const QByteArray version = item->data(0, DatasetVersionRole).toString().toUtf8();
-    char error[ErrorCapacity] = {};
-    if (!nn_app_select_dataset(application_.get(), id.constData(), version.constData(), error, sizeof(error))) {
-        QMessageBox::warning(this, tr("Dataset selection failed"), QString::fromUtf8(error));
-        return;
-    }
-    refreshAll();
-    statusBar()->showMessage(tr("Selected dataset %1@%2").arg(QString::fromUtf8(id), QString::fromUtf8(version)), 5000);
+    const QString id = item->data(0, PackageVersionRole).toString();
+    const QString version = item->data(0, DatasetVersionRole).toString();
+    statusBar()->showMessage(tr("Selected dataset %1@%2. Use Activate selected dataset to make it active.")
+        .arg(id, version), 5000);
 }

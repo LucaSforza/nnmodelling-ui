@@ -128,9 +128,62 @@ int main(void)
     assert(!nn_project_dirty(nn_app_project(app)));
     assert(nn_project_active_dataset(nn_app_project(app)));
     assert(nn_app_add_node(app, "input", "core.input", "0.1.0", "", 0, 0, error, sizeof(error)));
+    char *initial_binding = nn_app_parameter_text(app, "input", "binding");
+    assert(initial_binding && !strcmp(initial_binding, "image")); nn_app_free_text(initial_binding);
     assert(nn_app_set_parameter_text(app, "input", "binding", "missing", error, sizeof(error)));
-    assert(nn_app_select_dataset(app, "local.images", "0.1.0", error, sizeof(error))); /* unresolved allowed */
+    assert(nn_app_select_dataset(app, "local.images", "0.1.0", error, sizeof(error)));
+    initial_binding = nn_app_parameter_text(app, "input", "binding");
+    assert(initial_binding && !strcmp(initial_binding, "image")); nn_app_free_text(initial_binding);
     assert(!nn_app_select_dataset(app, "missing", "0.1.0", error, sizeof(error)));
+
+    char import_source[4096], imported_file[4096];
+    path(import_source, sizeof(import_source), root, "import-source");
+    assert(mkdir(import_source, 0755) == 0);
+    path(imported_file, sizeof(imported_file), import_source, "sample.bin");
+    write_text(imported_file, "source bytes\n");
+    const char *import_manifest =
+        "{\"schemaVersion\":1,\"id\":\"imported.samples\",\"version\":\"1.2.3\","
+        "\"entrypoints\":{\"definition\":\"metadata/dataset.json\","
+        "\"python\":{\"language\":\"python\",\"file\":\"python/adapter.py\"}}}";
+    assert(nn_app_import_dataset(app, import_source, import_manifest, dataset, error, sizeof(error)));
+    assert(nn_project_dataset_count(nn_app_project(app)) == 2);
+    assert(!strcmp(nn_project_active_dataset(nn_app_project(app))->id, "local.images"));
+    path(check, sizeof(check), directory, "datasets/imported.samples-1.2.3/sample.bin");
+    scaffold = read_text(check); assert(!strcmp(scaffold, "source bytes\n")); free(scaffold);
+    path(check, sizeof(check), directory, "datasets/imported.samples-1.2.3/python/adapter.py");
+    scaffold = read_text(check); assert(strstr(scaffold, "NotImplementedError")); free(scaffold);
+    path(check, sizeof(check), directory, "datasets/imported.samples-1.2.3/metadata/dataset.json");
+    assert(access(check, F_OK) == 0);
+    char *imported_definition = nn_app_dataset_definition(app, "imported.samples", "1.2.3", error, sizeof(error));
+    assert(imported_definition && strstr(imported_definition, "image")); nn_app_free_text(imported_definition);
+    path(check, sizeof(check), import_source, "python/adapter.py"); assert(access(check, F_OK) != 0);
+    assert(nn_app_select_dataset(app, "imported.samples", "1.2.3", error, sizeof(error)));
+    value = nn_app_parameter_text(app, "input", "binding"); assert(value && !strcmp(value, "image")); nn_app_free_text(value);
+    bool dirty_before_ancestor_import = nn_project_dirty(nn_app_project(app));
+    size_t count_before_ancestor_import = nn_project_dataset_count(nn_app_project(app));
+    char active_before_ancestor_import[128];
+    snprintf(active_before_ancestor_import, sizeof(active_before_ancestor_import), "%s",
+             nn_project_active_dataset(nn_app_project(app))->id);
+    value = nn_app_parameter_text(app, "input", "binding"); assert(value);
+    char binding_before_ancestor_import[128];
+    snprintf(binding_before_ancestor_import, sizeof(binding_before_ancestor_import), "%s", value);
+    nn_app_free_text(value);
+    assert(!nn_app_import_dataset(app, root, import_manifest, dataset, error, sizeof(error)));
+    assert(nn_project_dataset_count(nn_app_project(app)) == count_before_ancestor_import);
+    assert(!strcmp(nn_project_active_dataset(nn_app_project(app))->id, active_before_ancestor_import));
+    assert(nn_project_dirty(nn_app_project(app)) == dirty_before_ancestor_import);
+    value = nn_app_parameter_text(app, "input", "binding");
+    assert(value && !strcmp(value, binding_before_ancestor_import)); nn_app_free_text(value);
+    assert(!nn_app_import_dataset(app, import_source, import_manifest, dataset, error, sizeof(error)));
+    assert(nn_project_dataset_count(nn_app_project(app)) == 2);
+    char link_path[4096]; path(link_path, sizeof(link_path), import_source, "unsafe-link");
+    assert(symlink("sample.bin", link_path) == 0);
+    const char *link_manifest =
+        "{\"schemaVersion\":1,\"id\":\"imported.symlink\",\"version\":\"1.0.0\","
+        "\"entrypoints\":{\"definition\":\"dataset.json\"}}";
+    assert(!nn_app_import_dataset(app, import_source, link_manifest, dataset, error, sizeof(error)));
+    assert(nn_project_dataset_count(nn_app_project(app)) == 2);
+    assert(unlink(link_path) == 0);
 
     const char *loss_definition =
         "{\"name\":\"Local loss\",\"kind\":\"layer\",\"outputs\":["
@@ -168,11 +221,21 @@ int main(void)
     char backup[4096]; path(backup, sizeof(backup), directory, "model.backup");
     assert(rename(model_path, backup) == 0 && mkdir(model_path, 0755) == 0);
     assert(!nn_app_create_dataset(app, "rollback", "0.1.0", dataset, true, error, sizeof(error)));
-    assert(nn_project_dataset_count(nn_app_project(app)) == 1);
-    assert(!strcmp(nn_project_active_dataset(nn_app_project(app))->id, "local.images"));
+    const char *rollback_manifest =
+        "{\"schemaVersion\":1,\"id\":\"rollback.import\",\"version\":\"1.0.0\","
+        "\"entrypoints\":{\"definition\":\"dataset.json\"}}";
+    assert(!nn_app_import_dataset(app, import_source, rollback_manifest, dataset, error, sizeof(error)));
+    assert(nn_project_dataset_count(nn_app_project(app)) == 2);
+    assert(!strcmp(nn_project_active_dataset(nn_app_project(app))->id, "imported.samples"));
     assert(nn_project_dirty(nn_app_project(app)));
     path(check, sizeof(check), directory, "datasets/rollback-0.1.0"); assert(access(check, F_OK) != 0);
+    path(check, sizeof(check), directory, "datasets/rollback.import-1.0.0"); assert(access(check, F_OK) != 0);
     assert(rmdir(model_path) == 0 && rename(backup, model_path) == 0);
+
+    assert(nn_app_add_node(app, "input-second", "core.input", "0.1.0", "", 40, 0,
+                           error, sizeof(error)));
+    assert(!nn_app_select_dataset(app, "local.images", "0.1.0", error, sizeof(error)));
+    assert(!strcmp(nn_project_active_dataset(nn_app_project(app))->id, "imported.samples"));
 
     /* Symlink category directories are never followed, and never removed. */
     assert(nn_app_create(app, root, "linked", "Linked", "0.1.0", false, error, sizeof(error)));
@@ -180,10 +243,16 @@ int main(void)
     assert(symlink(directory, linked) == 0);
     assert(!nn_app_create_stereotype(app, "escape", "0.1.0", definition, rule, "{}", error, sizeof(error)));
     struct stat info; assert(lstat(linked, &info) == 0 && S_ISLNK(info.st_mode));
+    assert(nn_app_create(app, root, "first-dataset", "First dataset", "0.1.0",
+                         false, error, sizeof(error)));
+    assert(nn_app_create_dataset(app, "first.unselected", "1.0.0", dataset, false,
+                                 error, sizeof(error)));
+    assert(nn_project_active_dataset(nn_app_project(app)) &&
+           !strcmp(nn_project_active_dataset(nn_app_project(app))->id, "first.unselected"));
     assert(nn_app_open(app, directory, error, sizeof(error)));
     assert(nn_model_find_node(nn_app_model(app), "local"));
     assert(nn_model_find_node(nn_app_model(app), "unsaved"));
-    assert(nn_project_dataset_count(nn_app_project(app)) == 1);
+    assert(nn_project_dataset_count(nn_app_project(app)) == 2);
     path(check, sizeof(check), directory, "packages/local.affine-0.1.0/definition.json");
     char *text = read_text(check); assert(strstr(text, "\n  \"parameters\"")); assert(text[strlen(text)-1] == '\n'); free(text);
 
@@ -214,6 +283,13 @@ int main(void)
     assert(nn_app_create(app, root, "mlp-copy", "MLP copy", "5.6.7", true,
                          error, sizeof(error)));
     assert(!strcmp(nn_project_version(nn_app_project(app)), "5.6.7"));
+    assert(nn_project_dataset_count(nn_app_project(app)) == 2);
+    bool has_full_mnist = false;
+    for (size_t i = 0; i < nn_project_dataset_count(nn_app_project(app)); ++i) {
+        const NNDataset *item = nn_project_dataset_at(nn_app_project(app), i);
+        if (!strcmp(item->id, "mnist-full")) has_full_mnist = true;
+    }
+    assert(has_full_mnist);
     path(directory, sizeof(directory), root, "mlp-copy");
     assert(nn_app_close(app, false, error, sizeof(error)));
     assert(nn_app_open(app, directory, error, sizeof(error)));

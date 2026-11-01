@@ -33,7 +33,7 @@ MNIST MLP and VAE examples offer both the existing small sample and a complete
 MNIST resource. Full data includes all 60,000 official training and 10,000 test
 images, with deterministic non-overlapping 55,000/5,000 train/validation split;
 adapters produce each model's existing tensor and target semantics. Data is
-available offline in the repository. The Test example contains the MLP graph
+available offline in the repository. The `examples/Test` example contains the MLP graph
 without a declared dataset, for importing a bundled dataset through the UI.
 
 Accepted 2026-09-30 from user request. Supersedes migration-only limits for

@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <dirent.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdint.h>
@@ -15,6 +16,45 @@
 
 static bool parse_slots(yyjson_val *object, NNTensorSlot **slots, size_t *count,
                         char *error, size_t capacity);
+
+static bool dataset_entrypoint_path(const char *directory, const char *relative,
+                                   char **path_out)
+{
+    *path_out = NULL;
+    if (!relative || !*relative || relative[0] == '/' || strlen(relative) > 512) return false;
+    char *current = nn_text_copy(directory);
+    if (!current) return false;
+    const char *part = relative;
+    for (const char *end = relative;; ++end) {
+        if (*end != '/' && *end != '\0') continue;
+        size_t length = (size_t)(end - part);
+        if (!length || (length == 1 && part[0] == '.') ||
+            (length == 2 && part[0] == '.' && part[1] == '.') ||
+            (*end == '/' && end[1] == '\0')) { free(current); return false; }
+        for (size_t i = 0; i < length; ++i) {
+            unsigned char c = (unsigned char)part[i];
+            if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                  (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.')) {
+                free(current); return false;
+            }
+        }
+        char *segment = malloc(length + 1);
+        if (!segment) { free(current); return false; }
+        memcpy(segment, part, length); segment[length] = '\0';
+        char *next = nn_path_join(current, segment);
+        free(segment); free(current); current = next;
+        if (!current) return false;
+        struct stat st;
+        if (lstat(current, &st) ||
+            (*end == '/' ? !S_ISDIR(st.st_mode) : !S_ISREG(st.st_mode))) {
+            free(current); return false;
+        }
+        if (*end == '\0') break;
+        part = end + 1;
+    }
+    *path_out = current;
+    return true;
+}
 
 static char *dataset_definition_path(const NNProject *project, const NNDataset *dataset,
                                     char *error, size_t capacity)
@@ -28,10 +68,10 @@ static char *dataset_definition_path(const NNProject *project, const NNDataset *
     bool valid = manifest && yyjson_get_int(yyjson_obj_get(root, "schemaVersion")) == 1 &&
         !strcmp(nn_project_string_field(root, "id") ? nn_project_string_field(root, "id") : "", dataset->id) &&
         !strcmp(nn_project_string_field(root, "version") ? nn_project_string_field(root, "version") : "", dataset->version) &&
-        definition && nn_project_valid_id(definition) && !strchr(definition, '/');
-    char *path = valid && directory ? nn_path_join(directory, definition) : NULL;
-    if (!valid) nn_errorf(error, capacity, "dataset identity or definition invalid: %s", dataset->path);
-    else if (!path) nn_errorf(error, capacity, "unable to build dataset definition path");
+        definition;
+    char *path = NULL;
+    if (valid && (!directory || !dataset_entrypoint_path(directory, definition, &path))) valid = false;
+    if (!valid) nn_errorf(error, capacity, "dataset identity or definition path invalid: %s", dataset->path);
     if (manifest) yyjson_doc_free(manifest);
     free(manifest_path); free(directory);
     return path;
@@ -122,6 +162,32 @@ bool nn_project_load_dataset(NNProject *project, NNDataset *dataset,
     bool okay = parse_dataset_definition(dataset, definition_doc, error, capacity);
     yyjson_doc_free(definition_doc);
     return okay;
+}
+
+bool nn_project_bind_dataset_input(NNProject *project, const NNDataset *dataset,
+                                   char *error, size_t capacity)
+{
+    if (!project || !dataset) return nn_fail(error, capacity, "invalid dataset binding request");
+    if (dataset->input_count != 1) return true;
+    const NNNode *input = NULL;
+    size_t count = 0;
+    for (size_t i = 0; i < nn_model_node_count(project->model); ++i) {
+        const NNNode *node = nn_model_node_at(project->model, i);
+        const NNPackage *package = nn_catalog_find(project->catalog, node->package_id, node->package_version);
+        if (!node->scope_id[0] && package && package->kind && !strcmp(package->kind, "input")) {
+            input = node;
+            ++count;
+        }
+    }
+    if (count > 1) return nn_fail(error, capacity, "cannot bind a single-input dataset with multiple root Input nodes");
+    if (!input) return true;
+    const NNValue *binding = NULL;
+    for (size_t i = 0; i < input->parameter_count; ++i)
+        if (!strcmp(input->parameters[i].key, "binding")) binding = &input->parameters[i].value;
+    if (binding && binding->type == NN_VALUE_STRING && binding->as.string &&
+        !strcmp(binding->as.string, dataset->inputs[0].name)) return true;
+    NNValue value = {.type = NN_VALUE_STRING, .as.string = dataset->inputs[0].name};
+    return nn_model_set_parameter(project->model, input->id, "binding", &value, error, capacity);
 }
 
 static bool read_definition_bytes(const char *path, char **contents, size_t *length,
@@ -417,4 +483,358 @@ bool nn_project_select_dataset(NNProject *project, const char *id, const char *v
     free(old_id); free(old_version);
     if (error && capacity) error[0] = '\0';
     return true;
+}
+
+#define NN_DATASET_IMPORT_FILE_LIMIT 100000u
+#define NN_DATASET_IMPORT_BYTE_LIMIT ((uintmax_t)8 * 1024u * 1024u * 1024u)
+
+typedef struct { size_t files; uintmax_t bytes; } NNImportBudget;
+
+static bool path_contains(const char *parent, const char *child)
+{
+    size_t length = strlen(parent);
+    if (strncmp(parent, child, length)) return false;
+    return child[length] == '\0' || parent[length - 1] == '/' || child[length] == '/';
+}
+
+static bool copy_import_entry(const char *source, const char *destination,
+                              NNImportBudget *budget, char *error, size_t capacity)
+{
+    struct stat st;
+    if (lstat(source, &st) || S_ISLNK(st.st_mode))
+        return nn_fail(error, capacity, "dataset source contains a missing or symbolic link entry");
+    if (S_ISDIR(st.st_mode)) {
+        if (mkdir(destination, 0755))
+            return nn_fail(error, capacity, "cannot create staged dataset directory");
+        DIR *directory = opendir(source);
+        if (!directory) return nn_fail(error, capacity, "cannot read dataset source directory");
+        bool okay = true;
+        struct dirent *entry;
+        while (okay && (entry = readdir(directory))) {
+            if (!strcmp(entry->d_name, ".") || !strcmp(entry->d_name, "..")) continue;
+            char *from = nn_path_join(source, entry->d_name);
+            char *to = nn_path_join(destination, entry->d_name);
+            okay = from && to && copy_import_entry(from, to, budget, error, capacity);
+            free(from); free(to);
+        }
+        if (closedir(directory)) okay = false;
+        if (!okay && error && capacity && !error[0]) nn_errorf(error, capacity, "cannot finish copying dataset directory");
+        return okay;
+    }
+    if (!S_ISREG(st.st_mode) || st.st_size < 0 || (uintmax_t)st.st_size > NN_DATASET_IMPORT_BYTE_LIMIT ||
+        ++budget->files > NN_DATASET_IMPORT_FILE_LIMIT ||
+        budget->bytes > NN_DATASET_IMPORT_BYTE_LIMIT - (uintmax_t)st.st_size)
+        return nn_fail(error, capacity, "dataset source contains an unsupported or oversized entry");
+    int in = open(source, O_RDONLY | O_NOFOLLOW);
+    if (in < 0) return nn_fail(error, capacity, "cannot open dataset source file");
+    struct stat opened;
+    if (fstat(in, &opened) || !S_ISREG(opened.st_mode) || opened.st_dev != st.st_dev || opened.st_ino != st.st_ino) {
+        close(in);
+        return nn_fail(error, capacity, "dataset source changed while importing");
+    }
+    int out = open(destination, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, st.st_mode & 0777);
+    if (out < 0) { close(in); return nn_fail(error, capacity, "cannot create staged dataset file"); }
+    char buffer[65536];
+    bool okay = true;
+    for (;;) {
+        ssize_t n = read(in, buffer, sizeof(buffer));
+        if (n < 0 && errno == EINTR) continue;
+        if (n < 0) { okay = false; break; }
+        if (!n) break;
+        if ((uintmax_t)n > NN_DATASET_IMPORT_BYTE_LIMIT - budget->bytes) { okay = false; break; }
+        if (!nn_project_write_all(out, buffer, (size_t)n)) { okay = false; break; }
+        budget->bytes += (uintmax_t)n;
+    }
+    if (fsync(out)) okay = false;
+    if (close(out)) okay = false;
+    if (close(in)) okay = false;
+    if (!okay) return nn_fail(error, capacity, "cannot copy complete dataset file");
+    return true;
+}
+
+static bool copy_import_contents(const char *source, const char *destination,
+                                 NNImportBudget *budget, char *error, size_t capacity)
+{
+    DIR *directory = opendir(source);
+    if (!directory) return nn_fail(error, capacity, "cannot read dataset source directory");
+    bool okay = true;
+    struct dirent *entry;
+    while (okay && (entry = readdir(directory))) {
+        if (!strcmp(entry->d_name, ".") || !strcmp(entry->d_name, "..")) continue;
+        char *from = nn_path_join(source, entry->d_name);
+        char *to = nn_path_join(destination, entry->d_name);
+        okay = from && to && copy_import_entry(from, to, budget, error, capacity);
+        free(from); free(to);
+    }
+    if (closedir(directory)) okay = false;
+    if (!okay && error && capacity && !error[0]) nn_errorf(error, capacity, "cannot finish copying dataset directory");
+    return okay;
+}
+
+static bool import_relative_path(const char *text, bool leaf_only)
+{
+    if (!text || !*text || text[0] == '/' || strlen(text) > 512) return false;
+    const char *part = text;
+    for (const char *end = text;; ++end) {
+        if (*end != '/' && *end != '\0') continue;
+        size_t n = (size_t)(end - part);
+        if (!n || (n == 1 && part[0] == '.') || (n == 2 && part[0] == '.' && part[1] == '.') ||
+            (leaf_only && *end == '/')) return false;
+        for (size_t i = 0; i < n; ++i) {
+            unsigned char c = (unsigned char)part[i];
+            if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                  (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.')) return false;
+        }
+        if (!*end) return true;
+        part = end + 1;
+    }
+}
+
+static bool write_import_text(const char *path, const char *text)
+{
+    int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW, 0644);
+    if (fd < 0) return false;
+    size_t length = strlen(text);
+    bool okay = nn_project_write_all(fd, text, length) && fsync(fd) == 0;
+    if (close(fd)) okay = false;
+    return okay;
+}
+
+static char *pretty_import_json(yyjson_val *root)
+{
+    size_t length = 0;
+    char *text = yyjson_val_write_opts(root, YYJSON_WRITE_PRETTY_TWO_SPACES, NULL, &length, NULL);
+    if (!text) return NULL;
+    char *grown = realloc(text, length + 2);
+    if (!grown) { free(text); return NULL; }
+    grown[length++] = '\n'; grown[length] = '\0';
+    return grown;
+}
+
+static char *pretty_mut_import_json(yyjson_mut_val *root)
+{
+    size_t length = 0;
+    char *text = yyjson_mut_val_write_opts(root, YYJSON_WRITE_PRETTY_TWO_SPACES, NULL, &length, NULL);
+    if (!text) return NULL;
+    char *grown = realloc(text, length + 2);
+    if (!grown) { free(text); return NULL; }
+    grown[length++] = '\n'; grown[length] = '\0';
+    return grown;
+}
+
+static bool mkdir_import_parents(const char *root, const char *relative)
+{
+    char *current = nn_text_copy(root);
+    if (!current) return false;
+    const char *part = relative;
+    for (const char *end = relative; *end; ++end) {
+        if (*end != '/') continue;
+        size_t n = (size_t)(end - part);
+        char *segment = malloc(n + 1);
+        if (!segment) { free(current); return false; }
+        memcpy(segment, part, n); segment[n] = '\0';
+        char *next = nn_path_join(current, segment);
+        free(segment); free(current); current = next;
+        if (!current) return false;
+        if (mkdir(current, 0755) && errno != EEXIST) { free(current); return false; }
+        struct stat st;
+        if (lstat(current, &st) || !S_ISDIR(st.st_mode)) { free(current); return false; }
+        part = end + 1;
+    }
+    free(current);
+    return true;
+}
+
+static const char *dataset_import_scaffold(void)
+{
+    return "from collections.abc import Iterator\nfrom typing import Generic, TypeVar\n\n"
+           "from torch import Tensor\nfrom nnmodelling_runtime import Batch, DatasetAdapter\n\n"
+           "InputT = TypeVar(\"InputT\")\nOutputT = TypeVar(\"OutputT\")\n\n\n"
+           "class Dataset(DatasetAdapter[InputT, OutputT], Generic[InputT, OutputT]):\n"
+           "    def tokenize(self, value: InputT) -> Tensor | dict[str, Tensor]:\n"
+           "        raise NotImplementedError(\"Implement dataset input tokenization.\")\n\n"
+           "    def untokenize(self, tensor: Tensor) -> OutputT:\n"
+           "        raise NotImplementedError(\"Implement prediction decoding.\")\n\n"
+           "    def load(self, split: str, batch_size: int) -> Iterator[Batch]:\n"
+           "        raise NotImplementedError(\"Load and batch the requested dataset split.\")\n";
+}
+
+bool nn_project_import_dataset(NNProject *project, const char *source_dir,
+                               const char *manifest_json, const char *definition_json,
+                               bool select, char *error, size_t capacity)
+{
+    if (error && capacity) error[0] = '\0';
+    if (!project || !source_dir || !manifest_json || !definition_json ||
+        strlen(manifest_json) > 4u * 1024u * 1024u || strlen(definition_json) > NN_DATASET_DEFINITION_LIMIT)
+        return nn_fail(error, capacity, "invalid dataset import payload");
+    struct stat selected_source;
+    if (lstat(source_dir, &selected_source) || S_ISLNK(selected_source.st_mode) || !S_ISDIR(selected_source.st_mode))
+        return nn_fail(error, capacity, "dataset source must be a non-symbolic local directory");
+    char *source = realpath(source_dir, NULL);
+    struct stat source_stat;
+    if (!source || lstat(source, &source_stat) || !S_ISDIR(source_stat.st_mode)) {
+        free(source);
+        return nn_fail(error, capacity, "dataset source must be a local directory");
+    }
+    if (path_contains(project->directory, source) || path_contains(source, project->directory)) {
+        free(source);
+        return nn_fail(error, capacity, "dataset source cannot overlap the destination project directory");
+    }
+    yyjson_doc *manifest = yyjson_read(manifest_json, strlen(manifest_json), 0);
+    yyjson_doc *definition = yyjson_read(definition_json, strlen(definition_json), 0);
+    yyjson_mut_doc *mutable_manifest = manifest ? yyjson_doc_mut_copy(manifest, NULL) : NULL;
+    yyjson_val *manifest_root = manifest ? yyjson_doc_get_root(manifest) : NULL;
+    const char *id = nn_project_string_field(manifest_root, "id");
+    const char *version = nn_project_string_field(manifest_root, "version");
+    yyjson_val *entrypoints = yyjson_obj_get(manifest_root, "entrypoints");
+    const char *definition_file = nn_project_string_field(entrypoints, "definition");
+    yyjson_val *adapter = yyjson_obj_get(entrypoints, "python");
+    const char *adapter_file = nn_project_string_field(adapter, "file");
+    bool valid = manifest && definition && mutable_manifest && yyjson_is_obj(manifest_root) &&
+        yyjson_get_int(yyjson_obj_get(manifest_root, "schemaVersion")) == 1 &&
+        nn_project_valid_id(id) && nn_project_valid_semver(version) &&
+        import_relative_path(definition_file, false) &&
+        (!adapter || (yyjson_is_obj(adapter) && nn_project_string_field(adapter, "language") &&
+                      !strcmp(nn_project_string_field(adapter, "language"), "python") &&
+                      import_relative_path(adapter_file, false)));
+    if (!valid) nn_error_set(error, capacity, "dataset manifest must contain safe schema-1 identity and entrypoints");
+    yyjson_val *root = definition ? yyjson_doc_get_root(definition) : NULL;
+    NNDataset candidate = {0};
+    if (valid) {
+        candidate.id = nn_text_copy(id); candidate.version = nn_text_copy(version);
+        if (!candidate.id || !candidate.version || !parse_dataset_definition(&candidate, definition, error, capacity)) valid = false;
+    }
+    for (size_t i = 0; valid && i < project->dataset_count; ++i)
+        if (!strcmp(project->datasets[i].id, id) && !strcmp(project->datasets[i].version, version)) {
+            nn_error_set(error, capacity, "duplicate dataset identity"); valid = false;
+        }
+    if (valid && project->dataset_count >= 128) { nn_error_set(error, capacity, "dataset catalog limit reached"); valid = false; }
+    if (valid && !adapter) {
+        yyjson_mut_val *mutable_root = yyjson_mut_doc_get_root(mutable_manifest);
+        yyjson_mut_val *mutable_entries = yyjson_mut_obj_get(mutable_root, "entrypoints");
+        yyjson_mut_val *python = yyjson_mut_obj(mutable_manifest);
+        if (!python || !yyjson_mut_obj_add_strcpy(mutable_manifest, python, "language", "python") ||
+            !yyjson_mut_obj_add_strcpy(mutable_manifest, python, "file", "dataset.py") ||
+            !yyjson_mut_obj_add_val(mutable_manifest, mutable_entries, "python", python)) valid = false;
+        adapter_file = "dataset.py";
+    }
+    if (valid && (!strcmp(definition_file, "manifest.json") || !strcmp(definition_file, "pyproject.toml") ||
+                  !strcmp(definition_file, adapter_file) || !strcmp(adapter_file, "manifest.json") ||
+                  !strcmp(adapter_file, "pyproject.toml"))) {
+        nn_error_set(error, capacity, "dataset entrypoints collide with reserved metadata paths"); valid = false;
+    }
+    char name[256] = {0};
+    if (valid && snprintf(name, sizeof(name), "%s-%s", id, version) >= (int)sizeof(name)) valid = false;
+    char *relative = valid ? nn_path_join("datasets", name) : NULL;
+    char *category = relative ? nn_path_join(project->directory, "datasets") : NULL;
+    char *destination = relative ? nn_path_join(project->directory, relative) : NULL;
+    struct stat st;
+    bool category_created = false;
+    if (valid && category && lstat(category, &st)) {
+        if (errno != ENOENT || mkdir(category, 0755)) valid = false;
+        else category_created = true;
+    } else if (valid && (!category || !S_ISDIR(st.st_mode))) valid = false;
+    if (valid) {
+        if (!destination) valid = false;
+        else if (!lstat(destination, &st)) {
+            nn_error_set(error, capacity, "dataset destination already exists"); valid = false;
+        } else if (errno != ENOENT) valid = false;
+    }
+    char *stage_template = category ? nn_path_join(category, ".nn-import-XXXXXX") : NULL;
+    char *stage = valid && stage_template ? mkdtemp(stage_template) : NULL;
+    if (valid && !stage) { nn_errorf(error, capacity, "cannot create dataset staging directory: %s", strerror(errno)); valid = false; }
+    NNImportBudget budget = {0};
+    if (valid && !copy_import_contents(source, stage, &budget, error, capacity)) valid = false;
+    char *definition_path = valid ? nn_path_join(stage, definition_file) : NULL;
+    char *manifest_path = valid ? nn_path_join(stage, "manifest.json") : NULL;
+    char *adapter_path = valid ? nn_path_join(stage, adapter_file) : NULL;
+    char *pretty_definition = valid ? pretty_import_json(root) : NULL;
+    char *pretty_manifest = valid ? pretty_mut_import_json(yyjson_mut_doc_get_root(mutable_manifest)) : NULL;
+    if (valid && (!definition_path || !manifest_path || !adapter_path || !pretty_definition || !pretty_manifest ||
+        !mkdir_import_parents(stage, definition_file) ||
+        !write_import_text(definition_path, pretty_definition) || !write_import_text(manifest_path, pretty_manifest))) {
+        nn_error_set(error, capacity, "cannot stage dataset metadata"); valid = false;
+    }
+    bool adapter_missing = false;
+    if (valid && lstat(adapter_path, &st)) {
+        if (errno != ENOENT) valid = false;
+        else adapter_missing = true;
+    } else if (valid && !S_ISREG(st.st_mode)) valid = false;
+    if (valid && adapter_missing) {
+        if (!mkdir_import_parents(stage, adapter_file) || !write_import_text(adapter_path, dataset_import_scaffold())) {
+            nn_error_set(error, capacity, "cannot create dataset adapter scaffold"); valid = false;
+        }
+    }
+    char *pyproject_path = valid ? nn_path_join(stage, "pyproject.toml") : NULL;
+    char pyproject[512];
+    int pyproject_len = snprintf(pyproject, sizeof(pyproject),
+        "[project]\nname = \"nnmodelling-%s\"\nversion = \"%s\"\ndependencies = [\"nnmodelling-runtime>=0.1.0\"]\n", id, version);
+    if (valid) {
+        if (!pyproject_path) valid = false;
+        else if (!lstat(pyproject_path, &st)) valid = S_ISREG(st.st_mode);
+        else if (errno == ENOENT)
+            valid = pyproject_len >= 0 && (size_t)pyproject_len < sizeof(pyproject) &&
+                write_import_text(pyproject_path, pyproject);
+        else valid = false;
+    }
+    NNDataset *grown = valid ? malloc((project->dataset_count + 1) * sizeof(*grown)) : NULL;
+    if (valid && !grown) valid = false;
+    NNModel *model_backup = valid && select ? nn_model_copy(project->model) : NULL;
+    if (valid && select && !model_backup) { nn_error_set(error, capacity, "out of memory staging dataset activation"); valid = false; }
+    if (valid && rename(stage, destination)) { nn_errorf(error, capacity, "cannot publish staged dataset: %s", strerror(errno)); valid = false; }
+    bool published = valid;
+    if (valid) {
+        NNDataset *old = project->datasets; size_t old_count = project->dataset_count;
+        char *old_id = project->active_dataset_id, *old_version = project->active_dataset_version;
+        bool old_dirty = project->dirty;
+        if (old_count) memcpy(grown, old, old_count * sizeof(*grown));
+        candidate.path = nn_text_copy(relative);
+        if (!candidate.path) valid = false;
+        if (valid) {
+            project->datasets = grown; project->datasets[project->dataset_count++] = candidate;
+            memset(&candidate, 0, sizeof(candidate));
+            if (select) {
+                project->active_dataset_id = nn_text_copy(id);
+                project->active_dataset_version = nn_text_copy(version);
+                valid = project->active_dataset_id && project->active_dataset_version;
+            }
+            if (valid && select)
+                valid = nn_project_bind_dataset_input(project, &project->datasets[old_count], error, capacity);
+            project->dirty = true;
+            if (valid) valid = nn_project_save(project, error, capacity);
+        }
+        if (valid) {
+            free(old); if (select) { free(old_id); free(old_version); }
+            grown = NULL;
+        } else {
+            if (project->datasets == grown) {
+                if (select) { free(project->active_dataset_id); free(project->active_dataset_version); }
+                project->active_dataset_id = old_id; project->active_dataset_version = old_version;
+                if (project->dataset_count > old_count) nn_project_dataset_dispose(&project->datasets[old_count]);
+                project->datasets = old; project->dataset_count = old_count;
+            }
+            project->dirty = old_dirty;
+        }
+    }
+    if (!valid && model_backup) nn_model_swap(project->model, model_backup);
+    nn_model_free(model_backup);
+    if (stage && !published) {
+        nn_project_remove_tree(stage);
+        if (!lstat(stage, &st)) nn_errorf(error, capacity, "dataset rollback could not remove staging directory: %s", stage);
+    }
+    if (published && !valid) {
+        nn_project_remove_tree(destination);
+        if (!lstat(destination, &st)) nn_errorf(error, capacity, "dataset rollback could not remove resource directory: %s", destination);
+    }
+    if (!valid && category_created && rmdir(category) && errno != ENOENT)
+        nn_errorf(error, capacity, "dataset rollback could not remove directory: %s", category);
+    if (!valid && error && capacity && !error[0]) nn_error_set(error, capacity, "dataset import failed");
+    free(grown); nn_project_dataset_dispose(&candidate);
+    if (manifest) yyjson_doc_free(manifest);
+    if (definition) yyjson_doc_free(definition);
+    if (mutable_manifest) yyjson_mut_doc_free(mutable_manifest);
+    free(source); free(relative); free(category); free(destination); free(stage_template);
+    free(definition_path); free(manifest_path); free(adapter_path); free(pretty_definition);
+    free(pretty_manifest); free(pyproject_path);
+    return valid;
 }

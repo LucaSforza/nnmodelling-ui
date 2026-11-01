@@ -629,6 +629,11 @@
         "id": "mnist-reconstruction",
         "version": "0.1.0",
         "path": "datasets/mnist"
+      },
+      {
+        "id": "mnist-reconstruction-full",
+        "version": "0.1.0",
+        "path": "datasets/mnist-full"
       }
     ],
     "operations": [
@@ -660,7 +665,7 @@
       }
     ],
     "activeDataset": {
-      "id": "mnist-reconstruction",
+      "id": "mnist-reconstruction-full",
       "version": "0.1.0"
     }
   }

@@ -170,7 +170,7 @@ Un parametro di tipo `stereotype` è composto da un selettore di pacchetto modif
 
 `Project resources` mostra tre gruppi espandibili:
 
-- `Datasets` elenca nome e `id@version`. Un segno `✓` indica il dataset attivo. Le righe figlie mostrano `Input: nome [dtype]` e `Target: nome [dtype]`. Selezionare la riga del dataset lo rende attivo; la selezione aggiorna l'analisi e il progetto diventa modificato. Cliccare una riga informativa figlia mostra il percorso risorsa nella barra di stato.
+- `Datasets` elenca nome e `id@version`. Un segno `✓` indica il dataset attivo. Le righe figlie mostrano `Input: nome [dtype]` e `Target: nome [dtype]`. Selezionare una riga non cambia il dataset attivo: usare `Activate selected dataset` per attivarla e aggiornare l'analisi. Cliccare una riga informativa figlia mostra il percorso risorsa nella barra di stato.
 - `Packages` elenca i pacchetti attivi con identità esatta. Espandere un pacchetto mostra le dipendenze nel formato `Requires id vincolo-versione`. Le righe sono informative; non attivano/disattivano risorse.
 - `Operations` elenca i metodi pubblici che saranno inclusi nella wheel e lo stato degli endpoint. Il suggerimento della riga mostra nodi e codec. Gli endpoint non più validi restano correggibili nel gestore e impediscono l'invio del training finché non vengono sistemati o rimossi.
 
@@ -188,7 +188,7 @@ Le operazioni si salvano in `model.json` con il progetto. Le modifiche al grafo 
 
 ### Gestore dei dataset
 
-`Dataset…` / `Manage datasets…` apre `Project datasets`, con un elenco a selezione singola. Ogni riga riporta `id@version — nome`; il dataset attivo è marcato `✓ (active)`. `New dataset` apre la scheda vuota. `Edit` apre la scheda del dataset selezionato; il doppio clic su una riga esegue `Edit`. `Select` attiva il dataset selezionato ed è disabilitato se è già attivo. `Edit` e `Select` sono disabilitati quando non c'è una riga selezionata. `Close` chiude il gestore senza ulteriori modifiche.
+`Dataset…` / `Manage datasets…` apre `Project datasets`, con un elenco a selezione singola. Ogni riga riporta `id@version — nome`; il dataset attivo è marcato `✓ (active)`. `New dataset` apre la scheda vuota. `Edit` apre la scheda del dataset selezionato; un clic seleziona soltanto la riga. `Import dataset…` copia nel progetto una cartella dataset, chiedendo eventuali metadati mancanti; se manca l'adapter Python, crea uno scheletro da completare prima del training. Il primo dataset importato viene attivato. `Activate` attiva il dataset selezionato ed è disabilitato se è già attivo. Con un solo slot di input, il binding dell'unico Input radice viene aggiornato automaticamente; più Input radice producono un errore. `Edit` e `Activate` sono disabilitati quando non c'è una riga selezionata. `Close` chiude il gestore senza ulteriori modifiche.
 
 ![Gestore dei dataset](assets/dataset-manager.png)
 

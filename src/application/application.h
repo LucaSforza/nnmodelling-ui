@@ -28,6 +28,9 @@ bool nn_app_create_dataset(NNApplication *app, const char *id, const char *versi
                            char *error, size_t cap);
 bool nn_app_select_dataset(NNApplication *app, const char *id, const char *version,
                            char *error, size_t cap);
+bool nn_app_import_dataset(NNApplication *app, const char *source_dir,
+                           const char *manifest_json, const char *definition_json,
+                           char *error, size_t cap);
 /* Returned UTF-8 text is owned; release with nn_app_free_text. */
 char *nn_app_dataset_definition(const NNApplication *app, const char *id,
                                const char *version, char *error, size_t cap);

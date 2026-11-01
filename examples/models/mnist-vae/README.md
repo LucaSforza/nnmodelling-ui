@@ -12,7 +12,9 @@ packs these as `[B,2,32]`. `vae.reparameterize` samples
 posterior mean during evaluation. The decoder maps `[B,32]` through
 `32 -> 128 -> ReLU -> 784 -> Sigmoid`, returning reconstructed pixels `[B,784]`.
 
-The checked-in dataset contains 64 training, 16 validation, and 16 test images
+The default full dataset contains all 60,000 official training images, split
+into 55,000 training and 5,000 validation images, and all 10,000 test images.
+The manager also offers a small dataset with 64 training, 16 validation, and 16 test images
 from the official MNIST IDX files. The training and validation indices are
 disjoint deterministic subsets of the official training split; test images
 come from the official test split. `datasets/mnist/data.json` records the

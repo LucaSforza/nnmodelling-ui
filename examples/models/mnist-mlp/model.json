@@ -6,8 +6,9 @@
     "name": "MNIST MLP",
     "description": "Editable MNIST classifier design with digit logits and scalar cross-entropy loss",
     "customPackages": [],
-    "customDatasets": [{ "id": "mnist", "version": "0.1.0", "path": "datasets/mnist" }],
-    "activeDataset": { "id": "mnist", "version": "0.1.0" }
+    "customDatasets": [{ "id": "mnist", "version": "0.1.0", "path": "datasets/mnist" },
+      { "id": "mnist-full", "version": "0.1.0", "path": "datasets/mnist-full" }],
+    "activeDataset": { "id": "mnist-full", "version": "0.1.0" }
   },
   "layoutDirection": "horizontal",
   "nodes": [
