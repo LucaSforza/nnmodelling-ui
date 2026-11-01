@@ -9,6 +9,8 @@ readable. See resource-authoring.md for full interaction contract.
 Single-slot binding is read-only in Qt. C synchronizes an unambiguous root Input
 on open, activation and active metadata edits; metadata/binding save and rollback
 are one transaction. A stale binding repaired on open marks the project dirty.
+Removing a root Input restores the survivor's unambiguous binding in the same
+graph history entry; undo/redo restore that binding together with topology.
 
 ## Purpose
 

@@ -41,6 +41,9 @@ their binding change share the existing save/rollback transaction. The UI must
 not bypass binding synchronization merely because the dataset is already active.
 Runtime adapts a single returned input to the single declared slot as specified
 in backend.md; this does not rewrite adapter Python source.
+Deleting a root Input that leaves exactly one root Input restores the automatic
+binding of that survivor within the same graph history transaction. Undo/redo
+restore both topology and binding together.
 
 MNIST MLP and VAE examples offer both the existing small sample and a complete
 MNIST resource. Full data includes all 60,000 official training and 10,000 test
