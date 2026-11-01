@@ -18,6 +18,7 @@
 #include <QMessageBox>
 #include <QPushButton>
 #include <QStatusBar>
+#include <QTimer>
 #include <QVBoxLayout>
 
 using namespace MainWindowUtils;
@@ -36,7 +37,7 @@ bool MainWindow::openProject(const QString &directory) {
     scene_->clearSelection();
     scene_->setScope(QString());
     refreshAll();
-    view_->fitGraph();
+    QTimer::singleShot(0, view_, &GraphView::fitGraph);
     statusBar()->showMessage(tr("Opened %1").arg(directory), 4000);
     return true;
 }
@@ -200,6 +201,6 @@ void MainWindow::createProject(const QString &initialTemplate) {
     scene_->clearSelection();
     scene_->setScope(QString());
     refreshAll();
-    view_->fitGraph();
+    QTimer::singleShot(0, view_, &GraphView::fitGraph);
     statusBar()->showMessage(tr("Created %1").arg(projectNameText), 4000);
 }

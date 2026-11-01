@@ -161,6 +161,13 @@ void WindowTest::startupChooserShowsEditorOnlyAfterProjectCreation() {
     QVERIFY(creationAccepted);
     QVERIFY(nn_app_project(app));
     QVERIFY(window.isVisible());
+    QCoreApplication::processEvents();
+    auto *view = window.findChild<GraphView *>();
+    auto *scene = window.findChild<GraphScene *>();
+    QVERIFY(view && scene);
+    const QRectF visibleBounds = view->mapToScene(view->viewport()->rect()).boundingRect();
+    QVERIFY2(visibleBounds.contains(scene->contentBounds()),
+        "Startup project graph should fit after editor window is shown");
 }
 
 void WindowTest::stereotypeReferenceForm() {
