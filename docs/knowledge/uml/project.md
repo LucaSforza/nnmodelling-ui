@@ -1,5 +1,11 @@
 # Project, dataset and stereotype dependency model
 
+Dataset import copies source into a staged project-owned directory, completes
+missing user-provided metadata, and publishes only with successful project save.
+Activation atomically updates an unambiguous root Input binding; multiple root
+Inputs reject automatic single-slot activation. Existing inactive projects remain
+readable. See resource-authoring.md for full interaction contract.
+
 ## Purpose
 
 Define one writable project as ownership boundary for model, datasets and

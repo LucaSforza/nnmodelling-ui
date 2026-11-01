@@ -1,5 +1,11 @@
 # Errors, analysis diagnostics and dynamic strings
 
+Accepted 2026-11-01: display node problem roots in deterministic upstream-first
+graph order, preserving root-cause grouping and collapsed blocked descendants.
+For disconnected branches use stable model order as tie-breaker; general root
+boundary diagnostics follow node problems. Evaluation and report indexing need
+not change. Scope filtering retains necessary outside-scope causes.
+
 Accepted 2026-09-30 from user review decisions. This contract supersedes the
 success-row diagnostics presentation in ui-release.md. No model compiler/IR,
 backend or training is introduced: compilation errors mean Lua syntax errors.

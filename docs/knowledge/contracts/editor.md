@@ -1,5 +1,9 @@
 # Graphics and editor contract
 
+Accepted 2026-11-01: toolbar provides Delete next to Arrange. It invokes the
+same grouped deletion as Delete/Backspace for selected graph nodes and edges,
+is disabled with no deletable selection, and visibly red when enabled.
+
 ## Metavariable authoring (accepted 2026-10-14)
 
 Model > Manage metavariables opens a project-local staged list with New, Edit,
