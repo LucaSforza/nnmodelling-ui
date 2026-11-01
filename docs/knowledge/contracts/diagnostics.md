@@ -2,7 +2,10 @@
 
 Accepted 2026-11-01: display node problem roots in deterministic upstream-first
 graph order, preserving root-cause grouping and collapsed blocked descendants.
-For disconnected branches use stable model order as tie-breaker; general root
+Order by dependency depth: sources have depth zero and each other node has
+one plus the maximum depth of its incoming sources. This ensures a newly added
+source precedes older downstream errors on independent branches. At equal depth
+use stable model order as tie-breaker; general root
 boundary diagnostics follow node problems. Evaluation and report indexing need
 not change. Scope filtering retains necessary outside-scope causes.
 
