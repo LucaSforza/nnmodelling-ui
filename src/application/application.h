@@ -18,6 +18,11 @@ bool nn_app_create(NNApplication *app, const char *parent, const char *id,
 bool nn_app_create_stereotype(NNApplication *app, const char *id, const char *version,
                               const char *definition_json, const char *inference_lua,
                               const char *dependencies_json, char *error, size_t cap);
+bool nn_app_create_stereotype_with_python(NNApplication *app, const char *id,
+                                          const char *version, const char *definition_json,
+                                          const char *inference_lua, const char *pytorch_python,
+                                          const char *dependencies_json,
+                                          char *error, size_t cap);
 bool nn_app_create_dataset(NNApplication *app, const char *id, const char *version,
                            const char *definition_json, bool select,
                            char *error, size_t cap);
@@ -28,6 +33,13 @@ char *nn_app_dataset_definition(const NNApplication *app, const char *id,
                                const char *version, char *error, size_t cap);
 bool nn_app_update_dataset(NNApplication *app, const char *id, const char *version,
                            const char *definition_json, char *error, size_t cap);
+/* Returned UTF-8 source is owned; kind is "inference" or "pytorch". */
+char *nn_app_stereotype_source(const NNApplication *app, const char *id,
+                               const char *version, const char *kind,
+                               char *error, size_t cap);
+bool nn_app_update_stereotype_source(NNApplication *app, const char *id,
+                                     const char *version, const char *kind,
+                                     const char *source, char *error, size_t cap);
 /* Returned UTF-8 text is owned; release with nn_app_free_text. */
 char *nn_app_operations_json(const NNApplication *app, char *error, size_t cap);
 bool nn_app_set_operations_json(NNApplication *app, const char *json,

@@ -1,6 +1,7 @@
 #include "MainWindow.hpp"
 #include "GraphScene.hpp"
 #include "MainWindowUtils.hpp"
+#include "SourceEditor.hpp"
 #include "application/application.h"
 #include "catalog/catalog.h"
 #include "inference/inference.h"
@@ -8,17 +9,23 @@
 #include "project/project.h"
 #include <QBrush>
 #include <QComboBox>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QLabel>
 #include <QLineEdit>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
 #include <QMessageBox>
+#include <QPlainTextEdit>
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QStatusBar>
 #include <QTimer>
+#include <QTabWidget>
 #include <QTreeWidget>
 #include <QTreeWidgetItem>
+#include <QVBoxLayout>
 
 namespace {
 QJsonValue parameterEditorValue(const QString &type, const QString &text)
@@ -180,6 +187,111 @@ void MainWindow::refreshInspector() {
                                      QString::fromUtf8(node->package_version))});
     packageRow->setToolTip(1, package && package->description
         ? QString::fromUtf8(package->description) : QString());
+    const QByteArray packageId(node->package_id);
+    const QByteArray packageVersion(node->package_version);
+    char inferenceError[ErrorCapacity] = {};
+    char pythonError[ErrorCapacity] = {};
+    char *inferenceSource = nn_app_stereotype_source(application_.get(), packageId.constData(),
+        packageVersion.constData(), "inference", inferenceError, sizeof(inferenceError));
+    char *pythonSource = nn_app_stereotype_source(application_.get(), packageId.constData(),
+        packageVersion.constData(), "pytorch", pythonError, sizeof(pythonError));
+    if (inferenceSource || pythonSource) {
+        const bool hasInferenceSource = inferenceSource != nullptr;
+        const bool hasPythonSource = pythonSource != nullptr;
+        const QString packageIdentity = QStringLiteral("%1@%2")
+            .arg(QString::fromUtf8(node->package_id), QString::fromUtf8(node->package_version));
+        const QString initialInference = inferenceSource ? QString::fromUtf8(inferenceSource) : QString();
+        const QString initialPython = pythonSource ? QString::fromUtf8(pythonSource) : QString();
+        const QString inferenceLoadError = inferenceSource ? QString() :
+            (inferenceError[0] ? QString::fromUtf8(inferenceError) : tr("Source is unavailable."));
+        const QString pythonLoadError = pythonSource ? QString() :
+            (pythonError[0] ? QString::fromUtf8(pythonError) : tr("Source is unavailable."));
+        nn_app_free_text(inferenceSource);
+        nn_app_free_text(pythonSource);
+        auto *sourceRow = new QTreeWidgetItem(inspector_, {tr("Package source"), QString()});
+        auto *editSource = new QPushButton(tr("Edit source…"), inspector_);
+        editSource->setObjectName(QStringLiteral("editStereotypeSource"));
+        inspector_->setItemWidget(sourceRow, 1, editSource);
+        connect(editSource, &QPushButton::clicked, this, [this, packageIdentity, packageId,
+                packageVersion, initialInference, initialPython, inferenceLoadError,
+                pythonLoadError, hasInferenceSource, hasPythonSource] {
+            QTimer::singleShot(0, this, [this, packageIdentity, packageId, packageVersion,
+                initialInference, initialPython, inferenceLoadError, pythonLoadError,
+                hasInferenceSource, hasPythonSource] {
+            QDialog dialog(this);
+            dialog.setWindowTitle(tr("Edit package source"));
+            dialog.resize(720, 520);
+            auto *layout = new QVBoxLayout(&dialog);
+            layout->addWidget(new QLabel(tr("Package: %1\nAll nodes using this package share this rule.")
+                .arg(packageIdentity), &dialog));
+            auto *tabs = new QTabWidget(&dialog);
+            auto *luaPage = new QWidget(tabs);
+            auto *luaLayout = new QVBoxLayout(luaPage);
+            auto *luaEditor = new SourceEditor(QStringLiteral("lua"), luaPage);
+            luaEditor->setObjectName(QStringLiteral("stereotypeLuaSource"));
+            luaEditor->setPlainText(initialInference);
+            luaLayout->addWidget(luaEditor, 1);
+            if (!hasInferenceSource) {
+                luaEditor->setEnabled(false);
+                luaLayout->insertWidget(0, new QLabel(tr("Could not load inference source: %1")
+                    .arg(inferenceLoadError), luaPage));
+            }
+            tabs->addTab(luaPage, tr("Lua"));
+
+            auto *pythonPage = new QWidget(tabs);
+            auto *pythonLayout = new QVBoxLayout(pythonPage);
+            pythonLayout->addWidget(new QLabel(tr("Python is saved as text and used by the training worker. The native client does not run it for live inference."), pythonPage));
+            auto *pythonEditor = new SourceEditor(QStringLiteral("python"), pythonPage);
+            pythonEditor->setObjectName(QStringLiteral("stereotypePythonSource"));
+            pythonEditor->setPlainText(initialPython);
+            pythonLayout->addWidget(pythonEditor, 1);
+            if (!hasPythonSource) {
+                pythonEditor->setEnabled(false);
+                pythonLayout->insertWidget(1, new QLabel(tr("Could not load Python source: %1")
+                    .arg(pythonLoadError), pythonPage));
+            }
+            tabs->addTab(pythonPage, tr("Python"));
+            layout->addWidget(tabs, 1);
+
+            auto *buttons = new QDialogButtonBox(QDialogButtonBox::Cancel, &dialog);
+            auto *apply = buttons->addButton(tr("Apply and save project"), QDialogButtonBox::ApplyRole);
+            layout->addWidget(buttons);
+            connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+            const auto updateApplyEnabled = [apply, tabs, luaEditor, pythonEditor] {
+                apply->setEnabled(tabs->currentIndex() == 0 ? luaEditor->isEnabled()
+                                                           : pythonEditor->isEnabled());
+            };
+            connect(tabs, &QTabWidget::currentChanged, &dialog,
+                    [updateApplyEnabled](int) { updateApplyEnabled(); });
+            updateApplyEnabled();
+            connect(apply, &QPushButton::clicked, &dialog, [this, &dialog, tabs, luaEditor,
+                    pythonEditor, packageId, packageVersion] {
+                const bool isInference = tabs->currentIndex() == 0;
+                const char *kind = isInference ? "inference" : "pytorch";
+                const QString source = isInference ? luaEditor->toPlainText()
+                                                   : pythonEditor->toPlainText();
+                char updateError[ErrorCapacity] = {};
+                const QByteArray draft = source.toUtf8();
+                if (!nn_app_update_stereotype_source(application_.get(), packageId.constData(),
+                        packageVersion.constData(), kind, draft.constData(), updateError,
+                        sizeof(updateError))) {
+                    QMessageBox::warning(&dialog, tr("Source update rejected"),
+                                         QString::fromUtf8(updateError));
+                    return;
+                }
+                statusBar()->showMessage(tr("Saved %1 source for %2")
+                    .arg(isInference ? tr("inference Lua") : tr("Python"),
+                         QString::fromUtf8(packageId)), 4000);
+                QTimer::singleShot(0, &dialog, [this] { refreshAll(); });
+            });
+            dialog.exec();
+            });
+        });
+    } else if (inferenceError[0] || pythonError[0]) {
+        auto *sourceError = new QTreeWidgetItem(inspector_,
+            {tr("Package source"), tr("Unavailable")});
+        sourceError->setToolTip(1, QString::fromUtf8(inferenceError[0] ? inferenceError : pythonError));
+    }
     if (package) {
         char analysisError[ErrorCapacity] = {};
         const NNInferenceReport *analysis = nn_app_analysis(application_.get(), analysisError,

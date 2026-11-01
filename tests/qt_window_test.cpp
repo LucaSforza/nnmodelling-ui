@@ -37,6 +37,9 @@
 #include <QTableWidgetItem>
 #include <QPlainTextEdit>
 #include <QPalette>
+#include <QScrollArea>
+#include <QTabBar>
+#include <QTabWidget>
 #include <cmath>
 #include <QAbstractButton>
 #include <QTemporaryDir>
@@ -158,6 +161,13 @@ void WindowTest::startupChooserShowsEditorOnlyAfterProjectCreation() {
     QVERIFY(creationAccepted);
     QVERIFY(nn_app_project(app));
     QVERIFY(window.isVisible());
+    QCoreApplication::processEvents();
+    auto *view = window.findChild<GraphView *>();
+    auto *scene = window.findChild<GraphScene *>();
+    QVERIFY(view && scene);
+    const QRectF visibleBounds = view->mapToScene(view->viewport()->rect()).boundingRect();
+    QVERIFY2(visibleBounds.contains(scene->contentBounds()),
+        "Startup project graph should fit after editor window is shown");
 }
 
 void WindowTest::stereotypeReferenceForm() {
@@ -773,6 +783,21 @@ void WindowTest::graphHistoryTracksEditsAndScopeFallback() {
     QVERIFY(!nn_model_find_node(nn_app_model(app), "flow"));
 }
 
+static void setInitialStereotypeLua(QDialog *form, const QString &source) {
+    QTimer::singleShot(0, form, [form, source] {
+        auto *editor = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+        if (!editor || editor == form) return;
+        auto *lua = editor->findChild<QPlainTextEdit *>("stereotypeLua");
+        auto *apply = editor->findChild<QPushButton *>("applyInitialStereotypeSource");
+        if (lua && apply) {
+            lua->setPlainText(source);
+            apply->click();
+        }
+    });
+    auto *button = form->findChild<QPushButton *>("editStereotypeSourceButton");
+    if (button) button->click();
+}
+
 static void answerDialog(QMessageBox::StandardButton answer) {
     QTimer::singleShot(0, [answer] {
         auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
@@ -811,16 +836,19 @@ static qreal contrastRatio(const QColor &foreground, const QColor &background) {
 }
 
 static DialogRenderEvidence inspectDialog(QDialog *dialog, QWidget *textWidget,
-                                          const QString &capturePath = {}) {
+                                          const QString &capturePath = {}, const QRect &region = {}) {
     dialog->ensurePolished();
     QApplication::processEvents();
     const QImage image = dialog->grab().toImage().convertToFormat(QImage::Format_ARGB32);
     DialogRenderEvidence evidence;
     if (image.isNull()) return evidence;
 
+    const QPoint textOrigin = textWidget->mapTo(dialog, QPoint(0, 0));
+    const QRect textRect = (region.isNull() ? QRect(textOrigin, textWidget->size())
+                                             : region.translated(textOrigin)).intersected(image.rect());
     QMap<QRgb, int> cornerColors;
-    for (int y = 2; y < qMin(10, image.height()); ++y)
-        for (int x = 2; x < qMin(10, image.width()); ++x)
+    for (int y = textRect.top(); y <= textRect.bottom(); ++y)
+        for (int x = textRect.left(); x <= textRect.right(); ++x)
             ++cornerColors[image.pixel(x, y)];
     int mostCommon = 0;
     for (auto it = cornerColors.cbegin(); it != cornerColors.cend(); ++it) {
@@ -831,8 +859,6 @@ static DialogRenderEvidence inspectDialog(QDialog *dialog, QWidget *textWidget,
     }
 
     evidence.foreground = textWidget->palette().color(QPalette::WindowText);
-    const QPoint textOrigin = textWidget->mapTo(dialog, QPoint(0, 0));
-    const QRect textRect = QRect(textOrigin, textWidget->size()).intersected(image.rect());
     for (int y = textRect.top(); y <= textRect.bottom() && !evidence.textRendered; ++y) {
         for (int x = textRect.left(); x <= textRect.right(); ++x) {
             const QColor pixel = image.pixelColor(x, y);
@@ -1017,6 +1043,7 @@ void WindowTest::appDialogsContrastUnderDarkPalette() {
     auto openAuthoringDialog = [&](const char *buttonName, const char *checkBoxName,
                                    const QString &captureName) {
         DialogRenderEvidence labelEvidence, checkBoxEvidence;
+        DialogRenderEvidence selectedTab, otherTab, selectedPython;
         QTimer::singleShot(0, &window, [&] {
             auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
             if (!dialog) return;
@@ -1029,6 +1056,21 @@ void WindowTest::appDialogsContrastUnderDarkPalette() {
                 if (auto *checkBox = dialog->findChild<QCheckBox *>(checkBoxName))
                     checkBoxEvidence = inspectDialog(dialog, checkBox);
             }
+            if (captureName == QStringLiteral("stereotype")) {
+                QTimer::singleShot(0, dialog, [&, dialog] {
+                    auto *editor = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+                    auto *tabs = editor ? editor->findChild<QTabWidget *>() : nullptr;
+                    if (!editor || !tabs) return;
+                    auto *bar = tabs->tabBar();
+                    selectedTab = inspectDialog(editor, bar, {}, bar->tabRect(0));
+                    otherTab = inspectDialog(editor, bar, {}, bar->tabRect(1));
+                    tabs->setCurrentIndex(1);
+                    selectedPython = inspectDialog(editor, bar, {}, bar->tabRect(1));
+                    editor->reject();
+                });
+                if (auto *sourceButton = dialog->findChild<QPushButton *>("editStereotypeSourceButton"))
+                    sourceButton->click();
+            }
             dialog->reject();
         });
         auto *button = window.findChild<QPushButton *>(buttonName);
@@ -1037,9 +1079,17 @@ void WindowTest::appDialogsContrastUnderDarkPalette() {
         checkEvidence(labelEvidence, "dialog label text needs 4.5:1 contrast against the rendered surface");
         if (checkBoxName)
             checkEvidence(checkBoxEvidence, "dialog checkbox text needs 4.5:1 contrast against the rendered surface");
+        if (captureName == QStringLiteral("stereotype")) {
+            for (const auto &tab : {selectedTab, otherTab, selectedPython}) {
+                QVERIFY(tab.background.isValid());
+                QVERIFY(tab.textRendered);
+                QVERIFY2(contrastRatio(tab.foreground, tab.background) >= 4.5,
+                         "tab text needs 4.5:1 contrast against its rendered surface");
+            }
+        }
     };
 
-    openAuthoringDialog("createStereotypeButton", nullptr, QStringLiteral("stereotype"));
+    openAuthoringDialog("createStereotypeButton", "stereotypeOutputOverride", QStringLiteral("stereotype"));
     openAuthoringDialog("createDatasetButton", "datasetSelect", QStringLiteral("dataset"));
 
     DialogRenderEvidence chooserEvidence;
@@ -1168,7 +1218,7 @@ void WindowTest::retainedLuaValidationFormAndNonblockingRejection() {
         dialog->findChild<QLineEdit *>("stereotypeId")->setText("bad.lua");
         dialog->findChild<QLineEdit *>("stereotypeVersion")->setText("1.0.0");
         dialog->findChild<QLineEdit *>("stereotypeName")->setText("Malformed Lua");
-        dialog->findChild<QPlainTextEdit *>("stereotypeLua")->setPlainText("return function(");
+        setInitialStereotypeLua(dialog, QStringLiteral("return function("));
         QTimer::singleShot(0, dialog, [dialog] {
             auto *buttons = dialog->findChild<QDialogButtonBox *>();
             buttons->button(QDialogButtonBox::Save)->click();
@@ -1177,7 +1227,6 @@ void WindowTest::retainedLuaValidationFormAndNonblockingRejection() {
                 QCOMPARE(dialog->findChild<QLineEdit *>("stereotypeId")->text(), QStringLiteral("bad.lua"));
                 auto *luaError = dialog->findChild<QLabel *>("stereotypeLuaError");
                 QVERIFY(!luaError->text().isEmpty());
-                QVERIFY(!dialog->findChild<QPlainTextEdit *>("stereotypeLua")->extraSelections().isEmpty());
                 dialog->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Cancel)->click();
             });
         });
@@ -1316,7 +1365,9 @@ void WindowTest::visualResourceAuthoringForms() {
         dialog->findChild<QLineEdit *>("stereotypeVersion")->setText("1.0.0");
         dialog->findChild<QLineEdit *>("stereotypeName")->setText("UI authoring fixture");
         QCOMPARE(dialog->findChild<QComboBox *>("stereotypeKind")->currentText(), QStringLiteral("layer"));
-        QCOMPARE(dialog->findChild<QPlainTextEdit *>("stereotypeLua")->toPlainText(), QStringLiteral(
+        auto *sourceButton = dialog->findChild<QPushButton *>("editStereotypeSourceButton");
+        QVERIFY(sourceButton);
+        setInitialStereotypeLua(dialog, QStringLiteral(
             "return function(context, parameters, services)\n"
             "  if not context.inputs[1] then\n"
             "    return { status = 'unresolved', message = 'Input missing' }\n"
@@ -1621,12 +1672,12 @@ void WindowTest::typedOutputAuthoringBoundariesAndInspector() {
         outputs->item(0, 1)->setText("output");
         outputs->item(1, 0)->setText("objective");
         outputs->item(1, 1)->setText("output"); // retain these values after rejected form
-        dialog->findChild<QPlainTextEdit *>("stereotypeLua")->setPlainText(
+        setInitialStereotypeLua(dialog, QStringLiteral(
             "return function(context, parameters, services)\n"
             "  local input = context.inputs[1]\n"
             "  if not input then return { status = 'unresolved', message = 'missing' } end\n"
             "  return { status = 'success', outputs = { prediction = input, objective = input } }\n"
-            "end");
+            "end"));
         auto *save = dialog->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Save);
         QTimer::singleShot(0, dialog, [dialog, outputs, save] {
             save->click();

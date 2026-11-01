@@ -1,5 +1,6 @@
 #include "MainWindow.hpp"
 #include "MainWindowUtils.hpp"
+#include "SourceEditor.hpp"
 #include "application/application.h"
 #include "inference/inference.h"
 #include <QCheckBox>
@@ -14,13 +15,13 @@
 #include <QMessageBox>
 #include <QPlainTextEdit>
 #include <QPushButton>
+#include <QScrollArea>
 #include <QSet>
 #include <QStatusBar>
 #include <QTextBlock>
+#include <QTabWidget>
 #include <QTableWidget>
 #include <QTableWidgetItem>
-#include <QTextCursor>
-#include <QTextEdit>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QJsonArray>
@@ -50,7 +51,18 @@ void MainWindow::createStereotype() {
     QDialog dialog(this);
     dialog.setWindowTitle(tr("Create stereotype — saves project"));
     dialog.setMinimumWidth(760);
-    auto *layout = new QVBoxLayout(&dialog);
+    dialog.resize(800, 700);
+    auto *outer = new QVBoxLayout(&dialog);
+    auto *scroll = new QScrollArea(&dialog);
+    scroll->setWidgetResizable(true);
+    auto *contents = new QWidget(scroll);
+    contents->setObjectName(QStringLiteral("stereotypeEditorContent"));
+    scroll->setStyleSheet(QStringLiteral(
+        "QScrollArea { background: #eceff3; }"
+        "QWidget#stereotypeEditorContent { background: #eceff3; color: #263446; }"));
+    auto *layout = new QVBoxLayout(contents);
+    scroll->setWidget(contents);
+    outer->addWidget(scroll, 1);
     auto *form = new QFormLayout;
     auto *id = new QLineEdit(&dialog); id->setObjectName("stereotypeId");
     auto *version = new QLineEdit(QStringLiteral("1.0.0"), &dialog); version->setObjectName("stereotypeVersion");
@@ -138,9 +150,6 @@ void MainWindow::createStereotype() {
         if (dependencies->currentRow() >= 0) dependencies->removeRow(dependencies->currentRow());
     });
 
-    layout->addWidget(new QLabel(tr("Optional Lua inference (pass-through shape rule by default)."), &dialog));
-    auto *lua = new QPlainTextEdit(&dialog);
-    lua->setObjectName("stereotypeLua");
     const QString passThroughRule = QStringLiteral(
         "return function(context, parameters, services)\n"
         "  if not context.inputs[1] then\n"
@@ -148,10 +157,44 @@ void MainWindow::createStereotype() {
         "  end\n"
         "  return { status = 'success', output = context.inputs[1] }\n"
         "end");
-    lua->setPlaceholderText(passThroughRule);
-    lua->setPlainText(passThroughRule);
-    lua->setMinimumHeight(90);
-    layout->addWidget(lua);
+    QString luaDraft = passThroughRule;
+    QString pythonDraft = QStringLiteral("def build(parameters, context, services):\n"
+        "    raise NotImplementedError(\"Implement the PyTorch stereotype build function.\")\n");
+    auto *editSource = new QPushButton(tr("Edit initial source…"), &dialog);
+    editSource->setObjectName(QStringLiteral("editStereotypeSourceButton"));
+    layout->addWidget(editSource);
+    connect(editSource, &QPushButton::clicked, &dialog, [&dialog, &luaDraft, &pythonDraft] {
+        QDialog editor(&dialog);
+        editor.setObjectName(QStringLiteral("initialStereotypeSourceEditor"));
+        editor.setWindowTitle(QObject::tr("Edit initial stereotype source"));
+        editor.resize(760, 520);
+        auto *editorLayout = new QVBoxLayout(&editor);
+        editorLayout->addWidget(new QLabel(QObject::tr(
+            "Apply copies both source drafts back to the form. Create and save project writes them."), &editor));
+        auto *tabs = new QTabWidget(&editor);
+        tabs->setObjectName(QStringLiteral("initialStereotypeSourceTabs"));
+        auto *luaEditor = new SourceEditor(QStringLiteral("lua"), tabs);
+        luaEditor->setObjectName(QStringLiteral("stereotypeLua"));
+        luaEditor->setPlainText(luaDraft);
+        tabs->addTab(luaEditor, QObject::tr("Lua inference"));
+        auto *pythonEditor = new SourceEditor(QStringLiteral("python"), tabs);
+        pythonEditor->setObjectName(QStringLiteral("stereotypePython"));
+        pythonEditor->setPlainText(pythonDraft);
+        tabs->addTab(pythonEditor, QObject::tr("Python / PyTorch"));
+        editorLayout->addWidget(tabs, 1);
+        auto *editorButtons = new QDialogButtonBox(QDialogButtonBox::Cancel, &editor);
+        auto *apply = editorButtons->addButton(QObject::tr("Apply to form"), QDialogButtonBox::ApplyRole);
+        apply->setObjectName(QStringLiteral("applyInitialStereotypeSource"));
+        editorLayout->addWidget(editorButtons);
+        QObject::connect(editorButtons, &QDialogButtonBox::rejected, &editor, &QDialog::reject);
+        QObject::connect(apply, &QPushButton::clicked, &editor, [&editor, luaEditor, pythonEditor,
+                                                                &luaDraft, &pythonDraft] {
+            luaDraft = luaEditor->toPlainText();
+            pythonDraft = pythonEditor->toPlainText();
+            editor.accept();
+        });
+        editor.exec();
+    });
     auto *luaError = new QLabel(&dialog);
     luaError->setObjectName(QStringLiteral("stereotypeLuaError"));
     luaError->setWordWrap(true);
@@ -166,7 +209,7 @@ void MainWindow::createStereotype() {
     buttons->button(QDialogButtonBox::Save)->setText(tr("Create and save project"));
     connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-    layout->addWidget(buttons);
+    outer->addWidget(buttons);
     while (dialog.exec() == QDialog::Accepted) {
     luaError->clear();
     formError->clear();
@@ -247,22 +290,14 @@ void MainWindow::createStereotype() {
     const QByteArray versionBytes = version->text().trimmed().toUtf8();
     const QByteArray definition = QJsonDocument(def).toJson(QJsonDocument::Compact);
     const QByteArray dependencyJson = QJsonDocument(deps).toJson(QJsonDocument::Compact);
-    const QString luaText = lua->toPlainText();
-    const QByteArray luaBytes = (luaText.trimmed().isEmpty() ? passThroughRule : luaText).toUtf8();
+    const QByteArray luaBytes = luaDraft.toUtf8();
     char error[ErrorCapacity] = {};
-    if (!nn_app_create_stereotype(application_.get(), idBytes.constData(), versionBytes.constData(),
-            definition.constData(), luaBytes.constData(), dependencyJson.constData(), error, sizeof(error))) {
+    const QByteArray pythonBytes = pythonDraft.toUtf8();
+    if (!nn_app_create_stereotype_with_python(application_.get(), idBytes.constData(), versionBytes.constData(),
+            definition.constData(), luaBytes.constData(), pythonBytes.constData(), dependencyJson.constData(), error, sizeof(error))) {
         const size_t line = nn_inference_error_line(error);
         luaError->setText(line ? tr("Lua error on line %1: %2").arg(line).arg(QString::fromUtf8(error))
                                : QString::fromUtf8(error));
-        if (line) {
-            QTextEdit::ExtraSelection selection;
-            QTextCursor cursor(lua->document()->findBlockByNumber(int(line - 1)));
-            if (cursor.isNull()) cursor = QTextCursor(lua->document()->lastBlock());
-            selection.cursor = cursor;
-            selection.format.setBackground(QColor("#ffe0df"));
-            lua->setExtraSelections({selection});
-        }
         continue;
     }
     refreshAll();

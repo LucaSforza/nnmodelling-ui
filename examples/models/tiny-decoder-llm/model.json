@@ -136,7 +136,7 @@
           "normalized_shape": {
             "$ref": "embedding-features"
           },
-          "eps": 1e-05,
+          "eps": 0.00001,
           "elementwise_affine": true
         }
       }
@@ -219,7 +219,7 @@
           "normalized_shape": {
             "$ref": "embedding-features"
           },
-          "eps": 1e-05,
+          "eps": 0.00001,
           "elementwise_affine": true
         }
       }
@@ -287,7 +287,7 @@
           "normalized_shape": {
             "$ref": "embedding-features"
           },
-          "eps": 1e-05,
+          "eps": 0.00001,
           "elementwise_affine": true
         }
       }
@@ -911,10 +911,6 @@
       }
     ],
     "operations": [],
-    "activeDataset": {
-      "id": "llm.tokens",
-      "version": "1.0.0"
-    },
     "metavariables": [
       {
         "name": "embedding-features",
@@ -926,6 +922,10 @@
         "type": "integer",
         "value": 8
       }
-    ]
+    ],
+    "activeDataset": {
+      "id": "llm.tokens",
+      "version": "1.0.0"
+    }
   }
 }

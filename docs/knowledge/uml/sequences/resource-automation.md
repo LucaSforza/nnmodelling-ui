@@ -143,3 +143,46 @@ return errors without partial mutation.
       App-->>Qt: inline error, keep form fields
     end
 ```
+
+## Edit project stereotype source
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Qt as Inspector and Lua editor
+    participant App as NNApplication
+    participant Project as Project resources
+    User->>Qt: select local stereotype node and choose Lua or Python
+    Qt->>App: stereotype_source(exact id, version, kind)
+    App->>Project: read confined project-owned declared source
+    User->>Qt: apply draft
+    Qt->>App: update_stereotype_source(id, version, kind, source)
+    App->>App: validate bounded Lua source; bound Python text
+    App->>Project: stage and replace source, save project
+    alt success
+        App->>App: history barrier and invalidate analysis
+        App-->>Qt: refresh all nodes and diagnostics
+    else failure
+        Project->>Project: restore original source and dirty state
+        App-->>Qt: error, retain draft
+    end
+```
+
+## Author source before stereotype creation
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Form as Stereotype creation form
+    participant Editor as Lua/Python source editor
+    participant App as NNApplication
+    participant Project as Project resource transaction
+    User->>Form: edit initial source
+    Form->>Editor: open with current Lua and Python drafts
+    User->>Editor: edit source in language tab
+    User->>Editor: apply drafts
+    Editor-->>Form: Lua and Python text
+    User->>Form: Create and save project
+    Form->>App: createStereotype(definition, Lua, Python, dependencies)
+    App->>Project: create files and save candidate model atomically
+```

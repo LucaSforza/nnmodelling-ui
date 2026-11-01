@@ -28,10 +28,16 @@ From repository root:
    separately; compiler flags already enforce warnings. No formatter/linter recipe
    currently exists. Local socket/network tests need execution outside sandbox
    when sandbox blocks bind; report actual failures.
-2. Start: `python3 .agents/skills/nnmodelling-browser/scripts/bridge.py start [PROJECT_DIR]`.
-   Optional `--build` runs `just build`; omit project for an empty app. Use
-   `--no-automation` to launch without the local socket and exercise normal
-   startup chooser behavior. Start
+2. Start the default human-open trial with no project argument:
+   `python3 .agents/skills/nnmodelling-browser/scripts/bridge.py start --no-automation`.
+   Confirm the startup chooser is visible, then use its Open or Create flow in
+   the GUI to load or make the trial project. Do not pass `PROJECT_DIR` for this
+   trial: preloading a project on the command line skips the user-facing chooser
+   path and cannot substitute for opening or creating it as a user. CLI
+   inspection or preloading may supplement separate checks, but must be labeled
+   separately and never stand in for the human-open GUI trial. Optional
+   `--build` runs `just build`. `--no-automation` disables the local socket so
+   the app follows normal startup chooser behavior. Start
    prepares existing `.computer-use/` integration, installs locked npm dependencies
    only if missing, compiles loopback confinement and waits up to 15 seconds for
    VNC/HTTP readiness. It refuses live managed processes; stop session first.
@@ -49,7 +55,11 @@ From repository root:
    Menus, scrollbar pan, zoom buttons, node drag and hover operate actual Qt.
    If ports remain occupied without PID files, inspect process command lines and
    confirm they belong to this disposable session before stopping them.
-   CLI inspection can supplement proof; it cannot replace requested UI trials.
+   After opening/creating a project through the chooser, capture and record
+   whether the graph/content is visible and how it is framed before pressing
+   Fit; then press the visible Fit control manually, capture again, and record
+   whether the graph/content appears or changes. CLI inspection can supplement
+   proof; it cannot replace requested UI trials.
 5. Close project/window through GUI, saving or discarding disposable edits as
    intended. `python3 .agents/skills/nnmodelling-browser/scripts/bridge.py stop`
    then stops only identified local test Qt/bridge processes, waits and cleans

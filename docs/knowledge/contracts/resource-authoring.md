@@ -68,8 +68,8 @@ files, candidate references/catalog/datasets against current graph, validates,
 atomically saves candidate model.json, then publishes. Failure keeps graph,
 resources, dirty flag and previous model.json, removing only transaction-created
 files. Success saves all current edits and clears dirty. UI labels Create as
-saving the project. Dataset metadata editing is accepted below; stereotype editing and resource
-deletion remain deferred.
+saving the project. Dataset metadata and stereotype Lua editing are accepted below; other stereotype
+editing and resource deletion remain deferred.
 
 ## Subflow inference
 
@@ -118,7 +118,7 @@ Existing checkpoints and wheels retain old loss semantics and must be retrained
 to obtain outputs from this objective.
 
 Accepted: above behavior and CLI integration per automation contract. Deferred:
-stereotype editing/resource deletion, object values and training. Typed output/subflow
+other stereotype editing/resource deletion, object values and training. Typed output/subflow
 authoring follows typed-outputs.md.
 
 Accepted 2026-10-04: Horizontal Repeat uses validated object-valued stereotype
@@ -168,3 +168,28 @@ Native client edits metadata only and never executes or edits Python/sample file
 Accepted 2026-10-12: bundled examples remain portable and bounded. Large V4
 example, dedicated consumer and probes are removed from the shipped tree.
 Generic runtime and parameter-count contracts remain unchanged.
+
+## Project stereotype source editing (accepted 2026-10-28)
+
+Creation form exposes an Edit initial source button. It opens a separate editor dialog
+with Lua and Python tabs and an editable Python stub. Applying copies both drafts
+back to the form without creating files. Only Create and save project submits
+the drafts through the same resource transaction as metadata. A selected node whose exact
+package identity is declared as a project-owned resource exposes a source
+editor in the inspector, with Lua and Python views and simple syntax coloring. Core packages cannot be edited, even through C APIs.
+The editor identifies the package, explains that all its nodes share the rule,
+and applies explicitly; cancel or validation failure preserves the draft and
+original. Successful apply immediately invalidates analysis and refreshes results.
+
+`nn_app_stereotype_source` returns owned source (free with `nn_app_free_text`);
+`nn_app_update_stereotype_source` accepts exact ID/version, source kind and text.
+The kind is restricted to inference Lua or PyTorch Python. `nn_app_create_stereotype_with_python`
+accepts both sources; the existing create API retains its default scaffold. Both reject
+non-project resources, unsafe paths, symlinks and nonregular files. Only declared inference and PyTorch entrypoints may be edited; parameter-count
+files are unchanged. Both sources are bounded to 1 MiB. Lua is validated with
+the existing bounded validator before writing. Python is saved as text and never
+executed or syntax-checked by the native client; training uses it in the existing
+worker and existing jobs retain their snapshots. C stages a flushed sibling and backup, atomically replaces the source,
+then saves current project edits; on failure restore original bytes and dirty
+state, reporting rollback failure and recovery path. Successful apply is a saved
+history barrier, and affects every node using that exact package.
