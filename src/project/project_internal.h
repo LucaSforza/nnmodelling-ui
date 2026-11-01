@@ -40,6 +40,8 @@ bool nn_project_load_dataset(NNProject *project, NNDataset *dataset,
                              char *error, size_t capacity);
 bool nn_project_bind_dataset_input(NNProject *project, const NNDataset *dataset,
                                   char *error, size_t capacity);
+bool nn_project_sync_dataset_input(NNProject *project, const NNDataset *dataset,
+                                   char *error, size_t capacity);
 void nn_project_dataset_dispose(NNDataset *dataset);
 bool nn_project_parse_value(yyjson_val *source, NNValue *target);
 bool nn_project_edge_topology_valid(const NNModel *model, const NNCatalog *catalog,

@@ -18,6 +18,7 @@
 #include <QMessageBox>
 #include <QPushButton>
 #include <QStatusBar>
+#include <QScopeGuard>
 #include <QTimer>
 #include <QVBoxLayout>
 
@@ -68,6 +69,12 @@ bool MainWindow::saveProject() {
 }
 
 void MainWindow::showProjectChooser(bool startup) {
+    const bool previousQuitPolicy = QApplication::quitOnLastWindowClosed();
+    // Startup dialogs close while the editor is hidden; they must not end its event loop.
+    if (startup) QApplication::setQuitOnLastWindowClosed(false);
+    const auto restoreQuitPolicy = qScopeGuard([startup, previousQuitPolicy] {
+        if (startup) QApplication::setQuitOnLastWindowClosed(previousQuitPolicy);
+    });
     if (startup) hide();
     for (;;) {
         QMessageBox chooser(this);
@@ -89,7 +96,9 @@ void MainWindow::showProjectChooser(bool startup) {
             if (!startup) return;
             continue;
         }
-        if (startup) QApplication::quit();
+        if (startup) {
+            QApplication::quit();
+        }
         return;
     }
     if (!startup) return;

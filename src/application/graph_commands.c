@@ -186,8 +186,31 @@ bool nn_app_remove_node(NNApplication *app, const char *id, char *error, size_t 
                 return nn_app_history_fail(app, error, cap, "subflow still contains nodes");
         }
     }
-    if (!nn_app_history_prepare(app, error, cap)) return false;
-    const bool okay = nn_model_remove_node(model, id, error, cap);
+    char *survivor_id = NULL;
+    const NNDataset *dataset = nn_project_active_dataset(app->project);
+    if (!node->scope_id[0] && nn_app_kind_is(nn_app_find_package(app, node), "input") &&
+        dataset && dataset->input_count == 1) {
+        const NNNode *survivor = NULL;
+        size_t remaining_inputs = 0;
+        for (size_t i = 0; i < nn_model_node_count(model); ++i) {
+            const NNNode *candidate = nn_model_node_at(model, i);
+            if (!strcmp(candidate->id, id) || candidate->scope_id[0] ||
+                !nn_app_kind_is(nn_app_find_package(app, candidate), "input")) continue;
+            survivor = candidate;
+            ++remaining_inputs;
+        }
+        if (remaining_inputs == 1) {
+            survivor_id = nn_text_copy(survivor->id);
+            if (!survivor_id) return nn_app_history_fail(app, error, cap, "out of memory staging input binding update");
+        }
+    }
+    if (!nn_app_history_prepare(app, error, cap)) { free(survivor_id); return false; }
+    bool okay = nn_model_remove_node(model, id, error, cap);
+    if (okay && survivor_id) {
+        NNValue binding = {.type = NN_VALUE_STRING, .as.string = dataset->inputs[0].name};
+        okay = nn_model_set_parameter(model, survivor_id, "binding", &binding, error, cap);
+    }
+    free(survivor_id);
     nn_app_history_finish(app, okay);
     if (!okay) return false;
     nn_app_invalidate_analysis(app);

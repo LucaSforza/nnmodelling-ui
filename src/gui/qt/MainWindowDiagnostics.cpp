@@ -107,10 +107,11 @@ void MainWindow::refreshDiagnostics() {
         problems.push_back(root);
     }
     QHash<QString, int> modelOrder;
-    QHash<QString, int> topologicalOrder;
     const size_t nodeCount = model ? nn_model_node_count(model) : 0;
     std::vector<std::vector<int>> outgoing(nodeCount);
     std::vector<int> indegree(nodeCount, 0);
+    std::vector<int> depth(nodeCount, 0);
+    std::vector<bool> visited(nodeCount, false);
     for (size_t i = 0; i < nodeCount; ++i) {
         const NNNode *node = nn_model_node_at(model, i);
         if (node) modelOrder.insert(QString::fromUtf8(node->id), static_cast<int>(i));
@@ -128,26 +129,28 @@ void MainWindow::refreshDiagnostics() {
     std::priority_queue<int, std::vector<int>, std::greater<int>> ready;
     for (size_t i = 0; i < nodeCount; ++i)
         if (indegree[i] == 0) ready.push(static_cast<int>(i));
-    int rank = 0;
     while (!ready.empty()) {
         const int index = ready.top();
         ready.pop();
-        const NNNode *node = nn_model_node_at(model, static_cast<size_t>(index));
-        if (node) topologicalOrder.insert(QString::fromUtf8(node->id), rank++);
-        for (const int target : outgoing[static_cast<size_t>(index)])
+        visited[static_cast<size_t>(index)] = true;
+        for (const int target : outgoing[static_cast<size_t>(index)]) {
+            depth[static_cast<size_t>(target)] = std::max(
+                depth[static_cast<size_t>(target)], depth[static_cast<size_t>(index)] + 1);
             if (--indegree[static_cast<size_t>(target)] == 0) ready.push(target);
+        }
     }
     for (size_t i = 0; i < nodeCount; ++i) {
         const NNNode *node = nn_model_node_at(model, i);
-        if (node && !topologicalOrder.contains(QString::fromUtf8(node->id)))
-            topologicalOrder.insert(QString::fromUtf8(node->id), rank++);
+        if (node && !visited[i]) depth[i] = 0;
     }
     std::stable_sort(problems.begin(), problems.end(), [&](const Problem &left, const Problem &right) {
         if (left.rootProblem != right.rootProblem) return !left.rootProblem;
         if (left.rootProblem) return false;
-        const int leftRank = topologicalOrder.value(left.id, std::numeric_limits<int>::max());
-        const int rightRank = topologicalOrder.value(right.id, std::numeric_limits<int>::max());
-        if (leftRank != rightRank) return leftRank < rightRank;
+        const int leftDepth = modelOrder.contains(left.id)
+            ? depth[static_cast<size_t>(modelOrder.value(left.id))] : 0;
+        const int rightDepth = modelOrder.contains(right.id)
+            ? depth[static_cast<size_t>(modelOrder.value(right.id))] : 0;
+        if (leftDepth != rightDepth) return leftDepth < rightDepth;
         return modelOrder.value(left.id, std::numeric_limits<int>::max()) <
                modelOrder.value(right.id, std::numeric_limits<int>::max());
     });

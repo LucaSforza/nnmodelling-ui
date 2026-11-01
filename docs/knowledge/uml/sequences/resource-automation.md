@@ -176,7 +176,7 @@ sequenceDiagram
     App->>Project: read confined project-owned declared source
     User->>Qt: apply draft
     Qt->>App: update_stereotype_source(id, version, kind, source)
-    App->>App: validate bounded Lua source; bound Python text
+    App->>App: validate bounded Lua source and bound Python text
     App->>Project: stage and replace source, save project
     alt success
         App->>App: history barrier and invalidate analysis

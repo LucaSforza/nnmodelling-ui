@@ -144,13 +144,12 @@ void MainWindow::manageDatasets() {
             if (identity == preferredIdentity) list->setCurrentItem(item);
         }
         editButton->setEnabled(list->currentItem() != nullptr);
-        selectButton->setEnabled(list->currentItem() != nullptr &&
-            !list->currentItem()->data(Qt::UserRole + 2).toBool());
+        selectButton->setEnabled(list->currentItem() != nullptr);
     };
     auto updateButtons = [list, editButton, selectButton] {
         const auto *item = list->currentItem();
         editButton->setEnabled(item != nullptr);
-        selectButton->setEnabled(item && !item->data(Qt::UserRole + 2).toBool());
+        selectButton->setEnabled(item != nullptr);
     };
     QObject::connect(list, &QListWidget::currentItemChanged, &dialog,
                      [updateButtons] { updateButtons(); });
@@ -466,13 +465,6 @@ void MainWindow::activateSelectedDataset() {
     if (!item) return;
     const QByteArray id = item->data(0, PackageVersionRole).toString().toUtf8();
     const QByteArray version = item->data(0, DatasetVersionRole).toString().toUtf8();
-    const NNProject *project = nn_app_project(application_.get());
-    const NNDataset *dataset = project ? nn_project_active_dataset(project) : nullptr;
-    if (dataset && id == dataset->id && version == dataset->version) {
-        statusBar()->showMessage(tr("Dataset %1@%2 is already active.")
-            .arg(QString::fromUtf8(id), QString::fromUtf8(version)), 5000);
-        return;
-    }
     char error[ErrorCapacity] = {};
     if (!nn_app_select_dataset(application_.get(), id.constData(), version.constData(),
                                error, sizeof(error))) {

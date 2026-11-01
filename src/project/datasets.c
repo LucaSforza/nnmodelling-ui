@@ -164,9 +164,11 @@ bool nn_project_load_dataset(NNProject *project, NNDataset *dataset,
     return okay;
 }
 
-bool nn_project_bind_dataset_input(NNProject *project, const NNDataset *dataset,
-                                   char *error, size_t capacity)
+static bool set_dataset_input_binding(NNProject *project, const NNDataset *dataset,
+                                     bool reject_ambiguous, bool *changed,
+                                     char *error, size_t capacity)
 {
+    if (changed) *changed = false;
     if (!project || !dataset) return nn_fail(error, capacity, "invalid dataset binding request");
     if (dataset->input_count != 1) return true;
     const NNNode *input = NULL;
@@ -179,15 +181,35 @@ bool nn_project_bind_dataset_input(NNProject *project, const NNDataset *dataset,
             ++count;
         }
     }
-    if (count > 1) return nn_fail(error, capacity, "cannot bind a single-input dataset with multiple root Input nodes");
-    if (!input) return true;
+    if (count != 1) {
+        if (reject_ambiguous && count > 1)
+            return nn_fail(error, capacity, "cannot bind a single-input dataset with multiple root Input nodes");
+        return true;
+    }
     const NNValue *binding = NULL;
     for (size_t i = 0; i < input->parameter_count; ++i)
         if (!strcmp(input->parameters[i].key, "binding")) binding = &input->parameters[i].value;
     if (binding && binding->type == NN_VALUE_STRING && binding->as.string &&
         !strcmp(binding->as.string, dataset->inputs[0].name)) return true;
     NNValue value = {.type = NN_VALUE_STRING, .as.string = dataset->inputs[0].name};
-    return nn_model_set_parameter(project->model, input->id, "binding", &value, error, capacity);
+    if (!nn_model_set_parameter(project->model, input->id, "binding", &value, error, capacity)) return false;
+    if (changed) *changed = true;
+    return true;
+}
+
+bool nn_project_bind_dataset_input(NNProject *project, const NNDataset *dataset,
+                                   char *error, size_t capacity)
+{
+    return set_dataset_input_binding(project, dataset, true, NULL, error, capacity);
+}
+
+bool nn_project_sync_dataset_input(NNProject *project, const NNDataset *dataset,
+                                   char *error, size_t capacity)
+{
+    bool changed = false;
+    if (!set_dataset_input_binding(project, dataset, false, &changed, error, capacity)) return false;
+    if (changed) project->dirty = true;
+    return true;
 }
 
 static bool read_definition_bytes(const char *path, char **contents, size_t *length,
@@ -406,6 +428,14 @@ bool nn_project_update_dataset(NNProject *project, const char *id, const char *v
             bool backup_moved = false, keep_backup = false;
             bool old_dirty = project->dirty;
             NNDataset old_dataset = project->datasets[index];
+            NNModel *model_backup = NULL;
+            const bool active = project->active_dataset_id && project->active_dataset_version &&
+                !strcmp(project->active_dataset_id, id) &&
+                !strcmp(project->active_dataset_version, version);
+            if (okay && active && candidate.input_count == 1) {
+                model_backup = nn_model_copy(project->model);
+                if (!model_backup) okay = nn_fail(error, capacity, "out of memory staging dataset binding update");
+            }
             if (okay) {
                 if (rename(temporary, path)) { nn_errorf(error, capacity, "cannot replace dataset definition: %s", strerror(errno)); okay = false; }
                 else replaced = true;
@@ -414,12 +444,14 @@ bool nn_project_update_dataset(NNProject *project, const char *id, const char *v
                 project->datasets[index] = candidate; memset(&candidate, 0, sizeof(candidate));
                 swapped = true;
                 project->dirty = true;
-                okay = nn_project_save(project, error, capacity);
+                if (active) okay = nn_project_sync_dataset_input(project, &project->datasets[index], error, capacity);
+                if (okay) okay = nn_project_save(project, error, capacity);
             }
             if (okay) {
                 nn_project_dataset_dispose(&old_dataset);
                 if (backup) unlink(backup);
             } else {
+                if (model_backup) nn_model_swap(project->model, model_backup);
                 if (replaced) {
                     if (backup && rename(backup, path) == 0) backup_moved = true;
                     else {
@@ -435,6 +467,7 @@ bool nn_project_update_dataset(NNProject *project, const char *id, const char *v
                 project->dirty = old_dirty;
                 if (swapped) nn_project_dataset_dispose(&old_dataset);
             }
+            nn_model_free(model_backup);
             if (temporary) { unlink(temporary); free(temporary); }
             if (backup && !backup_moved && !keep_backup) unlink(backup);
             if (backup) free(backup);

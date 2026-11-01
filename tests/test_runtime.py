@@ -70,7 +70,7 @@ def _project(tmp_path: Path, core_packages: list[tuple], nodes, edges, *, datase
         _write_json(root / "datasets" / "demo" / "manifest.json", {"schemaVersion": 1, "id": "demo", "version": "1.0.0", "entrypoints": {"definition": "dataset.json", "python": {"language": "python", "file": "dataset.py"}}, "inferenceAssets": ["datasets/demo/vocab.json", "__init__.py"]})
         (root / "datasets" / "demo" / "pyproject.toml").write_text(
             '[project]\nname="demo-adapter"\nversion="1.0.0"\ndependencies=["nnmodelling-runtime >=0.1.0", "requests>=2.31"]\n', encoding="utf-8")
-        _write_json(root / "datasets" / "demo" / "dataset.json", {"inputs": [{"name": "features"}], "targets": []})
+        _write_json(root / "datasets" / "demo" / "dataset.json", {"batch": {"inputs": {"features": {}}, "targets": {}}})
         (root / "datasets" / "demo" / "dataset_helper.py").write_text(
             "from nnmodelling_runtime import DatasetAdapter\nclass BaseAdapter(DatasetAdapter): pass\n", encoding="utf-8")
         (root / "datasets" / "demo" / "dataset.py").write_text(
@@ -761,6 +761,7 @@ def test_dataset_adapter_and_standalone_wheels_support_weight_override_and_isola
     ]
     _write_json(root / "model.json", model_json)
     adapter = load_dataset(root)
+    assert isinstance(adapter.tokenize([3.0]), torch.Tensor)
     assert isinstance(adapter, DatasetAdapter)
     assert list(adapter.load("train", 4)) == []
     graph = GraphModule(root, core)
@@ -932,3 +933,136 @@ def test_wheel_rejects_missing_or_unreadable_project_id(tmp_path, project_id):
 
     with pytest.raises(ValueError, match="project ID"):
         build_wheel(root, core, weights, tmp_path / "wheels", "job-1")
+
+
+def test_dataset_boundary_binds_adapter_names_for_training_and_wheel(tmp_path, monkeypatch):
+    loss = '''from torch import nn
+from stereotype_runtime.pytorch import BuildContext, NoServices
+class Loss(nn.Module):
+ def forward(self, prediction, target): return ((prediction - target) ** 2).mean()
+def build(parameters, context, services): return Loss()
+'''
+    packages = [
+        _input_package(), _output_package(), _loss_output_package(),
+        ("test.scale", "layer", _linear_source(), {"value": {"type": "real", "default": 2.0}}, [{"id": "out", "type": "output"}]),
+        ("test.loss", "loss", loss, None, [{"id": "loss", "type": "loss"}], {"externalInputs": [{"name": "target", "source": "batch.targets.target"}]}),
+    ]
+    nodes = [
+        _node("x", "core.input", params={"binding": "image2"}),
+        _node("n0", "test.scale"), _node("prediction", "core.output"),
+        _node("loss", "test.loss"), _node("loss-output", "core.loss-output"),
+    ]
+    edges = [
+        {"id": "a", "source": "x", "target": "n0"},
+        {"id": "b", "source": "n0", "sourceHandle": "out", "target": "prediction"},
+        {"id": "c", "source": "n0", "sourceHandle": "out", "target": "loss"},
+        {"id": "d", "source": "loss", "sourceHandle": "loss", "target": "loss-output"},
+    ]
+    root, core = _project(tmp_path, packages, nodes, edges, dataset=True)
+    dataset_dir = root / "datasets" / "demo"
+    _write_json(dataset_dir / "dataset.json", {
+        "batch": {"inputs": {"image2": {"dtype": "float32"}}, "targets": {"target": {}}}
+    })
+    model = json.loads((root / "model.json").read_text(encoding="utf-8"))
+    model["manifest"]["operations"] = [{
+        "name": "scaled_image",
+        "input": {"node": "x", "handle": "out", "codec": "dataset"},
+        "output": {"node": "n0", "handle": "out", "codec": "tensor"},
+    }]
+    _write_json(root / "model.json", model)
+    (dataset_dir / "dataset.py").write_text('''import torch
+from nnmodelling_runtime import Batch, DatasetAdapter
+class Dataset(DatasetAdapter):
+ def tokenize(self, value):
+  self.tokenized = {"image": torch.as_tensor(value, dtype=torch.float32)}
+  return self.tokenized
+ def untokenize(self, tensor): return tensor
+ def load(self, split, batch_size):
+  self.loaded_inputs = {"image": torch.tensor([[3.0]])}
+  self.loaded_targets = {"target": torch.tensor([[4.0]])}
+  yield Batch(self.loaded_inputs, self.loaded_targets)
+''', encoding="utf-8")
+
+    adapter = load_dataset(root)
+    tokenized = adapter.tokenize([[3.0]])
+    batch = next(adapter.load("train", 1))
+    assert tuple(tokenized) == ("image2",)
+    assert tuple(batch.inputs) == ("image2",)
+    assert adapter._adapter.tokenized.keys() == {"image"}
+    assert adapter._adapter.loaded_inputs.keys() == {"image"}
+    assert batch.targets is adapter._adapter.loaded_targets
+    monkeypatch.setenv("NNMODELLING_DATASET_DATA_ROOT", str(tmp_path / "corpus"))
+    monkeypatch.setenv("NNMODELLING_DATASET_CACHE_ROOT", str(tmp_path / "cache"))
+    assert adapter.data_directory == tmp_path / "corpus"
+    assert adapter.cache_directory == tmp_path / "cache"
+
+    graph = GraphModule(root, core)
+    prediction = graph(batch.inputs)["prediction"]
+    trained = graph(batch.inputs, batch.targets, include_loss=True)
+    assert prediction.item() == pytest.approx(6.0)
+    assert trained["loss"].item() == pytest.approx(4.0)
+    assert graph(tokenized)["prediction"].item() == pytest.approx(6.0)
+
+    weights = tmp_path / "weights.safetensors"
+    _write_scalar_weights(weights, 2.0)
+    wheel = build_wheel(root, core, weights, tmp_path / "wheel", "job-image")
+    package = tmp_path / "wheel-package"
+    import zipfile
+    with zipfile.ZipFile(wheel) as archive:
+        archive.extractall(package)
+    script = '''import sys, torch
+sys.path.insert(0, sys.argv[1])
+from nnm_fixture import Model
+model = Model()
+assert model.infer([[3.0]]).item() == 6.0
+assert model.scaled_image([[3.0]]).item() == 6.0
+'''
+    result = subprocess.run([sys.executable, "-c", script, str(package)], cwd=tmp_path, capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize("inputs", ["{}", '{"image": torch.tensor([1.0]), "extra": torch.tensor([2.0])}'])
+def test_single_dataset_input_rejects_zero_or_multiple_adapter_inputs(tmp_path, inputs):
+    root, _core = _project(tmp_path, [], [], [], dataset=True)
+    dataset_dir = root / "datasets" / "demo"
+    (dataset_dir / "dataset.py").write_text(f'''import torch
+from nnmodelling_runtime import Batch, DatasetAdapter
+class Dataset(DatasetAdapter):
+ def tokenize(self, value): return torch.as_tensor(value)
+ def untokenize(self, tensor): return tensor
+ def load(self, split, batch_size): yield Batch({inputs}, {{}})
+''', encoding="utf-8")
+    adapter = load_dataset(root)
+    with pytest.raises(ValueError, match="dataset input error: load.*returned"):
+        next(adapter.load("train", 1))
+
+
+def test_multi_input_dataset_boundary_requires_exact_names(tmp_path):
+    root, _core = _project(tmp_path, [], [], [], dataset=True)
+    dataset_dir = root / "datasets" / "demo"
+    _write_json(dataset_dir / "dataset.json", {
+        "batch": {"inputs": {"left": {}, "right": {}}, "targets": {}}
+    })
+    (dataset_dir / "dataset.py").write_text('''import torch
+from nnmodelling_runtime import Batch, DatasetAdapter
+class Dataset(DatasetAdapter):
+ def tokenize(self, value): return {"right": torch.tensor([2.0]), "left": torch.tensor([1.0])}
+ def untokenize(self, tensor): return tensor
+ def load(self, split, batch_size): yield Batch({"right": torch.tensor([2.0]), "left": torch.tensor([1.0])}, {})
+''', encoding="utf-8")
+    adapter = load_dataset(root)
+    assert tuple(adapter.tokenize(None)) == ("left", "right")
+    assert tuple(next(adapter.load("train", 1)).inputs) == ("left", "right")
+
+    (dataset_dir / "dataset.py").write_text('''import torch
+from nnmodelling_runtime import Batch, DatasetAdapter
+class Dataset(DatasetAdapter):
+ def tokenize(self, value): return {"left": torch.tensor([1.0])}
+ def untokenize(self, tensor): return tensor
+ def load(self, split, batch_size): yield Batch({"left": torch.tensor([1.0])}, {})
+''', encoding="utf-8")
+    adapter = load_dataset(root)
+    with pytest.raises(ValueError, match="dataset input error: tokenize names must exactly match"):
+        adapter.tokenize(None)
+    with pytest.raises(ValueError, match="dataset input error: load.*names must exactly match"):
+        next(adapter.load("train", 1))

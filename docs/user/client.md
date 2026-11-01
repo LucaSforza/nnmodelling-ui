@@ -77,6 +77,10 @@ La scheda della subflow mostra il conteggio dei figli e un pulsante prominente `
 
 ### Barra grafico e direzione
 
+`Delete`, accanto ad `Arrange`, elimina nodi e collegamenti selezionati. Si abilita
+e diventa rosso quando esiste una selezione eliminabile; senza selezione resta
+disabilitato. Ha lo stesso comportamento dei tasti Delete e Backspace.
+
 La toolbar `Workspace` offre `Scope`, `Training`, `Fit`, `+`, `−` e `Arrange`. `Training` apre lo stesso pannello di `Model > Training backend…`. `Fit` inquadra il contenuto; `+` e `−` ingrandiscono/riducono. `Arrange` applica l'ordinamento verticale predefinito. La freccia del pulsante apre `Vertical` o `Horizontal`; le stesse scelte si trovano in `View > Arrange`. L'ordinamento ricalcola le posizioni dei nodi nell'ambito corrente, aggiorna il progetto in memoria e lo marca come modificato, quindi inquadra il risultato. Per renderlo persistente su disco usare `File > Save`. Nella direzione verticale il flusso va dall'alto in basso; nella direzione orizzontale va verso sinistra. Cambiare direzione è una scelta di presentazione della sessione; usare `Arrange` è l'azione che riordina e registra le posizioni.
 
 ![Scelta della direzione di ordinamento](assets/menu-arrange.png)
@@ -188,9 +192,18 @@ Le operazioni si salvano in `model.json` con il progetto. Le modifiche al grafo 
 
 ### Gestore dei dataset
 
-`Dataset…` / `Manage datasets…` apre `Project datasets`, con un elenco a selezione singola. Ogni riga riporta `id@version — nome`; il dataset attivo è marcato `✓ (active)`. `New dataset` apre la scheda vuota. `Edit` apre la scheda del dataset selezionato; un clic seleziona soltanto la riga. `Import dataset…` copia nel progetto una cartella dataset, chiedendo eventuali metadati mancanti; se manca l'adapter Python, crea uno scheletro da completare prima del training. Il primo dataset importato viene attivato. `Activate` attiva il dataset selezionato ed è disabilitato se è già attivo. Con un solo slot di input, il binding dell'unico Input radice viene aggiornato automaticamente; più Input radice producono un errore. `Edit` e `Activate` sono disabilitati quando non c'è una riga selezionata. `Close` chiude il gestore senza ulteriori modifiche.
+`Dataset…` / `Manage datasets…` apre `Project datasets`, con un elenco a selezione singola. Ogni riga riporta `id@version — nome`; il dataset attivo è marcato `✓ (active)`. `New dataset` apre la scheda vuota. `Edit` apre la scheda del dataset selezionato; un clic seleziona soltanto la riga. `Import dataset…` copia nel progetto una cartella dataset, chiedendo eventuali metadati mancanti; se manca l'adapter Python, crea uno scheletro da completare prima del training. Il primo dataset importato viene attivato. `Activate` attiva il dataset selezionato e riallinea il binding anche se è già attivo. Con un solo slot di input, il binding dell'unico Input radice viene aggiornato automaticamente; più Input radice producono un errore. `Edit` e `Activate` sono disabilitati quando non c'è una riga selezionata. `Close` chiude il gestore senza ulteriori modifiche.
 
 ![Gestore dei dataset](assets/dataset-manager.png)
+
+Con un solo slot di input e un solo nodo Input radice, `binding` è automatico
+e di sola lettura nell'Inspector. Cambiare dataset o rinominare il suo slot
+aggiorna il binding; aprire un progetto con un binding precedente lo riallinea
+e marca il progetto come modificato. Con più slot, il binding resta manuale.
+Se l'adapter restituisce un solo input, il runtime lo associa all'unico slot
+dichiarato anche se il nome restituito è diverso. Questa regola vale per train,
+validation, test e tokenizzazione; non rinomina i target. Numeri di input
+incompatibili producono un errore esplicito.
 
 ### Scheda nuovo/modifica dataset
 
@@ -248,6 +261,11 @@ La sezione `Optional Lua inference` contiene l'editor sorgente. Il testo inizial
 ![Dipendenze, Lua e conferma dello stereotype](assets/stereotype-form-bottom.png)
 
 ## Problemi del modello
+
+Le cause sono ordinate per profondità nel grafo: prima le sorgenti, poi i nodi
+più a valle. A pari profondità vale l'ordine stabile del modello. Questo vale
+anche per sorgenti aggiunte dopo i layer; il riepilogo generale `Root` resta
+in fondo e i discendenti bloccati restano raggruppati sotto la loro causa.
 
 `Model problems` mostra i problemi dell'analisi di forma; non elenca righe di successo. Ogni riga riporta categoria, nome nodo, ambito e ragione. Le categorie distinguono `Lua compilation error`, `Model error`, `Incomplete` e `Analysis unavailable` con icona, testo e colore. Le cause principali sono raggruppate; le discendenze bloccate sono righe figlie espandibili. `Technical details`, quando presente, apre codice stabile, file/riga sorgente o dettagli tecnici.
 

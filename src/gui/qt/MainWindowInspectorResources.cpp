@@ -182,6 +182,23 @@ void MainWindow::refreshInspector() {
     const NNPackage *package = project
         ? nn_catalog_find(nn_project_catalog(project), node->package_id, node->package_version)
         : nullptr;
+    const NNDataset *activeDataset = project ? nn_project_active_dataset(project) : nullptr;
+    const bool rootInput = package && package->kind &&
+        std::strcmp(package->kind, "input") == 0 && (!node->scope_id || !*node->scope_id);
+    size_t rootInputCount = 0;
+    for (size_t i = 0; rootInput && i < nn_model_node_count(model); ++i) {
+        const NNNode *candidate = nn_model_node_at(model, i);
+        if (!candidate || (candidate->scope_id && *candidate->scope_id)) continue;
+        const NNPackage *candidatePackage = nn_catalog_find(nn_project_catalog(project),
+            candidate->package_id, candidate->package_version);
+        if (candidatePackage && candidatePackage->kind &&
+            std::strcmp(candidatePackage->kind, "input") == 0)
+            ++rootInputCount;
+    }
+    const bool automaticallyBoundInput = rootInput && rootInputCount == 1 && activeDataset &&
+        activeDataset->input_count == 1 && activeDataset->inputs && activeDataset->inputs[0].name;
+    const QString automaticInputName = automaticallyBoundInput
+        ? QString::fromUtf8(activeDataset->inputs[0].name) : QString();
     auto *packageRow = new QTreeWidgetItem(inspector_, {tr("Package"),
         QStringLiteral("%1@%2").arg(QString::fromUtf8(node->package_id),
                                      QString::fromUtf8(node->package_version))});
@@ -381,7 +398,8 @@ void MainWindow::refreshInspector() {
             const QString rawValue = valueText ? QString::fromUtf8(valueText) : QString();
             nn_app_free_text(valueText);
             const QString type = definition.type ? QString::fromUtf8(definition.type) : QString();
-            const QString value = parameterEditorText(rawValue, type);
+            const bool automaticBinding = automaticallyBoundInput && key == QStringLiteral("binding");
+            const QString value = automaticBinding ? automaticInputName : parameterEditorText(rawValue, type);
             char previewError[ErrorCapacity] = {};
             char *previewText = nn_app_resolved_parameter_text(application_.get(), node->id,
                 definition.key, previewError, sizeof(previewError));
@@ -602,7 +620,13 @@ void MainWindow::refreshInspector() {
             } else {
                 const bool comboType = definition.choice_count > 0 || type == QStringLiteral("boolean") ||
                                        type == QStringLiteral("bool");
-                if (comboType) {
+                if (automaticBinding) {
+                    auto *line = new QLineEdit(value, inspector_);
+                    line->setObjectName(QStringLiteral("parameter_%1").arg(key));
+                    line->setReadOnly(true);
+                    line->setToolTip(tr("This binding follows the only input slot in the active dataset."));
+                    editor = line;
+                } else if (comboType) {
                     auto *combo = new QComboBox(inspector_);
                     configureSyntaxCombo(combo);
                     if (definition.choice_count) {
@@ -640,6 +664,11 @@ void MainWindow::refreshInspector() {
                 }
             }
             inspector_->setItemWidget(row, 1, editor);
+            if (automaticBinding) {
+                row->setToolTip(0, tr("Automatically synchronized from the active dataset."));
+                new QTreeWidgetItem(row, {tr("Binding"),
+                    tr("Automatically follows the active dataset’s only input slot.")});
+            }
             if (hasBinding || (!previewText && previewError[0])) {
                 QString friendly = resolvedValue;
                 if (type == QStringLiteral("stereotype"))
