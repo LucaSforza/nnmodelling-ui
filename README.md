@@ -38,6 +38,10 @@ and Qt 6 Widgets development files; GUI tests require Qt 6 Test and Python 3
 for the live CLI/UI integration test. Lua and yyjson
 are vendored C sources; builds download nothing.
 
+On macOS, install Xcode command-line tools and dependencies with
+`brew install cmake just qt`. Point CMake to Qt when needed:
+`export CMAKE_PREFIX_PATH="$(brew --prefix qt)"`.
+
 ```sh
 just test      # C-only configuration; no Qt or C++ compiler required
 just build
@@ -117,7 +121,7 @@ handle. Single-output Lua uses `output=tensor`; two-output Lua uses a keyed
 the inspector or `analysis.diagnostics`. See the
 [typed outputs contract](docs/knowledge/contracts/typed-outputs.md).
 
-## LLM/local command interface (Linux)
+## LLM/local command interface (Linux and macOS)
 
 Start the UI once with a private socket; no backend, MCP or network server:
 
