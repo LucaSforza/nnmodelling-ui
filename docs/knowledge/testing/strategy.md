@@ -2,7 +2,7 @@
 
 Accepted 2026-10-08: GitHub Actions runs the existing core, sanitizer, offscreen
 Qt/CLI and Python backend/runtime/example gates on pushes and pull requests.
-Use Linux hosted runners, read-only repository permissions, bounded job timeouts
+Use Linux hosted runners and a macOS core/Qt/CLI runner, read-only repository permissions, bounded job timeouts
 and the committed uv lockfile with dev/examples groups. Named-operation tests
 belong to the runtime recipe. CI does not download a trained consumer wheel or
 claim an actual container-training or visible desktop trial.

@@ -1,13 +1,14 @@
 # Local command service (accepted 2026-09-30)
 
 Explicit user request replaces deferred nnmodelctl status. Unix-only local
-automation is implemented on Linux; no backend or network server. C11 owns IPC, JSON
+automation is implemented on Linux and macOS; no backend or network server. C11 owns IPC, JSON
 dispatch and CLI; Qt runs the service on its application thread and handles
 UI introspection/layout/screenshot. One application remains authoritative.
 
 UI starts service only with `--socket PATH`; nnmodelctl requires `--socket PATH`
 or NNMODELLING_SOCKET. Socket is AF_UNIX, mode 0600, owned by current UID. Refuse
 existing path, symlinks and overlong paths; clean up only own socket on exit.
+Verify each connected peer has the current UID, and suppress SIGPIPE per socket.
 Requests are newline-delimited JSON, one connection/request, <=2 MiB. Malformed,
 oversized, unknown or invalid requests return explicit error without mutation;
 idle/partial clients cannot block UI. At most eight concurrent clients, a

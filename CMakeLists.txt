@@ -7,6 +7,11 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 
+# Darwin hides POSIX extensions such as mkdtemp when strict feature levels are set.
+if(APPLE)
+    add_compile_definitions(_DARWIN_C_SOURCE)
+endif()
+
 set(LUA_NAMES lapi lcode lctype ldebug ldo ldump lfunc lgc llex lmem lobject
     lopcodes lparser lstate lstring ltable ltm lundump lvm lzio lauxlib lbaselib
     lcorolib ldblib liolib lmathlib loadlib loslib lstrlib ltablib lutf8lib linit)
@@ -16,7 +21,10 @@ foreach(name IN LISTS LUA_NAMES)
 endforeach()
 add_library(nn_lua STATIC ${LUA_SOURCES})
 target_include_directories(nn_lua PUBLIC third_party/lua/src)
-if(UNIX)
+if(APPLE)
+    target_compile_definitions(nn_lua PRIVATE LUA_USE_MACOSX)
+    target_link_libraries(nn_lua PUBLIC ${CMAKE_DL_LIBS} m)
+elseif(UNIX)
     target_compile_definitions(nn_lua PRIVATE LUA_USE_LINUX)
     target_link_libraries(nn_lua PUBLIC ${CMAKE_DL_LIBS} m)
 endif()

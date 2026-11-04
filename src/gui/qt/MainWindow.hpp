@@ -14,7 +14,7 @@ class QTreeWidgetItem;
 class QTimer;
 class QToolButton;
 class QWidget;
-class NNApplication;
+struct NNApplication;
 struct NNAutomation;
 class GraphScene;
 class GraphView;

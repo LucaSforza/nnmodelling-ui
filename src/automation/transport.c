@@ -1,9 +1,12 @@
+#if defined(__linux__)
 #define _GNU_SOURCE
+#endif
 #include "automation.h"
 #include "automation_internal.h"
 #include "utils/utils.h"
 
 #include <errno.h>
+#include <fcntl.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
@@ -13,6 +16,34 @@
 #include <unistd.h>
 
 #define CLIENT_LIMIT 8
+
+static bool configure_socket(int fd, bool nonblocking)
+{
+    int descriptor_flags = fcntl(fd, F_GETFD);
+    if (descriptor_flags < 0 || fcntl(fd, F_SETFD, descriptor_flags | FD_CLOEXEC) < 0) return false;
+    if (nonblocking) {
+        int status_flags = fcntl(fd, F_GETFL);
+        if (status_flags < 0 || fcntl(fd, F_SETFL, status_flags | O_NONBLOCK) < 0) return false;
+    }
+#if defined(__APPLE__)
+    int enabled = 1;
+    if (setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &enabled, sizeof(enabled)) < 0) return false;
+#endif
+    return true;
+}
+
+static bool peer_is_current_user(int fd)
+{
+#if defined(__APPLE__)
+    uid_t uid;
+    gid_t gid;
+    return getpeereid(fd, &uid, &gid) == 0 && uid == getuid();
+#else
+    struct ucred peer;
+    socklen_t length = sizeof(peer);
+    return getsockopt(fd, SOL_SOCKET, SO_PEERCRED, &peer, &length) == 0 && peer.uid == getuid();
+#endif
+}
 
 typedef struct {
     int fd;
@@ -71,8 +102,12 @@ NNAutomation *nn_automation_start(NNApplication *app, const char *path,
         return NULL;
     }
     strcpy(address.sun_path, path);
-    service->fd = socket(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
-    if (service->fd < 0) goto fail;
+    service->fd = socket(AF_UNIX, SOCK_STREAM
+#if defined(__linux__)
+                         | SOCK_NONBLOCK | SOCK_CLOEXEC
+#endif
+                         , 0);
+    if (service->fd < 0 || !configure_socket(service->fd, true)) goto fail;
     mode_t mask = umask(0077);
     int bound = bind(service->fd, (struct sockaddr *)&address, sizeof(address));
     umask(mask);
@@ -94,10 +129,14 @@ bool nn_automation_poll(NNAutomation *service)
     service->polling = true;
     bool changed = false;
     for (size_t accepted = 0; accepted < CLIENT_LIMIT; ++accepted) {
-        int fd = accept4(service->fd, NULL, NULL, SOCK_NONBLOCK | SOCK_CLOEXEC);
+        int fd;
+#if defined(__linux__)
+        fd = accept4(service->fd, NULL, NULL, SOCK_NONBLOCK | SOCK_CLOEXEC);
+#else
+        fd = accept(service->fd, NULL, NULL);
+#endif
         if (fd < 0) break;
-        struct ucred peer; socklen_t length = sizeof(peer);
-        if (getsockopt(fd, SOL_SOCKET, SO_PEERCRED, &peer, &length) || peer.uid != getuid()) { close(fd); continue; }
+        if (!configure_socket(fd, true) || !peer_is_current_user(fd)) { close(fd); continue; }
         size_t slot = 0;
         while (slot < CLIENT_LIMIT && service->clients[slot].fd >= 0) ++slot;
         if (slot == CLIENT_LIMIT) { close(fd); continue; }
@@ -139,7 +178,13 @@ bool nn_automation_poll(NNAutomation *service)
         if (client->output) {
             size_t pending = client->length - client->sent;
             if (pending > 65536) pending = 65536;
-            ssize_t count = send(client->fd, client->output + client->sent, pending, MSG_NOSIGNAL);
+            ssize_t count = send(client->fd, client->output + client->sent, pending,
+#if defined(__linux__)
+                                 MSG_NOSIGNAL
+#else
+                                 0
+#endif
+            );
             if (count > 0) client->sent += (size_t)count;
             else if (count < 0 && errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) { close_client(client); continue; }
             if (client->sent == client->length) close_client(client);

@@ -15,7 +15,7 @@ class QCheckBox;
 class QPushButton;
 class QDialog;
 class TrainingCurveWidget;
-class NNApplication;
+struct NNApplication;
 class BackendServiceManager;
 
 class BackendDialog final : public QDialog {

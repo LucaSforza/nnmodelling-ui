@@ -3,6 +3,7 @@
 #include "yyjson.h"
 
 #include <errno.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -12,16 +13,35 @@
 #include <sys/un.h>
 #include <unistd.h>
 
+static bool configure_socket(int fd)
+{
+    int descriptor_flags = fcntl(fd, F_GETFD);
+    if (descriptor_flags < 0 || fcntl(fd, F_SETFD, descriptor_flags | FD_CLOEXEC) < 0) return false;
+#if defined(__APPLE__)
+    int enabled = 1;
+    if (setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &enabled, sizeof(enabled)) < 0) return false;
+#endif
+    return true;
+}
+
 int nn_cli_exchange(const char *path, char *text, size_t length)
 {
     struct sockaddr_un address = { .sun_family = AF_UNIX };
     struct stat info;
-    if (lstat(path, &info) || !S_ISSOCK(info.st_mode) || info.st_uid != getuid() || (info.st_mode & 077)) {
+    if (!path || !*path || strlen(path) >= sizeof(address.sun_path) ||
+        lstat(path, &info) || !S_ISSOCK(info.st_mode) || info.st_uid != getuid() || (info.st_mode & 077)) {
         free(text); fputs("socket must be private and owned by current user\n", stderr); return 2;
     }
-    int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    int fd = socket(AF_UNIX, SOCK_STREAM
+#if defined(__linux__)
+                    | SOCK_CLOEXEC
+#endif
+                    , 0);
     struct timeval timeout = { .tv_sec = 10 };
-    if (fd < 0) { free(text); perror("socket"); return 2; }
+    if (fd < 0 || !configure_socket(fd)) {
+        if (fd >= 0) close(fd);
+        free(text); fputs("unable to configure socket\n", stderr); return 2;
+    }
     setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
     setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
     strcpy(address.sun_path, path);
@@ -30,7 +50,13 @@ int nn_cli_exchange(const char *path, char *text, size_t length)
     }
     size_t sent = 0;
     while (sent < length) {
-        ssize_t count = send(fd, text + sent, length - sent, MSG_NOSIGNAL);
+        ssize_t count = send(fd, text + sent, length - sent,
+#if defined(__linux__)
+                             MSG_NOSIGNAL
+#else
+                             0
+#endif
+        );
         if (count < 0 && errno == EINTR) continue;
         if (count <= 0) { perror("send"); close(fd); free(text); return 2; }
         sent += (size_t)count;
