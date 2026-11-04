@@ -42,7 +42,7 @@ private slots:
                 QVERIFY(manager);
                 auto *create = manager->findChild<QPushButton *>(QStringLiteral("newMetavariable"));
                 QVERIFY(create);
-                QTimer::singleShot(0, manager, [&, manager, entryName, entryType, entryValue] {
+                QTimer::singleShot(0, manager, [&, entryName, entryType, entryValue] {
                     auto *form = qobject_cast<QDialog *>(QApplication::activeModalWidget());
                     QVERIFY(form);
                     auto *name = form->findChild<QLineEdit *>(QStringLiteral("metavariableName"));
@@ -89,7 +89,7 @@ private slots:
             QVERIFY(manager);
             auto *create = manager->findChild<QPushButton *>(QStringLiteral("newMetavariable"));
             QVERIFY(create);
-            QTimer::singleShot(0, manager, [manager] {
+            QTimer::singleShot(0, manager, [] {
                 auto *form = qobject_cast<QDialog *>(QApplication::activeModalWidget());
                 QVERIFY(form);
                 form->findChild<QLineEdit *>(QStringLiteral("metavariableName"))->setText(QStringLiteral("num-heads"));

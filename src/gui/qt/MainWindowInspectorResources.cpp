@@ -317,7 +317,7 @@ void MainWindow::refreshInspector() {
             const NNInferenceResult *result = nn_inference_at(analysis, i);
             if (!result || result->status != NN_INFERENCE_SUCCESS ||
                 std::strcmp(result->node_id ? result->node_id : "", node->id) != 0) continue;
-            auto addTensor = [this](QTreeWidgetItem *parent, const QString &label,
+            auto addTensor = [](QTreeWidgetItem *parent, const QString &label,
                                     const char *dtype, const char *const *dimensions,
                                     size_t dimensionCount) {
                 QStringList shape;

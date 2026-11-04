@@ -603,7 +603,7 @@ void MainWindow::createDataset(const QString &editId, const QString &editVersion
 
     while (dialog.exec() == QDialog::Accepted) {
         formError->clear();
-        auto buildSlots = [this](QTableWidget *table, QJsonObject *out) -> bool {
+        auto buildSlots = [](QTableWidget *table, QJsonObject *out) -> bool {
             static const QSet<QString> dtypes = {"float16", "bfloat16", "float32", "float64", "int8", "int16", "int32", "int64", "uint8", "bool"};
             for (int row = 0; row < table->rowCount(); ++row) {
                 const QString slot = cellText(table, row, 0).trimmed();

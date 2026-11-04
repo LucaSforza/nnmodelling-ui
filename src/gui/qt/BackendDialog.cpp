@@ -1196,7 +1196,7 @@ void BackendDialog::download(const QString &kind)
         reply->abort();
     }
     reply->setProperty("downloadBytes", QVariant::fromValue<qint64>(0));
-    connect(reply, &QNetworkReply::readyRead, this, [this, reply, file] {
+    connect(reply, &QNetworkReply::readyRead, this, [reply, file] {
         const QByteArray chunk = reply->readAll();
         const qint64 total = reply->property("downloadBytes").toLongLong() + chunk.size();
         if (total > MaxArtifactBytes || file->write(chunk) != chunk.size()) {
