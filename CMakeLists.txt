@@ -7,6 +7,11 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 
+# Darwin hides POSIX extensions such as mkdtemp when strict feature levels are set.
+if(APPLE)
+    add_compile_definitions(_DARWIN_C_SOURCE)
+endif()
+
 set(LUA_NAMES lapi lcode lctype ldebug ldo ldump lfunc lgc llex lmem lobject
     lopcodes lparser lstate lstring ltable ltm lundump lvm lzio lauxlib lbaselib
     lcorolib ldblib liolib lmathlib loadlib loslib lstrlib ltablib lutf8lib linit)
