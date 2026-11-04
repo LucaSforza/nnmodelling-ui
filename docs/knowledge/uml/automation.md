@@ -96,7 +96,7 @@ or `id:"decoder"`; project.snapshot exposes the nodes for parameter edits.
 application operation, and returns success/error/diagnostics. `inspect` reads
 semantic UI tree without a graph copy. `capture` synchronizes layout and frame
 before saving screenshot; optional arrange=true uses vertical arrangement and
-whole-content framing, not Input-focused Fit. Nonblocking Linux AF_UNIX, bounded newline-delimited
+whole-content framing, not Input-focused Fit. Nonblocking Linux/macOS AF_UNIX, bounded newline-delimited
 JSON, private same-user permissions and exact commands follow automation.md.
 Backend training operations are outside this client milestone.
 
