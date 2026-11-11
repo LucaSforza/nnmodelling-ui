@@ -6,6 +6,10 @@ Activation atomically updates an unambiguous root Input binding; multiple root
 Inputs reject automatic single-slot activation. Existing inactive projects remain
 readable. See resource-authoring.md for full interaction contract.
 
+Dataset deletion stages its confined directory, saves the project without its
+reference, and removes the staged files. Deleting the active dataset clears the
+active identity; graph bindings remain. Failure before save restores state.
+
 Single-slot binding is read-only in Qt. C synchronizes an unambiguous root Input
 on open, activation and active metadata edits; metadata/binding save and rollback
 are one transaction. A stale binding repaired on open marks the project dirty.
@@ -36,6 +40,7 @@ manifest v2, project-owned resource paths and exact package activation.
         +selectDataset(identity) Result
         +datasetDefinition(identity) OwnedJSON
         +updateDataset(identity,definition) Result
+        +deleteDataset(identity) Result
         +operationsJson() OwnedJSON
         +setOperations(json) Result
       }

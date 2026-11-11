@@ -291,5 +291,5 @@ resource-authoring.md. Exact dataset identity is stable while a shared prefilled
 form edits metadata/tensor slots. C validates, persists and refreshes analysis;
 Qt only owns form/selection state. Shape fields accept comma-separated
 dimensions; `B` means batch dimension. Explain `B,4` as four features per
-example and `B,1` as one scalar per example beside the field. No dataset
-deletion or Python/data editor.
+example and `B,1` as one scalar per example beside the field. Dataset deletion
+follows resource-authoring.md. No Python/data editor.

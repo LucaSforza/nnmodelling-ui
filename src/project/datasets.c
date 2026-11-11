@@ -498,6 +498,69 @@ void nn_project_dataset_dispose(NNDataset *dataset)
     free(dataset->inputs); free(dataset->targets);
 }
 
+static bool paths_overlap(const char *a, const char *b)
+{
+    size_t na = strlen(a), nb = strlen(b);
+    return (!strncmp(a, b, na) && (nb == na || b[na] == '/')) ||
+           (!strncmp(a, b, nb) && (na == nb || a[nb] == '/'));
+}
+
+bool nn_project_delete_dataset(NNProject *project, const char *id, const char *version,
+                               char *error, size_t capacity)
+{
+    if (error && capacity) error[0] = '\0';
+    if (!project || !id || !version) return nn_fail(error, capacity, "invalid dataset identity");
+    size_t index = 0;
+    while (index < project->dataset_count &&
+           (strcmp(project->datasets[index].id, id) || strcmp(project->datasets[index].version, version))) ++index;
+    if (index == project->dataset_count) return nn_fail(error, capacity, "dataset identity is not declared");
+    NNDataset removed = project->datasets[index];
+    if (strncmp(removed.path, "datasets/", 9) || !removed.path[9])
+        return nn_fail(error, capacity, "dataset directory must be inside datasets/");
+    for (size_t i = 0; i < project->dataset_count; ++i)
+        if (i != index && paths_overlap(removed.path, project->datasets[i].path))
+            return nn_fail(error, capacity, "dataset directory overlaps another resource");
+    for (size_t i = 0; i < project->package_count; ++i)
+        if (paths_overlap(removed.path, project->packages[i].path))
+            return nn_fail(error, capacity, "dataset directory overlaps another resource");
+    char *directory = nn_project_safe_resource_dir(project->directory, removed.path, error, capacity);
+    char *stage = directory ? nn_path_join(project->directory, ".nn-dataset-delete-XXXXXX") : NULL;
+    if (!stage || !mkdtemp(stage)) {
+        if (directory) nn_errorf(error, capacity, "cannot stage dataset deletion: %s", strerror(errno));
+        free(directory); free(stage); return false;
+    }
+    char *staged = nn_path_join(stage, "dataset");
+    if (!staged || rename(directory, staged)) {
+        nn_errorf(error, capacity, "cannot stage dataset deletion: %s", strerror(errno));
+        rmdir(stage); free(directory); free(stage); free(staged); return false;
+    }
+    const bool active = project->active_dataset_id && project->active_dataset_version &&
+        !strcmp(project->active_dataset_id, id) && !strcmp(project->active_dataset_version, version);
+    char *old_id = project->active_dataset_id, *old_version = project->active_dataset_version;
+    bool dirty = project->dirty;
+    if (active) { project->active_dataset_id = NULL; project->active_dataset_version = NULL; }
+    memmove(&project->datasets[index], &project->datasets[index + 1],
+            (project->dataset_count - index - 1) * sizeof(removed));
+    --project->dataset_count;
+    if (!nn_project_save(project, error, capacity)) {
+        memmove(&project->datasets[index + 1], &project->datasets[index],
+                (project->dataset_count - index) * sizeof(removed));
+        project->datasets[index] = removed; ++project->dataset_count;
+        project->active_dataset_id = old_id; project->active_dataset_version = old_version;
+        project->dirty = dirty;
+        if (rename(staged, directory))
+            nn_errorf(error, capacity, "dataset deletion failed; files retained for recovery at %s", staged);
+        else rmdir(stage);
+        free(directory); free(stage); free(staged); return false;
+    }
+    if (active) { free(old_id); free(old_version); }
+    nn_project_dataset_dispose(&removed);
+    nn_project_remove_tree(staged);
+    if (rmdir(stage)) nn_errorf(error, capacity, "Dataset removed from project; remaining files are at %s", stage);
+    free(directory); free(stage); free(staged);
+    return true;
+}
+
 bool nn_project_select_dataset(NNProject *project, const char *id, const char *version,
                                char *error, size_t capacity)
 {

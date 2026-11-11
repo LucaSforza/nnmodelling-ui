@@ -1,5 +1,17 @@
 # Resource authoring, presentation and VAE
 
+## Dataset deletion
+
+The manager offers Delete for the selected dataset, with confirmation identifying
+the dataset, permanent removal of its project files, and saving current edits.
+Deletion of the active dataset clears the active selection; existing graph bindings
+remain and diagnostics apply until another dataset is activated. Project C checks
+that the dataset directory is confined under datasets and does not overlap any
+other declared dataset or package. It stages the directory by rename, removes the
+reference and saves the project atomically; save failure restores directory and
+in-memory state. Success invalidates analysis and creates a saved history barrier.
+If staged files cannot be fully removed after save, report their recovery path.
+
 ## Dataset import and explicit activation (accepted 2026-11-01)
 
 The dataset manager imports a user-selected local dataset directory into the
@@ -120,8 +132,8 @@ files, candidate references/catalog/datasets against current graph, validates,
 atomically saves candidate model.json, then publishes. Failure keeps graph,
 resources, dirty flag and previous model.json, removing only transaction-created
 files. Success saves all current edits and clears dirty. UI labels Create as
-saving the project. Dataset metadata and stereotype Lua editing are accepted below; other stereotype
-editing and resource deletion remain deferred.
+saving the project. Dataset metadata, deletion and stereotype Lua editing are accepted below; other stereotype
+editing and stereotype deletion remain deferred.
 
 ## Subflow inference
 
@@ -170,7 +182,7 @@ Existing checkpoints and wheels retain old loss semantics and must be retrained
 to obtain outputs from this objective.
 
 Accepted: above behavior and CLI integration per automation contract. Deferred:
-other stereotype editing/resource deletion, object values and training. Typed output/subflow
+other stereotype editing/deletion, object values and training. Typed output/subflow
 authoring follows typed-outputs.md.
 
 Accepted 2026-10-04: Horizontal Repeat uses validated object-valued stereotype

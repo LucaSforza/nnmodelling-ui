@@ -28,6 +28,8 @@ bool nn_app_create_dataset(NNApplication *app, const char *id, const char *versi
                            char *error, size_t cap);
 bool nn_app_select_dataset(NNApplication *app, const char *id, const char *version,
                            char *error, size_t cap);
+bool nn_app_delete_dataset(NNApplication *app, const char *id, const char *version,
+                           char *error, size_t cap);
 bool nn_app_import_dataset(NNApplication *app, const char *source_dir,
                            const char *manifest_json, const char *definition_json,
                            char *error, size_t cap);

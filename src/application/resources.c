@@ -228,6 +228,18 @@ bool nn_app_update_stereotype_source(NNApplication *app, const char *id,
     return okay;
 }
 
+bool nn_app_delete_dataset(NNApplication *app, const char *id, const char *version,
+                           char *error, size_t cap)
+{
+    nn_error_set(error, cap, "");
+    if (!app || !app->project) return nn_fail(error, cap, "no active project");
+    if (app->history.group_active) return nn_fail(error, cap, "cannot delete a dataset during an edit group");
+    if (!nn_project_delete_dataset(app->project, id, version, error, cap)) return false;
+    nn_app_history_barrier(app, true);
+    nn_app_invalidate_analysis(app);
+    return true;
+}
+
 bool nn_app_select_dataset(NNApplication *app, const char *id, const char *version,
                            char *error, size_t cap)
 {

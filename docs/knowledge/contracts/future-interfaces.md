@@ -25,7 +25,8 @@ Natural: screenshot reflects completed layout, including requested arrange.
 
 Node creation, connection, parameter editing, layout, project lifecycle,
 screenshot and resource creation are supported. Authoring uses the accepted
-[resource transaction](resource-authoring.md). Resource deletion remains deferred.
+[resource transaction](resource-authoring.md). Dataset deletion is available in
+the Qt manager; resource deletion through the local CLI remains deferred.
 Project-level inference operation authoring uses the C application API and Qt
 Operations manager. Training, monitoring and wheel download use HTTP backend,
 not local CLI protocol.

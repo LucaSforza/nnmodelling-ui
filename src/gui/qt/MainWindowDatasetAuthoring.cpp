@@ -108,6 +108,8 @@ void MainWindow::manageDatasets() {
     editButton->setObjectName(QStringLiteral("datasetManagerEdit"));
     auto *selectButton = new QPushButton(tr("Activate"), &dialog);
     selectButton->setObjectName(QStringLiteral("datasetManagerActivate"));
+    auto *deleteButton = new QPushButton(tr("Delete…"), &dialog);
+    deleteButton->setObjectName(QStringLiteral("datasetManagerDelete"));
     auto *activeLabel = new QLabel(&dialog);
     activeLabel->setObjectName(QStringLiteral("datasetManagerActive"));
     layout->addWidget(activeLabel);
@@ -116,11 +118,12 @@ void MainWindow::manageDatasets() {
     actions->addWidget(importButton);
     actions->addWidget(editButton);
     actions->addWidget(selectButton);
+    actions->addWidget(deleteButton);
     actions->addStretch();
     actions->addWidget(closeButton);
     layout->addLayout(actions);
 
-    auto refreshList = [this, list, editButton, selectButton, activeLabel](const QString &preferredIdentity) {
+    auto refreshList = [this, list, editButton, selectButton, deleteButton, activeLabel](const QString &preferredIdentity) {
         list->clear();
         const NNProject *project = nn_app_project(application_.get());
         const NNDataset *active = project ? nn_project_active_dataset(project) : nullptr;
@@ -145,11 +148,13 @@ void MainWindow::manageDatasets() {
         }
         editButton->setEnabled(list->currentItem() != nullptr);
         selectButton->setEnabled(list->currentItem() != nullptr);
+        deleteButton->setEnabled(list->currentItem() != nullptr);
     };
-    auto updateButtons = [list, editButton, selectButton] {
+    auto updateButtons = [list, editButton, selectButton, deleteButton] {
         const auto *item = list->currentItem();
         editButton->setEnabled(item != nullptr);
         selectButton->setEnabled(item != nullptr);
+        deleteButton->setEnabled(item != nullptr);
     };
     QObject::connect(list, &QListWidget::currentItemChanged, &dialog,
                      [updateButtons] { updateButtons(); });
@@ -192,6 +197,29 @@ void MainWindow::manageDatasets() {
         }
         refreshAll();
         refreshList(identity);
+    });
+    QObject::connect(deleteButton, &QPushButton::clicked, &dialog,
+                     [this, list, &dialog, &refreshList] {
+        const auto *item = list->currentItem();
+        if (!item) return;
+        const QByteArray id = item->data(Qt::UserRole).toString().toUtf8();
+        const QByteArray version = item->data(Qt::UserRole + 1).toString().toUtf8();
+        const QString identity = QStringLiteral("%1@%2").arg(QString::fromUtf8(id), QString::fromUtf8(version));
+        const QString activeNotice = item->data(Qt::UserRole + 2).toBool()
+            ? tr(" The active dataset will be cleared.") : QString();
+        if (QMessageBox::question(&dialog, tr("Delete dataset"),
+            tr("Delete %1 and its project files permanently? Current project edits will be saved.%2")
+                .arg(identity, activeNotice), QMessageBox::Yes | QMessageBox::Cancel,
+            QMessageBox::Cancel) != QMessageBox::Yes) return;
+        char error[ErrorCapacity] = {};
+        if (!nn_app_delete_dataset(application_.get(), id.constData(), version.constData(), error, sizeof(error))) {
+            QMessageBox::warning(&dialog, tr("Dataset deletion failed"), QString::fromUtf8(error));
+            return;
+        }
+        refreshAll();
+        refreshList(QString());
+        if (error[0]) QMessageBox::warning(&dialog, tr("Dataset files remain"), QString::fromUtf8(error));
+        statusBar()->showMessage(tr("Dataset deleted; current project saved"), 6000);
     });
     QObject::connect(closeButton, &QPushButton::clicked, &dialog, &QDialog::reject);
     refreshList(QString());

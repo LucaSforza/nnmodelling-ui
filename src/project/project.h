@@ -86,6 +86,8 @@ bool nn_project_import_dataset(NNProject *project, const char *source_dir,
                                bool select, char *error, size_t capacity);
 bool nn_project_select_dataset(NNProject *project, const char *id, const char *version,
                                char *error, size_t capacity);
+bool nn_project_delete_dataset(NNProject *project, const char *id, const char *version,
+                               char *error, size_t capacity);
 /* Returns owned formatted JSON; release with free(). */
 char *nn_project_dataset_definition(const NNProject *project, const char *id,
                                     const char *version, char *error, size_t capacity);

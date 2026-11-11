@@ -656,6 +656,37 @@ int main(void)
     value = nn_app_parameter_text(delete_app, "delete-first", "binding");
     assert(value && !strcmp(value, "image")); nn_app_free_text(value);
     assert(!nn_model_find_node(nn_app_model(delete_app), "delete-second"));
+    assert(nn_app_create_dataset(delete_app, "delete.other", "1.0.0",
+        "{\"name\":\"Other\",\"batch\":{\"inputs\":{\"x\":{\"dtype\":\"float32\",\"shape\":[1]}},\"targets\":{}}}",
+        false, error, sizeof(error)));
+    assert(!nn_app_delete_dataset(delete_app, "missing", "1.0.0", error, sizeof(error)));
+    assert(nn_app_delete_dataset(delete_app, "delete.other", "1.0.0", error, sizeof(error)));
+    assert(nn_project_dataset_count(nn_app_project(delete_app)) == 1);
+    assert(!strcmp(nn_project_active_dataset(nn_app_project(delete_app))->id, "delete.data"));
+    assert(nn_app_create_dataset(delete_app, "delete.other", "1.0.0",
+        "{\"name\":\"Other\",\"batch\":{\"inputs\":{\"x\":{\"dtype\":\"float32\",\"shape\":[1]}},\"targets\":{}}}",
+        false, error, sizeof(error)));
+    char delete_dir[4096], delete_model_path[4096], delete_model_backup[4096], dataset_path[4096];
+    path(delete_dir, sizeof(delete_dir), root, "delete-binding");
+    path(delete_model_path, sizeof(delete_model_path), delete_dir, "model.json");
+    path(delete_model_backup, sizeof(delete_model_backup), delete_dir, "model.backup");
+    path(dataset_path, sizeof(dataset_path), delete_dir, "datasets/delete.data-1.0.0");
+    assert(rename(delete_model_path, delete_model_backup) == 0 && mkdir(delete_model_path, 0755) == 0);
+    assert(!nn_app_delete_dataset(delete_app, "delete.data", "1.0.0", error, sizeof(error)));
+    assert(nn_project_dataset_count(nn_app_project(delete_app)) == 2);
+    assert(nn_project_active_dataset(nn_app_project(delete_app)) && access(dataset_path, F_OK) == 0);
+    assert(rmdir(delete_model_path) == 0 && rename(delete_model_backup, delete_model_path) == 0);
+    assert(nn_app_delete_dataset(delete_app, "delete.data", "1.0.0", error, sizeof(error)));
+    assert(!error[0] && access(dataset_path, F_OK) != 0);
+    assert(nn_project_dataset_count(nn_app_project(delete_app)) == 1);
+    assert(!nn_project_active_dataset(nn_app_project(delete_app)));
+    value = nn_app_parameter_text(delete_app, "delete-first", "binding");
+    assert(value && !strcmp(value, "image")); nn_app_free_text(value);
+    NNApplication *reopened_delete = nn_app_new("stereotype-packages/core");
+    assert(reopened_delete && nn_app_open(reopened_delete, delete_dir, error, sizeof(error)));
+    assert(nn_project_dataset_count(nn_app_project(reopened_delete)) == 1);
+    assert(!nn_project_active_dataset(nn_app_project(reopened_delete)));
+    nn_app_free(reopened_delete);
     nn_app_free(delete_app);
 
     nn_app_free(app); remove_tree(root);

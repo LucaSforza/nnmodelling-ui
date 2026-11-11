@@ -1747,6 +1747,31 @@ void WindowTest::datasetManagerEditFormAndRetainedValidation() {
     QVERIFY(nn_project_active_dataset(nn_app_project(app)));
     QCOMPARE(QString::fromUtf8(nn_project_active_dataset(nn_app_project(app))->id),
              QStringLiteral("manager.data"));
+    QTimer::singleShot(0, &window, [&window, &app] {
+        auto *manager = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+        auto *list = manager->findChild<QListWidget *>("datasetManagerList");
+        auto *remove = manager->findChild<QPushButton *>("datasetManagerDelete");
+        QVERIFY(list && remove && !remove->isEnabled());
+        list->setCurrentRow(0);
+        QVERIFY(remove->isEnabled());
+        QTimer::singleShot(0, manager, [] {
+            auto *confirmation = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+            QVERIFY(confirmation);
+            confirmation->button(QMessageBox::Cancel)->click();
+        });
+        remove->click();
+        QCOMPARE(list->count(), 2);
+        QTimer::singleShot(0, manager, [] {
+            auto *confirmation = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+            QVERIFY(confirmation);
+            confirmation->button(QMessageBox::Yes)->click();
+        });
+        remove->click();
+        QCOMPARE(list->count(), 1);
+        QVERIFY(!nn_project_active_dataset(nn_app_project(app)));
+        manager->reject();
+    });
+    manage->click();
 }
 
 void WindowTest::datasetImportFromEmptyDirectory() {
