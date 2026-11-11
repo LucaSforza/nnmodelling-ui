@@ -1,5 +1,26 @@
 # UI/resources/VAE/local CLI QA — 2026-09-30
 
+## Collapsible model problems — 2026-11-11
+
+`CCACHE_DISABLE=1 just test` passed 16/16 and `just test-ui` passed 8/8
+outside the sandbox with local sockets. `just mermaid-check` passed 46 diagrams.
+Qt tests cover selection-dependent Add, four-column diagnostics, ordering,
+navigation, global severity counts, scope filtering and column geometry at
+1280×800 and 900×560; CLI introspection and dataset-manager tests pass.
+
+The principal rebuilt and launched the Qt client in a fresh 1600×1000 noVNC
+session without automation, created a disposable MNIST MLP project through the
+chooser, and inspected the graph before and after Fit. Add was disabled without
+a selection and enabled after selecting a package. Removing a node produced eight
+warnings on the closed tab; opening it showed four readable columns. Selecting
+the problem focused its node, Undo restored the model and cleared the counts,
+and Dataset > Manage datasets opened the manager. The project, browser and
+bridge were closed. An earlier visual pass exposed a too-wide Category column;
+the corrected build passed both automated geometry checks and the repeated
+visual trial. Screenshots were inspected in computer use but not saved to disk.
+This focused trial did not repeat every project-lifecycle and failure-injection
+case in qa.md; no native desktop trial is claimed.
+
 ## Environment
 
 Linux; GCC 16.2.1, Qt Widgets/Test 6.11.2. Desktop session is Wayland,
