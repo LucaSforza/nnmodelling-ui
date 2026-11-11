@@ -69,6 +69,8 @@ Allocation/report-construction failure cannot publish partial successful tensors
 Place a persistent Model Problems tab below the canvas, initially collapsed;
 clicking it toggles a vertically resizable problem panel. The closed tab stays
 visible and updates for the whole project, independent of the scope filter.
+Its background, text, arrow and hover/pressed states have explicit readable
+contrast under both light and dark desktop palettes, including KDE dark themes.
 Show nonzero counts with distinct error, warning and internal-failure icons;
 show no counts or icons when there are no problems. Count each reported problem
 once, including blocked descendants and the root boundary problem, but never
