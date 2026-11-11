@@ -178,7 +178,11 @@ void MainWindow::updateAddNodeButton() {
     if (!addNodeButton_) return;
     bool valid = false;
     const auto *tree = qobject_cast<QTreeWidget *>(paletteTree_);
-    const QTreeWidgetItem *item = tree ? tree->currentItem() : nullptr;
+    const QList<QTreeWidgetItem *> selected = tree ? tree->selectedItems()
+                                                    : QList<QTreeWidgetItem *>{};
+    const QTreeWidgetItem *item = selected.size() == 1 ? selected.first() : nullptr;
+    selectedPaletteId_ = item && item->childCount() == 0
+        ? item->data(0, IdRole).toString() : QString();
     const NNProject *project = nn_app_project(application_.get());
     const NNCatalog *catalog = project ? nn_project_catalog(project) : nullptr;
     if (item && item->childCount() == 0 && catalog && !selectedPaletteId_.isEmpty()) {

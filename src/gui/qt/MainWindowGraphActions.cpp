@@ -20,14 +20,21 @@
 using namespace MainWindowUtils;
 
 void MainWindow::addSelectedPackage() {
-    if (!nn_app_project(application_.get()) || selectedPaletteId_.isEmpty()) return;
+    const NNProject *project = nn_app_project(application_.get());
+    if (!project || selectedPaletteId_.isEmpty()) return;
     auto *tree = qobject_cast<QTreeWidget *>(paletteTree_);
-    QTreeWidgetItem *item = tree ? tree->currentItem() : nullptr;
-    if (!item || item->childCount() != 0) return;
+    const QList<QTreeWidgetItem *> selected = tree ? tree->selectedItems()
+                                                    : QList<QTreeWidgetItem *>{};
+    if (selected.size() != 1) return;
+    const QTreeWidgetItem *item = selected.first();
+    if (item->childCount() != 0) return;
     const QString packageId = item->data(0, IdRole).toString();
     const QString version = item->data(0, PackageVersionRole).toString();
+    if (packageId != selectedPaletteId_ || version.isEmpty()) return;
     const QByteArray id = packageId.toUtf8();
     const QByteArray versionBytes = version.toUtf8();
+    const NNCatalog *catalog = nn_project_catalog(project);
+    if (!catalog || !nn_catalog_find(catalog, id.constData(), versionBytes.constData())) return;
     const QByteArray scope = scene_->scope().toUtf8();
     const QString nodeId = QStringLiteral("node-%1").arg(
         QUuid::createUuid().toString(QUuid::WithoutBraces));

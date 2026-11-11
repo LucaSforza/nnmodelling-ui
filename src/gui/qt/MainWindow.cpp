@@ -99,12 +99,13 @@ public:
         const auto *tree = qobject_cast<const QTreeView *>(parent());
         int depth = 0;
         for (QModelIndex parentIndex = index.parent(); parentIndex.isValid(); parentIndex = parentIndex.parent()) ++depth;
-        int width = option.rect.width();
-        if (width <= 0 && tree) width = tree->viewport()->width();
-        if (tree) width -= (depth + 1) * tree->indentation();
+        int width = tree ? tree->columnWidth(index.column()) : option.rect.width();
+        if (option.rect.width() > 0) width = qMin(width, option.rect.width());
+        if (tree && index.column() == 0) width -= (depth + 1) * tree->indentation();
         width = qMax(48, width - 24);
         const QRect textBounds = QFontMetrics(itemOption.font).boundingRect(QRect(0, 0, width, 10000), Qt::TextWordWrap, itemOption.text);
-        return QSize(width, qMax(28, textBounds.height() + 10));
+        return QSize(tree ? tree->columnWidth(index.column()) : width,
+                     qMax(28, textBounds.height() + 10));
     }
 };
 }
@@ -399,6 +400,7 @@ void MainWindow::buildUi() {
     paletteTree->setHeaderHidden(true);
     paletteTree->setObjectName(QStringLiteral("palette"));
     paletteTree->setIndentation(13);
+    paletteTree->setSelectionMode(QAbstractItemView::SingleSelection);
     leftLayout->addWidget(paletteTree, 1);
     auto *addButton = new QPushButton(tr("Add to graph"), left);
     addButton->setObjectName(QStringLiteral("addNodeButton"));
@@ -446,10 +448,14 @@ void MainWindow::buildUi() {
     diagnostics_->setObjectName(QStringLiteral("diagnostics"));
     diagnostics_->setColumnCount(4);
     diagnostics_->setHeaderLabels({tr("Category"), tr("Node"), tr("Scope"), tr("Reason")});
-    diagnostics_->header()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
-    diagnostics_->header()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
-    diagnostics_->header()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
+    diagnostics_->header()->setSectionResizeMode(0, QHeaderView::Interactive);
+    diagnostics_->header()->setSectionResizeMode(1, QHeaderView::Interactive);
+    diagnostics_->header()->setSectionResizeMode(2, QHeaderView::Interactive);
     diagnostics_->header()->setSectionResizeMode(3, QHeaderView::Stretch);
+    diagnostics_->setColumnWidth(0, 90);
+    diagnostics_->setColumnWidth(1, 60);
+    diagnostics_->setColumnWidth(2, 60);
+    diagnostics_->setColumnWidth(3, 120);
     diagnostics_->setItemDelegate(new WrappedTreeDelegate(diagnostics_));
     diagnostics_->setWordWrap(true);
     diagnostics_->setTextElideMode(Qt::ElideNone);
@@ -563,9 +569,11 @@ void MainWindow::buildUi() {
     connect(currentScopeProblems_, &QCheckBox::toggled, this, [this] { refreshDiagnostics(); });
     connect(paletteSearch_, &QLineEdit::textChanged, this, [this] { refreshPalette(); });
     connect(paletteTree, &QTreeWidget::currentItemChanged, this,
-            [this](QTreeWidgetItem *current) {
-        selectedPaletteId_ = current && current->childCount() == 0
-            ? current->data(0, IdRole).toString() : QString();
+            [this](QTreeWidgetItem *) {
+        updateAddNodeButton();
+        updateDescriptions();
+    });
+    connect(paletteTree, &QTreeWidget::itemSelectionChanged, this, [this] {
         updateAddNodeButton();
         updateDescriptions();
     });
@@ -608,7 +616,10 @@ void MainWindow::updateDescriptions() {
     const NNProject *project = nn_app_project(application_.get());
     const NNCatalog *catalog = project ? nn_project_catalog(project) : nullptr;
     auto *palette = qobject_cast<QTreeWidget *>(paletteTree_);
-    const QTreeWidgetItem *selectedPackage = palette ? palette->currentItem() : nullptr;
+    const QList<QTreeWidgetItem *> selectedPaletteItems = palette ? palette->selectedItems()
+                                                                   : QList<QTreeWidgetItem *>{};
+    const QTreeWidgetItem *selectedPackage = selectedPaletteItems.size() == 1
+        ? selectedPaletteItems.first() : nullptr;
     const NNPackage *package = nullptr;
     if (catalog && selectedPackage && selectedPackage->childCount() == 0) {
         const QByteArray id = selectedPackage->data(0, IdRole).toString().toUtf8();
