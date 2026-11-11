@@ -1,0 +1,70 @@
+{
+  "nodes": [
+    {
+      "id": "output",
+      "type": "custom",
+      "position": {
+        "x": 1740,
+        "y": 320
+      },
+      "data": {
+        "name": "digit logits",
+        "scope": "",
+        "package": {
+          "id": "core.output",
+          "version": "0.1.0"
+        },
+        "params": {}
+      }
+    },
+    {
+      "id": "loss-output",
+      "type": "custom",
+      "position": {
+        "x": 1500,
+        "y": 320
+      },
+      "data": {
+        "name": "Classifier objective",
+        "scope": "",
+        "package": {
+          "id": "core.loss-output",
+          "version": "0.1.0"
+        },
+        "params": {}
+      }
+    }
+  ],
+  "edges": [],
+  "layoutDirection": "horizontal",
+  "manifest": {
+    "schemaVersion": 2,
+    "id": "test",
+    "version": "0.1.0",
+    "name": "MNIST MLP",
+    "description": "Editable MNIST classifier design with digit logits and scalar cross-entropy loss",
+    "customPackages": [],
+    "customDatasets": [
+      {
+        "id": "mnist",
+        "version": "0.1.0",
+        "path": "datasets/mnist"
+      },
+      {
+        "id": "mnist-full",
+        "version": "0.1.0",
+        "path": "datasets/mnist-full"
+      },
+      {
+        "id": "llm.tokens",
+        "version": "1.0.0",
+        "path": "datasets/llm.tokens-1.0.0"
+      }
+    ],
+    "operations": [],
+    "activeDataset": {
+      "id": "mnist-full",
+      "version": "0.1.0"
+    }
+  }
+}

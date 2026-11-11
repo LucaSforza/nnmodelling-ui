@@ -1,0 +1,15 @@
+{
+  "entrypoints": {
+    "definition": "dataset.json",
+    "python": {
+      "file": "dataset.py",
+      "language": "python"
+    }
+  },
+  "id": "llm.tokens",
+  "inferenceAssets": [
+    "datasets/llm.tokens-1.0.0/vocabulary.json"
+  ],
+  "schemaVersion": 1,
+  "version": "1.0.0"
+}
