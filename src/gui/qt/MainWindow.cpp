@@ -279,8 +279,6 @@ void MainWindow::buildUi() {
 
     auto *modelMenu = addMenu(tr("&Model"));
     addAction(modelMenu, tr("Create stereotype…"), {}, [this] { createStereotype(); });
-    addAction(modelMenu, tr("Create dataset…"), {}, [this] { createDataset(); });
-    addAction(modelMenu, tr("Manage datasets…"), {}, [this] { manageDatasets(); }, "manageDatasetsAction");
     addAction(modelMenu, tr("Manage operations…"), {}, [this] { manageOperations(); }, "manageOperationsAction");
     addAction(modelMenu, tr("Manage metavariables…"), {}, [this] { manageMetavariables(); }, "manageMetavariablesAction");
     addAction(modelMenu, tr("Parameter counts…"), {}, [this] { showParameterCounts(); },
@@ -290,6 +288,10 @@ void MainWindow::buildUi() {
             [this](const QString &directory) { return openProject(directory); }, this, backendService_);
         dialog.exec();
     }, "backendPanelAction");
+
+    auto *datasetMenu = addMenu(tr("&Dataset"));
+    addAction(datasetMenu, tr("Create dataset…"), {}, [this] { createDataset(); });
+    addAction(datasetMenu, tr("Manage datasets…"), {}, [this] { manageDatasets(); }, "manageDatasetsAction");
 
     auto *viewMenu = addMenu(tr("&View"));
     QAction *fitGraphAction = addAction(viewMenu, tr("Fit graph"), QKeySequence(QStringLiteral("Ctrl+F")), [this] {

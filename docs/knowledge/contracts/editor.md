@@ -176,8 +176,10 @@ current item highlighted, and refreshed labels/membership after rename/add/remov
 Imported orphan scopes remain explicitly accessible; malformed/cyclic containment must
 not hang tree building.
 
-Application actions use File, Model and View QMenuBar/QMenu/QAction menus with
-standard shortcuts. File includes template submenu; Save As remains omitted
+Application actions use File, Edit, Model, Dataset and View QMenuBar/QMenu/QAction
+menus with standard shortcuts. Dataset contains Create dataset and Manage datasets;
+their existing behavior and resource-panel shortcuts remain unchanged. File includes
+template submenu; Save As remains omitted
 until supported. Visible graph controls show Ctrl++ for Zoom In, Ctrl+- for
 Zoom Out, Ctrl+F for Fit, arrow keys for panning, Ctrl+Shift+V for vertical
 Arrange and Ctrl+Shift+H for horizontal Arrange. Arrow keys pan while the graph

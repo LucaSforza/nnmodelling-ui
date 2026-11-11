@@ -614,9 +614,16 @@ void WindowTest::scopeTreeFollowsContainmentAndMenus() {
     const QStringList menuNames = {window.menuBar()->actions()[0]->text(),
                                    window.menuBar()->actions()[1]->text(),
                                    window.menuBar()->actions()[2]->text(),
-                                   window.menuBar()->actions()[3]->text()};
+                                   window.menuBar()->actions()[3]->text(),
+                                   window.menuBar()->actions()[4]->text()};
     QCOMPARE(menuNames, QStringList({QStringLiteral("&File"), QStringLiteral("&Edit"), QStringLiteral("&Model"),
-                                     QStringLiteral("&View")}));
+                                     QStringLiteral("&Dataset"), QStringLiteral("&View")}));
+    QMenu *modelMenu = window.menuBar()->actions()[2]->menu();
+    QMenu *datasetMenu = window.menuBar()->actions()[3]->menu();
+    QStringList datasetActions;
+    for (QAction *action : datasetMenu->actions()) datasetActions << action->text();
+    QCOMPARE(datasetActions, QStringList({QStringLiteral("Create dataset…"), QStringLiteral("Manage datasets…")}));
+    for (QAction *action : modelMenu->actions()) QVERIFY(!datasetActions.contains(action->text()));
     QMenu *templates = window.findChild<QMenu *>("projectTemplatesMenu");
     QVERIFY(templates && templates->actions().size() == 3);
     QAction *open = window.findChild<QAction *>("openProjectAction");

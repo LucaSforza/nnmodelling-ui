@@ -73,13 +73,11 @@ Closing the main window with unsaved edits also offers `Save`, `Discard` or `Can
 
 `Edit` contains `Undo` (`Ctrl+Z`) and `Redo` (`Ctrl+Y` on the observed platform). Each item is enabled only when the project history has an action to undo or redo. Undo and redo refresh the canvas, selection, Inspector and problems. Saving and history are separate: the title loses its asterisk when the project returns to the saved revision.
 
-`Model` contains `Create stereotype…`, `Create dataset…`, `Manage datasets…` and `Training backend…`. The first three require a project; without one, the client suggests opening one. `Training backend…` opens the panel even without a project, so you can check the service and inspect jobs.
+`Model` contains `Create stereotype…`, `Manage operations…`, `Manage metavariables…`, `Parameter counts…` and `Training backend…`. `Dataset` contains `Create dataset…` and `Manage datasets…`. Authoring and management actions require a project; without one, the client suggests opening one. `Training backend…` opens the panel even without a project, so you can check the service and inspect jobs.
 
 `View` contains `Fit graph` (`Ctrl+0`), `Zoom in` (`Ctrl++` on the observed platform), `Zoom out` (`Ctrl+-`) and `Arrange > Vertical/Horizontal`. `Fit graph` frames the current scope and its connections without moving nodes. Wheel zoom is centered on the pointer; menu and toolbar zoom scales around the canvas center. The mouse wheel zooms in or out. The middle mouse button, or holding `Space` while dragging with the left button, pans the canvas. `Escape` cancels a pending connection or drag. Zoom shortcuts can vary by platform and keyboard layout.
 
 ![Undo and Redo history](../assets/menu-edit.png)
-
-![Model menu](../assets/menu-model.png)
 
 ![View menu](../assets/menu-view.png)
 

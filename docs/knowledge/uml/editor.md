@@ -119,7 +119,8 @@ hover text and route caches. OrthogonalRouter computes explicit polylines from i
 rectangles/port positions and existing tracks; EdgeItem paints them. All affected
 routes update when any obstacle moves. Scope QTreeWidget reflects real containment.
 C history restores model snapshots; Edit Undo/Redo refreshes Qt without Qt history.
-QMenuBar owns File/Edit/Model/View actions; compact toolbar owns graph controls.
+QMenuBar owns File/Edit/Model/Dataset/View actions; Dataset owns creation and
+management actions. Compact toolbar owns graph controls.
 GraphScene paints the 20-unit grid; GraphView exposes centered Zoom In/Out. NodeItem
 drag previews snap to that grid; NNModel remains final coordinate normalizer.
 NodeItem selects junction-bar presentation by resolved kind=join. GraphScene

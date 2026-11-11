@@ -37,13 +37,11 @@ Anche chiudendo la finestra principale con modifiche non salvate compare la scel
 
 `Edit` contiene `Undo` (`Ctrl+Z`) e `Redo` (`Ctrl+Y` sulla piattaforma osservata). Le voci sono abilitate solo quando la cronologia del progetto ha rispettivamente un'azione annullabile o ripristinabile. Annullare/ripristinare aggiorna canvas, selezione, inspector e problemi. Salvataggio e cronologia sono distinti: il titolo perde l'asterisco quando lo stato torna alla revisione salvata.
 
-`Model` contiene `Create stereotype…`, `Create dataset…`, `Manage datasets…`, `Manage operations…`, `Parameter counts…` e `Training backend…`. Le azioni di authoring e gestione richiedono un progetto: senza progetto il client mostra il suggerimento di aprirne uno. `Training backend…` apre il pannello anche senza progetto, per controllare il servizio e consultare i job.
+`Model` contiene `Create stereotype…`, `Manage operations…`, `Manage metavariables…`, `Parameter counts…` e `Training backend…`. `Dataset` contiene `Create dataset…` e `Manage datasets…`. Le azioni di authoring e gestione richiedono un progetto: senza progetto il client mostra il suggerimento di aprirne uno. `Training backend…` apre il pannello anche senza progetto, per controllare il servizio e consultare i job.
 
 `View` contiene `Fit graph` (`Ctrl+0`), `Zoom in` (`Ctrl++` sulla piattaforma osservata), `Zoom out` (`Ctrl+-`) e `Arrange > Vertical/Horizontal`. `Fit graph` inquadra l'ambito corrente e le sue connessioni senza spostare i nodi. Zoom usa il puntatore quando si usa la rotella; i comandi da menu e toolbar scalano intorno al centro del canvas. La rotella del mouse ingrandisce/riduce. Il tasto centrale, oppure `Space` tenuto premuto insieme al tasto sinistro, trascina il canvas. `Escape` annulla un collegamento in preparazione o un trascinamento. Le scorciatoie di zoom possono variare con la piattaforma e il layout della tastiera.
 
 ![Cronologia Undo e Redo](assets/menu-edit.png)
-
-![Menu Model](assets/menu-model.png)
 
 ![Menu View](assets/menu-view.png)
 
