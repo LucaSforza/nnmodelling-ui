@@ -133,6 +133,7 @@ MainWindow::MainWindow(NNApplication *application, QWidget *parent)
     palette.setColor(QPalette::Disabled, QPalette::ButtonText, QColor("#657181"));
     buildUi();
     setPalette(palette);
+    if (problemsToggle_) problemsToggle_->setPalette(palette);
     refreshAll();
 }
 
@@ -217,6 +218,12 @@ void MainWindow::buildUi() {
         "QLabel { color: #263446; }"
         "QMenuBar, QToolBar { color: #edf1f6; }"
         "QToolBar QLabel { color: #edf1f6; }"
+        "QToolButton#problemsToggle { background: #dfe5eb; color: #202c3b; border: 1px solid #9aa8b8; border-radius: 3px; padding: 5px 8px; text-align: left; }"
+        "QToolButton#problemsToggle:hover { background: #cbd7e3; color: #202c3b; border-color: #76899e; }"
+        "QToolButton#problemsToggle:checked { background: #ffffff; color: #202c3b; border-color: #3978c5; }"
+        "QToolButton#problemsToggle:checked:hover { background: #eef4fa; color: #202c3b; border-color: #3978c5; }"
+        "QToolButton#problemsToggle:pressed { background: #b8c8d8; color: #202c3b; border-color: #657b91; }"
+        "QToolButton#problemsToggle:checked:pressed { background: #d7e4f1; color: #202c3b; border-color: #3978c5; }"
         "QMenuBar::item { color: #edf1f6; }"
         "QMenu { background: #ffffff; color: #202c3b; border: 1px solid #9aa8b8; }"
         "QMenu::item:selected { background: #3978c5; color: #ffffff; }"

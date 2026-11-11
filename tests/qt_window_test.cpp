@@ -889,15 +889,15 @@ static qreal contrastRatio(const QColor &foreground, const QColor &background) {
     return (qMax(a, b) + 0.05) / (qMin(a, b) + 0.05);
 }
 
-static DialogRenderEvidence inspectDialog(QDialog *dialog, QWidget *textWidget,
+static DialogRenderEvidence inspectDialog(QWidget *surface, QWidget *textWidget,
                                           const QString &capturePath = {}, const QRect &region = {}) {
-    dialog->ensurePolished();
+    surface->ensurePolished();
     QApplication::processEvents();
-    const QImage image = dialog->grab().toImage().convertToFormat(QImage::Format_ARGB32);
+    const QImage image = surface->grab().toImage().convertToFormat(QImage::Format_ARGB32);
     DialogRenderEvidence evidence;
     if (image.isNull()) return evidence;
 
-    const QPoint textOrigin = textWidget->mapTo(dialog, QPoint(0, 0));
+    const QPoint textOrigin = textWidget->mapTo(surface, QPoint(0, 0));
     const QRect textRect = (region.isNull() ? QRect(textOrigin, textWidget->size())
                                              : region.translated(textOrigin)).intersected(image.rect());
     QMap<QRgb, int> cornerColors;
@@ -1110,6 +1110,41 @@ void WindowTest::appDialogsContrastUnderDarkPalette() {
         QVERIFY2(contrastRatio(evidence.foreground, evidence.background) >= 4.5,
                  widgetName);
     };
+    auto *problemsToggle = window.findChild<QToolButton *>("problemsToggle");
+    QVERIFY(problemsToggle);
+    QCOMPARE(problemsToggle->arrowType(), Qt::RightArrow);
+    auto checkToggleRender = [&](const QString &state, QImage *buttonImage) {
+        const auto evidence = inspectDialog(&window, problemsToggle, capturePath(QStringLiteral("problems-toggle-") + state));
+        QVERIFY(evidence.background.isValid());
+        QVERIFY(evidence.textRendered);
+        QVERIFY(evidence.captured);
+        QVERIFY2(contrastRatio(evidence.foreground, evidence.background) >= 4.5,
+                 qPrintable(QStringLiteral("problems toggle %1 text must contrast with its rendered background").arg(state)));
+        *buttonImage = window.grab().toImage().copy(
+            QRect(problemsToggle->mapTo(&window, QPoint(0, 0)), problemsToggle->size()));
+    };
+    QImage collapsedButton;
+    checkToggleRender(QStringLiteral("normal"), &collapsedButton);
+    QTest::mouseMove(problemsToggle, problemsToggle->rect().center());
+    QCoreApplication::processEvents();
+    QImage hoverButton;
+    checkToggleRender(QStringLiteral("hover"), &hoverButton);
+    QVERIFY(!hoverButton.isNull());
+    QTest::mousePress(problemsToggle, Qt::LeftButton, Qt::NoModifier, problemsToggle->rect().center());
+    QCoreApplication::processEvents();
+    QImage pressedButton;
+    checkToggleRender(QStringLiteral("pressed"), &pressedButton);
+    QVERIFY(!pressedButton.isNull());
+    QTest::mouseRelease(problemsToggle, Qt::LeftButton, Qt::NoModifier, problemsToggle->rect().center());
+    QTRY_VERIFY(problemsToggle->isChecked());
+    QCOMPARE(problemsToggle->arrowType(), Qt::DownArrow);
+    QImage expandedButton;
+    checkToggleRender(QStringLiteral("expanded"), &expandedButton);
+    QVERIFY(collapsedButton != expandedButton);
+    problemsToggle->click();
+    QTRY_VERIFY(!problemsToggle->isChecked());
+    QCOMPARE(problemsToggle->arrowType(), Qt::RightArrow);
+
     auto openAuthoringDialog = [&](const QString &actionText, const char *checkBoxName,
                                    const QString &captureName) {
         DialogRenderEvidence labelEvidence, checkBoxEvidence;
