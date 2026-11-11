@@ -54,7 +54,7 @@ bindings use its named input slots.
 ## Graph editor
 
 Main window has toolbar, package palette, contextual component guide, graph
-viewport, node inspector, project resources panel and status/diagnostics.
+viewport, node inspector and collapsible diagnostics below the canvas.
 The selected package guide and selected node Inspector show their definition
 description; core Input, Output, Loss and Loss Output descriptions explain
 dataset binding, model result and objective roles. User can create package-backed
@@ -73,7 +73,7 @@ Inspector controls follow stereotype parameter schema, defaults and choices.
 Selected dataset exposes its named input/target tensor slots to client type
 analysis. Dataset creation explains shape entry inline: comma-separated
 dimensions, `B` for batch, with `B,4` and `B,1` examples. Package and dataset
-panels show project-owned resources and exact identities/dependencies;
+manager shows project-owned datasets and exact identities;
 authoring/deletion require project transaction rules in
 [project UML](../uml/project.md).
 

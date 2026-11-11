@@ -29,8 +29,8 @@ Successful import saves current edits and creates a history barrier. First impor
 is activated; later imports retain the active dataset. Legacy projects with no
 active dataset remain loadable, but UI offers no deactivation action.
 
-Resource-list clicks only select. A clearly labelled Activate action selects an
-exact dataset; the active identity is prominent in both resources and manager.
+Manager-list clicks only select. A clearly labelled Activate action selects an
+exact dataset; the active identity is prominent in the manager.
 If the selected dataset has exactly one input slot and the root graph has exactly
 one Input node, activation updates its binding to that slot. With more than one
 root Input, activation fails visibly without changing dataset or bindings. With
@@ -194,9 +194,8 @@ Accepted 2026-10-05: [backend contract](backend.md) and [backend UML](../uml/bac
 
 ## Dataset management (accepted 2026-10-05)
 
-The Project resources panel exposes `Dataset` alongside the existing `New dataset`
-shortcut. `Dataset` opens a project-local manager listing exact identities and
-active selection, with New dataset, Edit and Select actions. Edit/Select require
+The Dataset menu opens a project-local manager listing exact identities and
+active selection, with New dataset, Edit and Activate actions. Edit/Activate require
 an existing selection; no-project actions report the existing open-project hint.
 The manager refreshes after successful operations; closing it changes nothing.
 

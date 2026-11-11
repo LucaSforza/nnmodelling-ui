@@ -313,7 +313,7 @@ camera, selection, expansion and direction are not restored by undo.
 ```mermaid
   sequenceDiagram
     actor User
-    participant Qt as Project resources / Operations dialog
+    participant Qt as Operations dialog
     participant App as NNApplication
     participant Project as NNProject
     participant Analysis as Lazy shape analysis
@@ -331,7 +331,7 @@ camera, selection, expansion and direction are not restored by undo.
       Project->>Project: atomically replace owned operation metadata
       App->>App: create unsaved graph-history barrier only if metadata changed
       App-->>Qt: committed list
-      Qt->>Qt: refresh Operations group and project title
+      Qt->>Qt: refresh Operations dialog and project title
     else malformed or invalid new endpoint
       Project-->>App: error without metadata change
       App-->>Qt: retain dialog fields and show error

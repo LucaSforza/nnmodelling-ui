@@ -46,9 +46,11 @@ not establish that visible application works.
    button; confirm editor shows only that scope, with no child preview.
 9. Inspector uses definition types, defaults, minimums and choices. Invalid
    value leaves graph unchanged. Dataset authoring explains `B` inline with
-   examples `B,4` and `B,1`. Dataset panel shows MNIST `image` input
-   `[B,1,28,28]` float32 and `target` `[B]` int64. Package panel shows exact
-   identities and dependency links from project scope.
+   examples `B,4` and `B,1`. Dataset manager identifies the active dataset;
+   its editor shows MNIST `image` input `[B,1,28,28]` float32 and `target`
+   `[B]` int64. Project resources panel is absent. Verify Add to graph disabled
+   without a package leaf; diagnostics tab starts closed, shows global severity
+   counts, opens a readable table and retains navigation and scope filtering.
 10. MNIST path must infer `Flatten` to `[B,784]`, hidden layers to `[B,128]`
     and `[B,64]`, final logits to `[B,10]`; show typed result. Break a Linear
     dimension and verify node-specific semantic error; missing Input binding

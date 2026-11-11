@@ -66,16 +66,26 @@ Allocation/report-construction failure cannot publish partial successful tensors
 
 ## Qt presentation
 
-Keep the existing right-hand panel, labelled Model problems. Show whole project
+Place a persistent Model Problems tab below the canvas, initially collapsed;
+clicking it toggles a vertically resizable problem panel. The closed tab stays
+visible and updates for the whole project, independent of the scope filter.
+Show nonzero counts with distinct error, warning and internal-failure icons;
+show no counts or icons when there are no problems. Count each reported problem
+once, including blocked descendants and the root boundary problem, but never
+technical-detail rows. Lua compilation and model errors count as errors;
+incomplete counts as warning; internal failure is distinct. A failed whole
+analysis is one internal failure, not a clean model. Use the existing categories,
+not new diagnostic types. Show whole project
 with optional current-scope filter, readable node names and scope paths. Root
 causes appear first with blocked descendants as collapsed children.
 The scope filter keeps outside-scope root causes needed by visible blocked
 nodes as labelled context, rather than hiding the actual cause/severity.
 Distinct icons, English category labels and colors distinguish Lua compilation errors,
 model errors, Incomplete and internal unavailability (not color alone).
-Use full-width wrapping problem rows within this narrow panel: category and
-node name, scope path, then reason. Avoid two cramped columns that hide the
-node/category or reason behind ellipses; technical details remain expandable.
+Use a horizontally laid out tree table with columns for category, node, scope
+and reason. Preserve category colors, labels, icons, readable wrapping and
+expandable technical details and blocked descendants. Preserve topological root
+ordering and stable tie-breaks; root boundary summary remains last.
 Internal raw messages appear only in expandable technical details, with a
 concise Analysis unavailable summary; never claim no problems when analysis
 failed or incomplete. Success tensors live in inspector/port tooltip instead.

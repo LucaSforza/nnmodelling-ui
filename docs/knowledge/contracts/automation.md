@@ -42,7 +42,9 @@ CLI help lists operations and resource payloads. Payload keys:
    node.parameter {id,key,value:string} uses same text parser as inspector.
 * node.boundary {id,handle} edits nested terminal mapping per typed-outputs.md.
 * edge.connect {id,source,sourceHandle,target,targetHandle}; edge.disconnect {id}.
-* ui.inspect {} returns stable semantic widget IDs/roles/labels and current scope.
+* ui.inspect {} returns semantic widget IDs/roles/labels and current scope.
+  The removed resources panel and its buttons are no longer reported; diagnostics
+  remains discoverable when collapsed, alongside its toggle.
 * ui.scope {id:string} navigates root (empty) or existing scope.
 * ui.arrange {} arranges current scope vertically and frames the complete
   model-backed layout, following editor.md.

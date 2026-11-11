@@ -15,7 +15,7 @@ is disabled with no deletable selection, and visibly red when enabled.
 Model > Manage metavariables opens a project-local staged list with New, Edit,
 Remove, Save and Cancel, matching Operations. Forms use Name, Type and Value;
 Save calls C validation and keeps invalid forms open with clear errors. Cancel
-does not mutate project. Project resources lists declarations and current values.
+does not mutate project.
 Every Inspector parameter has one value editor accepting a literal, `$name` or
 `$(Lua expression)` in that same control, including nested stereotype fields.
 Numeric/text/array fields use text input; boolean, choice and stereotype selectors
@@ -48,7 +48,7 @@ preserved per the native-client decision.
 ## Ownership
 
 QApplication owns GUI lifecycle. MainWindow owns native toolbars, palette,
-inspector, resources and diagnostics. GraphView/QGraphicsView owns pan, bounded
+inspector and diagnostics. GraphView/QGraphicsView owns pan, bounded
 positive zoom and fit; GraphScene/QGraphicsScene owns selectable retained items.
 NodeItem and SubflowItem reference stable C node IDs; PortItem references node
 and handle IDs; EdgeItem/QGraphicsPathItem references a stable C edge ID.
@@ -159,7 +159,9 @@ No edge/handle/tensor semantics or other-scope coordinates change.
 
 ## Descriptions, tensors and navigation
 
-The left palette includes a component guide. It starts with concise instructions,
+The left palette includes a component guide. Add to graph is enabled only when a
+real package leaf is selected in an open project; clear, filter, category and
+project changes update its state. The guide starts with concise instructions,
 then shows the selected package description. Selecting a graph node shows its
 package description in the right Inspector. Package descriptions are user-facing
 and explain Input dataset binding, Output model result, Loss computation and
@@ -177,8 +179,9 @@ Imported orphan scopes remain explicitly accessible; malformed/cyclic containmen
 not hang tree building.
 
 Application actions use File, Edit, Model, Dataset and View QMenuBar/QMenu/QAction
-menus with standard shortcuts. Dataset contains Create dataset and Manage datasets;
-their existing behavior and resource-panel shortcuts remain unchanged. File includes
+menus with standard shortcuts. Dataset contains Create dataset and Manage datasets.
+The Project resources panel and its shortcuts and informational listings are removed;
+resource management remains available through menus. File includes
 template submenu; Save As remains omitted
 until supported. Visible graph controls show Ctrl++ for Zoom In, Ctrl+- for
 Zoom Out, Ctrl+F for Fit, arrow keys for panning, Ctrl+Shift+V for vertical
@@ -286,8 +289,7 @@ labelled. Subflow owner totals include replicated descendants, with no double
 addition into the network total. Refresh uses current graph, including unsaved
 parameter edits; closing the dialog writes nothing.
 
-Project resources retains New dataset and adds Dataset, opening the manager in
-resource-authoring.md. Exact dataset identity is stable while a shared prefilled
+Dataset menu opens the manager in resource-authoring.md. Exact dataset identity is stable while a shared prefilled
 form edits metadata/tensor slots. C validates, persists and refreshes analysis;
 Qt only owns form/selection state. Shape fields accept comma-separated
 dimensions; `B` means batch dimension. Explain `B,4` as four features per

@@ -32,6 +32,8 @@ Sources: `src/application/application.c`, `src/application/graph_commands.c`,
       end
     end
     Entry->>Entry: group problem rows by stable root cause
+    Entry->>Entry: update global severity counts on collapsible tab
+    User->>Entry: expand problems table below canvas
     User->>Entry: select problem or call ui.reveal(node ID)
     Entry->>App: validate stable node ID
     App-->>Entry: accepted or unknown ID
