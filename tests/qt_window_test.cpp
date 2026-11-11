@@ -30,6 +30,7 @@
 #include <QEventLoop>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QHeaderView>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QProcess>
@@ -119,6 +120,7 @@ void WindowTest::componentGuideAppearsBelowAddButton() {
     auto *guide = window.findChild<QLabel *>("componentGuide");
     auto *addButton = window.findChild<QPushButton *>("addNodeButton");
     QVERIFY(guide && addButton);
+    QVERIFY(!addButton->isEnabled());
     QCOMPARE(guide->parentWidget(), addButton->parentWidget());
     QLayout *layout = guide->parentWidget()->layout();
     QVERIFY(layout);
@@ -953,8 +955,32 @@ void WindowTest::lifecycleAndInspector() {
     auto *inspector = window.findChild<QTreeWidget *>("inspector");
     auto *diagnostics = window.findChild<QTreeWidget *>("diagnostics");
     QVERIFY(scene && view && palette && inspector && diagnostics);
-    QVERIFY(window.findChild<QPushButton *>("createStereotypeButton"));
-    QVERIFY(window.findChild<QPushButton *>("createDatasetButton"));
+    auto *addNodeButton = window.findChild<QPushButton *>("addNodeButton");
+    QVERIFY(addNodeButton);
+    QVERIFY(!addNodeButton->isEnabled());
+    QTreeWidgetItem *packageLeaf = nullptr;
+    QTreeWidgetItem *packageGroup = nullptr;
+    for (int group = 0; group < palette->topLevelItemCount(); ++group) {
+        if (!packageGroup) packageGroup = palette->topLevelItem(group);
+        if (palette->topLevelItem(group)->childCount() > 0) {
+            packageLeaf = palette->topLevelItem(group)->child(0);
+            break;
+        }
+    }
+    QVERIFY(packageLeaf && packageGroup);
+    palette->setCurrentItem(packageGroup);
+    QCoreApplication::processEvents();
+    QVERIFY(!addNodeButton->isEnabled());
+    palette->setCurrentItem(packageLeaf);
+    QCoreApplication::processEvents();
+    QVERIFY(addNodeButton->isEnabled());
+    palette->clearSelection();
+    QCoreApplication::processEvents();
+    QVERIFY(!addNodeButton->isEnabled());
+    QVERIFY(!window.findChild<QWidget *>("resources"));
+    auto *problemsToggle = window.findChild<QToolButton *>("problemsToggle");
+    QVERIFY(problemsToggle);
+    QVERIFY(!problemsToggle->isChecked());
     QVERIFY(window.styleSheet().contains(QStringLiteral("selection-background-color: #3978c5")));
     QVERIFY(window.styleSheet().contains(QStringLiteral("color: #202c3b")));
     QCOMPARE(window.palette().color(QPalette::Window), QColor("#eceff3"));
@@ -967,15 +993,7 @@ void WindowTest::lifecycleAndInspector() {
                 lightPalettePackage = palette->topLevelItem(group)->child(row);
     QVERIFY(lightPalettePackage);
     QVERIFY(contrastAgainstWhite(lightPalettePackage->foreground(0).color()) >= 4.5);
-    auto *resources = window.findChild<QTreeWidget *>("resources");
-    QVERIFY(resources);
-    QTreeWidgetItem *resourcePackage = nullptr;
-    if (resources->topLevelItemCount() > 1)
-        for (int row = 0; row < resources->topLevelItem(1)->childCount(); ++row)
-            if (resources->topLevelItem(1)->child(row)->text(0) == QStringLiteral("core.adaptive-avg-pool2d@0.1.0"))
-                resourcePackage = resources->topLevelItem(1)->child(row);
-    QVERIFY(resourcePackage);
-    QVERIFY(contrastAgainstWhite(resourcePackage->foreground(0).color()) >= 4.5);
+    QVERIFY(!window.findChild<QWidget *>("resources"));
     for (int i = 0; i < diagnostics->topLevelItemCount(); ++i)
         QVERIFY(!diagnostics->topLevelItem(i)->text(0).contains(QStringLiteral("Success")));
     QVERIFY(diagnostics->topLevelItemCount() < 8);
@@ -1092,7 +1110,7 @@ void WindowTest::appDialogsContrastUnderDarkPalette() {
         QVERIFY2(contrastRatio(evidence.foreground, evidence.background) >= 4.5,
                  widgetName);
     };
-    auto openAuthoringDialog = [&](const char *buttonName, const char *checkBoxName,
+    auto openAuthoringDialog = [&](const QString &actionText, const char *checkBoxName,
                                    const QString &captureName) {
         DialogRenderEvidence labelEvidence, checkBoxEvidence;
         DialogRenderEvidence selectedTab, otherTab, selectedPython;
@@ -1125,9 +1143,11 @@ void WindowTest::appDialogsContrastUnderDarkPalette() {
             }
             dialog->reject();
         });
-        auto *button = window.findChild<QPushButton *>(buttonName);
-        QVERIFY(button);
-        button->click();
+        QAction *action = nullptr;
+        for (QAction *candidate : window.findChildren<QAction *>())
+            if (candidate->text() == actionText) action = candidate;
+        QVERIFY(action);
+        action->trigger();
         checkEvidence(labelEvidence, "dialog label text needs 4.5:1 contrast against the rendered surface");
         if (checkBoxName)
             checkEvidence(checkBoxEvidence, "dialog checkbox text needs 4.5:1 contrast against the rendered surface");
@@ -1141,8 +1161,8 @@ void WindowTest::appDialogsContrastUnderDarkPalette() {
         }
     };
 
-    openAuthoringDialog("createStereotypeButton", "stereotypeOutputOverride", QStringLiteral("stereotype"));
-    openAuthoringDialog("createDatasetButton", "datasetSelect", QStringLiteral("dataset"));
+    openAuthoringDialog(QStringLiteral("Create stereotype…"), "stereotypeOutputOverride", QStringLiteral("stereotype"));
+    openAuthoringDialog(QStringLiteral("Create dataset…"), "datasetSelect", QStringLiteral("dataset"));
 
     DialogRenderEvidence chooserEvidence;
     QTimer::singleShot(0, &window, [&] {
@@ -1195,7 +1215,28 @@ void WindowTest::modelProblemDiagnosticsAndNavigation() {
     auto *scene = window.findChild<GraphScene *>();
     auto *diagnostics = window.findChild<QTreeWidget *>("diagnostics");
     auto *filter = window.findChild<QCheckBox *>("currentScopeProblems");
-    QVERIFY(scene && diagnostics && filter);
+    auto *toggle = window.findChild<QToolButton *>("problemsToggle");
+    QVERIFY(scene && diagnostics && filter && toggle);
+    QCOMPARE(diagnostics->columnCount(), 4);
+    QCOMPARE(diagnostics->headerItem()->text(0), QStringLiteral("Category"));
+    QCOMPARE(diagnostics->headerItem()->text(1), QStringLiteral("Node"));
+    QCOMPARE(diagnostics->headerItem()->text(2), QStringLiteral("Scope"));
+    QCOMPARE(diagnostics->headerItem()->text(3), QStringLiteral("Reason"));
+    QVERIFY(!toggle->isChecked());
+    window.show();
+    QCoreApplication::processEvents();
+    QVERIFY(!diagnostics->isVisibleTo(&window));
+    toggle->click();
+    QCoreApplication::processEvents();
+    QVERIFY(toggle->isChecked());
+    QVERIFY(diagnostics->isVisibleTo(&window));
+    const QString globalCounts = toggle->accessibleName();
+    QVERIFY(globalCounts.contains(QStringLiteral("Errors:")));
+    QVERIFY(globalCounts.contains(QStringLiteral("warnings:")));
+    QVERIFY(globalCounts.contains(QStringLiteral("internal failures:")));
+    QVERIFY(globalCounts.section(QStringLiteral("Errors: "), 1).section(QLatin1Char(','), 0, 0).toInt() > 0);
+    QVERIFY(globalCounts.section(QStringLiteral("warnings: "), 1).section(QLatin1Char(','), 0, 0).toInt() > 0);
+    QCOMPARE(globalCounts.section(QStringLiteral("internal failures: "), 1).toInt(), 0);
     QVERIFY(diagnostics->topLevelItemCount() >= 2);
     int lateInputIndex = -1;
     int denseIndex = -1;
@@ -1207,10 +1248,23 @@ void WindowTest::modelProblemDiagnosticsAndNavigation() {
     QVERIFY(lateInputIndex >= 0 && denseIndex >= 0);
     QVERIFY2(lateInputIndex < denseIndex,
              "A newly appended source problem must precede older downstream errors.");
+    int countedErrors = 0;
+    int countedWarnings = 0;
+    int countedInternal = 0;
+    for (QTreeWidgetItemIterator it(diagnostics); *it; ++it) {
+        const QString category = (*it)->text(0);
+        if (category.contains(QStringLiteral("Model error")) ||
+            category.contains(QStringLiteral("Lua compilation error"))) ++countedErrors;
+        else if (category.contains(QStringLiteral("Incomplete"))) ++countedWarnings;
+        else if (category.contains(QStringLiteral("Analysis unavailable"))) ++countedInternal;
+    }
+    QCOMPARE(globalCounts.section(QStringLiteral("Errors: "), 1).section(QLatin1Char(','), 0, 0).toInt(), countedErrors);
+    QCOMPARE(globalCounts.section(QStringLiteral("warnings: "), 1).section(QLatin1Char(','), 0, 0).toInt(), countedWarnings);
+    QCOMPARE(globalCounts.section(QStringLiteral("internal failures: "), 1).toInt(), countedInternal);
     QVERIFY(diagnostics->topLevelItem(diagnostics->topLevelItemCount() - 1)
                 ->data(0, Qt::UserRole).toString().isEmpty());
     QVERIFY(diagnostics->topLevelItem(diagnostics->topLevelItemCount() - 1)
-                ->text(0).contains(QStringLiteral("Root")));
+                ->text(1) == QStringLiteral("Root"));
     QTreeWidgetItem *root = nullptr;
     for (int i = 0; i < diagnostics->topLevelItemCount(); ++i)
         if (diagnostics->topLevelItem(i)->data(0, Qt::UserRole).toString() == QStringLiteral("dense1"))
@@ -1221,35 +1275,61 @@ void WindowTest::modelProblemDiagnosticsAndNavigation() {
     QVERIFY(!root->isExpanded());
     QCOMPARE(scene->nodeItem("dense1")->problemCategory(), QStringLiteral("model"));
     QCOMPARE(scene->nodeItem("output")->problemCategory(), QStringLiteral("incomplete"));
-    QCOMPARE(diagnostics->columnCount(), 1);
     QVERIFY(diagnostics->wordWrap());
     const NNNode *denseNode = nn_model_find_node(nn_app_model(app), "dense1");
     QVERIFY(denseNode && denseNode->label);
     const QString denseLabel = QString::fromUtf8(denseNode->label);
-    window.show();
+    QString columnMetrics;
+    auto columnsFit = [diagnostics, &columnMetrics](int minReasonWidth) {
+        auto *header = diagnostics->header();
+        const int viewportWidth = diagnostics->viewport()->width();
+        const QStringList names = {QStringLiteral("Category"), QStringLiteral("Node"),
+                                   QStringLiteral("Scope"), QStringLiteral("Reason")};
+        QStringList sections;
+        int previousEnd = 0;
+        bool allVisible = true;
+        for (int column = 0; column < diagnostics->columnCount(); ++column) {
+            const int start = header->sectionViewportPosition(column);
+            const int width = header->sectionSize(column);
+            const int end = start + width;
+            sections.push_back(QStringLiteral("%1=%2px@%3").arg(names.value(column)).arg(width).arg(start));
+            if (start < previousEnd || end > viewportWidth) allVisible = false;
+            previousEnd = end;
+        }
+        const int categoryWidth = header->sectionSize(0);
+        const int reasonWidth = header->sectionSize(3);
+        columnMetrics = QStringLiteral("viewport=%1px, %2")
+            .arg(viewportWidth).arg(sections.join(QStringLiteral(", ")));
+        return viewportWidth > 0 && categoryWidth > 0 && reasonWidth >= minReasonWidth &&
+            categoryWidth * 2 < viewportWidth && allVisible;
+    };
+    window.resize(1280, 800);
     QCoreApplication::processEvents();
+    const bool desktopColumnsFit = columnsFit(180);
+    QVERIFY2(desktopColumnsFit, qPrintable(QStringLiteral("Columns should fit at 1280x800: %1").arg(columnMetrics)));
     const QString normalCapture = qEnvironmentVariable("NN_PROBLEMS_CAPTURE");
     if (!normalCapture.isEmpty()) QVERIFY(window.grab().save(normalCapture));
     window.resize(900, 560);
     QCoreApplication::processEvents();
+    const bool smallColumnsFit = columnsFit(120);
+    QVERIFY2(smallColumnsFit, qPrintable(QStringLiteral("Columns should fit at 900x560: %1").arg(columnMetrics)));
     const QString smallCapture = qEnvironmentVariable("NN_PROBLEMS_CAPTURE_SMALL");
     if (!smallCapture.isEmpty()) QVERIFY(window.grab().save(smallCapture));
-    const QString fullRow = root->text(0);
-    const QStringList rowLines = fullRow.split('\n');
-    QVERIFY(fullRow.contains(QStringLiteral("Model error")));
-    QVERIFY(fullRow.contains(denseLabel));
-    QVERIFY(rowLines.size() >= 3);
-    QVERIFY(rowLines[1].startsWith(QStringLiteral("Scope:")));
-    QVERIFY(!rowLines[2].trimmed().isEmpty());
-    QCOMPARE(root->toolTip(0), fullRow);
+    const QString rowCategory = root->text(0);
+    QVERIFY(rowCategory.contains(QStringLiteral("Model error")));
+    QCOMPARE(root->text(1), denseLabel);
+    QCOMPARE(root->text(2), QStringLiteral("Root"));
+    QVERIFY(!root->text(3).trimmed().isEmpty());
+    QCOMPARE(root->toolTip(3), root->text(3));
     const QRect rootRect = diagnostics->visualItemRect(root);
     QVERIFY(rootRect.isValid());
-    QVERIFY(rootRect.height() >= diagnostics->fontMetrics().lineSpacing() * 3);
+    QVERIFY(rootRect.height() >= diagnostics->fontMetrics().lineSpacing());
 
     scene->setScope(QStringLiteral("flow"));
     filter->setChecked(true);
     QCoreApplication::processEvents();
     QVERIFY(diagnostics->topLevelItemCount() > 0);
+    QCOMPARE(toggle->accessibleName(), globalCounts);
     for (int i = 0; i < diagnostics->topLevelItemCount(); ++i) {
         const QString id = diagnostics->topLevelItem(i)->data(0, Qt::UserRole).toString();
         QVERIFY(!id.isEmpty());
@@ -1267,6 +1347,10 @@ void WindowTest::modelProblemDiagnosticsAndNavigation() {
     diagnostics->itemClicked(root, 0);
     QTRY_COMPARE(scene->scope(), QString());
     QTRY_COMPARE(scene->selectedNodeId(), QStringLiteral("dense1"));
+    toggle->click();
+    QCoreApplication::processEvents();
+    QVERIFY(!toggle->isChecked());
+    QVERIFY(!diagnostics->isVisibleTo(&window));
 }
 
 void WindowTest::toolbarDeleteTracksSelection() {
@@ -1420,7 +1504,7 @@ void WindowTest::currentScopeRetainsOutsideCauseContext() {
         if (diagnostics->topLevelItem(i)->data(0, Qt::UserRole).toString() == causeId)
             causeItem = diagnostics->topLevelItem(i);
     QVERIFY(causeItem);
-    QVERIFY(causeItem->text(0).contains(QStringLiteral("cause context"), Qt::CaseInsensitive));
+    QVERIFY(causeItem->text(1).contains(QStringLiteral("cause context"), Qt::CaseInsensitive));
     QVERIFY(causeItem->text(0).contains(QStringLiteral("Model error")));
     bool hasCurrentBlockedNode = false;
     for (int i = 0; i < causeItem->childCount(); ++i)
@@ -1611,7 +1695,9 @@ void WindowTest::datasetManagerEditFormAndRetainedValidation() {
         R"({"name":"Manager data","description":"Original","batch":{"inputs":{"features":{"dtype":"float32","shape":["B",4]}},"targets":{}}})",
         true, error, sizeof(error)), error);
     MainWindow window(app);
-    auto *manage = window.findChild<QPushButton *>("manageDatasetsButton");
+    QAction *manage = nullptr;
+    for (QAction *candidate : window.findChildren<QAction *>())
+        if (candidate->text() == QStringLiteral("Manage datasets…")) manage = candidate;
     QVERIFY(manage);
     QTimer::singleShot(0, &window, [&window, &app] {
         auto *manager = qobject_cast<QDialog *>(QApplication::activeModalWidget());
@@ -1680,27 +1766,26 @@ void WindowTest::datasetManagerEditFormAndRetainedValidation() {
         edit->click();
         manager->reject();
     });
-    manage->click();
-    auto *resources = window.findChild<QTreeWidget *>("resources");
-    auto *activateFromPanel = window.findChild<QPushButton *>("activateDatasetButton");
-    QVERIFY(resources && activateFromPanel);
-    QTreeWidgetItem *managerDataset = nullptr;
-    for (int i = 0; i < resources->topLevelItemCount(); ++i) {
-        QTreeWidgetItem *group = resources->topLevelItem(i);
-        for (int j = 0; group && j < group->childCount(); ++j)
-            if (group->child(j)->text(0).contains(QStringLiteral("manager.data")))
-                managerDataset = group->child(j);
-    }
-    QVERIFY(managerDataset);
-    resources->setCurrentItem(managerDataset);
-    QVERIFY(QMetaObject::invokeMethod(resources, "itemClicked", Qt::DirectConnection,
-                                      Q_ARG(QTreeWidgetItem *, managerDataset), Q_ARG(int, 0)));
-    QCOMPARE(QString::fromUtf8(nn_project_active_dataset(nn_app_project(app))->id),
-             QStringLiteral("created.via.manager"));
-    QVERIFY(activateFromPanel->isEnabled());
-    activateFromPanel->click();
-    QCOMPARE(QString::fromUtf8(nn_project_active_dataset(nn_app_project(app))->id),
-             QStringLiteral("manager.data"));
+    manage->trigger();
+    QTimer::singleShot(0, &window, [&window, &app] {
+        auto *manager = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+        QVERIFY(manager);
+        auto *list = manager->findChild<QListWidget *>("datasetManagerList");
+        auto *activate = manager->findChild<QPushButton *>("datasetManagerActivate");
+        QVERIFY(list && activate);
+        QListWidgetItem *managerDataset = nullptr;
+        for (int i = 0; i < list->count(); ++i)
+            if (list->item(i)->data(Qt::UserRole).toString() == QStringLiteral("manager.data"))
+                managerDataset = list->item(i);
+        QVERIFY(managerDataset);
+        list->setCurrentItem(managerDataset);
+        QVERIFY(activate->isEnabled());
+        activate->click();
+        QCOMPARE(QString::fromUtf8(nn_project_active_dataset(nn_app_project(app))->id),
+                 QStringLiteral("manager.data"));
+        manager->reject();
+    });
+    manage->trigger();
     char *definition = nn_app_dataset_definition(app, "manager.data", "1.0.0", error, sizeof(error));
     QVERIFY(definition);
     QCOMPARE(QJsonDocument::fromJson(definition).object().value("name").toString(),
@@ -1738,7 +1823,7 @@ void WindowTest::datasetManagerEditFormAndRetainedValidation() {
         edit->click();
         manager->reject();
     });
-    manage->click();
+    manage->trigger();
     definition = nn_app_dataset_definition(app, "manager.data", "1.0.0", error, sizeof(error));
     QVERIFY(definition);
     QCOMPARE(QJsonDocument::fromJson(definition).object().value("name").toString(),
@@ -1771,7 +1856,7 @@ void WindowTest::datasetManagerEditFormAndRetainedValidation() {
         QVERIFY(!nn_project_active_dataset(nn_app_project(app)));
         manager->reject();
     });
-    manage->click();
+    manage->trigger();
 }
 
 void WindowTest::datasetImportFromEmptyDirectory() {
@@ -1790,7 +1875,9 @@ void WindowTest::datasetImportFromEmptyDirectory() {
     QVERIFY2(nn_app_create(app, parent.constData(), "empty-import", "Empty import", "0.1.0",
                            false, error, sizeof(error)), error);
     MainWindow window(app);
-    auto *manage = window.findChild<QPushButton *>("manageDatasetsButton");
+    QAction *manage = nullptr;
+    for (QAction *candidate : window.findChildren<QAction *>())
+        if (candidate->text() == QStringLiteral("Manage datasets…")) manage = candidate;
     QVERIFY(manage);
 
     QTimer::singleShot(0, &window, [&window, &source] {
@@ -1828,7 +1915,7 @@ void WindowTest::datasetImportFromEmptyDirectory() {
         QCOMPARE(manager->findChild<QListWidget *>("datasetManagerList")->count(), 1);
         manager->reject();
     });
-    manage->click();
+    manage->trigger();
     QCOMPARE(nn_project_dataset_count(nn_app_project(app)), size_t(1));
     QVERIFY(nn_project_active_dataset(nn_app_project(app)));
     QCOMPARE(QString::fromUtf8(nn_project_active_dataset(nn_app_project(app))->id),
@@ -1866,10 +1953,11 @@ void WindowTest::automaticDatasetBindingInspectorAndActivation() {
     MainWindow window(app);
     window.show();
     auto *scene = window.findChild<GraphScene *>();
-    auto *resources = window.findChild<QTreeWidget *>("resources");
-    auto *activate = window.findChild<QPushButton *>("activateDatasetButton");
     auto *inspector = window.findChild<QTreeWidget *>("inspector");
-    QVERIFY(scene && resources && activate && inspector);
+    QAction *manage = nullptr;
+    for (QAction *candidate : window.findChildren<QAction *>())
+        if (candidate->text() == QStringLiteral("Manage datasets…")) manage = candidate;
+    QVERIFY(scene && inspector && manage);
     auto bindingEditor = [inspector]() -> QLineEdit * {
         for (int i = 0; i < inspector->topLevelItemCount(); ++i) {
             QTreeWidgetItem *parameters = inspector->topLevelItem(i);
@@ -1900,41 +1988,40 @@ void WindowTest::automaticDatasetBindingInspectorAndActivation() {
     QVERIFY(bindingRow && bindingRow->childCount() == 1);
     QVERIFY(bindingRow->child(0)->text(1).contains(QStringLiteral("only input slot")));
 
-    QTreeWidgetItem *secondDataset = nullptr;
-    for (int i = 0; i < resources->topLevelItemCount(); ++i) {
-        QTreeWidgetItem *group = resources->topLevelItem(i);
-        for (int j = 0; group && j < group->childCount(); ++j)
-            if (group->child(j)->data(0, MainWindowUtils::PackageVersionRole).toString() ==
-                    QStringLiteral("auto.second"))
-                secondDataset = group->child(j);
-    }
-    QVERIFY(secondDataset);
-    resources->setCurrentItem(secondDataset);
-    QVERIFY(activate->isEnabled());
-    activate->click();
-    QTRY_COMPARE(binding(), QStringLiteral("pixels"));
-    QTRY_VERIFY(bindingEditor() && bindingEditor()->text() == QStringLiteral("pixels"));
-    editor = bindingEditor();
-    QVERIFY(editor->isReadOnly());
+    QTimer::singleShot(0, &window, [&window, &app, &binding, &bindingEditor] {
+        auto *manager = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+        QVERIFY(manager);
+        auto *list = manager->findChild<QListWidget *>("datasetManagerList");
+        auto *activate = manager->findChild<QPushButton *>("datasetManagerActivate");
+        QVERIFY(list && activate);
+        auto selectDataset = [list](const QString &id) {
+            for (int i = 0; i < list->count(); ++i) {
+                if (list->item(i)->data(Qt::UserRole).toString() == id) {
+                    list->setCurrentItem(list->item(i));
+                    return true;
+                }
+            }
+            return false;
+        };
+        QVERIFY(selectDataset(QStringLiteral("auto.second")));
+        QVERIFY(activate->isEnabled());
+        activate->click();
+        QTRY_COMPARE(binding(), QStringLiteral("pixels"));
+        QTRY_VERIFY(bindingEditor() && bindingEditor()->text() == QStringLiteral("pixels"));
+        QVERIFY(bindingEditor()->isReadOnly());
 
-    QTreeWidgetItem *multipleDataset = nullptr;
-    for (int i = 0; i < resources->topLevelItemCount(); ++i) {
-        QTreeWidgetItem *group = resources->topLevelItem(i);
-        for (int j = 0; group && j < group->childCount(); ++j)
-            if (group->child(j)->data(0, MainWindowUtils::PackageVersionRole).toString() ==
-                    QStringLiteral("auto.multiple"))
-                multipleDataset = group->child(j);
-    }
-    QVERIFY(multipleDataset);
-    resources->setCurrentItem(multipleDataset);
-    activate->click();
-    QTRY_COMPARE(QString::fromUtf8(nn_project_active_dataset(nn_app_project(app))->id),
-                 QStringLiteral("auto.multiple"));
-    QTRY_VERIFY(bindingEditor() && !bindingEditor()->isReadOnly());
-    editor = bindingEditor();
-    editor->setText(QStringLiteral("target"));
-    QVERIFY(QMetaObject::invokeMethod(editor, "editingFinished", Qt::DirectConnection));
-    QTRY_COMPARE(binding(), QStringLiteral("target"));
+        QVERIFY(selectDataset(QStringLiteral("auto.multiple")));
+        activate->click();
+        QTRY_COMPARE(QString::fromUtf8(nn_project_active_dataset(nn_app_project(app))->id),
+                     QStringLiteral("auto.multiple"));
+        QTRY_VERIFY(bindingEditor() && !bindingEditor()->isReadOnly());
+        QLineEdit *editor = bindingEditor();
+        editor->setText(QStringLiteral("target"));
+        QVERIFY(QMetaObject::invokeMethod(editor, "editingFinished", Qt::DirectConnection));
+        QTRY_COMPARE(binding(), QStringLiteral("target"));
+        manager->reject();
+    });
+    manage->trigger();
     answerDialog(QMessageBox::Discard);
     window.close();
 }
@@ -1958,9 +2045,10 @@ void WindowTest::typedOutputAuthoringBoundariesAndInspector() {
     QVERIFY(diagnostics);
     QTreeWidgetItem *rootProblem = nullptr;
     for (int i = 0; i < diagnostics->topLevelItemCount(); ++i)
-        if (diagnostics->topLevelItem(i)->text(0).contains(QStringLiteral("· Root\n")))
+        if (diagnostics->topLevelItem(i)->text(1) == QStringLiteral("Root"))
             rootProblem = diagnostics->topLevelItem(i);
     QVERIFY(rootProblem);
+    QVERIFY(rootProblem->text(0).contains(QStringLiteral("Incomplete")));
     QVERIFY(rootProblem->data(0, Qt::UserRole).toString().isEmpty()); // not a synthetic node
     QAction *create = nullptr;
     for (QAction *action : window.findChildren<QAction *>())

@@ -38,8 +38,6 @@ the same C/Lua resolver used by native analysis.
 
 This guide describes the Qt client controls and how they affect a project. Interface labels are shown in English as they appear on screen. Graph edits become part of the project with `File > Save`; resource creation and dataset metadata edits save the project when the operation completes.
 
-![Main window and workspace areas](../assets/overview.png)
-
 ## Starting the application and projects
 
 In a normal desktop launch, the project chooser appears first. `New project` creates an empty project; `New MNIST MLP` and `New mini LLM` create editable copies of the examples; `Open project` opens a project folder; `Close` closes the chooser and leaves the main window open. The main window can therefore remain open without a project. If the application starts through the automation bridge without a project path, the initial chooser is skipped. Open it with `File > New project…`, `File > Open project…` or `Training`. Example model copies are independent of the originals.
@@ -83,11 +81,11 @@ Closing the main window with unsaved edits also offers `Save`, `Discard` or `Can
 
 ## Graph workspace
 
-The main window has three columns: the `Packages` palette on the left, the graph in the center and the `Inspector`, `Project resources` and `Model problems` panels on the right. Drag the dividers between columns and right-side panels to change their widths.
+The main window shows the `Packages` palette on the left, the graph in the center and the `Inspector` on the right. `Model Problems` is a collapsible tab below the canvas; click it to open or close the table. The tab stays visible and shows global error, warning and internal-problem counts, including while the scope filter is active.
 
 ### Palette and node creation
 
-`Search packages` filters active packages by name, ID, version and kind; the search is case-insensitive. Results are grouped under kind headings (`input`, `layer`, `join`, `loss`, `output`, `loss-output`, `subflow` or another available category). Selecting a leaf item selects it in the palette; double-clicking it or pressing `Add to graph` adds it to the current scope, centered in the view. Selecting a group heading does not add a node. An item uses its package color. With no project open the palette is empty; an empty new project still has the core catalog and displays its packages.
+`Search packages` filters active packages by name, ID, version and kind; the search is case-insensitive. Results are grouped under kind headings (`input`, `layer`, `join`, `loss`, `output`, `loss-output`, `subflow` or another available category). Selecting a leaf item selects it in the palette; `Add to graph` is enabled only when a project is open and a package leaf is selected. Double-clicking the leaf or pressing the button adds it to the current scope, centered in the view. Selecting a group heading does not add a node. An item uses its package color. With no project open the palette is empty; an empty new project still has the core catalog and displays its packages.
 
 Click nodes to select them; drag across empty space to select multiple items. Qt selection modifiers add to or remove from the selection. Drag a node to move it; to move several together, select them and drag one. Positions snap to the grid. Select an edge and press `Delete` or `Backspace` to remove it; those keys also remove selected nodes and their incident edges. A subflow with children cannot be deleted until its contents have been removed. Each rejected operation displays a dialog explaining why.
 
@@ -156,8 +154,6 @@ For the meaning, defaults, limits and choices of every field in distributed pack
 
 A `stereotype` parameter consists of an editable package selector and fields from that package's schema. The selector shows the name and exact `id@version` identity, applies any kind filter, and uses ` (choose package)` when no package is selected. Choosing a package initializes its parameters to their defaults; an existing reference keeps its values. Type a reference/formula directly into the selector; its resolved nested values then remain read-only until explicitly replacing that reference, without editing the shared declaration. Literal-reference inner fields use editable menus or text according to their type. The project validates the selection and every changed field. If a value is invalid, the client reports the rejection and keeps the last confirmed values. Inspector data refreshes after an edit.
 
-![Inspector with a selected node](../assets/inspector.png)
-
 ![Choosing a stereotype reference](../assets/inspector-reference-menu.png)
 
 ![Parameters of the referenced package](../assets/inspector-reference.png)
@@ -166,13 +162,7 @@ A `stereotype` parameter consists of an editable package selector and fields fro
 
 ## Project resources and dataset selection
 
-`Project resources` displays three expandable groups:
-
-- `Datasets` lists names and `id@version`. A `✓` marks the active dataset. Child rows show `Input: name [dtype]` and `Target: name [dtype]`. Selecting a row does not activate it: use `Activate selected dataset` to activate it and refresh analysis. Clicking an informational child row displays the resource path in the status bar.
-- `Packages` lists active packages with their exact identities. Expand a package to see dependencies in the format `Requires id version-constraint`. These rows are informational; they do not activate or deactivate resources.
-- `Operations` lists public methods that will be included in the wheel, with endpoint status. Each row's tooltip shows its nodes and codecs. Invalid endpoints remain editable in the manager and prevent training submission until fixed or removed.
-
-`New stereotype` opens the stereotype creator; `New dataset` opens the dataset creator; `Dataset…` opens the dataset manager. `Model > Manage operations…` opens the operations manager.
+`Project resources` no longer occupies workspace space. Resource management remains available from the menus: `Model > Create stereotype…`, `Dataset > Create dataset…` and `Dataset > Manage datasets…`. See the dataset manager section for dataset details.
 
 ### Manage exported operations
 
@@ -211,7 +201,7 @@ The `Input slots` and `Target slots` tables have `Slot name`, `Dtype` and `Shape
 
 ## Create a stereotype
 
-`Create stereotype — saves project` opens from `Model > Create stereotype…` or `New stereotype`. Its initial fields are `ID`, `Version` (default `1.0.0`), `Name`, `Description`, `Kind` and `Color` (default `#6b8fc4`). `Kind` offers `input`, `layer`, `join`, `loss`, `output`, `loss-output` and `subflow`.
+`Create stereotype — saves project` opens from `Model > Create stereotype…`. Its initial fields are `ID`, `Version` (default `1.0.0`), `Name`, `Description`, `Kind` and `Color` (default `#6b8fc4`). `Kind` offers `input`, `layer`, `join`, `loss`, `output`, `loss-output` and `subflow`.
 
 The metadata fields have distinct meanings in both the stereotype and dataset forms:
 
@@ -257,11 +247,9 @@ Equal depths retain stable model order, including sources added after older
 layers. The general `Root` summary stays last; blocked descendants remain
 grouped under their cause.
 
-`Model problems` lists shape-analysis problems; it does not list successful rows. Each row shows category, node name, scope and reason. Categories distinguish `Lua compilation error`, `Model error`, `Incomplete` and `Analysis unavailable` by icon, text and color. Primary causes are grouped; blocked descendants appear as expandable child rows. When available, `Technical details` opens stable codes, source file/line or technical details.
+`Model Problems` starts closed. Its tab shows global error, warning and internal-problem counts independently of the scope filter; each reported problem contributes once, including blocked descendants and the Root problem. Open the tab to see a table with category, node, scope and reason columns. It lists shape-analysis problems, not successful rows. Categories distinguish `Lua compilation error`, `Model error`, `Incomplete` and `Analysis unavailable` by icon, text and color. Primary causes are grouped; blocked descendants appear as expandable child rows. When available, `Technical details` opens stable codes, source file/line or technical details.
 
 `Current scope only` filters the list to the displayed scope and keeps an outside cause visible as context when needed. Clicking a navigable problem selects and centers its node, switching to its scope. The `Root` problem reports missing or invalid root terminals and does not navigate to a node. If analysis failed, `Analysis unavailable` remains visible with expandable technical details; the model is not presented as problem-free. Nodes with problems also show a small canvas marker.
-
-![Model problems and scope filter](../assets/model-problems.png)
 
 ## Training backend
 

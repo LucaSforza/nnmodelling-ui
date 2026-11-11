@@ -14,7 +14,6 @@
 #include <QTemporaryDir>
 #include <QTimer>
 #include <QTableWidget>
-#include <QTreeWidget>
 
 #include <cassert>
 
@@ -44,19 +43,7 @@ int main(int argc, char **argv) {
 
     MainWindow window(application);
     assert(window.findChild<QAction *>(QStringLiteral("manageOperationsAction")));
-    QTreeWidget *resources = window.findChild<QTreeWidget *>(QStringLiteral("resources"));
-    assert(resources);
-    bool foundGroup = false;
-    for (int i = 0; i < resources->topLevelItemCount(); ++i)
-        foundGroup = foundGroup || resources->topLevelItem(i)->text(0) == QStringLiteral("Operations");
-    assert(foundGroup);
-    QTreeWidgetItem *operationGroup = nullptr;
-    for (int i = 0; i < resources->topLevelItemCount(); ++i)
-        if (resources->topLevelItem(i)->text(0) == QStringLiteral("Operations"))
-            operationGroup = resources->topLevelItem(i);
-    assert(operationGroup && operationGroup->childCount() == 2);
-    assert(operationGroup->child(0)->text(0).contains(QStringLiteral("Ready")));
-    assert(operationGroup->child(1)->text(0).contains(QStringLiteral("Stale endpoint")));
+    assert(!window.findChild<QWidget *>(QStringLiteral("resources")));
 
     QTimer::singleShot(0, [&] {
         auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());

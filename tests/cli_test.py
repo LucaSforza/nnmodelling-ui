@@ -137,7 +137,9 @@ def main():
                 command("project.open", {"path": str(saved.parent)})
                 assert len(command("project.snapshot")["nodes"]) == 4
                 info = command("ui.inspect")
-                assert {"palette", "resources", "inspector"} <= {w["id"] for w in info["widgets"]}
+                widget_ids = {widget["id"] for widget in info["widgets"]}
+                assert {"palette", "inspector", "diagnostics", "problemsToggle"} <= widget_ids
+                assert "resources" not in widget_ids
                 command("node.move", {"id": "local", "x": 40, "y": 200})
                 command("project.open", {"path": str(saved.parent)}, expected=1)
                 assert command("project.snapshot")["dirty"] is True

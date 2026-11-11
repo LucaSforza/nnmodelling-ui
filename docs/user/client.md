@@ -2,8 +2,6 @@
 
 Questa guida descrive i controlli del client Qt e il loro effetto sul progetto. Le etichette mostrate nell'interfaccia sono riportate in inglese, come appaiono a schermo. Le modifiche al grafo diventano parte del progetto con `File > Save`; la creazione di risorse e la modifica dei metadati di un dataset salvano invece il progetto al termine dell'operazione.
 
-![Finestra principale e aree di lavoro](assets/overview.png)
-
 ## Avvio e progetti
 
 Nell'avvio desktop normale compare il selettore progetti. `New project` crea un progetto vuoto; `New MNIST MLP` e `New mini LLM` creano copie modificabili dei rispettivi esempi; `Open project` apre una cartella di progetto; `Close` chiude il selettore e lascia aperta la finestra principale. La finestra principale può quindi restare aperta senza un progetto. Se l'applicazione viene avviata tramite bridge di automazione senza percorso progetto, il selettore iniziale è saltato: per aprirlo si usa `File > New project…`, `File > Open project…` oppure `Training`. Le copie dei modelli di esempio sono indipendenti dagli originali.
@@ -47,11 +45,11 @@ Anche chiudendo la finestra principale con modifiche non salvate compare la scel
 
 ## Area di lavoro del grafo
 
-La finestra principale è organizzata in tre colonne: palette `Packages` a sinistra, grafo al centro e pannelli `Inspector`, `Project resources` e `Model problems` a destra. I separatori tra colonne e pannelli destri si possono trascinare per cambiare lo spazio disponibile.
+La finestra principale mostra la palette `Packages` a sinistra, il grafo al centro e `Inspector` a destra. `Model Problems` è una scheda richiudibile sotto il canvas; cliccala per aprire o chiudere la tabella. La scheda resta visibile e mostra i conteggi globali di errori, avvisi e problemi interni, anche quando è attivo il filtro per ambito.
 
 ### Palette e creazione dei nodi
 
-`Search packages` filtra i pacchetti attivi per nome, ID, versione e tipo; il testo non distingue maiuscole e minuscole. I risultati sono raccolti sotto intestazioni per tipo (`input`, `layer`, `join`, `loss`, `output`, `loss-output`, `subflow` o altra categoria presente). Selezionare una voce foglia aggiorna la selezione della palette; doppio clic oppure `Add to graph` aggiunge quel pacchetto all'ambito corrente, centrato sulla vista. Selezionare l'intestazione di gruppo non aggiunge un nodo. Il colore della voce riprende quello del pacchetto. Senza progetto aperto la palette è vuota; anche un progetto nuovo vuoto ha comunque il catalogo core e mostra i relativi pacchetti.
+`Search packages` filtra i pacchetti attivi per nome, ID, versione e tipo; il testo non distingue maiuscole e minuscole. I risultati sono raccolti sotto intestazioni per tipo (`input`, `layer`, `join`, `loss`, `output`, `loss-output`, `subflow` o altra categoria presente). Selezionare una voce foglia aggiorna la selezione della palette; `Add to graph` si abilita solo con un progetto aperto e una voce pacchetto foglia selezionata. Doppio clic oppure il pulsante aggiunge quel pacchetto all'ambito corrente, centrato sulla vista. Selezionare l'intestazione di gruppo non aggiunge un nodo. Il colore della voce riprende quello del pacchetto. Senza progetto aperto la palette è vuota; anche un progetto nuovo vuoto ha comunque il catalogo core e mostra i relativi pacchetti.
 
 I nodi si selezionano con clic; trascinando una zona vuota si selezionano più elementi. I modificatori di selezione Qt consentono di aggiungere o rimuovere elementi dalla selezione. Trascinare un nodo lo sposta; per spostarne più di uno insieme, selezionarli e trascinarne uno. Le posizioni si agganciano alla griglia. Selezionare un arco e premere `Delete` o `Backspace` lo rimuove; gli stessi tasti rimuovono i nodi selezionati e i loro archi incidenti. Una subflow con figli non si può eliminare finché il suo contenuto non è stato rimosso. Ogni rifiuto mostra un dialogo con la ragione.
 
@@ -160,8 +158,6 @@ Per significato, default, limiti e scelte di ogni campo dei pacchetti distribuit
 
 Un parametro di tipo `stereotype` è composto da un selettore di pacchetto modificabile e dai campi dello schema di quel pacchetto. Il selettore mostra nome e identità esatta `id@version`, applica l'eventuale filtro per tipo, e ` (choose package)` rappresenta l'assenza di scelta. Scegliere un pacchetto inizializza i suoi parametri ai valori predefiniti; un riferimento già presente mantiene i propri valori. Puoi scrivere un riferimento/formula direttamente nel selettore. In quel caso i parametri risolti sono in sola lettura finché non sostituisci esplicitamente il riferimento; non modificano la dichiarazione condivisa. I campi interni di un riferimento letterale usano menu modificabili o testo secondo il tipo. La selezione e ogni campo aggiornato vengono verificati dal progetto; se un valore non è valido il client segnala il rifiuto e conserva i valori confermati. I dati dell'Inspector si aggiornano dopo una modifica.
 
-![Inspector con un nodo selezionato](assets/inspector.png)
-
 ![Scelta di un riferimento stereotype](assets/inspector-reference-menu.png)
 
 ![Parametri del pacchetto referenziato](assets/inspector-reference.png)
@@ -170,13 +166,9 @@ Un parametro di tipo `stereotype` è composto da un selettore di pacchetto modif
 
 ## Risorse del progetto e selezione dataset
 
-`Project resources` mostra tre gruppi espandibili:
+`Project resources` non occupa più spazio nell'area di lavoro. La gestione delle risorse resta disponibile nei menu: `Model > Create stereotype…`, `Dataset > Create dataset…` e `Dataset > Manage datasets…`. I dettagli dei dataset si consultano nel gestore dataset.
 
-- `Datasets` elenca nome e `id@version`. Un segno `✓` indica il dataset attivo. Le righe figlie mostrano `Input: nome [dtype]` e `Target: nome [dtype]`. Selezionare una riga non cambia il dataset attivo: usare `Activate selected dataset` per attivarla e aggiornare l'analisi. Cliccare una riga informativa figlia mostra il percorso risorsa nella barra di stato.
-- `Packages` elenca i pacchetti attivi con identità esatta. Espandere un pacchetto mostra le dipendenze nel formato `Requires id vincolo-versione`. Le righe sono informative; non attivano/disattivano risorse.
-- `Operations` elenca i metodi pubblici che saranno inclusi nella wheel e lo stato degli endpoint. Il suggerimento della riga mostra nodi e codec. Gli endpoint non più validi restano correggibili nel gestore e impediscono l'invio del training finché non vengono sistemati o rimossi.
-
-`New stereotype` apre il creatore di stereotipi; `New dataset` apre il creatore dei dataset; `Dataset…` apre il gestore. `Model > Manage operations…` apre il gestore delle operazioni.
+`Dataset > Manage datasets…` apre il gestore dataset; `Dataset > Create dataset…` crea un dataset. `Model > Manage operations…` apre il gestore delle operations esportate.
 
 ### Gestire le operazioni esportate
 
@@ -215,7 +207,7 @@ Le tabelle `Input slots` e `Target slots` hanno le colonne `Slot name`, `Dtype`,
 
 ## Creare uno stereotype
 
-`Create stereotype — saves project` si apre da `Model > Create stereotype…` o `New stereotype`. I campi iniziali sono `ID`, `Version` (predefinita `1.0.0`), `Name`, `Description`, `Kind` e `Color` (predefinito `#6b8fc4`). `Kind` offre `input`, `layer`, `join`, `loss`, `output`, `loss-output` e `subflow`.
+`Create stereotype — saves project` si apre da `Model > Create stereotype…`. I campi iniziali sono `ID`, `Version` (predefinita `1.0.0`), `Name`, `Description`, `Kind` e `Color` (predefinito `#6b8fc4`). `Kind` offre `input`, `layer`, `join`, `loss`, `output`, `loss-output` e `subflow`.
 
 I metadati hanno significati distinti sia nel modulo stereotype sia nel modulo dataset:
 
@@ -263,11 +255,9 @@ più a valle. A pari profondità vale l'ordine stabile del modello. Questo vale
 anche per sorgenti aggiunte dopo i layer; il riepilogo generale `Root` resta
 in fondo e i discendenti bloccati restano raggruppati sotto la loro causa.
 
-`Model problems` mostra i problemi dell'analisi di forma; non elenca righe di successo. Ogni riga riporta categoria, nome nodo, ambito e ragione. Le categorie distinguono `Lua compilation error`, `Model error`, `Incomplete` e `Analysis unavailable` con icona, testo e colore. Le cause principali sono raggruppate; le discendenze bloccate sono righe figlie espandibili. `Technical details`, quando presente, apre codice stabile, file/riga sorgente o dettagli tecnici.
+`Model Problems` è inizialmente chiusa. La scheda mostra i conteggi globali di errori, avvisi e problemi interni, indipendentemente dal filtro per ambito. Ogni problema riportato contribuisce una volta, inclusi i discendenti bloccati e il problema `Root`. Apri la scheda per vedere la tabella con colonne categoria, nodo, ambito e ragione. Sono elencati i problemi dell'analisi di forma, non le righe di successo. Le categorie distinguono `Lua compilation error`, `Model error`, `Incomplete` e `Analysis unavailable` con icona, testo e colore. Le cause principali sono raggruppate; le discendenze bloccate sono righe figlie espandibili. `Technical details`, quando presente, apre codice stabile, file/riga sorgente o dettagli tecnici.
 
 `Current scope only` filtra ai problemi dell'ambito mostrato e mantiene visibile come contesto una causa fuori da quell'ambito quando serve. Cliccare un problema navigabile seleziona e centra il nodo, passando al suo ambito. Il problema `Root` segnala la mancanza o invalidità dei terminali principali e non naviga a un nodo. Se l'analisi non è riuscita, `Analysis unavailable` resta visibile con dettagli tecnici espandibili; non viene presentato come un modello senza problemi. Un nodo con problemi mostra anche un piccolo indicatore sul canvas.
-
-![Problemi del modello e filtro per ambito](assets/model-problems.png)
 
 ## Training backend
 
