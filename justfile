@@ -25,6 +25,10 @@ test-ui: build
 test-cli: build
     ctest --test-dir build/qt --output-on-failure -R cli_ui
 
+# Requires linuxdeploy and linuxdeploy-plugin-qt on PATH.
+appimage:
+    bash tools/build-appimage.sh
+
 backend-sync:
     uv sync --all-packages --group dev --group examples
 

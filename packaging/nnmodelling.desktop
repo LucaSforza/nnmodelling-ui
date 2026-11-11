@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=NNModelling
+Comment=Visual neural network modelling
+Exec=nnmodelling-ui
+Icon=nnmodelling
+Categories=Education;Science;
+Terminal=false

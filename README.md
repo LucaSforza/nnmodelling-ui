@@ -73,6 +73,23 @@ cmake --build build/core-only
 If a sandbox disallows the configured ccache directory, use
 `CCACHE_DISABLE=1 just test` (and similarly for the GUI build).
 
+### Linux AppImage
+
+On Ubuntu 22.04 x86_64, install the GUI build dependencies (including
+`libgl1-mesa-dev`), `qmake6`, `file`,
+`linuxdeploy` and `linuxdeploy-plugin-qt` on `PATH`, then run `just appimage`.
+The result is `dist/NNModelling-x86_64.AppImage`. Building on newer systems
+raises the minimum system library versions. The bundle includes the editor,
+Qt, core packages and project templates; the Python backend is separate.
+Connect to a separately running backend for training. Managed local backend
+startup and worker preparation still require the source workspace and `uv`.
+AppImage compatibility depends on architecture and system libraries; other
+distributions are not guaranteed. Running it may require FUSE, or setting
+`APPIMAGE_EXTRACT_AND_RUN=1`.
+
+CI builds and tests the AppImage on Ubuntu 22.04, uploads it as an artifact,
+and publishes it as a GitHub release asset for pushed `v*` tags.
+
 ## Development agents
 
 For development with OpenCode V2 background agents and inter-agent messaging,

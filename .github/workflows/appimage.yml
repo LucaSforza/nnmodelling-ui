@@ -1,0 +1,53 @@
+name: AppImage
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  appimage:
+    name: Build and test Ubuntu AppImage
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y build-essential cmake qt6-base-dev qt6-base-dev-tools libgl1-mesa-dev curl file
+      - name: Install linuxdeploy
+        run: |
+          mkdir -p "$RUNNER_TEMP/appimage-tools"
+          curl -fsSL --retry 3 https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage -o "$RUNNER_TEMP/appimage-tools/linuxdeploy"
+          curl -fsSL --retry 3 https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage -o "$RUNNER_TEMP/appimage-tools/linuxdeploy-plugin-qt"
+          chmod +x "$RUNNER_TEMP/appimage-tools/"*
+          echo "$RUNNER_TEMP/appimage-tools" >> "$GITHUB_PATH"
+      - name: Build AppImage
+        run: bash tools/build-appimage.sh
+      - name: Test release build
+        # Qt 6.2's offscreen synthetic drag events fail the canvas test; the
+        # regular Ubuntu 24.04 Qt job runs that test with newer Qt.
+        run: ctest --test-dir build/appimage --output-on-failure -E '^qt_canvas$'
+      - name: Test packaged application outside checkout
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: '1'
+        run: |
+          cd "$RUNNER_TEMP"
+          python3 "$GITHUB_WORKSPACE/tests/cli_test.py" "$GITHUB_WORKSPACE/dist/NNModelling-x86_64.AppImage" "$GITHUB_WORKSPACE/build/appimage/nnmodelctl"
+      - uses: actions/upload-artifact@834a144ee995460f8baed112a2fc961b36a5ec5a # v4
+        with:
+          name: NNModelling-AppImage-x86_64
+          path: dist/NNModelling-x86_64.AppImage
+          if-no-files-found: error
+      - name: Publish tagged release
+        if: startsWith(github.ref, 'refs/tags/v') && github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: gh release create "$RELEASE_TAG" dist/NNModelling-x86_64.AppImage --verify-tag --generate-notes

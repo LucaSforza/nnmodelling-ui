@@ -1,5 +1,16 @@
 # Sequence catalog
 
+```mermaid
+sequenceDiagram
+    actor User
+    participant Image as AppImage
+    participant GUI as Qt client
+    participant Assets as Bundled packages and templates
+    User->>Image: Launch
+    Image->>GUI: Start with AppDir path
+    GUI->>Assets: Load core packages and copy selected template
+```
+
 These diagrams describe observed ordering and ownership across the current
 client, local automation, backend and Python runtime. The sequence tool checks
 all Markdown Mermaid fences under `docs/knowledge/`; use `--write` only when the

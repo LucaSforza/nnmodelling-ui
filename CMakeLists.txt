@@ -233,6 +233,13 @@ if(NN_BUILD_GUI)
             "${CMAKE_SOURCE_DIR}/tests/cli_test.py" "$<TARGET_FILE:nnmodelling-ui>" "$<TARGET_FILE:nnmodelctl>")
         set_tests_properties(cli_ui PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
             LABELS gui TIMEOUT 60)
+        # Some GUI tests also use assert for checks and setup in Release builds.
+        if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+            foreach(target IN ITEMS qt_backend_test qt_operations_test qt_metavariables_test
+                    qt_canvas_test qt_window_test qt_routing_test qt_layout_test)
+                target_compile_options(${target} PRIVATE -UNDEBUG)
+            endforeach()
+        endif()
     endif()
 endif()
 

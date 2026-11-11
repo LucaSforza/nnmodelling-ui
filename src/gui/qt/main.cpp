@@ -50,7 +50,10 @@ int main(int argc, char **argv) {
     }
     if (capturePath.isEmpty()) capturePath = qEnvironmentVariable("NN_UI_QA_CAPTURE");
 
-    const QByteArray coreRoot = QDir(QString::fromUtf8(NN_SOURCE_DIR))
+    const QString appDir = qEnvironmentVariable("APPDIR");
+    const QString resourceRoot = appDir.isEmpty() ? QString::fromUtf8(NN_SOURCE_DIR)
+        : QDir(appDir).filePath(QStringLiteral("usr/share/nnmodelling"));
+    const QByteArray coreRoot = QDir(resourceRoot)
         .filePath(QStringLiteral("stereotype-packages/core")).toUtf8();
     NNApplication *nativeApp = nn_app_new(coreRoot.constData());
     if (!nativeApp) return 1;

@@ -4,6 +4,15 @@ Status: native rewrite accepted from 2026-09-28 request. Accepted 2026-10-05:
 [backend contract](backend.md) extends UI with HTTP jobs, loss monitoring,
 snapshot restore and downloads; Python training runs in backend containers.
 
+## Linux distribution
+
+The x86_64 AppImage contains the native editor, Qt runtime, core stereotypes and
+three project templates. It resolves these assets from its mounted AppDir, not
+the build checkout. The Python backend and its dependencies are not bundled;
+connecting to a separately running backend remains available. Managed backend
+startup and worker preparation require the source workspace and uv. Build on
+Ubuntu 22.04 for Ubuntu 22.04 and newer; other distributions are not guaranteed.
+
 ## Project lifecycle and workspace
 
 On a normal launch without a project path, show only the startup chooser; keep

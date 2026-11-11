@@ -1,5 +1,11 @@
 # Verification strategy
 
+AppImage CI builds on Ubuntu 22.04 and exercises the packaged GUI, core
+stereotypes and templates through the existing offscreen CLI integration test
+outside the checkout. Tagged builds publish the tested image as a release asset.
+The Ubuntu 22.04 Release suite excludes qt_canvas because Qt 6.2 offscreen
+synthetic drag events fail there; the Ubuntu 24.04 Qt job still runs that test.
+
 Accepted 2026-10-08: GitHub Actions runs the existing core, sanitizer, offscreen
 Qt/CLI and Python backend/runtime/example gates on pushes and pull requests.
 Use Linux hosted runners and a macOS core/Qt/CLI runner, read-only repository permissions, bounded job timeouts

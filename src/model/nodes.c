@@ -9,8 +9,10 @@
 
 static bool normalize_position(double x, double y, int32_t *normalized_x,
                                int32_t *normalized_y, char *error, size_t cap) {
-    if (!isfinite(x) || !isfinite(y))
-        return nn_fail(error, cap, "node position must be finite");
+    if (!isfinite(x) || !isfinite(y)) {
+        nn_error_set(error, cap, "node position must be finite");
+        return false;
+    }
 
     const double min_grid = (double)(INT32_MIN / NN_MODEL_GRID_SPACING);
     const double max_grid = (double)(INT32_MAX / NN_MODEL_GRID_SPACING);
@@ -18,8 +20,10 @@ static bool normalize_position(double x, double y, int32_t *normalized_x,
     double grid_y = round(y / NN_MODEL_GRID_SPACING);
     if (!isfinite(grid_x) || !isfinite(grid_y) ||
         grid_x < min_grid || grid_x > max_grid ||
-        grid_y < min_grid || grid_y > max_grid)
-        return nn_fail(error, cap, "node position is outside the supported range");
+        grid_y < min_grid || grid_y > max_grid) {
+        nn_error_set(error, cap, "node position is outside the supported range");
+        return false;
+    }
 
     *normalized_x = (int32_t)grid_x * NN_MODEL_GRID_SPACING;
     *normalized_y = (int32_t)grid_y * NN_MODEL_GRID_SPACING;

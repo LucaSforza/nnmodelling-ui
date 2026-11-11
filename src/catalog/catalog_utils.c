@@ -71,7 +71,7 @@ bool nn_catalog_checked_path(const char *base, const char *rel, bool want_dir,
                              char *out) {
   char current[PATH_MAX];
   const char *p;
-  struct stat st;
+  struct stat st = {0};
   if (!base || !nn_catalog_safe_rel(rel) ||
       strlen(base) + strlen(rel) + 2 >= sizeof(current))
     return false;

@@ -110,7 +110,10 @@ public:
 
 MainWindow::MainWindow(NNApplication *application, QWidget *parent)
     : QMainWindow(parent), application_(application, nn_app_free) {
-    backendService_ = new BackendServiceManager(QStringLiteral(NN_SOURCE_DIR), this);
+    const QString appDir = qEnvironmentVariable("APPDIR");
+    const QString backendSource = appDir.isEmpty() ? QStringLiteral(NN_SOURCE_DIR)
+        : QDir(appDir).filePath(QStringLiteral("usr/share/nnmodelling"));
+    backendService_ = new BackendServiceManager(backendSource, this);
     QPalette palette = QApplication::palette();
     palette.setColor(QPalette::Window, QColor("#eceff3"));
     palette.setColor(QPalette::WindowText, QColor("#202c3b"));
