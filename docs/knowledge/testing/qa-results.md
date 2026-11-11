@@ -2,6 +2,13 @@
 
 ## Collapsible model problems — 2026-11-11
 
+Follow-up: a KDE dark-theme screenshot revealed a dark problems tab with dark
+text. Explicit tab colors now cover normal, hover, pressed and expanded states.
+`CCACHE_DISABLE=1 just test-ui` passed 8/8, including rendered contrast checks
+under a dark application palette for those states. A fresh noVNC trial verified
+the corrected tab with warnings and its expanded table. The actual KDE theme was
+not available in the noVNC trial; no native KDE verification is claimed.
+
 `CCACHE_DISABLE=1 just test` passed 16/16 and `just test-ui` passed 8/8
 outside the sandbox with local sockets. `just mermaid-check` passed 46 diagrams.
 Qt tests cover selection-dependent Add, four-column diagnostics, ordering,
