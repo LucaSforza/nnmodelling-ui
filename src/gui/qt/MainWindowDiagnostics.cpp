@@ -9,6 +9,7 @@
 #include <QComboBox>
 #include <QColor>
 #include <QHash>
+#include <QToolButton>
 #include <QTreeWidget>
 #include <QTreeWidgetItem>
 #include <QStringList>
@@ -25,18 +26,56 @@ using namespace MainWindowUtils;
 void MainWindow::refreshDiagnostics() {
     diagnostics_->clear();
     QHash<QString, QString> markers;
+    auto *toggle = findChild<QToolButton *>(QStringLiteral("problemsToggle"));
+    const QString toggleTitle = tr("Model Problems");
+    auto updateToggle = [toggle, toggleTitle](int errors, int warnings, int internal) {
+        if (!toggle) return;
+        QStringList counts;
+        if (errors) counts.push_back(QStringLiteral("%1 ⛔").arg(errors));
+        if (warnings) counts.push_back(QStringLiteral("%1 ⚠").arg(warnings));
+        if (internal) counts.push_back(QStringLiteral("%1 ×").arg(internal));
+        toggle->setText(counts.isEmpty() ? toggleTitle
+            : toggleTitle + QStringLiteral("   ") + counts.join(QStringLiteral("   ")));
+        toggle->setAccessibleName(counts.isEmpty() ? toggleTitle
+            : tr("%1. Errors: %2, warnings: %3, internal failures: %4")
+                  .arg(toggleTitle).arg(errors).arg(warnings).arg(internal));
+        toggle->setToolTip(toggle->accessibleName());
+    };
+    updateToggle(0, 0, 0);
     if (!nn_app_project(application_.get())) {
         scene_->setProblemMarkers(markers);
         return;
     }
+    int errorCount = 0;
+    int warningCount = 0;
+    int internalCount = 0;
+    auto countCategory = [&](const QString &category) {
+        if (category == QStringLiteral("incomplete")) ++warningCount;
+        else if (category == QStringLiteral("internal")) ++internalCount;
+        else ++errorCount;
+    };
+    auto categoryPresentation = [this](const QString &category) {
+        if (category == QStringLiteral("lua-compilation"))
+            return qMakePair(tr("✖ Lua compilation error"), QColor("#9c3d79"));
+        if (category == QStringLiteral("incomplete"))
+            return qMakePair(tr("⚠ Incomplete"), QColor("#a66a12"));
+        if (category == QStringLiteral("internal"))
+            return qMakePair(tr("× Analysis unavailable"), QColor("#554d79"));
+        return qMakePair(tr("⛔ Model error"), QColor("#b23b35"));
+    };
     char error[ErrorCapacity] = {};
     const NNInferenceReport *report = nn_app_analysis(application_.get(), error, sizeof(error));
     if (!report) {
+        ++internalCount;
+        updateToggle(errorCount, warningCount, internalCount);
+        const auto presentation = categoryPresentation(QStringLiteral("internal"));
         auto *unavailable = new QTreeWidgetItem(diagnostics_,
-            {QStringLiteral("■  Analysis unavailable\n%1").arg(tr("Could not analyze this model."))});
-        unavailable->setForeground(0, QBrush(QColor("#554d79")));
-        auto *technical = new QTreeWidgetItem(unavailable, {tr("Technical details")});
-        new QTreeWidgetItem(technical, {tr("Details: %1").arg(QString::fromUtf8(error))});
+            {presentation.first, tr("Model"), tr("Root"), tr("Could not analyze this model.")});
+        unavailable->setForeground(0, QBrush(presentation.second));
+        unavailable->setToolTip(3, unavailable->text(3));
+        auto *technical = new QTreeWidgetItem(unavailable, {tr("Technical details"), {}, {}, {}});
+        if (*error)
+            new QTreeWidgetItem(technical, {tr("Details"), {}, {}, QString::fromUtf8(error)});
         scene_->setProblemMarkers(markers);
         return;
     }
@@ -75,6 +114,7 @@ void MainWindow::refreshDiagnostics() {
         const QString scope = node ? QString::fromUtf8(node->scope_id ? node->scope_id : "") : QString();
         const char *categoryText = nn_inference_category(result->status);
         const QString category = QString::fromUtf8(categoryText ? categoryText : "internal");
+        countCategory(category);
         markers.insert(id, category);
         Problem p;
         p.id = id;
@@ -95,6 +135,7 @@ void MainWindow::refreshDiagnostics() {
         Problem root;
         const char *rootCategory = nn_inference_category(rootStatus);
         root.category = QString::fromUtf8(rootCategory ? rootCategory : "incomplete");
+        countCategory(root.category);
         root.label = tr("Root");
         root.scope = tr("Root");
         const char *rootMessage = nn_inference_root_message(report);
@@ -102,8 +143,10 @@ void MainWindow::refreshDiagnostics() {
                                    : tr("Root boundaries are incomplete.");
         root.status = rootStatus;
         root.rootProblem = true;
-        root.code = rootStatus == NN_INFERENCE_SEMANTIC_ERROR
-            ? QStringLiteral("model.semantic") : QStringLiteral("model.incomplete");
+        root.code = root.category == QStringLiteral("internal")
+            ? QStringLiteral("analysis.internal")
+            : root.status == NN_INFERENCE_SEMANTIC_ERROR
+                ? QStringLiteral("model.semantic") : QStringLiteral("model.incomplete");
         problems.push_back(root);
     }
     QHash<QString, int> modelOrder;
@@ -175,15 +218,7 @@ void MainWindow::refreshDiagnostics() {
         }
         problems = std::move(relevant);
     }
-    auto categoryPresentation = [](const QString &category) {
-        if (category == QStringLiteral("lua-compilation"))
-            return qMakePair(QStringLiteral("L  Lua compilation error"), QColor("#9c3d79"));
-        if (category == QStringLiteral("incomplete"))
-            return qMakePair(QStringLiteral("?  Incomplete"), QColor("#a66a12"));
-        if (category == QStringLiteral("internal"))
-            return qMakePair(QStringLiteral("×  Analysis unavailable"), QColor("#554d79"));
-        return qMakePair(QStringLiteral("!  Model error"), QColor("#b23b35"));
-    };
+    updateToggle(errorCount, warningCount, internalCount);
     QHash<QString, int> byId;
     for (int i = 0; i < problems.size(); ++i) byId.insert(problems[i].id, i);
     QHash<QString, QTreeWidgetItem *> roots;
@@ -191,22 +226,22 @@ void MainWindow::refreshDiagnostics() {
         if (!p.cause.isEmpty() && byId.contains(p.cause)) continue;
         const auto presentation = categoryPresentation(p.category);
         const QString summary = p.category == QStringLiteral("internal")
-            ? tr("Could not analyze this model.") : p.message;
+            ? tr("Analysis unavailable for this node.") : p.message;
         const QString contextSuffix = p.context ? tr(" · cause context") : QString();
-        const QString displayText = QStringLiteral("%1 · %2%3\n%4: %5\n%6")
-            .arg(presentation.first, p.label, contextSuffix, tr("Scope"), p.scope, summary);
+        const QString node = p.rootProblem ? tr("Root") : p.label + contextSuffix;
         auto *root = new QTreeWidgetItem(diagnostics_,
-            {displayText});
+            {presentation.first, node, p.scope, summary});
         if (!p.rootProblem) root->setData(0, IdRole, p.id);
         root->setForeground(0, QBrush(presentation.second));
-        root->setToolTip(0, displayText);
+        root->setToolTip(3, summary);
         if (!p.source.isEmpty() || p.line || p.category == QStringLiteral("internal")) {
-            auto *technical = new QTreeWidgetItem(root, {tr("Technical details")});
-            if (!p.code.isEmpty()) new QTreeWidgetItem(technical, {tr("%1: %2").arg(tr("Code"), p.code)});
-            if (!p.source.isEmpty()) new QTreeWidgetItem(technical, {tr("%1: %2").arg(tr("Source"),
-                p.line ? QStringLiteral("%1:%2").arg(p.source).arg(p.line) : p.source)});
+            auto *technical = new QTreeWidgetItem(root, {tr("Technical details"), {}, {}, {}});
+            if (!p.code.isEmpty()) new QTreeWidgetItem(technical,
+                {tr("Code"), {}, {}, p.code});
+            if (!p.source.isEmpty()) new QTreeWidgetItem(technical,
+                {tr("Source"), {}, {}, p.line ? QStringLiteral("%1:%2").arg(p.source).arg(p.line) : p.source});
             if (p.category == QStringLiteral("internal") && !p.message.isEmpty())
-                new QTreeWidgetItem(technical, {tr("%1: %2").arg(tr("Details"), p.message)});
+                new QTreeWidgetItem(technical, {tr("Details"), {}, {}, p.message});
         }
         roots.insert(p.id, root);
     }
@@ -215,24 +250,23 @@ void MainWindow::refreshDiagnostics() {
         const auto presentation = categoryPresentation(p.category);
         const QString summary = p.category == QStringLiteral("internal")
             ? tr("Analysis unavailable for this node.") : p.message;
-        const QString displayText = QStringLiteral("%1 · %2 · %3\n%4: %5\n%6")
-            .arg(presentation.first, p.label, tr("Blocked descendant"),
-                 tr("Scope"), p.scope, summary);
-        auto *child = new QTreeWidgetItem(roots.value(p.cause), {displayText});
+        auto *child = new QTreeWidgetItem(roots.value(p.cause),
+            {presentation.first, p.label, p.scope, summary});
         child->setData(0, IdRole, p.id);
         child->setForeground(0, QBrush(presentation.second));
-        child->setToolTip(0, displayText);
+        child->setToolTip(3, summary);
         if (p.category == QStringLiteral("internal")) {
-            auto *technical = new QTreeWidgetItem(child, {tr("Technical details")});
-            if (!p.code.isEmpty()) new QTreeWidgetItem(technical, {tr("%1: %2").arg(tr("Code"), p.code)});
+            auto *technical = new QTreeWidgetItem(child, {tr("Technical details"), {}, {}, {}});
+            if (!p.code.isEmpty()) new QTreeWidgetItem(technical,
+                {tr("Code"), {}, {}, p.code});
             if (!p.message.isEmpty()) new QTreeWidgetItem(technical,
-                {tr("%1: %2").arg(tr("Details"), p.message)});
+                {tr("Details"), {}, {}, p.message});
         }
     }
     if (problems.isEmpty()) {
-        auto *none = new QTreeWidgetItem(diagnostics_, {currentScopeProblems_->isChecked()
-            ? tr("No problems in this scope") : tr("No model problems")});
-        none->setForeground(0, QBrush(QColor("#58677a")));
+        auto *none = new QTreeWidgetItem(diagnostics_, {{}, currentScopeProblems_->isChecked()
+            ? tr("No problems in this scope") : tr("No model problems"), {}, {}});
+        none->setForeground(1, QBrush(QColor("#58677a")));
     }
     scene_->setProblemMarkers(markers);
 }
