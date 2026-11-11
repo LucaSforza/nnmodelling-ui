@@ -7,7 +7,6 @@
 #include "inference/inference.h"
 #include "model/model.h"
 #include "project/project.h"
-#include <QBrush>
 #include <QComboBox>
 #include <QDialog>
 #include <QDialogButtonBox>
@@ -683,122 +682,6 @@ void MainWindow::refreshInspector() {
     refreshing_ = false;
 }
 
-void MainWindow::refreshResources() {
-    resources_->clear();
-    const NNProject *project = nn_app_project(application_.get());
-    if (!project) return;
-    const NNDataset *activeDataset = nn_project_active_dataset(project);
-    const QString activeIdentity = activeDataset
-        ? QStringLiteral("%1@%2").arg(QString::fromUtf8(activeDataset->id), QString::fromUtf8(activeDataset->version))
-        : tr("none");
-    auto *datasets = new QTreeWidgetItem(resources_, {tr("Datasets — Active: %1").arg(activeIdentity)});
-    datasets->setExpanded(true);
-    for (size_t i = 0; i < nn_project_dataset_count(project); ++i) {
-        const NNDataset *dataset = nn_project_dataset_at(project, i);
-        if (!dataset) continue;
-        const QString identity = QStringLiteral("%1@%2").arg(
-            QString::fromUtf8(dataset->id), QString::fromUtf8(dataset->version));
-        auto *datasetItem = new QTreeWidgetItem(datasets,
-            {QStringLiteral("%1  %2").arg(textOr(QString::fromUtf8(dataset->name), dataset->id), identity)});
-        datasetItem->setData(0, IdRole, identity);
-        datasetItem->setData(0, PackageVersionRole, QString::fromUtf8(dataset->id));
-        datasetItem->setData(0, DatasetVersionRole, QString::fromUtf8(dataset->version));
-        if (activeDataset == dataset)
-            datasetItem->setText(0, QStringLiteral("✓  %1").arg(datasetItem->text(0)));
-        datasetItem->setToolTip(0, dataset->path ? QString::fromUtf8(dataset->path) : QString());
-        for (size_t j = 0; j < dataset->input_count; ++j) {
-            const NNTensorSlot &slot = dataset->inputs[j];
-            new QTreeWidgetItem(datasetItem, {QStringLiteral("Input: %1 [%2]").arg(
-                QString::fromUtf8(slot.name), QString::fromUtf8(slot.dtype))});
-        }
-        for (size_t j = 0; j < dataset->target_count; ++j) {
-            const NNTensorSlot &slot = dataset->targets[j];
-            new QTreeWidgetItem(datasetItem, {QStringLiteral("Target: %1 [%2]").arg(
-                QString::fromUtf8(slot.name), QString::fromUtf8(slot.dtype))});
-        }
-    }
-    auto *packages = new QTreeWidgetItem(resources_, {tr("Packages")});
-    packages->setExpanded(true);
-    const NNCatalog *catalog = nn_project_catalog(project);
-    for (size_t i = 0; catalog && i < nn_catalog_count(catalog); ++i) {
-        const NNPackage *package = nn_catalog_at(catalog, i);
-        if (!package) continue;
-        auto *item = new QTreeWidgetItem(packages, {QStringLiteral("%1@%2").arg(
-            package->id ? QString::fromUtf8(package->id) : QString(),
-            package->version ? QString::fromUtf8(package->version) : QString())});
-        item->setForeground(0, QBrush(readablePackageColor(package)));
-        for (size_t j = 0; j < package->dependency_count; ++j) {
-            const NNPackageDependency &dependency = package->dependencies[j];
-            new QTreeWidgetItem(item, {QStringLiteral("Requires %1 %2").arg(
-                QString::fromUtf8(dependency.id), QString::fromUtf8(dependency.version_constraint))});
-        }
-    }
-    auto *operations = new QTreeWidgetItem(resources_, {tr("Operations")});
-    operations->setExpanded(true);
-    char error[ErrorCapacity] = {};
-    char *operationText = nn_app_operations_json(application_.get(), error, sizeof(error));
-    if (operationText) {
-        const QJsonDocument operationDocument = QJsonDocument::fromJson(QByteArray(operationText));
-        nn_app_free_text(operationText);
-        if (operationDocument.isArray()) {
-            const NNModel *model = nn_app_model(application_.get());
-            for (const QJsonValue &value : operationDocument.array()) {
-                const QJsonObject operation = value.toObject();
-                QString state = tr("Ready");
-                for (const QString &direction : {QStringLiteral("input"), QStringLiteral("output")}) {
-                    const QJsonObject endpoint = operation.value(direction).toObject();
-                    const QByteArray nodeId = endpoint.value(QStringLiteral("node")).toString().toUtf8();
-                    const NNNode *node = nn_model_find_node(model, nodeId.constData());
-                    bool found = false;
-                    const bool output = direction == QStringLiteral("output");
-                    const NNPackage *nodePackage = node
-                        ? nn_catalog_find(catalog, node->package_id, node->package_version) : nullptr;
-                    const bool inputNode = nodePackage && nodePackage->kind &&
-                        std::strcmp(nodePackage->kind, "input") == 0;
-                    const bool portOutput = output || (direction == QStringLiteral("input") && inputNode);
-                    for (size_t p = 0; node && p < nn_app_port_count(application_.get(), node->id, portOutput); ++p) {
-                        char port[256] = {};
-                        if (nn_app_port_id(application_.get(), node->id, portOutput, p, port, sizeof(port)) &&
-                            endpoint.value(QStringLiteral("handle")).toString() == QString::fromUtf8(port))
-                            found = true;
-                    }
-                    if (!node || (node->scope_id && node->scope_id[0]) || !found) state = tr("Stale endpoint");
-                }
-                auto *item = new QTreeWidgetItem(operations, {QStringLiteral("%1  ·  %2")
-                    .arg(operation.value(QStringLiteral("name")).toString(), state)});
-                const QJsonObject input = operation.value(QStringLiteral("input")).toObject();
-                const QJsonObject output = operation.value(QStringLiteral("output")).toObject();
-                item->setToolTip(0, QStringLiteral("%1 (%2) → %3 (%4)")
-                    .arg(input.value(QStringLiteral("node")).toString(), input.value(QStringLiteral("codec")).toString(),
-                         output.value(QStringLiteral("node")).toString(), output.value(QStringLiteral("codec")).toString()));
-            }
-        }
-    } else {
-        new QTreeWidgetItem(operations, {tr("Unable to read operations: %1").arg(QString::fromUtf8(error))});
-    }
-    auto *metavariables = new QTreeWidgetItem(resources_, {tr("Metavariables")});
-    metavariables->setExpanded(true);
-    char variableError[ErrorCapacity] = {};
-    char *variableText = nn_app_metavariables_json(application_.get(), variableError, sizeof(variableError));
-    if (variableText) {
-        const QJsonDocument variableDocument = QJsonDocument::fromJson(QByteArray(variableText));
-        nn_app_free_text(variableText);
-        for (const QJsonValue &entry : variableDocument.array()) {
-            const QJsonObject variable = entry.toObject();
-            const QString name = variable.value(QStringLiteral("name")).toString();
-            const QString type = variable.value(QStringLiteral("type")).toString();
-            QString value = variable.value(QStringLiteral("value")).isString()
-                ? variable.value(QStringLiteral("value")).toString()
-                : QString::fromUtf8(QJsonDocument(QJsonArray{variable.value(QStringLiteral("value"))})
-                    .toJson(QJsonDocument::Compact)).mid(1).chopped(1);
-            new QTreeWidgetItem(metavariables, {QStringLiteral("$%1  [%2] = %3").arg(name, type, value)});
-        }
-    } else {
-        new QTreeWidgetItem(metavariables, {tr("Unable to read metavariables: %1").arg(QString::fromUtf8(variableError))});
-    }
-    resources_->expandAll();
-}
-
 void MainWindow::updateWindowTitle() {
     const NNProject *project = nn_app_project(application_.get());
     if (!project) {
@@ -835,22 +718,4 @@ void MainWindow::editNodeParameter(const QString &nodeId, const QString &key,
         return;
     }
     QTimer::singleShot(0, this, [this] { refreshAll(); });
-}
-
-void MainWindow::selectResource(QTreeWidgetItem *item, int) {
-    if (!item || item->data(0, IdRole).toString().isEmpty()) return;
-    // Resource identities are shown here; selection never changes project ownership.
-    statusBar()->showMessage(item->toolTip(0), 5000);
-}
-
-void MainWindow::selectDataset(QTreeWidgetItem *item, int column) {
-    if (!item) return;
-    if (item->data(0, PackageVersionRole).toString().isEmpty()) {
-        selectResource(item, column);
-        return;
-    }
-    const QString id = item->data(0, PackageVersionRole).toString();
-    const QString version = item->data(0, DatasetVersionRole).toString();
-    statusBar()->showMessage(tr("Selected dataset %1@%2. Use Activate selected dataset to make it active.")
-        .arg(id, version), 5000);
 }

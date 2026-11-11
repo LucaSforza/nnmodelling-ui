@@ -9,6 +9,7 @@
 #include <QAction>
 #include <QColor>
 #include <QLineEdit>
+#include <QPushButton>
 #include <QToolButton>
 #include <QTreeWidget>
 #include <QTreeWidgetItem>
@@ -128,7 +129,6 @@ void MainWindow::refreshAll() {
     refreshing_ = false;
     refreshPalette();
     refreshInspector();
-    refreshResources();
     refreshDiagnostics();
     updateDescriptions();
     updateWindowTitle();
@@ -144,6 +144,7 @@ void MainWindow::refreshPalette() {
     const NNCatalog *catalog = project ? nn_project_catalog(project) : nullptr;
     tree->clear();
     selectedPaletteId_.clear();
+    updateAddNodeButton();
     if (!catalog) return;
     std::map<QString, QTreeWidgetItem *> groups;
     for (size_t i = 0; i < nn_catalog_count(catalog); ++i) {
@@ -170,4 +171,21 @@ void MainWindow::refreshPalette() {
         item->setForeground(0, QBrush(readablePackageColor(package)));
     }
     tree->expandAll();
+    updateAddNodeButton();
+}
+
+void MainWindow::updateAddNodeButton() {
+    if (!addNodeButton_) return;
+    bool valid = false;
+    const auto *tree = qobject_cast<QTreeWidget *>(paletteTree_);
+    const QTreeWidgetItem *item = tree ? tree->currentItem() : nullptr;
+    const NNProject *project = nn_app_project(application_.get());
+    const NNCatalog *catalog = project ? nn_project_catalog(project) : nullptr;
+    if (item && item->childCount() == 0 && catalog && !selectedPaletteId_.isEmpty()) {
+        const QByteArray id = item->data(0, IdRole).toString().toUtf8();
+        const QByteArray version = item->data(0, PackageVersionRole).toString().toUtf8();
+        valid = !version.isEmpty() && selectedPaletteId_ == QString::fromUtf8(id) &&
+            nn_catalog_find(catalog, id.constData(), version.constData()) != nullptr;
+    }
+    addNodeButton_->setEnabled(valid);
 }

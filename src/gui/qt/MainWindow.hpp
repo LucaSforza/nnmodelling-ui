@@ -9,8 +9,8 @@ class QCheckBox;
 class QCloseEvent;
 class QLineEdit;
 class QLabel;
+class QPushButton;
 class QTreeWidget;
-class QTreeWidgetItem;
 class QTimer;
 class QToolButton;
 class QWidget;
@@ -40,8 +40,8 @@ private:
     void refreshPalette();
     void refreshInspector();
     void updateDescriptions();
-    void refreshResources();
     void refreshDiagnostics();
+    void updateAddNodeButton();
     bool revealNode(const QString &id);
     void updateWindowTitle();
     bool confirmReplaceProject();
@@ -52,16 +52,13 @@ private:
     void restoreEdit(bool redo);
     void editNodeName(const QString &nodeId, const QString &name);
     void editNodeParameter(const QString &nodeId, const QString &key, const QString &value);
-    void selectResource(QTreeWidgetItem *item, int column);
     void createStereotype();
     void createDataset(const QString &id = QString(), const QString &version = QString());
     void importDataset();
-    void activateSelectedDataset();
     void manageDatasets();
     void manageOperations();
     void manageMetavariables();
     void showParameterCounts();
-    void selectDataset(QTreeWidgetItem *item, int column);
     static char *automationUiCallback(void *user, const char *operation,
                                      const char *argsJson, char *error, size_t cap);
 
@@ -73,9 +70,11 @@ private:
     QTreeWidget *inspector_ = nullptr;
     QLabel *componentGuide_ = nullptr;
     QLabel *selectedNodeDescription_ = nullptr;
-    QTreeWidget *resources_ = nullptr;
+    QPushButton *addNodeButton_ = nullptr;
+    QWidget *problemsContents_ = nullptr;
     QTreeWidget *diagnostics_ = nullptr;
     QCheckBox *currentScopeProblems_ = nullptr;
+    QToolButton *problemsToggle_ = nullptr;
     QToolButton *scopeSelector_ = nullptr;
     QTreeWidget *scopeTree_ = nullptr;
     QAction *undoAction_ = nullptr;

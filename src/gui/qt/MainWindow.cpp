@@ -38,6 +38,7 @@
 #include <QSize>
 #include <QStyledItemDelegate>
 #include <QStyleOptionViewItem>
+#include <QSizePolicy>
 #include <QPalette>
 #include <QBrush>
 #include <QColor>
@@ -222,6 +223,7 @@ void MainWindow::buildUi() {
         "QPushButton { background: #e5e9ee; color: #202c3b; border: 1px solid #9aa8b8; padding: 5px 10px; }"
         "QPushButton:hover { background: #d8e1ea; color: #202c3b; }"
         "QPushButton[primary=true] { background: #3978c5; color: white; border: 0; }"
+        "QPushButton[primary=true]:disabled { background: #e1e5e9; color: #657181; border: 1px solid #aeb8c3; }"
         "QStatusBar { background: #e5e9ee; color: #354154; }"));
 
     auto addMenu = [this](const QString &title) {
@@ -401,6 +403,8 @@ void MainWindow::buildUi() {
     auto *addButton = new QPushButton(tr("Add to graph"), left);
     addButton->setObjectName(QStringLiteral("addNodeButton"));
     addButton->setProperty("primary", true);
+    addButton->setEnabled(false);
+    addNodeButton_ = addButton;
     leftLayout->addWidget(addButton);
     leftLayout->addWidget(componentGuide_);
 
@@ -411,7 +415,50 @@ void MainWindow::buildUi() {
     connect(zoomInButtonAction, &QAction::triggered, view_, &GraphView::zoomIn);
     connect(zoomOutButtonAction, &QAction::triggered, view_, &GraphView::zoomOut);
     view_->setMinimumWidth(360);
-    auto *right = new QSplitter(Qt::Vertical, workspace);
+    auto *canvasProblems = new QSplitter(Qt::Vertical, workspace);
+    canvasProblems->setObjectName(QStringLiteral("canvasProblemsSplitter"));
+    canvasProblems->setChildrenCollapsible(false);
+    auto *problemsPane = new QWidget(canvasProblems);
+    auto *problemsLayout = new QVBoxLayout(problemsPane);
+    problemsLayout->setContentsMargins(6, 4, 8, 8);
+    problemsToggle_ = new QToolButton(problemsPane);
+    problemsToggle_->setObjectName(QStringLiteral("problemsToggle"));
+    problemsToggle_->setText(tr("Model Problems"));
+    problemsToggle_->setCheckable(true);
+    problemsToggle_->setChecked(false);
+    problemsToggle_->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    problemsToggle_->setArrowType(Qt::RightArrow);
+    problemsToggle_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    problemsLayout->addWidget(problemsToggle_);
+    problemsContents_ = new QWidget(problemsPane);
+    auto *problemsContentsLayout = new QVBoxLayout(problemsContents_);
+    problemsContentsLayout->setContentsMargins(0, 0, 0, 0);
+    auto *problemControls = new QHBoxLayout;
+    auto *diagnosticTitle = new QLabel(tr("Model problems"), problemsContents_);
+    diagnosticTitle->setStyleSheet(QStringLiteral("font-weight: 600; color: #37465a;"));
+    problemControls->addWidget(diagnosticTitle);
+    problemControls->addStretch();
+    currentScopeProblems_ = new QCheckBox(tr("Current scope only"), problemsContents_);
+    currentScopeProblems_->setObjectName(QStringLiteral("currentScopeProblems"));
+    problemControls->addWidget(currentScopeProblems_);
+    problemsContentsLayout->addLayout(problemControls);
+    diagnostics_ = new QTreeWidget(problemsContents_);
+    diagnostics_->setObjectName(QStringLiteral("diagnostics"));
+    diagnostics_->setColumnCount(4);
+    diagnostics_->setHeaderLabels({tr("Category"), tr("Node"), tr("Scope"), tr("Reason")});
+    diagnostics_->header()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+    diagnostics_->header()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
+    diagnostics_->header()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
+    diagnostics_->header()->setSectionResizeMode(3, QHeaderView::Stretch);
+    diagnostics_->setItemDelegate(new WrappedTreeDelegate(diagnostics_));
+    diagnostics_->setWordWrap(true);
+    diagnostics_->setTextElideMode(Qt::ElideNone);
+    diagnostics_->setUniformRowHeights(false);
+    problemsContentsLayout->addWidget(diagnostics_, 1);
+    problemsLayout->addWidget(problemsContents_, 1);
+    problemsContents_->hide();
+
+    auto *right = new QWidget(workspace);
     right->setMinimumWidth(255);
     auto *inspectorPane = new QWidget(right);
     auto *inspectorLayout = new QVBoxLayout(inspectorPane);
@@ -431,66 +478,33 @@ void MainWindow::buildUi() {
     inspectorLayout->addWidget(selectedNodeDescription_);
     inspectorLayout->addWidget(inspector_, 1);
 
-    auto *resourcePane = new QWidget(right);
-    auto *resourceLayout = new QVBoxLayout(resourcePane);
-    resourceLayout->setContentsMargins(6, 4, 8, 4);
-    auto *resourceTitle = new QLabel(tr("Project resources"), resourcePane);
-    resourceTitle->setStyleSheet(QStringLiteral("font-weight: 600; color: #37465a;"));
-    resourceLayout->addWidget(resourceTitle);
-    resources_ = new QTreeWidget(resourcePane);
-    resources_->setObjectName(QStringLiteral("resources"));
-    resources_->setHeaderHidden(true);
-    resourceLayout->addWidget(resources_, 1);
-    auto *resourceActions = new QHBoxLayout;
-    auto *stereotypeButton = new QPushButton(tr("New stereotype"), resourcePane);
-    stereotypeButton->setObjectName(QStringLiteral("createStereotypeButton"));
-    auto *datasetButton = new QPushButton(tr("New dataset"), resourcePane);
-    datasetButton->setObjectName(QStringLiteral("createDatasetButton"));
-    auto *manageDatasetsButton = new QPushButton(tr("Dataset…"), resourcePane);
-    manageDatasetsButton->setObjectName(QStringLiteral("manageDatasetsButton"));
-    manageDatasetsButton->setToolTip(tr("Manage project datasets"));
-    auto *activateDatasetButton = new QPushButton(tr("Activate selected dataset"), resourcePane);
-    activateDatasetButton->setObjectName(QStringLiteral("activateDatasetButton"));
-    activateDatasetButton->setEnabled(false);
-    resourceActions->addWidget(stereotypeButton);
-    resourceActions->addWidget(datasetButton);
-    resourceLayout->addWidget(manageDatasetsButton);
-    resourceLayout->addWidget(activateDatasetButton);
-    resourceLayout->addLayout(resourceActions);
-
-    auto *diagnosticPane = new QWidget(right);
-    auto *diagnosticLayout = new QVBoxLayout(diagnosticPane);
-    diagnosticLayout->setContentsMargins(6, 4, 8, 8);
-    auto *diagnosticTitle = new QLabel(tr("Model problems"), diagnosticPane);
-    diagnosticTitle->setStyleSheet(QStringLiteral("font-weight: 600; color: #37465a;"));
-    diagnosticLayout->addWidget(diagnosticTitle);
-    currentScopeProblems_ = new QCheckBox(tr("Current scope only"), diagnosticPane);
-    currentScopeProblems_->setObjectName(QStringLiteral("currentScopeProblems"));
-    diagnosticLayout->addWidget(currentScopeProblems_);
-    diagnostics_ = new QTreeWidget(diagnosticPane);
-    diagnostics_->setObjectName(QStringLiteral("diagnostics"));
-    diagnostics_->setColumnCount(1);
-    diagnostics_->setHeaderLabels({tr("Problem")});
-    diagnostics_->setHeaderHidden(true);
-    diagnostics_->header()->setSectionResizeMode(0, QHeaderView::Stretch);
-    diagnostics_->setItemDelegate(new WrappedTreeDelegate(diagnostics_));
-    diagnostics_->setWordWrap(true);
-    diagnostics_->setTextElideMode(Qt::ElideNone);
-    diagnostics_->setUniformRowHeights(false);
-    diagnostics_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    diagnosticLayout->addWidget(diagnostics_, 1);
-
-    right->addWidget(inspectorPane);
-    right->addWidget(resourcePane);
-    right->addWidget(diagnosticPane);
-    right->setSizes({280, 210, 190});
+    auto *rightLayout = new QVBoxLayout(right);
+    rightLayout->setContentsMargins(0, 0, 0, 0);
+    rightLayout->addWidget(inspectorPane);
+    canvasProblems->addWidget(view_);
+    canvasProblems->addWidget(problemsPane);
+    canvasProblems->setStretchFactor(0, 1);
+    canvasProblems->setStretchFactor(1, 0);
+    canvasProblems->setSizes({640, problemsToggle_->sizeHint().height() + 16});
     workspace->addWidget(left);
-    workspace->addWidget(view_);
+    workspace->addWidget(canvasProblems);
     workspace->addWidget(right);
     workspace->setStretchFactor(0, 0);
     workspace->setStretchFactor(1, 1);
     workspace->setStretchFactor(2, 0);
     workspace->setSizes({235, 820, 305});
+    connect(problemsToggle_, &QToolButton::toggled, this, [this, canvasProblems, problemsPane](bool open) {
+        problemsToggle_->setArrowType(open ? Qt::DownArrow : Qt::RightArrow);
+        problemsContents_->setVisible(open);
+        if (open) {
+            const int total = canvasProblems->height();
+            const int panel = qBound(160, total / 3, 320);
+            canvasProblems->setSizes({qMax(120, total - panel), panel});
+        } else {
+            canvasProblems->setSizes({qMax(120, canvasProblems->height() - problemsPane->sizeHint().height()),
+                                      problemsToggle_->sizeHint().height() + 16});
+        }
+    });
     setCentralWidget(workspace);
 
     const auto chooseScope = [this](QTreeWidgetItem *item) {
@@ -552,6 +566,7 @@ void MainWindow::buildUi() {
             [this](QTreeWidgetItem *current) {
         selectedPaletteId_ = current && current->childCount() == 0
             ? current->data(0, IdRole).toString() : QString();
+        updateAddNodeButton();
         updateDescriptions();
     });
     connect(paletteTree, &QTreeWidget::itemDoubleClicked, this,
@@ -559,17 +574,6 @@ void MainWindow::buildUi() {
         if (item && item->childCount() == 0) addSelectedPackage();
     });
     connect(addButton, &QPushButton::clicked, this, [this] { addSelectedPackage(); });
-    connect(resources_, &QTreeWidget::itemClicked, this,
-            [this](QTreeWidgetItem *item, int column) { selectDataset(item, column); });
-    connect(stereotypeButton, &QPushButton::clicked, this, &MainWindow::createStereotype);
-    connect(datasetButton, &QPushButton::clicked, this, [this] { createDataset(); });
-    connect(manageDatasetsButton, &QPushButton::clicked, this, &MainWindow::manageDatasets);
-    connect(activateDatasetButton, &QPushButton::clicked, this, &MainWindow::activateSelectedDataset);
-    connect(resources_, &QTreeWidget::currentItemChanged, this,
-            [activateDatasetButton](QTreeWidgetItem *item) {
-        while (item && item->data(0, PackageVersionRole).toString().isEmpty()) item = item->parent();
-        activateDatasetButton->setEnabled(item != nullptr);
-    });
     connect(arrangeAction, &QAction::triggered, this, [this] {
         arrangeCurrentScope(FlowDirection::Vertical);
     });

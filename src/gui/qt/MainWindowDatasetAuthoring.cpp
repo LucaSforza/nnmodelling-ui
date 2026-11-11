@@ -486,24 +486,6 @@ void MainWindow::importDataset() {
     }
 }
 
-void MainWindow::activateSelectedDataset() {
-    if (!resources_) return;
-    QTreeWidgetItem *item = resources_->currentItem();
-    while (item && item->data(0, PackageVersionRole).toString().isEmpty()) item = item->parent();
-    if (!item) return;
-    const QByteArray id = item->data(0, PackageVersionRole).toString().toUtf8();
-    const QByteArray version = item->data(0, DatasetVersionRole).toString().toUtf8();
-    char error[ErrorCapacity] = {};
-    if (!nn_app_select_dataset(application_.get(), id.constData(), version.constData(),
-                               error, sizeof(error))) {
-        QMessageBox::warning(this, tr("Dataset activation failed"), QString::fromUtf8(error));
-        return;
-    }
-    refreshAll();
-    statusBar()->showMessage(tr("Activated dataset %1@%2").arg(QString::fromUtf8(id),
-                                                                 QString::fromUtf8(version)), 5000);
-}
-
 void MainWindow::createDataset(const QString &editId, const QString &editVersion) {
     if (!nn_app_project(application_.get())) {
         statusBar()->showMessage(tr("Open a project before creating a dataset"), 5000);

@@ -73,12 +73,9 @@ char *MainWindow::automationUiCallback(void *user, const char *operation,
             {QStringLiteral("palette"), QStringLiteral("package-palette"), self->tr("Packages")},
             {QStringLiteral("graph"), QStringLiteral("graph-canvas"), self->tr("Graph canvas")},
             {QStringLiteral("inspector"), QStringLiteral("node-inspector"), self->tr("Inspector")},
-            {QStringLiteral("resources"), QStringLiteral("project-resources"), self->tr("Project resources")},
             {QStringLiteral("diagnostics"), QStringLiteral("diagnostics"), self->tr("Diagnostics")},
-            {QStringLiteral("scopeSelector"), QStringLiteral("scope-selector"), self->tr("Scope")},
-            {QStringLiteral("createStereotypeButton"), QStringLiteral("resource-action"), self->tr("New stereotype")},
-            {QStringLiteral("createDatasetButton"), QStringLiteral("resource-action"), self->tr("New dataset")},
-            {QStringLiteral("manageDatasetsButton"), QStringLiteral("resource-action"), self->tr("Manage datasets")}};
+            {QStringLiteral("problemsToggle"), QStringLiteral("diagnostics-toggle"), self->tr("Model Problems")},
+            {QStringLiteral("scopeSelector"), QStringLiteral("scope-selector"), self->tr("Scope")}};
         for (const auto &entry : entries) {
             QWidget *widget = entry.id == QStringLiteral("main-window")
                 ? static_cast<QWidget *>(self) : self->findChild<QWidget *>(entry.id);
