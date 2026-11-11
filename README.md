@@ -76,8 +76,12 @@ If a sandbox disallows the configured ccache directory, use
 ### Linux AppImage
 
 On Ubuntu 22.04 x86_64, install the GUI build dependencies (including
-`libgl1-mesa-dev`), `qmake6`, `file`,
-`linuxdeploy` and `linuxdeploy-plugin-qt` on `PATH`, then run `just appimage`.
+`libgl1-mesa-dev`), `qmake6`, `file` and `curl`, then run `just appimage`.
+The recipe downloads missing linuxdeploy tools into `build/appimage-tools`;
+tools already on `PATH` are used instead.
+On other Linux distributions, `just appimage` uses rootless Podman and an
+Ubuntu 22.04 container; Podman and network access are required. The container
+reads the checkout and writes only the `build/` and `dist/` directories.
 The result is `dist/NNModelling-x86_64.AppImage`. Building on newer systems
 raises the minimum system library versions. The bundle includes the editor,
 Qt, core packages and project templates; the Python backend is separate.

@@ -3,6 +3,9 @@
 AppImage CI builds on Ubuntu 22.04 and exercises the packaged GUI, core
 stereotypes and templates through the existing offscreen CLI integration test
 outside the checkout. Tagged builds publish the tested image as a release asset.
+The build recipe downloads missing linuxdeploy tools into its build directory
+and checks packaged startup with an offscreen capture.
+On non-Ubuntu-22.04 hosts it uses a rootless Podman Ubuntu 22.04 container.
 The Ubuntu 22.04 Release suite excludes qt_canvas because Qt 6.2 offscreen
 synthetic drag events fail there; the Ubuntu 24.04 Qt job still runs that test.
 

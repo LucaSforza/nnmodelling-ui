@@ -84,5 +84,7 @@ Tests live under tests; core tests never instantiate QApplication.
 The Linux AppImage supplies core packages and templates under its AppDir. The
 GUI resolves their root at runtime; the separately managed Python backend is
 not part of this bundle.
+The AppImage recipe builds in Ubuntu 22.04, using a local Podman container on
+other Linux distributions.
 
 Accepted 2026-10-05: [backend contract](../contracts/backend.md) and [backend UML](../uml/backend.md) supersede earlier backend/training deferrals. Native C11 graph authority and Lua shape analysis remain unchanged.

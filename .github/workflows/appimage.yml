@@ -21,13 +21,6 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y build-essential cmake qt6-base-dev qt6-base-dev-tools libgl1-mesa-dev curl file
-      - name: Install linuxdeploy
-        run: |
-          mkdir -p "$RUNNER_TEMP/appimage-tools"
-          curl -fsSL --retry 3 https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage -o "$RUNNER_TEMP/appimage-tools/linuxdeploy"
-          curl -fsSL --retry 3 https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage -o "$RUNNER_TEMP/appimage-tools/linuxdeploy-plugin-qt"
-          chmod +x "$RUNNER_TEMP/appimage-tools/"*
-          echo "$RUNNER_TEMP/appimage-tools" >> "$GITHUB_PATH"
       - name: Build AppImage
         run: bash tools/build-appimage.sh
       - name: Test release build

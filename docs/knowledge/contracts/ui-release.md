@@ -12,6 +12,8 @@ the build checkout. The Python backend and its dependencies are not bundled;
 connecting to a separately running backend remains available. Managed backend
 startup and worker preparation require the source workspace and uv. Build on
 Ubuntu 22.04 for Ubuntu 22.04 and newer; other distributions are not guaranteed.
+On other Linux hosts, the build recipe uses a rootless Podman Ubuntu 22.04
+container to keep the release build environment and system library baseline.
 
 ## Project lifecycle and workspace
 

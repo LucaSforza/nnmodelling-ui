@@ -11,6 +11,17 @@ sequenceDiagram
     GUI->>Assets: Load core packages and copy selected template
 ```
 
+```mermaid
+sequenceDiagram
+    actor Developer
+    participant Recipe as AppImage recipe
+    participant Ubuntu as Ubuntu 22.04 build environment
+    participant Image as AppImage
+    Developer->>Recipe: Build
+    Recipe->>Ubuntu: Use host or rootless container
+    Ubuntu->>Image: Package and test startup
+```
+
 These diagrams describe observed ordering and ownership across the current
 client, local automation, backend and Python runtime. The sequence tool checks
 all Markdown Mermaid fences under `docs/knowledge/`; use `--write` only when the
