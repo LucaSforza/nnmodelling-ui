@@ -47,8 +47,14 @@ char *nn_activity_redact_path(const char *path);
 `NULL` logs are accepted by `emit`/`close` as no-ops. `application.h` adds
 `nn_app_set_activity_log(app, log)` (borrowed; caller keeps it alive until
 `nn_app_free` or reset to NULL) and `nn_app_set_activity_source(app, source)`
-(static string `core` or `ipc`; default `core`). The automation dispatcher sets
-`ipc` for the duration of each request and restores the previous source. Qt
+(static string `core` or `ipc`; default `core`) with getter
+`nn_app_activity_source(app)`. The automation dispatcher sets `ipc` for the
+duration of each request and restores the previous source. Public operations
+wrap an unchanged implementation; with a log attached they use a local error
+buffer so failures are logged even when the caller passed none, then copy the
+text back. `nn_activity_open` only reports its error; `main.cpp` prints the
+single stderr warning. A record that cannot be serialized (invalid UTF-8) is
+skipped without disabling the log. Qt
 wraps the same `NNActivityLog` in a C++ helper and serializes `data` with
 QJsonDocument; Qt types never enter the C ABI.
 
@@ -101,7 +107,7 @@ and the error buffer text). Field names use snake_case.
 | `node.rename` | `id`,`label` | `nn_app_rename_node` |
 | `edge.connect` | `id`,`source`,`source_handle`,`target`,`target_handle` | `nn_app_connect` |
 | `edge.disconnect` | `id` | `nn_app_disconnect` |
-| `param.set` | `node`,`key`,`old` (text or null),`new` (text) | `nn_app_set_parameter_text`, `nn_app_set_parameter` (`new` is the value's JSON text) |
+| `param.set` | `node`,`key`,`old` (text or null),`new` (text) | `nn_app_set_parameter_text`, `nn_app_set_parameter` (both values use the parameter-text form: raw strings, compact JSON otherwise) |
 | `boundary.set` | `node`,`handle` | `nn_app_set_boundary_handle` |
 | `edit.undo`, `edit.redo` | `{}` | `nn_app_undo`, `nn_app_redo` |
 | `edit.begin`, `edit.end` | `{}` / `commit` | `nn_app_begin_edit`, `nn_app_end_edit` |
@@ -127,8 +133,11 @@ state after undo/redo, because history entries are unnamed model copies.
 
 `analysis.result` is emitted when `nn_app_analysis` computes a new report (not on
 cache hits) and its problem signature differs from the last emitted one for the
-active project. Data: `problems` (count), `root_status`, `nodes`
-(`[{id,status,message}]` for non-successful node results, capped at 50).
+active project. Data: `problems` (non-success node results plus one for a
+non-success root), `root_status`, `nodes` (`[{id,status,message}]` for
+non-success node results, capped at 50). Status strings are
+`nn_inference_category` values: `success`, `model`, `incomplete`,
+`lua-compilation`, `internal`.
 
 Qt `src:"ui"` events, emitted by `src/gui/qt/ActivityLog.*`:
 
