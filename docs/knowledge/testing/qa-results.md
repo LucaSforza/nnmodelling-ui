@@ -359,3 +359,44 @@ Local screenshots:
 * `.computer-use/metavariable-editor-trial/nested-editor.png`
 * `.computer-use/metavariable-editor-trial/boolean-editor.png`
 * `.computer-use/metavariable-editor-trial/resolved-canvas.png`
+
+## Activity log GUI trial (2026-11-12)
+
+Claude Code principal; implementation by Sonnet 5.5 workers on KB baseline
+`0f96149`/`7af3e99`. No browser or desktop computer use was available, so the
+new `nnmodelling-vnc` skill drove the real Qt client through the Qt VNC plugin
+(1600x1000, loopback) with real pointer/key events and PNG captures in ignored
+`.computer-use/vnc/qa/`.
+
+`HOME` pointed to a disposable folder holding a copy of `examples/test`. Through
+the startup chooser and native file dialog, the trial performed all ten
+bachelor tasks (palette search plus Add and double-click, dataset Manage →
+Activate, node drags, port drags, Inspector parameter edits, Ctrl+Z, Ctrl+S,
+Problems toggle, Close project). `$HOME/nnmodelling.log` was created with mode
+0600; all 152 + 6 lines were valid JSON, the project path was redacted to
+`~/study` and no user name appeared. A second launch appended a new session
+UUID and ended with `session.end`. `collect.sh` produced an anonymous
+`P-<hex>.jsonl`, and the parser reported 10/10 tasks completed in order, with
+the killed first session flagged as lacking `session.end`.
+
+Defects found and fixed during the trial:
+
+* Menu `ui.action` records followed the effects of modal handlers. Watchers now
+  connect before handlers (`b09eedc`, asserted in `qt_window`).
+* Pre-existing: dropping an edge on an input port failed (`connect.cancel
+  no_target`) whenever the source port's tensor popup covered the target,
+  typically for targets above the source. The release now selects the topmost
+  port under the cursor (`c303327`, `qt_canvas` overlay regression test).
+* Placeholder "No model problems" rows logged empty `problem.click` (`56c8065`).
+* T2 completed together with T1 because `examples/test` already has MNIST small
+  active and Input auto-binds; T2 now requires `dataset.select` (`a531771`).
+
+Usability observations left unchanged (study-relevant, not logging defects):
+new nodes are always placed at the same viewport spot, overlapping Output;
+edges between vertically adjacent nodes with small gaps are not drawn (router
+failure shown only as a small `!` on the source); after Close project,
+dismissing the chooser leaves an empty editor visible instead of exiting.
+
+Gates: `just test` 17/17, `just test-ui` 8/8, `just test-cli`,
+`just test-sanitize`, `just test-activity-log` 9/9, Mermaid validation and
+`git diff --check` passed.
