@@ -97,5 +97,8 @@ jobs:
       - name: Run runtime tests
         run: just test-runtime
 
+      - name: Run activity log parser tests
+        run: just test-activity-log
+
       - name: Run example tests
         run: just test-examples

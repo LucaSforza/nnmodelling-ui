@@ -59,6 +59,9 @@ test-vae-consumer:
 test-backend:
     uv run --package nnmodelling-backend --group dev pytest -q tests/test_backend.py tests/backend
 
+test-activity-log:
+    uv run --group dev pytest -q tests/test_activity_log_parser.py
+
 test-runtime:
     uv run --group dev pytest -q tests/test_runtime.py tests/test_operations.py
 
