@@ -55,6 +55,10 @@ CLI help lists operations and resource payloads. Payload keys:
   tensors used by the UI, per diagnostics.md; it is read-only.
 * ui.reveal {id} selects/centers an existing node, opening its scope as needed.
 
+Accepted 2026-11-12: when the GUI activity log is open, the dispatcher tags
+application records produced during a request with source `ipc`, per
+[activity-log](activity-log.md); responses are unchanged.
+
 Qt refreshes panels after successful commands; invalid scope rejected. GUI
 operations use a narrow callback, never Qt types in C ABI. No arbitrary widget
 clicking, shell execution, Python, network, secrets or remote training commands.

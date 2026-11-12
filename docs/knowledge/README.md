@@ -24,6 +24,7 @@ semantics or ownership. [UI rewrite plan](../plans/ui-rewrite.md) tracks work;
 | Development tooling | [OpenCode/Codex agent contract](contracts/agent-swarm.md), [agent sequence](uml/agent-swarm.md) |
 | Resources, VAE, exported operations and LLM commands | [Authoring and subflows](contracts/resource-authoring.md), [operations and wheel execution](contracts/backend.md), [local CLI protocol](contracts/automation.md), [command use cases](uml/automation.md) |
 | Typed outputs and terminals | [Output/loss contract](contracts/typed-outputs.md), [boundary and output UML](uml/metamodel.md), [implementation plan](../plans/typed-outputs.md) |
+| Usability study logging | [Anonymous activity log, events and parser](contracts/activity-log.md), [activity sequence](uml/sequences/project-editor.md#record-user-activity-accepted-2026-11-12) |
 | Errors and strings | [Diagnostics and common helpers](contracts/diagnostics.md), [report ownership](uml/editor.md), [UI sequence](uml/sequences.md#analysis-cache-and-problem-navigation) |
 
 Current explicit user requirements take precedence; update accepted contracts

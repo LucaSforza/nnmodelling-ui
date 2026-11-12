@@ -346,3 +346,44 @@ preserve it for repair and display its invalid status. Backend submission reject
 stale declarations before queueing a job. No adapter or PyTorch code runs in Qt.
 Changed metadata clears graph-only history without marking it saved; rejected
 and unchanged lists retain existing undo/redo and dirty revisions.
+
+## Record user activity (accepted 2026-11-12)
+
+```mermaid
+  sequenceDiagram
+    actor Student
+    participant Main as main.cpp
+    participant Log as NNActivityLog (src/activity)
+    participant Qt as MainWindow/GraphScene/ActivityLog helper
+    participant App as NNApplication
+    participant IPC as Automation dispatcher
+    Main->>Log: resolve_path(NNMODELLING_ACTIVITY_LOG or $HOME/nnmodelling.log)
+    alt logging enabled and file opens
+      Main->>Log: open(O_APPEND, 0600) and new session UUID
+      Main->>App: set_activity_log(log)
+      Main->>Log: emit ui session.start
+    else disabled or open fails
+      Main->>Main: continue without logging (one stderr warning on failure)
+    end
+    Student->>Qt: search palette, select and add Linear
+    Qt->>Log: emit ui palette.search / palette.select / palette.add
+    Qt->>App: add_node(...)
+    App->>App: perform operation unchanged
+    App->>Log: emit core node.add with ok and error text
+    alt operation succeeded and is semantic
+      App->>Log: emit core model.snapshot (deferred until committing end_edit inside a group)
+    end
+    Qt->>App: analysis()
+    App->>Log: emit core analysis.result when a new report changes the problem signature
+    IPC->>App: set_activity_source(ipc) for the request
+    IPC->>App: dispatch operation
+    App->>Log: emit ipc events
+    IPC->>App: restore previous source
+    Student->>Qt: quit
+    Main->>Log: emit ui session.end and close
+```
+
+Records are single `write()` JSON lines; a write failure disables the log
+without affecting the operation. Owners: `src/activity/activity.c`, event
+emission in `src/application/*.c`, `src/automation/dispatch.c`,
+`src/gui/qt/main.cpp` and `src/gui/qt/ActivityLog.cpp`.

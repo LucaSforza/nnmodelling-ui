@@ -18,6 +18,7 @@ All application implementation lives under `src/`, one directory per module:
 | `application/` | lifecycle/cache, graph commands, parameter text/defaults and catalog validation, ports/boundaries, resource commands |
 | `automation/` | protocol/dispatch, project snapshot, diagnostics JSON, nonblocking Unix transport |
 | `nnmodelctl/` | CLI arguments/request construction, bounded Unix exchange, entry point |
+| `activity/` | anonymous JSON Lines activity log: path resolution, record writer, redaction ([activity-log](activity-log.md), accepted 2026-11-12) |
 | `utils/` | global allocation-free errors, owned text/path joining, join-handle parsing |
 | `gui/qt/` | Qt frontend only: existing canvas classes; window composition, project actions, inspector/resources, diagnostics, authoring dialogs, UI automation |
 

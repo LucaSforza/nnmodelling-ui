@@ -15,6 +15,9 @@ Accepted 2026-09-29: Qt 6 Widgets replaces the SDL3 graphical frontend.
       Inference --> Model
       Inference --> Lua[Vendored C Lua runtime]
       API --> Utils[src/utils - global mechanical helpers]
+      API --> Activity[src/activity - C anonymous activity log writer]
+      GUI --> Activity
+      Activity --> Utils
       Project --> Utils
       Model --> Utils
       Catalog --> Utils
@@ -86,5 +89,10 @@ GUI resolves their root at runtime; the separately managed Python backend is
 not part of this bundle.
 The AppImage recipe builds in Ubuntu 22.04, using a local Podman container on
 other Linux distributions.
+
+Accepted 2026-11-12: [activity log](../contracts/activity-log.md) adds the
+C11 `src/activity/` module in `nnmodelling_core`. Qt opens the anonymous
+append-only JSON Lines log at startup; application operations and Qt
+presentation events write records through it. Logging never alters behavior.
 
 Accepted 2026-10-05: [backend contract](../contracts/backend.md) and [backend UML](../uml/backend.md) supersede earlier backend/training deferrals. Native C11 graph authority and Lua shape analysis remain unchanged.
