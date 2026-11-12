@@ -1,0 +1,47 @@
+{
+  "tasks": [
+    {"id": "T1", "title": "Place Input",
+     "predicate": {"node": {"package": "core.input"}}},
+    {"id": "T2", "title": "Activate MNIST small",
+     "predicate": {"any": [
+       {"event": "dataset.select", "data": {"id": "mnist"}},
+       {"all": [
+         {"active_dataset": "mnist"},
+         {"node": {"package": "core.input", "params": {"binding": {"nonempty": true}}}}
+       ]}
+     ]}},
+    {"id": "T3", "title": "Place Flatten",
+     "predicate": {"node": {"package": "core.flatten"}}},
+    {"id": "T4", "title": "Edge Input to Flatten",
+     "predicate": {"edge": {"from": {"package": "core.input"}, "to": {"package": "core.flatten"}}}},
+    {"id": "T5", "title": "Place Linear",
+     "predicate": {"node": {"package": "core.linear"}}},
+    {"id": "T6", "title": "Place ReLU",
+     "predicate": {"node": {"package": "core.relu"}}},
+    {"id": "T7", "title": "Edge Flatten to Linear 784 to 64",
+     "predicate": {"edge": {
+       "from": {"package": "core.flatten"},
+       "to": {"package": "core.linear", "params": {"in_features": 784, "out_features": 64}}}}},
+    {"id": "T8a", "title": "Edge Linear(784,64) to ReLU",
+     "predicate": {"edge": {
+       "from": {"package": "core.linear", "params": {"in_features": 784, "out_features": 64}},
+       "to": {"package": "core.relu"}}}},
+    {"id": "T8b", "title": "Second Linear after ReLU",
+     "predicate": {"edge": {"from": {"package": "core.relu"}, "to": {"package": "core.linear"}}}},
+    {"id": "T8c", "title": "Second Linear 64 to 10",
+     "predicate": {"node": {"package": "core.linear",
+       "params": {"in_features": 64, "out_features": 10},
+       "has_input_from": {"package": "core.relu"}}}},
+    {"id": "T9", "title": "Linear2 to CrossEntropy to Loss Output",
+     "predicate": {"all": [
+       {"edge": {
+         "from": {"package": "core.linear", "has_input_from": {"package": "core.relu"}},
+         "to": {"package": "core.cross-entropy"}}},
+       {"edge": {"from": {"package": "core.cross-entropy"}, "to": {"package": "core.loss-output"}}}
+     ]}},
+    {"id": "T10", "title": "Linear2 to Output",
+     "predicate": {"edge": {
+       "from": {"package": "core.linear", "has_input_from": {"package": "core.relu"}},
+       "to": {"package": "core.output"}}}}
+  ]
+}
