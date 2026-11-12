@@ -248,8 +248,9 @@ void MainWindow::buildUi() {
         QAction *action = menu->addAction(label);
         if (!shortcut.isEmpty()) action->setShortcut(shortcut);
         if (objectName) action->setObjectName(QString::fromLatin1(objectName));
-        connect(action, &QAction::triggered, this, callback);
+        // Log the action before its (possibly modal) handler records effects.
         ActivityLog::watchAction(action);
+        connect(action, &QAction::triggered, this, callback);
         return action;
     };
     addAction(fileMenu, tr("Create project…"), QKeySequence::New,

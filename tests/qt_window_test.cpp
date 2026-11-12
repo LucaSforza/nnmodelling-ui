@@ -2476,6 +2476,9 @@ void WindowTest::activityLogRecordsUiAndCoreEvents() {
                  .value(QStringLiteral("action")).toString(), QStringLiteral("saveProjectAction"));
     QCOMPARE(first.value(QStringLiteral("ui.action")).value(QStringLiteral("data")).toObject()
                  .value(QStringLiteral("via")).toString(), QStringLiteral("menu"));
+    // The triggering action precedes the effects of its handler.
+    QVERIFY(events.contains(QStringLiteral("project.save")));
+    QVERIFY(events.indexOf(QStringLiteral("ui.action")) < events.indexOf(QStringLiteral("project.save")));
     const QJsonObject paletteAdd = first.value(QStringLiteral("palette.add")).value(QStringLiteral("data")).toObject();
     QCOMPARE(paletteAdd.value(QStringLiteral("package")).toString(), QStringLiteral("core.relu"));
     QCOMPARE(paletteAdd.value(QStringLiteral("via")).toString(), QStringLiteral("button"));
