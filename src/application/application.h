@@ -3,6 +3,7 @@
 
 #include "project/project.h"
 #include "inference/inference.h"
+#include "activity/activity.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -11,6 +12,11 @@ extern "C" {
 typedef struct NNApplication NNApplication;
 
 NNApplication *nn_app_new(const char *core_root);
+/* Borrowed log (may be NULL); the caller keeps it alive until nn_app_free or reset. */
+void nn_app_set_activity_log(NNApplication *app, NNActivityLog *log);
+/* Static string "core" (default) or "ipc". */
+void nn_app_set_activity_source(NNApplication *app, const char *source);
+const char *nn_app_activity_source(const NNApplication *app);
 void nn_app_free(NNApplication *app);
 bool nn_app_open(NNApplication *app, const char *directory, char *error, size_t cap);
 bool nn_app_create(NNApplication *app, const char *parent, const char *id,

@@ -273,7 +273,7 @@ bool nn_app_add_default(NNApplication *app, NNModel *model, const char *node_id,
     if (definition->has_default && (value.type == NN_VALUE_ARRAY || value.type == NN_VALUE_OBJECT)) nn_value_dispose(&value);
     return okay;
 }
-bool nn_app_set_parameter(NNApplication *app, const char *node_id, const char *key,
+static bool set_parameter_impl(NNApplication *app, const char *node_id, const char *key,
                           const NNValue *value, char *error, size_t cap)
 {
     if (!app || !app->project) return nn_app_history_fail(app, error, cap, "no active project");
@@ -313,8 +313,8 @@ bool nn_app_set_parameter(NNApplication *app, const char *node_id, const char *k
     return true;
 }
 
-bool nn_app_set_parameter_text(NNApplication *app, const char *node, const char *key,
-                               const char *text, char *error, size_t cap)
+static bool set_parameter_text_impl(NNApplication *app, const char *node, const char *key,
+                                    const char *text, char *error, size_t cap)
 {
     if (!app || !app->project) return nn_app_history_fail(app, error, cap, "no active project");
     const NNNode *entry = nn_model_find_node(nn_project_model(app->project), node);
@@ -327,12 +327,12 @@ bool nn_app_set_parameter_text(NNApplication *app, const char *node, const char 
         if (app->history.group_active) app->history.group_failed = true;
         return false;
     }
-    bool okay = nn_app_set_parameter(app, node, key, &value, error, cap);
+    bool okay = set_parameter_impl(app, node, key, &value, error, cap);
     if (value.type == NN_VALUE_ARRAY || value.type == NN_VALUE_OBJECT) nn_value_dispose(&value);
     return okay;
 }
 
-static yyjson_mut_val *parameter_json_value(yyjson_mut_doc *doc, const NNValue *value)
+yyjson_mut_val *nn_app_value_json(yyjson_mut_doc *doc, const NNValue *value)
 {
     switch (value->type) {
     case NN_VALUE_BOOL: return yyjson_mut_bool(doc, value->as.boolean);
@@ -349,7 +349,7 @@ static yyjson_mut_val *parameter_json_value(yyjson_mut_doc *doc, const NNValue *
         yyjson_mut_val *array = yyjson_mut_arr(doc);
         if (!array) return NULL;
         for (size_t i = 0; i < value->as.array.count; ++i) {
-            yyjson_mut_val *item = parameter_json_value(doc, &value->as.array.items[i]);
+            yyjson_mut_val *item = nn_app_value_json(doc, &value->as.array.items[i]);
             if (!item || !yyjson_mut_arr_append(array, item)) return NULL;
         }
         return array;
@@ -359,13 +359,27 @@ static yyjson_mut_val *parameter_json_value(yyjson_mut_doc *doc, const NNValue *
         if (!object) return NULL;
         for (size_t i = 0; i < value->as.object.count; ++i) {
             const NNParameter *entry = &value->as.object.items[i];
-            yyjson_mut_val *item = parameter_json_value(doc, &entry->value);
+            yyjson_mut_val *item = nn_app_value_json(doc, &entry->value);
             if (!item || !yyjson_mut_obj_add_val(doc, object, entry->key, item)) return NULL;
         }
         return object;
     }
     default: return NULL;
     }
+}
+
+/* Strings are raw text; every other type is its compact JSON. */
+static char *value_text(const NNValue *value)
+{
+    if (value->type == NN_VALUE_STRING) return nn_text_copy(value->as.string);
+    yyjson_mut_doc *document = yyjson_mut_doc_new(NULL);
+    if (!document) return NULL;
+    yyjson_mut_val *json = nn_app_value_json(document, value);
+    if (!json) { yyjson_mut_doc_free(document); return NULL; }
+    yyjson_mut_doc_set_root(document, json);
+    char *text = yyjson_mut_write(document, 0, NULL);
+    yyjson_mut_doc_free(document);
+    return text;
 }
 
 char *nn_app_parameter_text(const NNApplication *app, const char *node_id, const char *key)
@@ -375,18 +389,45 @@ char *nn_app_parameter_text(const NNApplication *app, const char *node_id, const
     if (!node || !key) return NULL;
     for (size_t i = 0; i < node->parameter_count; ++i) {
         if (strcmp(node->parameters[i].key, key)) continue;
-        if (node->parameters[i].value.type == NN_VALUE_STRING)
-            return nn_text_copy(node->parameters[i].value.as.string);
-        yyjson_mut_doc *document = yyjson_mut_doc_new(NULL);
-        if (!document) return NULL;
-        yyjson_mut_val *value = parameter_json_value(document, &node->parameters[i].value);
-        if (!value) { yyjson_mut_doc_free(document); return NULL; }
-        yyjson_mut_doc_set_root(document, value);
-        char *text = yyjson_mut_write(document, 0, NULL);
-        yyjson_mut_doc_free(document);
-        return text;
+        return value_text(&node->parameters[i].value);
     }
     return NULL;
 }
 
 void nn_app_free_text(char *text) { free(text); }
+
+bool nn_app_set_parameter(NNApplication *app, const char *node, const char *key,
+                          const NNValue *value, char *error, size_t cap)
+{
+    NNAppEvent event;
+    nn_app_event_begin(&event, app, error, cap);
+    nn_app_event_str(&event, "node", node);
+    nn_app_event_str(&event, "key", key);
+    if (event.doc) {
+        char *old = nn_app_parameter_text(app, node, key);
+        char *new_text = value ? value_text(value) : NULL;
+        nn_app_event_str(&event, "old", old);
+        nn_app_event_str(&event, "new", new_text);
+        nn_app_free_text(old);
+        nn_app_free_text(new_text);
+    }
+    return nn_app_event_end(&event, set_parameter_impl(app, node, key, value, event.error,
+                                                       event.cap), "param.set");
+}
+
+bool nn_app_set_parameter_text(NNApplication *app, const char *node, const char *key,
+                               const char *text, char *error, size_t cap)
+{
+    NNAppEvent event;
+    nn_app_event_begin(&event, app, error, cap);
+    nn_app_event_str(&event, "node", node);
+    nn_app_event_str(&event, "key", key);
+    if (event.doc) {
+        char *old = nn_app_parameter_text(app, node, key);
+        nn_app_event_str(&event, "old", old);
+        nn_app_free_text(old);
+    }
+    nn_app_event_str(&event, "new", text);
+    return nn_app_event_end(&event, set_parameter_text_impl(app, node, key, text, event.error,
+                                                            event.cap), "param.set");
+}

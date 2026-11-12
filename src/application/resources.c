@@ -12,10 +12,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-bool nn_app_create_stereotype_with_python(NNApplication *app, const char *id, const char *version,
-                                          const char *definition_json, const char *inference_lua,
-                                          const char *pytorch_python,
-                                          const char *dependencies_json, char *error, size_t cap)
+static bool create_stereotype_impl(NNApplication *app, const char *id, const char *version,
+                                   const char *definition_json, const char *inference_lua,
+                                   const char *pytorch_python,
+                                   const char *dependencies_json, char *error, size_t cap)
 {
     nn_error_set(error, cap, "");
     if (!app || !app->project) return nn_fail(error, cap, "no active project");
@@ -101,6 +101,22 @@ bool nn_app_create_stereotype_with_python(NNApplication *app, const char *id, co
     return okay;
 }
 
+bool nn_app_create_stereotype_with_python(NNApplication *app, const char *id,
+                                          const char *version, const char *definition_json,
+                                          const char *inference_lua, const char *pytorch_python,
+                                          const char *dependencies_json,
+                                          char *error, size_t cap)
+{
+    NNAppEvent event;
+    nn_app_event_begin(&event, app, error, cap);
+    nn_app_event_str(&event, "id", id);
+    nn_app_event_str(&event, "version", version);
+    nn_app_event_str(&event, "python", pytorch_python);
+    return nn_app_event_end(&event, create_stereotype_impl(app, id, version, definition_json,
+        inference_lua, pytorch_python, dependencies_json, event.error, event.cap),
+        "stereotype.create");
+}
+
 bool nn_app_create_stereotype(NNApplication *app, const char *id, const char *version,
                               const char *definition_json, const char *inference_lua,
                               const char *dependencies_json, char *error, size_t cap)
@@ -149,7 +165,7 @@ static bool dataset_definition_valid(const char *definition_json, char *error, s
     return true;
 }
 
-bool nn_app_create_dataset(NNApplication *app, const char *id, const char *version,
+static bool create_dataset_impl(NNApplication *app, const char *id, const char *version,
                            const char *definition_json, bool select,
                            char *error, size_t cap)
 {
@@ -176,7 +192,7 @@ char *nn_app_dataset_definition(const NNApplication *app, const char *id,
     return nn_project_dataset_definition(app->project, id, version, error, cap);
 }
 
-bool nn_app_update_dataset(NNApplication *app, const char *id, const char *version,
+static bool update_dataset_impl(NNApplication *app, const char *id, const char *version,
                            const char *definition_json, char *error, size_t cap)
 {
     nn_error_set(error, cap, "");
@@ -202,7 +218,7 @@ char *nn_app_stereotype_source(const NNApplication *app, const char *id,
     return nn_project_stereotype_source(app->project, id, version, kind, error, cap);
 }
 
-bool nn_app_update_stereotype_source(NNApplication *app, const char *id,
+static bool update_source_impl(NNApplication *app, const char *id,
                                      const char *version, const char *kind,
                                      const char *source, char *error, size_t cap)
 {
@@ -228,7 +244,7 @@ bool nn_app_update_stereotype_source(NNApplication *app, const char *id,
     return okay;
 }
 
-bool nn_app_delete_dataset(NNApplication *app, const char *id, const char *version,
+static bool delete_dataset_impl(NNApplication *app, const char *id, const char *version,
                            char *error, size_t cap)
 {
     nn_error_set(error, cap, "");
@@ -240,7 +256,7 @@ bool nn_app_delete_dataset(NNApplication *app, const char *id, const char *versi
     return true;
 }
 
-bool nn_app_select_dataset(NNApplication *app, const char *id, const char *version,
+static bool select_dataset_impl(NNApplication *app, const char *id, const char *version,
                            char *error, size_t cap)
 {
     nn_error_set(error, cap, "");
@@ -294,7 +310,7 @@ bool nn_app_select_dataset(NNApplication *app, const char *id, const char *versi
     return okay;
 }
 
-bool nn_app_import_dataset(NNApplication *app, const char *source_dir,
+static bool import_dataset_impl(NNApplication *app, const char *source_dir,
                            const char *manifest_json, const char *definition_json,
                            char *error, size_t cap)
 {
@@ -310,7 +326,7 @@ bool nn_app_import_dataset(NNApplication *app, const char *source_dir,
     return true;
 }
 
-bool nn_app_create_vae(NNApplication *app, const char *parent, const char *id,
+static bool create_vae_impl(NNApplication *app, const char *parent, const char *id,
                        const char *name, const char *version, char *error, size_t cap)
 {
     if (!app) return nn_fail(error, cap, "application is null");
@@ -322,7 +338,7 @@ bool nn_app_create_vae(NNApplication *app, const char *parent, const char *id,
     nn_error_set(error, cap, ""); return true;
 }
 
-bool nn_app_create_llm(NNApplication *app, const char *parent, const char *id,
+static bool create_llm_impl(NNApplication *app, const char *parent, const char *id,
                        const char *name, const char *version, char *error, size_t cap)
 {
     if (!app) return nn_fail(error, cap, "application is null");
@@ -332,4 +348,107 @@ bool nn_app_create_llm(NNApplication *app, const char *parent, const char *id,
     NNProject *old = app->project; app->project = staged; nn_app_invalidate_analysis(app);
     nn_app_history_reset(app); nn_project_close(old);
     nn_error_set(error, cap, ""); return true;
+}
+
+bool nn_app_create_dataset(NNApplication *app, const char *id, const char *version,
+                           const char *definition_json, bool select,
+                           char *error, size_t cap)
+{
+    NNAppEvent event;
+    nn_app_event_begin(&event, app, error, cap);
+    nn_app_event_str(&event, "id", id);
+    nn_app_event_str(&event, "version", version);
+    nn_app_event_bool(&event, "select", select);
+    return nn_app_event_end(&event, create_dataset_impl(app, id, version, definition_json,
+                                                        select, event.error, event.cap),
+                            "dataset.create");
+}
+
+bool nn_app_update_dataset(NNApplication *app, const char *id, const char *version,
+                           const char *definition_json, char *error, size_t cap)
+{
+    NNAppEvent event;
+    nn_app_event_begin(&event, app, error, cap);
+    nn_app_event_str(&event, "id", id);
+    nn_app_event_str(&event, "version", version);
+    return nn_app_event_end(&event, update_dataset_impl(app, id, version, definition_json,
+                                                        event.error, event.cap),
+                            "dataset.update");
+}
+
+bool nn_app_update_stereotype_source(NNApplication *app, const char *id,
+                                     const char *version, const char *kind,
+                                     const char *source, char *error, size_t cap)
+{
+    NNAppEvent event;
+    nn_app_event_begin(&event, app, error, cap);
+    nn_app_event_str(&event, "id", id);
+    nn_app_event_str(&event, "version", version);
+    nn_app_event_str(&event, "kind", kind);
+    nn_app_event_str(&event, "source", source);
+    return nn_app_event_end(&event, update_source_impl(app, id, version, kind, source,
+                                                       event.error, event.cap),
+                            "stereotype.update_source");
+}
+
+bool nn_app_delete_dataset(NNApplication *app, const char *id, const char *version,
+                           char *error, size_t cap)
+{
+    NNAppEvent event;
+    nn_app_event_begin(&event, app, error, cap);
+    nn_app_event_str(&event, "id", id);
+    nn_app_event_str(&event, "version", version);
+    return nn_app_event_end(&event, delete_dataset_impl(app, id, version, event.error, event.cap),
+                            "dataset.delete");
+}
+
+bool nn_app_select_dataset(NNApplication *app, const char *id, const char *version,
+                           char *error, size_t cap)
+{
+    NNAppEvent event;
+    nn_app_event_begin(&event, app, error, cap);
+    nn_app_event_str(&event, "id", id);
+    nn_app_event_str(&event, "version", version);
+    return nn_app_event_end(&event, select_dataset_impl(app, id, version, event.error, event.cap),
+                            "dataset.select");
+}
+
+bool nn_app_import_dataset(NNApplication *app, const char *source_dir,
+                           const char *manifest_json, const char *definition_json,
+                           char *error, size_t cap)
+{
+    NNAppEvent event;
+    nn_app_event_begin(&event, app, error, cap);
+    nn_app_event_path(&event, "source_dir", source_dir);
+    return nn_app_event_end(&event, import_dataset_impl(app, source_dir, manifest_json,
+                                                        definition_json, event.error, event.cap),
+                            "dataset.import");
+}
+
+bool nn_app_create_vae(NNApplication *app, const char *parent, const char *id,
+                       const char *name, const char *version, char *error, size_t cap)
+{
+    NNAppEvent event;
+    nn_app_event_begin(&event, app, error, cap);
+    nn_app_event_path(&event, "parent", parent);
+    nn_app_event_str(&event, "id", id);
+    nn_app_event_str(&event, "name", name);
+    nn_app_event_str(&event, "version", version);
+    nn_app_event_str(&event, "template", "mnist-vae");
+    return nn_app_event_end(&event, create_vae_impl(app, parent, id, name, version,
+                                                    event.error, event.cap), "project.create");
+}
+
+bool nn_app_create_llm(NNApplication *app, const char *parent, const char *id,
+                       const char *name, const char *version, char *error, size_t cap)
+{
+    NNAppEvent event;
+    nn_app_event_begin(&event, app, error, cap);
+    nn_app_event_path(&event, "parent", parent);
+    nn_app_event_str(&event, "id", id);
+    nn_app_event_str(&event, "name", name);
+    nn_app_event_str(&event, "version", version);
+    nn_app_event_str(&event, "template", "tiny-llm");
+    return nn_app_event_end(&event, create_llm_impl(app, parent, id, name, version,
+                                                    event.error, event.cap), "project.create");
 }

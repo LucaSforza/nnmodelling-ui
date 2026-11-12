@@ -53,7 +53,7 @@ void nn_app_free(NNApplication *app)
     free(app);
 }
 
-bool nn_app_open(NNApplication *app, const char *directory, char *error, size_t cap)
+static bool open_impl(NNApplication *app, const char *directory, char *error, size_t cap)
 {
     if (!app || !directory || !*directory) return nn_fail(error, cap, "invalid project path");
     if (app->history.group_active) return nn_fail(error, cap, "cannot open a project during an edit group");
@@ -68,7 +68,7 @@ bool nn_app_open(NNApplication *app, const char *directory, char *error, size_t 
     return true;
 }
 
-bool nn_app_create(NNApplication *app, const char *parent, const char *id,
+static bool create_impl(NNApplication *app, const char *parent, const char *id,
                    const char *name, const char *version, bool mnist, char *error, size_t cap)
 {
     if (!app) return nn_fail(error, cap, "application is null");
@@ -85,7 +85,7 @@ bool nn_app_create(NNApplication *app, const char *parent, const char *id,
     return true;
 }
 
-bool nn_app_save(NNApplication *app, char *error, size_t cap)
+static bool save_impl(NNApplication *app, char *error, size_t cap)
 {
     if (!app || !app->project) return nn_fail(error, cap, "no active project");
     if (app->history.group_active) return nn_fail(error, cap, "cannot save during an edit group");
@@ -94,7 +94,7 @@ bool nn_app_save(NNApplication *app, char *error, size_t cap)
     return true;
 }
 
-bool nn_app_close(NNApplication *app, bool discard, char *error, size_t cap)
+static bool close_impl(NNApplication *app, bool discard, char *error, size_t cap)
 {
     if (!app) return nn_fail(error, cap, "application is null");
     if (app->history.group_active) return nn_fail(error, cap, "cannot close during an edit group");
@@ -129,7 +129,7 @@ char *nn_app_parameter_counts_json(NNApplication *app, char *error, size_t cap)
     return nn_parameter_counts_json(app->project, analysis, error, cap);
 }
 
-bool nn_app_set_operations_json(NNApplication *app, const char *json,
+static bool set_operations_impl(NNApplication *app, const char *json,
                                 char *error, size_t cap)
 {
     if (!app || !app->project) return nn_fail(error, cap, "no active project");
@@ -148,7 +148,7 @@ char *nn_app_metavariables_json(const NNApplication *app, char *error, size_t ca
     return nn_project_metavariables_json(app->project, error, cap);
 }
 
-bool nn_app_set_metavariables_json(NNApplication *app, const char *json,
+static bool set_metavariables_impl(NNApplication *app, const char *json,
                                    char *error, size_t cap)
 {
     if (!app || !app->project) return nn_fail(error, cap, "no active project");
@@ -185,7 +185,80 @@ const NNInferenceReport *nn_app_analysis(NNApplication *app, char *error, size_t
             nn_fail(error, cap, "unable to construct project analysis report");
             return NULL;
         }
+        nn_app_event_analysis(app, app->analysis);
     }
     nn_error_set(error, cap, "");
     return app->analysis;
+}
+
+bool nn_app_open(NNApplication *app, const char *directory, char *error, size_t cap)
+{
+    NNAppEvent event;
+    nn_app_event_begin(&event, app, error, cap);
+    nn_app_event_path(&event, "path", directory);
+    return nn_app_event_end(&event, open_impl(app, directory, event.error, event.cap), "project.open");
+}
+
+bool nn_app_create(NNApplication *app, const char *parent, const char *id,
+                   const char *name, const char *version, bool mnist, char *error, size_t cap)
+{
+    NNAppEvent event;
+    nn_app_event_begin(&event, app, error, cap);
+    nn_app_event_path(&event, "parent", parent);
+    nn_app_event_str(&event, "id", id);
+    nn_app_event_str(&event, "name", name);
+    nn_app_event_str(&event, "version", version);
+    nn_app_event_str(&event, "template", mnist ? "mnist-mlp" : "blank");
+    return nn_app_event_end(&event, create_impl(app, parent, id, name, version, mnist,
+                                                event.error, event.cap), "project.create");
+}
+
+bool nn_app_save(NNApplication *app, char *error, size_t cap)
+{
+    NNAppEvent event;
+    nn_app_event_begin(&event, app, error, cap);
+    return nn_app_event_end(&event, save_impl(app, event.error, event.cap), "project.save");
+}
+
+bool nn_app_close(NNApplication *app, bool discard, char *error, size_t cap)
+{
+    NNAppEvent event;
+    nn_app_event_begin(&event, app, error, cap);
+    nn_app_event_bool(&event, "discard", discard);
+    return nn_app_event_end(&event, close_impl(app, discard, event.error, event.cap), "project.close");
+}
+
+bool nn_app_set_operations_json(NNApplication *app, const char *json, char *error, size_t cap)
+{
+    NNAppEvent event;
+    nn_app_event_begin(&event, app, error, cap);
+    nn_app_event_str(&event, "json", json);
+    return nn_app_event_end(&event, set_operations_impl(app, json, event.error, event.cap),
+                            "operations.set");
+}
+
+bool nn_app_set_metavariables_json(NNApplication *app, const char *json, char *error, size_t cap)
+{
+    NNAppEvent event;
+    nn_app_event_begin(&event, app, error, cap);
+    nn_app_event_str(&event, "json", json);
+    return nn_app_event_end(&event, set_metavariables_impl(app, json, event.error, event.cap),
+                            "metavariables.set");
+}
+
+void nn_app_set_activity_log(NNApplication *app, NNActivityLog *log)
+{
+    if (!app) return;
+    app->activity = log;
+    nn_app_activity_reset(app);
+}
+
+void nn_app_set_activity_source(NNApplication *app, const char *source)
+{
+    if (app) app->activity_source = source && *source ? source : "core";
+}
+
+const char *nn_app_activity_source(const NNApplication *app)
+{
+    return app && app->activity_source ? app->activity_source : "core";
 }

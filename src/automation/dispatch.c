@@ -37,6 +37,8 @@ char *nn_automation_dispatch(NNApplication *app, const char *request,
     yyjson_mut_val *response = yyjson_mut_obj(out), *result = yyjson_mut_null(out);
     yyjson_doc *ui_result = NULL;
     bool okay = false;
+    const char *previous_source = nn_app_activity_source(app);
+    nn_app_set_activity_source(app, "ipc");
     if (!app || !yyjson_is_obj(root) || !op || !yyjson_is_obj(query.args) || !valid_json_tree(root, 0))
         nn_error_set(query.error, sizeof(query.error), "request requires operation string and args object");
     else if (!strcmp(op, "project.snapshot")) { result = nn_automation_snapshot(out, app); okay = result != NULL; }
@@ -54,6 +56,7 @@ char *nn_automation_dispatch(NNApplication *app, const char *request,
             }
         } else nn_error_set(query.error, sizeof(query.error), "unknown UI operation");
     } else okay = nn_automation_execute(app, op, &query);
+    nn_app_set_activity_source(app, previous_source);
     if (!okay && !query.error[0]) nn_error_set(query.error, sizeof(query.error), "operation failed");
     bool serialized = response && yyjson_mut_obj_add_bool(out, response, "ok", okay);
     if (okay) serialized = serialized && result && yyjson_mut_obj_add_val(out, response, "result", result);

@@ -49,7 +49,7 @@ static bool add_package_defaults(NNApplication *app, NNModel *model,
     return true;
 }
 
-bool nn_app_add_node(NNApplication *app, const char *id, const char *package_id,
+static bool add_node_impl(NNApplication *app, const char *id, const char *package_id,
                      const char *version, const char *scope, double x, double y,
                      char *error, size_t cap)
 {
@@ -172,7 +172,7 @@ bool nn_app_add_node(NNApplication *app, const char *id, const char *package_id,
     return true;
 }
 
-bool nn_app_remove_node(NNApplication *app, const char *id, char *error, size_t cap)
+static bool remove_node_impl(NNApplication *app, const char *id, char *error, size_t cap)
 {
     if (!app || !app->project || !id)
         return nn_app_history_fail(app, error, cap, "no active project or invalid node ID");
@@ -218,7 +218,7 @@ bool nn_app_remove_node(NNApplication *app, const char *id, char *error, size_t 
     return true;
 }
 
-bool nn_app_move_node(NNApplication *app, const char *id, double x, double y,
+static bool move_node_impl(NNApplication *app, const char *id, double x, double y,
                       char *error, size_t cap)
 {
     if (!app || !app->project) return nn_app_history_fail(app, error, cap, "no active project");
@@ -231,7 +231,7 @@ bool nn_app_move_node(NNApplication *app, const char *id, double x, double y,
     return true;
 }
 
-bool nn_app_rename_node(NNApplication *app, const char *id, const char *label,
+static bool rename_node_impl(NNApplication *app, const char *id, const char *label,
                         char *error, size_t cap)
 {
     if (!app || !app->project) return nn_app_history_fail(app, error, cap, "no active project");
@@ -243,7 +243,7 @@ bool nn_app_rename_node(NNApplication *app, const char *id, const char *label,
     return true;
 }
 
-bool nn_app_connect(NNApplication *app, const char *id, const char *source,
+static bool connect_impl(NNApplication *app, const char *id, const char *source,
                     const char *source_handle, const char *target,
                     const char *target_handle, char *error, size_t cap)
 {
@@ -283,7 +283,7 @@ bool nn_app_connect(NNApplication *app, const char *id, const char *source,
     return true;
 }
 
-bool nn_app_disconnect(NNApplication *app, const char *id, char *error, size_t cap)
+static bool disconnect_impl(NNApplication *app, const char *id, char *error, size_t cap)
 {
     if (!app || !app->project) return nn_app_history_fail(app, error, cap, "no active project");
     if (!nn_app_history_prepare(app, error, cap)) return false;
@@ -294,7 +294,7 @@ bool nn_app_disconnect(NNApplication *app, const char *id, char *error, size_t c
     nn_error_set(error, cap, "");
     return true;
 }
-bool nn_app_set_boundary_handle(NNApplication *app, const char *node_id,
+static bool set_boundary_impl(NNApplication *app, const char *node_id,
                                 const char *handle_id, char *error, size_t cap)
 {
     if (!app || !app->project || !node_id || !handle_id || !*handle_id)
@@ -326,4 +326,89 @@ bool nn_app_set_boundary_handle(NNApplication *app, const char *node_id,
     nn_app_invalidate_analysis(app);
     nn_error_set(error, cap, "");
     return true;
+}
+
+bool nn_app_add_node(NNApplication *app, const char *id, const char *package_id,
+                     const char *version, const char *scope, double x, double y,
+                     char *error, size_t cap)
+{
+    NNAppEvent event;
+    nn_app_event_begin(&event, app, error, cap);
+    nn_app_event_str(&event, "id", id);
+    nn_app_event_str(&event, "package", package_id);
+    nn_app_event_str(&event, "version", version);
+    nn_app_event_str(&event, "scope", scope);
+    nn_app_event_num(&event, "x", x);
+    nn_app_event_num(&event, "y", y);
+    return nn_app_event_end(&event, add_node_impl(app, id, package_id, version, scope, x, y,
+                                                  event.error, event.cap), "node.add");
+}
+
+bool nn_app_remove_node(NNApplication *app, const char *id, char *error, size_t cap)
+{
+    NNAppEvent event;
+    nn_app_event_begin(&event, app, error, cap);
+    nn_app_event_str(&event, "id", id);
+    const NNNode *node = event.doc && app->project && id
+        ? nn_model_find_node(nn_project_model(app->project), id) : NULL;
+    if (node) nn_app_event_str(&event, "package", node->package_id);
+    return nn_app_event_end(&event, remove_node_impl(app, id, event.error, event.cap), "node.remove");
+}
+
+bool nn_app_move_node(NNApplication *app, const char *id, double x, double y,
+                      char *error, size_t cap)
+{
+    NNAppEvent event;
+    nn_app_event_begin(&event, app, error, cap);
+    nn_app_event_str(&event, "id", id);
+    nn_app_event_num(&event, "x", x);
+    nn_app_event_num(&event, "y", y);
+    return nn_app_event_end(&event, move_node_impl(app, id, x, y, event.error, event.cap), "node.move");
+}
+
+bool nn_app_rename_node(NNApplication *app, const char *id, const char *label,
+                        char *error, size_t cap)
+{
+    NNAppEvent event;
+    nn_app_event_begin(&event, app, error, cap);
+    nn_app_event_str(&event, "id", id);
+    nn_app_event_str(&event, "label", label);
+    return nn_app_event_end(&event, rename_node_impl(app, id, label, event.error, event.cap),
+                            "node.rename");
+}
+
+bool nn_app_connect(NNApplication *app, const char *id, const char *source,
+                    const char *source_handle, const char *target,
+                    const char *target_handle, char *error, size_t cap)
+{
+    NNAppEvent event;
+    nn_app_event_begin(&event, app, error, cap);
+    nn_app_event_str(&event, "id", id);
+    nn_app_event_str(&event, "source", source);
+    nn_app_event_str(&event, "source_handle", source_handle);
+    nn_app_event_str(&event, "target", target);
+    nn_app_event_str(&event, "target_handle", target_handle);
+    return nn_app_event_end(&event, connect_impl(app, id, source, source_handle, target,
+                                                 target_handle, event.error, event.cap),
+                            "edge.connect");
+}
+
+bool nn_app_disconnect(NNApplication *app, const char *id, char *error, size_t cap)
+{
+    NNAppEvent event;
+    nn_app_event_begin(&event, app, error, cap);
+    nn_app_event_str(&event, "id", id);
+    return nn_app_event_end(&event, disconnect_impl(app, id, event.error, event.cap),
+                            "edge.disconnect");
+}
+
+bool nn_app_set_boundary_handle(NNApplication *app, const char *node_id,
+                                const char *handle_id, char *error, size_t cap)
+{
+    NNAppEvent event;
+    nn_app_event_begin(&event, app, error, cap);
+    nn_app_event_str(&event, "node", node_id);
+    nn_app_event_str(&event, "handle", handle_id);
+    return nn_app_event_end(&event, set_boundary_impl(app, node_id, handle_id, event.error,
+                                                      event.cap), "boundary.set");
 }

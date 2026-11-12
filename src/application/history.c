@@ -43,6 +43,7 @@ void nn_app_history_reset(NNApplication *app)
     nn_model_free(history->group_start);
     memset(history, 0, sizeof(*history));
     history->next_revision = 1;
+    nn_app_activity_reset(app);
 }
 
 void nn_app_history_barrier(NNApplication *app, bool saved)
@@ -130,7 +131,7 @@ bool nn_app_can_redo(const NNApplication *app)
     return app && app->project && !app->history.group_active && app->history.redo_count;
 }
 
-bool nn_app_undo(NNApplication *app, char *error, size_t capacity)
+static bool undo_impl(NNApplication *app, char *error, size_t capacity)
 {
     if (!app || !app->project) return nn_fail(error, capacity, "no active project");
     if (app->history.group_active)
@@ -149,7 +150,7 @@ bool nn_app_undo(NNApplication *app, char *error, size_t capacity)
     return true;
 }
 
-bool nn_app_redo(NNApplication *app, char *error, size_t capacity)
+static bool redo_impl(NNApplication *app, char *error, size_t capacity)
 {
     if (!app || !app->project) return nn_fail(error, capacity, "no active project");
     if (app->history.group_active)
@@ -168,7 +169,7 @@ bool nn_app_redo(NNApplication *app, char *error, size_t capacity)
     return true;
 }
 
-bool nn_app_begin_edit(NNApplication *app, char *error, size_t capacity)
+static bool begin_edit_impl(NNApplication *app, char *error, size_t capacity)
 {
     if (!app || !app->project) return nn_fail(error, capacity, "no active project");
     if (app->history.group_active || app->history.pending)
@@ -198,7 +199,7 @@ static void rollback_group(NNApplication *app)
     if (changed) nn_app_invalidate_analysis(app);
 }
 
-bool nn_app_end_edit(NNApplication *app, bool commit, char *error, size_t capacity)
+static bool end_edit_impl(NNApplication *app, bool commit, char *error, size_t capacity)
 {
     if (!app || !app->project) return nn_fail(error, capacity, "no active project");
     NNEditHistory *history = &app->history;
@@ -225,4 +226,33 @@ bool nn_app_end_edit(NNApplication *app, bool commit, char *error, size_t capaci
     set_dirty(app);
     nn_error_set(error, capacity, "");
     return true;
+}
+
+bool nn_app_undo(NNApplication *app, char *error, size_t cap)
+{
+    NNAppEvent event;
+    nn_app_event_begin(&event, app, error, cap);
+    return nn_app_event_end(&event, undo_impl(app, event.error, event.cap), "edit.undo");
+}
+
+bool nn_app_redo(NNApplication *app, char *error, size_t cap)
+{
+    NNAppEvent event;
+    nn_app_event_begin(&event, app, error, cap);
+    return nn_app_event_end(&event, redo_impl(app, event.error, event.cap), "edit.redo");
+}
+
+bool nn_app_begin_edit(NNApplication *app, char *error, size_t cap)
+{
+    NNAppEvent event;
+    nn_app_event_begin(&event, app, error, cap);
+    return nn_app_event_end(&event, begin_edit_impl(app, event.error, event.cap), "edit.begin");
+}
+
+bool nn_app_end_edit(NNApplication *app, bool commit, char *error, size_t cap)
+{
+    NNAppEvent event;
+    nn_app_event_begin(&event, app, error, cap);
+    nn_app_event_bool(&event, "commit", commit);
+    return nn_app_event_end(&event, end_edit_impl(app, commit, event.error, event.cap), "edit.end");
 }

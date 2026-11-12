@@ -55,8 +55,9 @@ set(NN_INFERENCE_SOURCES
     src/inference/lua_runtime.c src/inference/lua_sandbox.c
     src/inference/lua_tensor_ops.c src/inference/owned_tensors.c
     src/inference/result_extraction.c src/inference/report.c src/inference/status.c)
+set(NN_ACTIVITY_SOURCES src/activity/activity.c)
 set(NN_APPLICATION_SOURCES
-    src/application/application.c src/application/resources.c
+    src/application/application.c src/application/activity_events.c src/application/resources.c
     src/application/history.c
     src/application/graph_commands.c src/application/parameters.c src/application/ports.c
     src/application/resolved_model.c)
@@ -65,7 +66,8 @@ set(NN_AUTOMATION_SOURCES
     src/automation/diagnostics.c src/automation/transport.c src/automation/automation_utils.c)
 add_library(nnmodelling_core STATIC
     ${NN_MODEL_SOURCES} ${NN_CATALOG_SOURCES} ${NN_PROJECT_SOURCES}
-    ${NN_INFERENCE_SOURCES} ${NN_APPLICATION_SOURCES} ${NN_AUTOMATION_SOURCES})
+    ${NN_INFERENCE_SOURCES} ${NN_ACTIVITY_SOURCES} ${NN_APPLICATION_SOURCES}
+    ${NN_AUTOMATION_SOURCES})
 target_include_directories(nnmodelling_core PUBLIC src)
 target_link_libraries(nnmodelling_core PRIVATE nn_json nn_lua nn_utils)
 if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
@@ -79,13 +81,14 @@ if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 
 if(BUILD_TESTING)
-    foreach(name IN ITEMS model catalog inference inference_cache application resources automation history stereotype_reference parameter_count)
+    foreach(name IN ITEMS model catalog inference inference_cache application resources automation history stereotype_reference parameter_count activity_log)
         add_executable(${name}_test tests/${name}_test.c)
         target_link_libraries(${name}_test PRIVATE nnmodelling_core)
         add_test(NAME ${name} COMMAND ${name}_test)
         set_tests_properties(${name} PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}" LABELS core)
     endforeach()
     target_include_directories(parameter_count_test PRIVATE third_party/yyjson)
+    target_include_directories(activity_log_test PRIVATE third_party/yyjson)
     add_executable(utils_test tests/utils_test.c)
     target_link_libraries(utils_test PRIVATE nn_utils)
     add_test(NAME utils COMMAND utils_test)
@@ -117,7 +120,7 @@ if(BUILD_TESTING)
     add_test(NAME lua COMMAND lua_smoke)
     set_tests_properties(lua PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}" LABELS core)
     # Existing tests use assert for their checks, including in Release builds.
-    foreach(name IN ITEMS model_test catalog_test inference_test inference_cache_test application_test resources_test automation_test history_test project_test lua_smoke utils_test stereotype_reference_test parameter_count_test metavariable_test)
+    foreach(name IN ITEMS model_test catalog_test inference_test inference_cache_test application_test resources_test automation_test history_test project_test lua_smoke utils_test stereotype_reference_test parameter_count_test activity_log_test metavariable_test)
         if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
             target_compile_options(${name} PRIVATE -Wall -Wextra -Werror -pedantic -UNDEBUG)
         endif()
@@ -232,7 +235,7 @@ if(NN_BUILD_GUI)
         add_test(NAME cli_ui COMMAND "${Python3_EXECUTABLE}"
             "${CMAKE_SOURCE_DIR}/tests/cli_test.py" "$<TARGET_FILE:nnmodelling-ui>" "$<TARGET_FILE:nnmodelctl>")
         set_tests_properties(cli_ui PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-            LABELS gui TIMEOUT 60)
+            ENVIRONMENT "NNMODELLING_ACTIVITY_LOG=off" LABELS gui TIMEOUT 60)
         # Some GUI tests also use assert for checks and setup in Release builds.
         if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
             foreach(target IN ITEMS qt_backend_test qt_operations_test qt_metavariables_test
