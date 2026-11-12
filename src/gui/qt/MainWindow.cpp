@@ -611,8 +611,10 @@ void MainWindow::buildUi() {
     connect(diagnostics_, &QTreeWidget::itemClicked, this, [this](QTreeWidgetItem *item) {
         if (!item) return;
         const QString id = item->data(0, IdRole).toString();
-        ActivityLog::record("problem.click", {{QStringLiteral("node"), id},
-            {QStringLiteral("message"), item->text(3)}});
+        // The "No model problems" placeholder row has neither node nor reason.
+        if (!id.isEmpty() || !item->text(3).isEmpty())
+            ActivityLog::record("problem.click", {{QStringLiteral("node"), id},
+                {QStringLiteral("message"), item->text(3)}});
         if (!id.isEmpty()) revealNode(id);
     });
     connect(currentScopeProblems_, &QCheckBox::toggled, this, [this] { refreshDiagnostics(); });
