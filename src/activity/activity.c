@@ -149,13 +149,19 @@ static void format_timestamp(char *out, size_t capacity)
         snprintf(out, capacity, "1970-01-01T00:00:00.000+00:00");
         return;
     }
+    char date[32];
+    if (!strftime(date, sizeof(date), "%Y-%m-%dT%H:%M:%S", &local)) {
+        snprintf(out, capacity, "1970-01-01T00:00:00.000+00:00");
+        return;
+    }
     long offset = (long)local.tm_gmtoff;
     char sign = offset < 0 ? '-' : '+';
     if (offset < 0) offset = -offset;
-    snprintf(out, capacity, "%04d-%02d-%02dT%02d:%02d:%02d.%03ld%c%02ld:%02ld",
-             local.tm_year + 1900, local.tm_mon + 1, local.tm_mday, local.tm_hour,
-             local.tm_min, local.tm_sec, now.tv_nsec / 1000000, sign,
-             offset / 3600, (offset % 3600) / 60);
+    /* Bounded ints let compilers prove the record fits (-Wformat-truncation). */
+    unsigned millis = (unsigned)(now.tv_nsec / 1000000) % 1000u;
+    unsigned hours = (unsigned)(offset / 3600) % 100u;
+    unsigned minutes = (unsigned)(offset % 3600 / 60) % 60u;
+    snprintf(out, capacity, "%s.%03u%c%02u:%02u", date, millis, sign, hours, minutes);
 }
 
 static uint64_t fnv1a64(const char *bytes, size_t length)
