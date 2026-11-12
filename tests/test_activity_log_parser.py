@@ -206,14 +206,16 @@ def test_t2_dataset_select_branch(tmp_path):
     assert task_map(tk)["T2"]["completed"]
 
 
-def test_t2_binding_branch(tmp_path):
+def test_t2_requires_explicit_dataset_selection(tmp_path):
+    # The study project already has mnist active and Input auto-binds its slot.
     b = LogBuilder()
     initial(b)
     b.start()
     inp = b.add("core.input")
+    b.param(inp, "binding", "image")
     _, _, _, tk, _, _ = run(tmp_path, {"P1": b.text()})
     assert not task_map(tk)["T2"]["completed"]
-    b.param(inp, "binding", "mnist")
+    b.emit("dataset.select", {"id": "mnist", "version": "1"})
     _, _, _, tk, _, _ = run(tmp_path, {"P1": b.text()})
     assert task_map(tk)["T2"]["completed"]
 

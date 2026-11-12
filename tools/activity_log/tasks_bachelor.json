@@ -3,13 +3,8 @@
     {"id": "T1", "title": "Place Input",
      "predicate": {"node": {"package": "core.input"}}},
     {"id": "T2", "title": "Activate MNIST small",
-     "predicate": {"any": [
-       {"event": "dataset.select", "data": {"id": "mnist"}},
-       {"all": [
-         {"active_dataset": "mnist"},
-         {"node": {"package": "core.input", "params": {"binding": {"nonempty": true}}}}
-       ]}
-     ]}},
+     "comment": "Event only: examples/test already has mnist active and Input auto-binds its only slot, so state alone would complete T2 together with T1.",
+     "predicate": {"event": "dataset.select", "data": {"id": "mnist"}}},
     {"id": "T3", "title": "Place Flatten",
      "predicate": {"node": {"package": "core.flatten"}}},
     {"id": "T4", "title": "Edge Input to Flatten",
