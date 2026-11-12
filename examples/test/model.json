@@ -1,34 +1,34 @@
 {
   "nodes": [
     {
-      "id": "output",
+      "id": "node-604df4b6-1b47-4916-91e8-b3d1da5c0f0d",
       "type": "custom",
       "position": {
-        "x": 1740,
-        "y": 320
+        "x": 460,
+        "y": 1300
       },
       "data": {
-        "name": "digit logits",
+        "name": "Loss Output",
         "scope": "",
         "package": {
-          "id": "core.output",
+          "id": "core.loss-output",
           "version": "0.1.0"
         },
         "params": {}
       }
     },
     {
-      "id": "loss-output",
+      "id": "node-8a831b28-22fd-4793-a3a4-658345be05f7",
       "type": "custom",
       "position": {
-        "x": 1500,
-        "y": 320
+        "x": 740,
+        "y": 1300
       },
       "data": {
-        "name": "Classifier objective",
+        "name": "Output",
         "scope": "",
         "package": {
-          "id": "core.loss-output",
+          "id": "core.output",
           "version": "0.1.0"
         },
         "params": {}
@@ -63,7 +63,7 @@
     ],
     "operations": [],
     "activeDataset": {
-      "id": "mnist-full",
+      "id": "mnist",
       "version": "0.1.0"
     }
   }
