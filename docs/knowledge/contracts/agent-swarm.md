@@ -16,6 +16,14 @@ contract, file ownership, acceptance criteria and tests in the prompt.
 Workers do not delegate. Respect the runtime's actual concurrency limit.
 Codex sidebar chat creation is not subagent delegation.
 
+Accepted 2026-11-12: in Claude Code, use the native `Agent` tool for requested
+delegation; bounded implementation workers use model `sonnet` (Sonnet 5.5)
+unless the user names another. Workers run in the background, report back on
+completion (no polling) and do not stage or commit unless assigned; the
+principal reviews and serializes commits. GUI trials use
+`.agents/skills/nnmodelling-vnc/SKILL.md` (Qt VNC plugin driven by a stdlib RFB
+client) when no browser or desktop computer-use surface is available.
+
 Delegation must be requested by the user or applicable instructions. `/swarm`
 requests parallel agent work using the current runtime's native mechanism.
 Retain returned agent IDs, review required results and run final checks. When

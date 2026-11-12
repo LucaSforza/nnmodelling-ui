@@ -10,6 +10,8 @@ not establish that visible application works.
    `git diff --check`; record compiler, Qt version and failures.
 2. For visible UI trials, follow `.agents/skills/nnmodelling-browser/SKILL.md`:
    launch native Qt client through its noVNC browser bridge and interact with
+   (in Claude Code, `.agents/skills/nnmodelling-vnc/SKILL.md` drives the same
+   Qt VNC plugin directly with real pointer/key events and PNG captures);
    the visible app. CLI or offscreen checks do not replace this trial. After
    every code/build change, rebuild and restart client and bridge before more
    GUI checks.

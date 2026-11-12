@@ -45,6 +45,13 @@ user's requested UI workflow; do not silently substitute `nnmodelctl` or direct
 project-file generation for a computer-use trial. Report unavailable surfaces
 and distinguish environment limitations from observed application defects.
 
+### Claude Code
+
+Use the native `Agent` tool (model `sonnet` for bounded implementation
+workers) with the same baseline-commit SHA rule; workers run in the
+background, do not delegate and do not commit unless assigned. For UI trials
+without browser/desktop computer use, follow `../nnmodelling-vnc/SKILL.md`.
+
 ### OpenCode V2 swarm initialization and communication
 
 The principal must discover the `swarm`

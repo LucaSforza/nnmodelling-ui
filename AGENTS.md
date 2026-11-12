@@ -32,6 +32,10 @@ Git staging/commits and stage only assigned files. Use computer use for requeste
 UI trials; report unavailable native surfaces instead of silently replacing the
 trial with CLI or direct project-file edits.
 
+In Claude Code, use the native `Agent` tool with model `sonnet` for bounded
+implementation workers (same KB-first baseline-commit rule) and the
+`nnmodelling-vnc` skill for requested UI trials.
+
 Use `fff` MCP tools for every file search. Preserve user changes. Do not expose
 secrets. Keep implementation small and idiomatic C. Use `justfile` for build
 recipes, put test sources under `tests/`, keep model/application code C11,
