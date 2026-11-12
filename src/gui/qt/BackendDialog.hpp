@@ -100,6 +100,7 @@ private:
     QString selectedJob_;
     QString jobsEndpointInFlight_;
     bool jobsRequestInFlight_ = false;
+    bool explicitConnect_ = false;
     bool profileReady_ = false;
 };
 

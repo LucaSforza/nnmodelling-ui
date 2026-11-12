@@ -7,6 +7,7 @@
 #include <QColor>
 #include <QComboBox>
 #include <QDialog>
+#include "ActivityLog.hpp"
 #include <QDialogButtonBox>
 #include <QFormLayout>
 #include <QHeaderView>
@@ -193,7 +194,7 @@ void MainWindow::createStereotype() {
             pythonDraft = pythonEditor->toPlainText();
             editor.accept();
         });
-        editor.exec();
+        ActivityLog::exec("stereotype_source", editor);
     });
     auto *luaError = new QLabel(&dialog);
     luaError->setObjectName(QStringLiteral("stereotypeLuaError"));
@@ -210,7 +211,7 @@ void MainWindow::createStereotype() {
     connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
     outer->addWidget(buttons);
-    while (dialog.exec() == QDialog::Accepted) {
+    while (ActivityLog::exec("stereotype_create", dialog) == QDialog::Accepted) {
     luaError->clear();
     formError->clear();
 

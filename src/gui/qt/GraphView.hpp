@@ -24,6 +24,7 @@ protected:
 
 private:
     void zoomAt(qreal factor, const QPoint &position);
+    void noteViewChange();
     bool spaceDown_ = false;
     bool panning_ = false;
     QPoint lastPan_;

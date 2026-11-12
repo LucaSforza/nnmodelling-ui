@@ -1,4 +1,5 @@
 #include "MainWindow.hpp"
+#include "ActivityLog.hpp"
 #include "MainWindowUtils.hpp"
 #include "application/application.h"
 #include <QCheckBox>
@@ -192,7 +193,7 @@ void MainWindow::manageDatasets() {
         char error[ErrorCapacity] = {};
         if (!nn_app_select_dataset(application_.get(), id.constData(), version.constData(),
                                    error, sizeof(error))) {
-            QMessageBox::warning(this, tr("Dataset activation failed"), QString::fromUtf8(error));
+            ActivityLog::warning(this, tr("Dataset activation failed"), QString::fromUtf8(error));
             return;
         }
         refreshAll();
@@ -207,23 +208,23 @@ void MainWindow::manageDatasets() {
         const QString identity = QStringLiteral("%1@%2").arg(QString::fromUtf8(id), QString::fromUtf8(version));
         const QString activeNotice = item->data(Qt::UserRole + 2).toBool()
             ? tr(" The active dataset will be cleared.") : QString();
-        if (QMessageBox::question(&dialog, tr("Delete dataset"),
+        if (ActivityLog::question("dataset_delete_confirm", &dialog, tr("Delete dataset"),
             tr("Delete %1 and its project files permanently? Current project edits will be saved.%2")
                 .arg(identity, activeNotice), QMessageBox::Yes | QMessageBox::Cancel,
             QMessageBox::Cancel) != QMessageBox::Yes) return;
         char error[ErrorCapacity] = {};
         if (!nn_app_delete_dataset(application_.get(), id.constData(), version.constData(), error, sizeof(error))) {
-            QMessageBox::warning(&dialog, tr("Dataset deletion failed"), QString::fromUtf8(error));
+            ActivityLog::warning(&dialog, tr("Dataset deletion failed"), QString::fromUtf8(error));
             return;
         }
         refreshAll();
         refreshList(QString());
-        if (error[0]) QMessageBox::warning(&dialog, tr("Dataset files remain"), QString::fromUtf8(error));
+        if (error[0]) ActivityLog::warning(&dialog, tr("Dataset files remain"), QString::fromUtf8(error));
         statusBar()->showMessage(tr("Dataset deleted; current project saved"), 6000);
     });
     QObject::connect(closeButton, &QPushButton::clicked, &dialog, &QDialog::reject);
     refreshList(QString());
-    dialog.exec();
+    ActivityLog::exec("datasets", dialog);
 }
 
 void MainWindow::importDataset() {
@@ -231,13 +232,13 @@ void MainWindow::importDataset() {
         statusBar()->showMessage(tr("Open a project before importing a dataset"), 5000);
         return;
     }
-    const QString source = QFileDialog::getExistingDirectory(
-        this, tr("Choose dataset directory"), QString(), QFileDialog::ShowDirsOnly);
+    const QString source = ActivityLog::existingDirectory(
+        "dataset_import_source", this, tr("Choose dataset directory"), QString(), QFileDialog::ShowDirsOnly);
     if (source.isEmpty()) return;
     const QFileInfo sourceInfo(source);
     const QString root = sourceInfo.canonicalFilePath();
     if (root.isEmpty() || sourceInfo.isSymLink()) {
-        QMessageBox::warning(this, tr("Dataset import failed"), tr("Choose a regular dataset directory, not a symbolic link."));
+        ActivityLog::warning(this, tr("Dataset import failed"), tr("Choose a regular dataset directory, not a symbolic link."));
         return;
     }
 
@@ -246,7 +247,7 @@ void MainWindow::importDataset() {
     QString readError;
     if (!readDatasetSourceFile(root, QStringLiteral("manifest.json"), &manifestBytes,
                                &hasManifest, &readError)) {
-        QMessageBox::warning(this, tr("Dataset import failed"), readError);
+        ActivityLog::warning(this, tr("Dataset import failed"), readError);
         return;
     }
     QJsonObject manifest;
@@ -254,33 +255,33 @@ void MainWindow::importDataset() {
         QJsonParseError parseError{};
         const QJsonDocument parsed = QJsonDocument::fromJson(manifestBytes, &parseError);
         if (parseError.error != QJsonParseError::NoError || !parsed.isObject()) {
-            QMessageBox::warning(this, tr("Dataset import failed"), tr("manifest.json is malformed."));
+            ActivityLog::warning(this, tr("Dataset import failed"), tr("manifest.json is malformed."));
             return;
         }
         manifest = parsed.object();
         if ((manifest.contains(QStringLiteral("id")) && !manifest.value(QStringLiteral("id")).isString()) ||
             (manifest.contains(QStringLiteral("version")) && !manifest.value(QStringLiteral("version")).isString()) ||
             (manifest.contains(QStringLiteral("entrypoints")) && !manifest.value(QStringLiteral("entrypoints")).isObject())) {
-            QMessageBox::warning(this, tr("Dataset import failed"), tr("manifest.json has invalid identity or entrypoint fields."));
+            ActivityLog::warning(this, tr("Dataset import failed"), tr("manifest.json has invalid identity or entrypoint fields."));
             return;
         }
     }
     QJsonObject entrypoints = manifest.value(QStringLiteral("entrypoints")).toObject();
     if (entrypoints.contains(QStringLiteral("definition")) &&
         !entrypoints.value(QStringLiteral("definition")).isString()) {
-        QMessageBox::warning(this, tr("Dataset import failed"), tr("The definition entrypoint must be a relative path string."));
+        ActivityLog::warning(this, tr("Dataset import failed"), tr("The definition entrypoint must be a relative path string."));
         return;
     }
     QString definitionPath = entrypoints.value(QStringLiteral("definition")).toString();
     if (entrypoints.contains(QStringLiteral("definition")) && definitionPath.isEmpty()) {
-        QMessageBox::warning(this, tr("Dataset import failed"), tr("The definition entrypoint cannot be empty."));
+        ActivityLog::warning(this, tr("Dataset import failed"), tr("The definition entrypoint cannot be empty."));
         return;
     }
     if (definitionPath.isEmpty()) definitionPath = QStringLiteral("dataset.json");
     QByteArray definitionBytes;
     bool hasDefinition = false;
     if (!readDatasetSourceFile(root, definitionPath, &definitionBytes, &hasDefinition, &readError)) {
-        QMessageBox::warning(this, tr("Dataset import failed"), readError);
+        ActivityLog::warning(this, tr("Dataset import failed"), readError);
         return;
     }
     bool adapterDeclared = false;
@@ -292,14 +293,14 @@ void MainWindow::importDataset() {
         if (!pythonValue.isObject() || !python.value(QStringLiteral("language")).isString() ||
             python.value(QStringLiteral("language")).toString() != QStringLiteral("python") ||
             !python.value(QStringLiteral("file")).isString() || python.value(QStringLiteral("file")).toString().isEmpty()) {
-            QMessageBox::warning(this, tr("Dataset import failed"), tr("The Python adapter entrypoint is malformed."));
+            ActivityLog::warning(this, tr("Dataset import failed"), tr("The Python adapter entrypoint is malformed."));
             return;
         }
         adapterPath = python.value(QStringLiteral("file")).toString();
     }
     bool hasAdapter = false;
     if (!readDatasetSourceFile(root, adapterPath, nullptr, &hasAdapter, &readError)) {
-        QMessageBox::warning(this, tr("Dataset import failed"), readError);
+        ActivityLog::warning(this, tr("Dataset import failed"), readError);
         return;
     }
     QJsonObject definition;
@@ -307,7 +308,7 @@ void MainWindow::importDataset() {
         QJsonParseError parseError{};
         const QJsonDocument parsed = QJsonDocument::fromJson(definitionBytes, &parseError);
         if (parseError.error != QJsonParseError::NoError || !parsed.isObject()) {
-            QMessageBox::warning(this, tr("Dataset import failed"), tr("The dataset definition is malformed."));
+            ActivityLog::warning(this, tr("Dataset import failed"), tr("The dataset definition is malformed."));
             return;
         }
         definition = parsed.object();
@@ -315,14 +316,14 @@ void MainWindow::importDataset() {
         if ((definition.contains(QStringLiteral("name")) && !definition.value(QStringLiteral("name")).isString()) ||
             (definition.contains(QStringLiteral("description")) && !definition.value(QStringLiteral("description")).isString()) ||
             (definition.contains(QStringLiteral("batch")) && !batchValue.isObject())) {
-            QMessageBox::warning(this, tr("Dataset import failed"), tr("The dataset definition has invalid name, description, or batch fields."));
+            ActivityLog::warning(this, tr("Dataset import failed"), tr("The dataset definition has invalid name, description, or batch fields."));
             return;
         }
         const QJsonObject batchObject = batchValue.toObject();
         for (const QString &kind : {QStringLiteral("inputs"), QStringLiteral("targets")}) {
             const QJsonValue slotsValue = batchObject.value(kind);
             if ((batchObject.contains(kind) && !slotsValue.isObject())) {
-                QMessageBox::warning(this, tr("Dataset import failed"), tr("The dataset definition has invalid %1 slots.").arg(kind));
+                ActivityLog::warning(this, tr("Dataset import failed"), tr("The dataset definition has invalid %1 slots.").arg(kind));
                 return;
             }
             const QJsonObject slotsObject = slotsValue.toObject();
@@ -331,26 +332,26 @@ void MainWindow::importDataset() {
                 if (!it.value().isObject() ||
                     (tensor.contains(QStringLiteral("dtype")) && !tensor.value(QStringLiteral("dtype")).isString()) ||
                     (tensor.contains(QStringLiteral("shape")) && !tensor.value(QStringLiteral("shape")).isArray())) {
-                    QMessageBox::warning(this, tr("Dataset import failed"), tr("The dataset definition has malformed tensor slot metadata."));
+                    ActivityLog::warning(this, tr("Dataset import failed"), tr("The dataset definition has malformed tensor slot metadata."));
                     return;
                 }
                 static const QSet<QString> dtypes = {"float16", "bfloat16", "float32", "float64", "int8", "int16", "int32", "int64", "uint8", "bool"};
                 if (it.key().isEmpty() ||
                     (tensor.contains(QStringLiteral("dtype")) && !dtypes.contains(tensor.value(QStringLiteral("dtype")).toString()))) {
-                    QMessageBox::warning(this, tr("Dataset import failed"), tr("The dataset definition has invalid tensor slot metadata."));
+                    ActivityLog::warning(this, tr("Dataset import failed"), tr("The dataset definition has invalid tensor slot metadata."));
                     return;
                 }
                 if (!tensor.contains(QStringLiteral("shape"))) continue;
                 const QJsonArray shape = tensor.value(QStringLiteral("shape")).toArray();
                 if (shape.isEmpty() || shape.size() > 64) {
-                    QMessageBox::warning(this, tr("Dataset import failed"), tr("The dataset definition has invalid tensor slot metadata."));
+                    ActivityLog::warning(this, tr("Dataset import failed"), tr("The dataset definition has invalid tensor slot metadata."));
                     return;
                 }
                 for (const QJsonValue &dimension : shape) {
                     const double numeric = dimension.toDouble();
                     if (!(dimension.isString() && dimension.toString() == QStringLiteral("B")) &&
                         !(dimension.isDouble() && numeric > 0 && std::floor(numeric) == numeric)) {
-                        QMessageBox::warning(this, tr("Dataset import failed"), tr("The dataset definition has malformed tensor dimensions."));
+                        ActivityLog::warning(this, tr("Dataset import failed"), tr("The dataset definition has malformed tensor dimensions."));
                         return;
                     }
                 }
@@ -428,7 +429,7 @@ void MainWindow::importDataset() {
     layout->addWidget(errorLabel);
     layout->addWidget(buttons);
 
-    while (dialog.exec() == QDialog::Accepted) {
+    while (ActivityLog::exec("dataset_import", dialog) == QDialog::Accepted) {
         auto collectSlots = [](QTableWidget *table, const QJsonObject &original, QJsonObject *slotMap) {
             static const QSet<QString> dtypes = {"float16", "bfloat16", "float32", "float64", "int8", "int16", "int32", "int64", "uint8", "bool"};
             QSet<QString> seen;
@@ -500,14 +501,14 @@ void MainWindow::createDataset(const QString &editId, const QString &editVersion
         char *owned = nn_app_dataset_definition(application_.get(), id.constData(), version.constData(),
                                                 error, sizeof(error));
         if (!owned) {
-            QMessageBox::warning(this, tr("Dataset could not be opened"), QString::fromUtf8(error));
+            ActivityLog::warning(this, tr("Dataset could not be opened"), QString::fromUtf8(error));
             return;
         }
         QJsonParseError parseError{};
         const QJsonDocument document = QJsonDocument::fromJson(QByteArray(owned), &parseError);
         nn_app_free_text(owned);
         if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
-            QMessageBox::warning(this, tr("Dataset could not be opened"),
+            ActivityLog::warning(this, tr("Dataset could not be opened"),
                                  tr("The dataset definition is malformed."));
             return;
         }
@@ -611,7 +612,7 @@ void MainWindow::createDataset(const QString &editId, const QString &editVersion
     layout->addWidget(formError);
     layout->addWidget(buttons);
 
-    while (dialog.exec() == QDialog::Accepted) {
+    while (ActivityLog::exec("dataset_create", dialog) == QDialog::Accepted) {
         formError->clear();
         auto buildSlots = [](QTableWidget *table, QJsonObject *out) -> bool {
             static const QSet<QString> dtypes = {"float16", "bfloat16", "float32", "float64", "int8", "int16", "int32", "int64", "uint8", "bool"};

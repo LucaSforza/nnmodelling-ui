@@ -1,4 +1,5 @@
 #include "MainWindow.hpp"
+#include "ActivityLog.hpp"
 
 #include "GraphScene.hpp"
 #include "GraphView.hpp"
@@ -13,6 +14,8 @@
 #include "project/project.h"
 
 #include <QAction>
+#include <QJsonArray>
+#include "EdgeItem.hpp"
 #include <QApplication>
 #include <QCheckBox>
 #include <QCloseEvent>
@@ -154,7 +157,7 @@ void MainWindow::closeEvent(QCloseEvent *event) {
     const NNProject *project = nn_app_project(application_.get());
     bool discard = false;
     if (project && nn_project_dirty(project)) {
-        const auto choice = QMessageBox::question(
+        const auto choice = ActivityLog::question("close_confirm",
             this, tr("Close NNModelling"), tr("Save changes before closing?"),
             QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel,
             QMessageBox::Save);
@@ -169,10 +172,10 @@ void MainWindow::closeEvent(QCloseEvent *event) {
         }
     }
     if (backendService_ && backendService_->isRunning()) {
-        const auto choice = QMessageBox::warning(
+        const auto choice = ActivityLog::warning(
             this, tr("Stop managed training backend?"),
             tr("Closing NNModelling will stop its local backend. Any queued or running training jobs may be interrupted. Stop the backend and continue?"),
-            QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+            QMessageBox::Yes | QMessageBox::No, QMessageBox::No, "backend_stop_confirm");
         if (choice != QMessageBox::Yes) {
             event->ignore();
             return;
@@ -182,7 +185,7 @@ void MainWindow::closeEvent(QCloseEvent *event) {
     if (project) {
         char error[ErrorCapacity] = {};
         if (!nn_app_close(application_.get(), discard, error, sizeof(error))) {
-            QMessageBox::critical(this, tr("Close failed"), QString::fromUtf8(error));
+            ActivityLog::critical(this, tr("Close failed"), QString::fromUtf8(error));
             event->ignore();
             return;
         }
@@ -246,6 +249,7 @@ void MainWindow::buildUi() {
         if (!shortcut.isEmpty()) action->setShortcut(shortcut);
         if (objectName) action->setObjectName(QString::fromLatin1(objectName));
         connect(action, &QAction::triggered, this, callback);
+        ActivityLog::watchAction(action);
         return action;
     };
     addAction(fileMenu, tr("Create project…"), QKeySequence::New,
@@ -258,7 +262,7 @@ void MainWindow::buildUi() {
     addAction(templatesMenu, tr("tiny LLM…"), {}, [this] { createProject(QStringLiteral("tiny-llm")); });
     fileMenu->addSeparator();
     addAction(fileMenu, tr("Open project…"), QKeySequence::Open, [this] {
-        const QString directory = QFileDialog::getExistingDirectory(this, tr("Open project"));
+        const QString directory = ActivityLog::existingDirectory("project_open", this, tr("Open project"));
         if (!directory.isEmpty()) openProject(directory);
     }, "openProjectAction");
     addAction(fileMenu, tr("Save"), QKeySequence::Save, [this] { saveProject(); }, "saveProjectAction");
@@ -267,7 +271,7 @@ void MainWindow::buildUi() {
         const NNProject *project = nn_app_project(application_.get());
         bool discard = false;
         if (nn_project_dirty(project)) {
-            const auto choice = QMessageBox::question(
+            const auto choice = ActivityLog::question("close_confirm",
                 this, tr("Close project"), tr("Save changes before closing?"),
                 QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel,
                 QMessageBox::Save);
@@ -277,7 +281,7 @@ void MainWindow::buildUi() {
         }
         char error[ErrorCapacity] = {};
         if (!nn_app_close(application_.get(), discard, error, sizeof(error))) {
-            QMessageBox::critical(this, tr("Close failed"), QString::fromUtf8(error));
+            ActivityLog::critical(this, tr("Close failed"), QString::fromUtf8(error));
             return;
         }
         refreshAll();
@@ -299,7 +303,7 @@ void MainWindow::buildUi() {
     QAction *backendPanelAction = addAction(modelMenu, tr("Training backend…"), {}, [this] {
         BackendDialog dialog(application_.get(), [this] { return saveProject(); },
             [this](const QString &directory) { return openProject(directory); }, this, backendService_);
-        dialog.exec();
+        ActivityLog::exec("backend", dialog);
     }, "backendPanelAction");
 
     auto *datasetMenu = addMenu(tr("&Dataset"));
@@ -308,6 +312,7 @@ void MainWindow::buildUi() {
 
     auto *viewMenu = addMenu(tr("&View"));
     QAction *fitGraphAction = addAction(viewMenu, tr("Fit graph"), QKeySequence(QStringLiteral("Ctrl+F")), [this] {
+        ActivityLog::record("view.fit");
         view_->fitGraph();
     }, "fitGraphAction");
     QAction *zoomInAction = addAction(viewMenu, tr("Zoom in"), QKeySequence(QStringLiteral("Ctrl++")),
@@ -328,6 +333,8 @@ void MainWindow::buildUi() {
     panHint->setEnabled(false);
     verticalAction->setToolTip(tr("Arrange vertically (Ctrl+Shift+V)"));
     horizontalAction->setToolTip(tr("Arrange horizontally (Ctrl+Shift+H)"));
+    ActivityLog::watchAction(verticalAction);
+    ActivityLog::watchAction(horizontalAction);
 
     auto *toolbar = addToolBar(tr("Workspace"));
     toolbar->setMovable(false);
@@ -354,7 +361,11 @@ void MainWindow::buildUi() {
     auto *trainingAction = toolbar->addAction(tr("Training"));
     trainingAction->setObjectName(QStringLiteral("trainingBackendToolbarAction"));
     trainingAction->setToolTip(tr("Open the training backend"));
-    connect(trainingAction, &QAction::triggered, backendPanelAction, &QAction::trigger);
+    ActivityLog::watchAction(trainingAction);
+    connect(trainingAction, &QAction::triggered, backendPanelAction, [backendPanelAction] {
+        const ActivityLog::Suppress forwarded;
+        backendPanelAction->trigger();
+    });
     auto *fitButtonAction = toolbar->addAction(tr("Fit"));
     fitButtonAction->setObjectName(QStringLiteral("fitGraph"));
     fitButtonAction->setToolTip(tr("Fit graph (Ctrl+F)"));
@@ -380,6 +391,9 @@ void MainWindow::buildUi() {
     auto *toolbarArrangeMenu = new EditorMenu(this);
     QAction *toolbarVertical = toolbarArrangeMenu->addAction(tr("Vertical"));
     QAction *toolbarHorizontal = toolbarArrangeMenu->addAction(tr("Horizontal"));
+    for (QAction *action : {fitButtonAction, zoomInButtonAction, zoomOutButtonAction, arrangeAction,
+                            deleteAction, toolbarVertical, toolbarHorizontal})
+        ActivityLog::watchAction(action);
     if (auto *button = qobject_cast<QToolButton *>(toolbar->widgetForAction(arrangeAction))) {
         button->setMenu(toolbarArrangeMenu);
         button->setPopupMode(QToolButton::MenuButtonPopup);
@@ -420,7 +434,10 @@ void MainWindow::buildUi() {
     scene_ = new GraphScene(application_.get(), this);
     view_ = new GraphView(scene_, workspace);
     view_->setObjectName(QStringLiteral("graph"));
-    connect(fitButtonAction, &QAction::triggered, view_, &GraphView::fitGraph);
+    connect(fitButtonAction, &QAction::triggered, view_, [this] {
+        ActivityLog::record("view.fit");
+        view_->fitGraph();
+    });
     connect(zoomInButtonAction, &QAction::triggered, view_, &GraphView::zoomIn);
     connect(zoomOutButtonAction, &QAction::triggered, view_, &GraphView::zoomOut);
     view_->setMinimumWidth(360);
@@ -507,6 +524,7 @@ void MainWindow::buildUi() {
     workspace->setStretchFactor(2, 0);
     workspace->setSizes({235, 820, 305});
     connect(problemsToggle_, &QToolButton::toggled, this, [this, canvasProblems, problemsPane](bool open) {
+        ActivityLog::record("problems.toggle", {{QStringLiteral("expanded"), open}});
         problemsToggle_->setArrowType(open ? Qt::DownArrow : Qt::RightArrow);
         problemsContents_->setVisible(open);
         if (open) {
@@ -519,6 +537,10 @@ void MainWindow::buildUi() {
         }
     });
     setCentralWidget(workspace);
+    connect(statusBar(), &QStatusBar::messageChanged, this, [](const QString &text) {
+        if (!text.isEmpty())
+            ActivityLog::record("ui.status", {{QStringLiteral("text"), ActivityLog::redact(text)}});
+    });
 
     const auto chooseScope = [this](QTreeWidgetItem *item) {
         if (refreshing_ || !item || !scene_ || !(item->flags() & Qt::ItemIsSelectable)) return;
@@ -529,6 +551,9 @@ void MainWindow::buildUi() {
     connect(scopeTree_, &QTreeWidget::itemActivated, this, chooseScope);
     connect(scene_, &GraphScene::modelChanged, this, [this] {
         QTimer::singleShot(0, this, [this] { refreshAll(); });
+    });
+    connect(scene_, &GraphScene::scopeChanged, this, [](const QString &scope) {
+        ActivityLog::record("scope.change", {{QStringLiteral("scope"), scope}});
     });
     connect(scene_, &GraphScene::scopeChanged, this, [this](const QString &scope) {
         if (refreshing_) return;
@@ -548,6 +573,18 @@ void MainWindow::buildUi() {
         });
     });
     connect(scene_, &GraphScene::selectionChanged, this, [this] {
+        ActivityLog::coalesce(this, "selection.change", [this] {
+            QStringList nodes, edges;
+            for (QGraphicsItem *item : scene_->selectedItems()) {
+                if (auto *node = dynamic_cast<NodeItem *>(item)) nodes.append(node->id());
+                else if (auto *edge = dynamic_cast<EdgeItem *>(item)) edges.append(edge->id());
+            }
+            nodes.sort();
+            edges.sort();
+            ActivityLog::recordChanged("selection.change", {
+                {QStringLiteral("nodes"), QJsonArray::fromStringList(nodes)},
+                {QStringLiteral("edges"), QJsonArray::fromStringList(edges)}});
+        });
         if (!refreshing_) refreshInspector();
         updateDescriptions();
     });
@@ -562,6 +599,8 @@ void MainWindow::buildUi() {
         QTimer::singleShot(0, this, updateDeleteAction);
     });
     connect(scene_, &GraphScene::errorOccurred, this, [this](const QString &message) {
+        ActivityLog::record("error.shown", {{QStringLiteral("where"), QStringLiteral("canvas")},
+                                            {QStringLiteral("message"), ActivityLog::redact(message)}});
         auto *box = new QMessageBox(QMessageBox::Warning, tr("Operation rejected"), message,
                                     QMessageBox::Ok, this);
         box->setAttribute(Qt::WA_DeleteOnClose);
@@ -571,12 +610,23 @@ void MainWindow::buildUi() {
     connect(diagnostics_, &QTreeWidget::itemClicked, this, [this](QTreeWidgetItem *item) {
         if (!item) return;
         const QString id = item->data(0, IdRole).toString();
+        ActivityLog::record("problem.click", {{QStringLiteral("node"), id},
+            {QStringLiteral("message"), item->text(3)}});
         if (!id.isEmpty()) revealNode(id);
     });
     connect(currentScopeProblems_, &QCheckBox::toggled, this, [this] { refreshDiagnostics(); });
-    connect(paletteSearch_, &QLineEdit::textChanged, this, [this] { refreshPalette(); });
+    connect(paletteSearch_, &QLineEdit::textChanged, this, [this] {
+        refreshPalette();
+        ActivityLog::debounce(this, "palette.search", 500, [this] {
+            ActivityLog::record("palette.search", {{QStringLiteral("query"), paletteSearch_->text()}});
+        });
+    });
     connect(paletteTree, &QTreeWidget::currentItemChanged, this,
-            [this](QTreeWidgetItem *) {
+            [this](QTreeWidgetItem *current) {
+        if (current && current->childCount() == 0)
+            ActivityLog::record("palette.select", {
+                {QStringLiteral("package"), current->data(0, IdRole).toString()},
+                {QStringLiteral("version"), current->data(0, PackageVersionRole).toString()}});
         updateAddNodeButton();
         updateDescriptions();
     });
@@ -586,9 +636,9 @@ void MainWindow::buildUi() {
     });
     connect(paletteTree, &QTreeWidget::itemDoubleClicked, this,
             [this](QTreeWidgetItem *item, int) {
-        if (item && item->childCount() == 0) addSelectedPackage();
+        if (item && item->childCount() == 0) addSelectedPackage("double_click");
     });
-    connect(addButton, &QPushButton::clicked, this, [this] { addSelectedPackage(); });
+    connect(addButton, &QPushButton::clicked, this, [this] { addSelectedPackage("button"); });
     connect(arrangeAction, &QAction::triggered, this, [this] {
         arrangeCurrentScope(FlowDirection::Vertical);
     });
@@ -613,7 +663,7 @@ void MainWindow::restoreEdit(bool redo) {
     const bool restored = redo ? nn_app_redo(application_.get(), error, sizeof(error))
                                : nn_app_undo(application_.get(), error, sizeof(error));
     if (!restored) {
-        QMessageBox::warning(this, tr("Edit failed"), QString::fromUtf8(error));
+        ActivityLog::warning(this, tr("Edit failed"), QString::fromUtf8(error));
         return;
     }
     refreshAll();

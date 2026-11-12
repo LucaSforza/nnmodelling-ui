@@ -134,6 +134,7 @@ if(NN_BUILD_GUI)
     set(CMAKE_CXX_EXTENSIONS OFF)
     find_package(Qt6 REQUIRED COMPONENTS Widgets Network)
     set(QT_CANVAS_SOURCES
+        src/gui/qt/ActivityLog.cpp src/gui/qt/ActivityLog.hpp
         src/gui/qt/GraphScene.cpp src/gui/qt/GraphScene.hpp
         src/gui/qt/GraphView.cpp src/gui/qt/GraphView.hpp
         src/gui/qt/NodeItem.cpp src/gui/qt/NodeItem.hpp
@@ -161,7 +162,8 @@ if(NN_BUILD_GUI)
     target_link_libraries(nnmodelling_canvas PUBLIC Qt6::Widgets nnmodelling_core)
     add_executable(nnmodelling-ui src/gui/qt/main.cpp ${QT_WINDOW_SOURCES})
     set_target_properties(nnmodelling-ui PROPERTIES AUTOMOC ON)
-    target_compile_definitions(nnmodelling-ui PRIVATE NN_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+    target_compile_definitions(nnmodelling-ui PRIVATE NN_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+        NN_APP_VERSION="${PROJECT_VERSION}")
     target_link_libraries(nnmodelling-ui PRIVATE nnmodelling_canvas Qt6::Network)
     if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         target_compile_options(nnmodelling_canvas PRIVATE -Wall -Wextra -Werror -pedantic)
@@ -170,6 +172,7 @@ if(NN_BUILD_GUI)
     if(BUILD_TESTING)
         find_package(Qt6 REQUIRED COMPONENTS Test)
         add_executable(qt_backend_test tests/qt_backend_test.cpp
+            src/gui/qt/ActivityLog.cpp src/gui/qt/ActivityLog.hpp
             src/gui/qt/BackendDialog.cpp src/gui/qt/BackendDialog.hpp
             src/gui/qt/BackendServiceManager.cpp src/gui/qt/BackendServiceManager.hpp
             src/gui/qt/TrainingCurveWidget.cpp src/gui/qt/TrainingCurveWidget.hpp)

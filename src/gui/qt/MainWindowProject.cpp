@@ -1,4 +1,5 @@
 #include "MainWindow.hpp"
+#include "ActivityLog.hpp"
 #include "GraphScene.hpp"
 #include "GraphView.hpp"
 #include "MainWindowUtils.hpp"
@@ -30,7 +31,7 @@ bool MainWindow::openProject(const QString &directory) {
     char error[ErrorCapacity] = {};
     if (!nn_app_open(application_.get(), path.constData(), error, sizeof(error))) {
         const QString reason = QString::fromUtf8(error);
-        QMessageBox::critical(this, tr("Open failed"),
+        ActivityLog::critical(this, tr("Open failed"),
             tr("'%1' is not a valid NNModelling project. Choose a project folder containing model.json.\n\nDetails: %2")
                 .arg(QDir::toNativeSeparators(directory), reason));
         return false;
@@ -46,7 +47,7 @@ bool MainWindow::openProject(const QString &directory) {
 bool MainWindow::confirmReplaceProject() {
     const NNProject *project = nn_app_project(application_.get());
     if (!project || !nn_project_dirty(project)) return true;
-    const auto choice = QMessageBox::question(
+    const auto choice = ActivityLog::question("replace_confirm",
         this, tr("Unsaved changes"), tr("Save changes before replacing this project?"),
         QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel, QMessageBox::Save);
     if (choice == QMessageBox::Cancel) return false;
@@ -60,7 +61,7 @@ bool MainWindow::saveProject() {
     }
     char error[ErrorCapacity] = {};
     if (!nn_app_save(application_.get(), error, sizeof(error))) {
-        QMessageBox::critical(this, tr("Save failed"), QString::fromUtf8(error));
+        ActivityLog::critical(this, tr("Save failed"), QString::fromUtf8(error));
         return false;
     }
     updateWindowTitle();
@@ -83,7 +84,11 @@ void MainWindow::showProjectChooser(bool startup) {
         QPushButton *create = chooser.addButton(tr("Create project"), QMessageBox::ActionRole);
         QPushButton *open = chooser.addButton(tr("Open project"), QMessageBox::ActionRole);
         chooser.addButton(QMessageBox::Close);
+        ActivityLog::dialogOpen("project_chooser");
         chooser.exec();
+        ActivityLog::dialogClose("project_chooser",
+            chooser.clickedButton() == create ? "create_project"
+            : chooser.clickedButton() == open ? "open_project" : "close");
 
         if (chooser.clickedButton() == create) {
             createProject();
@@ -91,7 +96,7 @@ void MainWindow::showProjectChooser(bool startup) {
             continue;
         }
         if (chooser.clickedButton() == open) {
-            const QString directory = QFileDialog::getExistingDirectory(this, tr("Open project"));
+            const QString directory = ActivityLog::existingDirectory("project_open", this, tr("Open project"));
             if (!directory.isEmpty() && openProject(directory)) break;
             if (!startup) return;
             continue;
@@ -169,13 +174,18 @@ void MainWindow::createProject(const QString &initialTemplate) {
         connect(picker, &QFileDialog::fileSelected, &dialog, [parent](const QString &path) {
             parent->setText(path);
         });
+        ActivityLog::dialogOpen("project_parent_chooser");
+        connect(picker, &QFileDialog::finished, picker, [](int result) {
+            ActivityLog::dialogClose("project_parent_chooser",
+                                     result == QDialog::Accepted ? "accepted" : "rejected");
+        });
         picker->open();
     });
     connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
     updateDefaults(templateChoice->currentIndex());
     updateDestination();
-    if (dialog.exec() != QDialog::Accepted) return;
+    if (ActivityLog::exec("project_create", dialog) != QDialog::Accepted) return;
     const QString templateId = templateChoice->currentData().toString();
     const QString rawParentPath = parent->text().trimmed();
     const QString parentPathText = QDir::cleanPath(rawParentPath);
@@ -183,11 +193,11 @@ void MainWindow::createProject(const QString &initialTemplate) {
     const QString projectNameText = name->text().trimmed();
     const QString projectVersionText = version->text().trimmed();
     if (rawParentPath.isEmpty() || projectIdText.isEmpty() || projectNameText.isEmpty() || projectVersionText.isEmpty()) {
-        QMessageBox::warning(this, tr("Create project"), tr("Parent directory, model ID, display name and version are required."));
+        ActivityLog::warning(this, tr("Create project"), tr("Parent directory, model ID, display name and version are required."));
         return;
     }
     if (QFileInfo::exists(QDir(parentPathText).filePath(projectIdText))) {
-        QMessageBox::warning(this, tr("Create project"), tr("Destination already exists: %1").arg(destination->text()));
+        ActivityLog::warning(this, tr("Create project"), tr("Destination already exists: %1").arg(destination->text()));
         return;
     }
     const QByteArray parentPath = parentPathText.toUtf8();
@@ -204,7 +214,7 @@ void MainWindow::createProject(const QString &initialTemplate) {
             : nn_app_create_llm(application_.get(), parentPath.constData(), projectId.constData(),
                                 projectName.constData(), projectVersion.constData(), error, sizeof(error));
     if (!created) {
-        QMessageBox::critical(this, tr("Create failed"), QString::fromUtf8(error));
+        ActivityLog::critical(this, tr("Create failed"), QString::fromUtf8(error));
         return;
     }
     scene_->clearSelection();

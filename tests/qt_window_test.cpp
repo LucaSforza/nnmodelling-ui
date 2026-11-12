@@ -1,4 +1,5 @@
 #include "MainWindow.hpp"
+#include "ActivityLog.hpp"
 #include "GraphScene.hpp"
 #include "GraphView.hpp"
 #include "NodeItem.hpp"
@@ -8,11 +9,14 @@
 #include "application/application.h"
 #include "catalog/catalog.h"
 #include "inference/inference.h"
+#include "model/model.h"
 #include "project/project.h"
 
 #include <QAction>
 #include <QApplication>
 #include <QDir>
+#include <QDirIterator>
+#include <QJsonArray>
 #include <QLayout>
 #include <QImage>
 #include <QLineEdit>
@@ -80,6 +84,7 @@ private slots:
     void graphHistoryTracksEditsAndScopeFallback();
     void scopeTreeFollowsContainmentAndMenus();
     void socketOptionRequiresPath();
+    void activityLogRecordsUiAndCoreEvents();
 };
 
 void WindowTest::miniLlmTemplateShortcut() {
@@ -2356,12 +2361,133 @@ void WindowTest::socketOptionRequiresPath() {
     process.setArguments({QStringLiteral("--socket")});
     QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
     environment.insert(QStringLiteral("QT_QPA_PLATFORM"), QStringLiteral("offscreen"));
+    environment.insert(QStringLiteral("NNMODELLING_ACTIVITY_LOG"), QStringLiteral("off"));
     process.setProcessEnvironment(environment);
     process.start();
     QVERIFY(process.waitForStarted(2000));
     QVERIFY(process.waitForFinished(5000));
     QCOMPARE(process.exitCode(), 2);
     QVERIFY(process.readAllStandardError().contains("--socket requires a socket path"));
+}
+
+static bool copyDirectory(const QString &from, const QString &to) {
+    QDir().mkpath(to);
+    QDirIterator it(from, QDir::Files | QDir::NoDotAndDotDot, QDirIterator::Subdirectories);
+    const QDir root(from);
+    while (it.hasNext()) {
+        const QString source = it.next();
+        const QString target = QDir(to).filePath(root.relativeFilePath(source));
+        QDir().mkpath(QFileInfo(target).absolutePath());
+        if (!QFile::copy(source, target)) return false;
+    }
+    return true;
+}
+
+void WindowTest::activityLogRecordsUiAndCoreEvents() {
+    QTemporaryDir temporary;
+    QVERIFY(temporary.isValid());
+    const QString project = temporary.filePath(QStringLiteral("project"));
+    QVERIFY(copyDirectory(QStringLiteral(NN_SOURCE_DIR "/examples/test"), project));
+    const QString logPath = temporary.filePath(QStringLiteral("activity.log"));
+    char error[512] = {};
+    NNActivityLog *log = nn_activity_open(logPath.toUtf8().constData(), error, sizeof(error));
+    QVERIFY2(log, error);
+    NNApplication *app = nn_app_new(NN_SOURCE_DIR "/stereotype-packages/core");
+    QVERIFY(app);
+    nn_app_set_activity_log(app, log);
+    ActivityLog::setLog(log);
+    {
+        MainWindow window(app);
+        window.show();
+        QVERIFY(QTest::qWaitForWindowExposed(&window));
+        QVERIFY(window.openProject(project));
+        QCoreApplication::processEvents();
+
+        auto *save = window.findChild<QAction *>(QStringLiteral("saveProjectAction"));
+        QVERIFY(save);
+        save->trigger();
+
+        auto *palette = window.findChild<QTreeWidget *>(QStringLiteral("palette"));
+        auto *add = window.findChild<QPushButton *>(QStringLiteral("addNodeButton"));
+        QVERIFY(palette && add);
+        QTreeWidgetItemIterator iterator(palette);
+        QTreeWidgetItem *relu = nullptr;
+        for (; *iterator; ++iterator)
+            if ((*iterator)->data(0, Qt::UserRole).toString() == QStringLiteral("core.relu")) relu = *iterator;
+        QVERIFY(relu);
+        palette->setCurrentItem(relu);
+        relu->setSelected(true);
+        QTRY_VERIFY(add->isEnabled());
+        add->click();
+
+        auto *scene = window.findChild<GraphScene *>();
+        auto *view = window.findChild<GraphView *>();
+        QVERIFY(scene && view);
+        NodeItem *node = nullptr;
+        QTRY_VERIFY((node = [&] {
+            for (QGraphicsItem *item : scene->items())
+                if (auto *candidate = dynamic_cast<NodeItem *>(item)) {
+                    const NNNode *model = nn_model_find_node(nn_app_model(app),
+                        candidate->id().toUtf8().constData());
+                    if (model && QString::fromUtf8(model->package_id) == QStringLiteral("core.relu"))
+                        return candidate;
+                }
+            return static_cast<NodeItem *>(nullptr);
+        }()) != nullptr);
+        scene->clearSelection();
+        node->setSelected(true);
+        QCoreApplication::processEvents();
+        PortItem *out = nullptr;
+        for (PortItem *port : node->ports()) if (port->isOutput()) out = port;
+        QVERIFY(out);
+        const QPoint start = view->mapFromScene(out->scenePos());
+        QTest::mousePress(view->viewport(), Qt::LeftButton, Qt::NoModifier, start);
+        QTest::mouseMove(view->viewport(), start + QPoint(0, 120), 30);
+        QTest::mouseRelease(view->viewport(), Qt::LeftButton, Qt::NoModifier, start + QPoint(0, 120));
+        QCoreApplication::processEvents();
+        // The window owns the application; detach the log before it is destroyed.
+        nn_app_set_activity_log(app, nullptr);
+        ActivityLog::setLog(nullptr);
+    }
+    nn_activity_close(log);
+
+    QFile file(logPath);
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    QMap<QString, QJsonObject> first;
+    QStringList events;
+    QString previous;
+    while (!file.atEnd()) {
+        QJsonParseError parseError;
+        const QByteArray line = file.readLine();
+        QVERIFY(line.endsWith('\n'));
+        const QJsonDocument document = QJsonDocument::fromJson(line, &parseError);
+        QVERIFY2(document.isObject(), line.constData());
+        const QJsonObject record = document.object();
+        QCOMPARE(record.value(QStringLiteral("v")).toInt(), 1);
+        const QString event = record.value(QStringLiteral("event")).toString();
+        // A successful node.add is followed by its model.snapshot.
+        if (previous == QStringLiteral("node.add")) QCOMPARE(event, QStringLiteral("model.snapshot"));
+        previous = event;
+        events << event;
+        if (!first.contains(event)) first.insert(event, record);
+    }
+    QVERIFY(first.contains(QStringLiteral("project.open")));
+    QCOMPARE(first.value(QStringLiteral("ui.action")).value(QStringLiteral("data")).toObject()
+                 .value(QStringLiteral("action")).toString(), QStringLiteral("saveProjectAction"));
+    QCOMPARE(first.value(QStringLiteral("ui.action")).value(QStringLiteral("data")).toObject()
+                 .value(QStringLiteral("via")).toString(), QStringLiteral("menu"));
+    const QJsonObject paletteAdd = first.value(QStringLiteral("palette.add")).value(QStringLiteral("data")).toObject();
+    QCOMPARE(paletteAdd.value(QStringLiteral("package")).toString(), QStringLiteral("core.relu"));
+    QCOMPARE(paletteAdd.value(QStringLiteral("via")).toString(), QStringLiteral("button"));
+    QCOMPARE(first.value(QStringLiteral("node.add")).value(QStringLiteral("src")).toString(), QStringLiteral("core"));
+    QVERIFY(events.indexOf(QStringLiteral("palette.add")) < events.indexOf(QStringLiteral("node.add")));
+    QVERIFY(events.contains(QStringLiteral("model.snapshot")));
+    QVERIFY(events.contains(QStringLiteral("palette.select")));
+    const QJsonObject selection = first.value(QStringLiteral("selection.change")).value(QStringLiteral("data")).toObject();
+    QVERIFY(selection.contains(QStringLiteral("nodes")));
+    QVERIFY(events.contains(QStringLiteral("connect.start")));
+    QCOMPARE(first.value(QStringLiteral("connect.cancel")).value(QStringLiteral("data")).toObject()
+                 .value(QStringLiteral("reason")).toString(), QStringLiteral("no_target"));
 }
 
 QTEST_MAIN(WindowTest)

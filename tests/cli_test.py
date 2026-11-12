@@ -14,7 +14,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix="nn-cli-", dir="/tmp") as directory:
         root = Path(directory)
         endpoint = root / "control.sock"
-        env = dict(os.environ, QT_QPA_PLATFORM="offscreen")
+        env = dict(os.environ, QT_QPA_PLATFORM="offscreen", NNMODELLING_ACTIVITY_LOG="off")
         with (root / "ui.log").open("w+") as log:
             process = subprocess.Popen([str(ui), "--socket", str(endpoint)], env=env, stdout=log, stderr=log)
             try:

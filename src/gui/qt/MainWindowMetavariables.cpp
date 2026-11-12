@@ -1,4 +1,5 @@
 #include "MainWindow.hpp"
+#include "ActivityLog.hpp"
 
 #include "MainWindowUtils.hpp"
 #include "application/application.h"
@@ -215,14 +216,14 @@ void MainWindow::manageMetavariables()
     char error[ErrorCapacity] = {};
     char *text = nn_app_metavariables_json(application_.get(), error, sizeof(error));
     if (!text) {
-        QMessageBox::warning(this, tr("Metavariables unavailable"), QString::fromUtf8(error));
+        ActivityLog::warning(this, tr("Metavariables unavailable"), QString::fromUtf8(error));
         return;
     }
     QJsonParseError parseError;
     const QJsonDocument document = QJsonDocument::fromJson(QByteArray(text), &parseError);
     nn_app_free_text(text);
     if (!document.isArray()) {
-        QMessageBox::warning(this, tr("Metavariables unavailable"), tr("The project returned invalid metavariable data."));
+        ActivityLog::warning(this, tr("Metavariables unavailable"), tr("The project returned invalid metavariable data."));
         return;
     }
     QJsonArray staged = document.array();
@@ -264,7 +265,7 @@ void MainWindow::manageMetavariables()
         const NNProject *project = nn_app_project(application_.get());
         const NNCatalog *catalog = project ? nn_project_catalog(project) : nullptr;
         MetavariableForm form(initial, catalog, &dialog);
-        if (form.exec() != QDialog::Accepted) return;
+        if (ActivityLog::exec("metavariable_edit", form) != QDialog::Accepted) return;
         const QJsonObject next = form.value();
         if (row >= 0) staged.replace(row, next);
         else staged.append(next);
@@ -289,10 +290,10 @@ void MainWindow::manageMetavariables()
         const QByteArray json = QJsonDocument(staged).toJson(QJsonDocument::Compact);
         char setError[ErrorCapacity] = {};
         if (!nn_app_set_metavariables_json(application_.get(), json.constData(), setError, sizeof(setError))) {
-            QMessageBox::warning(&dialog, tr("Metavariables rejected"), QString::fromUtf8(setError));
+            ActivityLog::warning(&dialog, tr("Metavariables rejected"), QString::fromUtf8(setError));
             return;
         }
         dialog.accept();
     });
-    if (dialog.exec() == QDialog::Accepted) refreshAll();
+    if (ActivityLog::exec("metavariables", dialog) == QDialog::Accepted) refreshAll();
 }

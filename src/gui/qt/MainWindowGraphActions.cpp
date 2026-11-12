@@ -1,4 +1,5 @@
 #include "MainWindow.hpp"
+#include "ActivityLog.hpp"
 #include "GraphScene.hpp"
 #include "GraphView.hpp"
 #include "NodeItem.hpp"
@@ -19,7 +20,7 @@
 
 using namespace MainWindowUtils;
 
-void MainWindow::addSelectedPackage() {
+void MainWindow::addSelectedPackage(const char *via) {
     const NNProject *project = nn_app_project(application_.get());
     if (!project || selectedPaletteId_.isEmpty()) return;
     auto *tree = qobject_cast<QTreeWidget *>(paletteTree_);
@@ -35,6 +36,8 @@ void MainWindow::addSelectedPackage() {
     const QByteArray versionBytes = version.toUtf8();
     const NNCatalog *catalog = nn_project_catalog(project);
     if (!catalog || !nn_catalog_find(catalog, id.constData(), versionBytes.constData())) return;
+    ActivityLog::record("palette.add", {{QStringLiteral("package"), packageId},
+        {QStringLiteral("version"), version}, {QStringLiteral("via"), QString::fromLatin1(via)}});
     const QByteArray scope = scene_->scope().toUtf8();
     const QString nodeId = QStringLiteral("node-%1").arg(
         QUuid::createUuid().toString(QUuid::WithoutBraces));
@@ -44,7 +47,7 @@ void MainWindow::addSelectedPackage() {
     if (!nn_app_add_node(application_.get(), nodeIdBytes.constData(), id.constData(),
                          versionBytes.constData(), scope.constData(), center.x(), center.y(),
                          error, sizeof(error))) {
-        QMessageBox::critical(this, tr("Add node failed"), QString::fromUtf8(error));
+        ActivityLog::critical(this, tr("Add node failed"), QString::fromUtf8(error));
         return;
     }
     refreshAll();
@@ -54,6 +57,8 @@ void MainWindow::addSelectedPackage() {
 void MainWindow::arrangeCurrentScope(FlowDirection direction) {
     const NNModel *model = nn_app_model(application_.get());
     if (!model) return;
+    ActivityLog::record("layout.arrange", {{QStringLiteral("direction"),
+        direction == FlowDirection::Vertical ? QStringLiteral("vertical") : QStringLiteral("horizontal")}});
     scene_->setFlowDirection(direction);
     scene_->refresh();
     const QByteArray scope = scene_->scope().toUtf8();
@@ -98,7 +103,7 @@ void MainWindow::arrangeCurrentScope(FlowDirection direction) {
     const QHash<QString, QPointF> positions = DataflowLayout::arrange(nodes, edges, direction);
     char error[ErrorCapacity] = {};
     if (!nn_app_begin_edit(application_.get(), error, sizeof(error))) {
-        QMessageBox::warning(this, tr("Arrange failed"), QString::fromUtf8(error));
+        ActivityLog::warning(this, tr("Arrange failed"), QString::fromUtf8(error));
         return;
     }
     for (const DataflowLayout::Node &node : nodes) {
@@ -109,16 +114,16 @@ void MainWindow::arrangeCurrentScope(FlowDirection direction) {
             const QString failure = QString::fromUtf8(error);
             char rollbackError[ErrorCapacity] = {};
             if (!nn_app_end_edit(application_.get(), false, rollbackError, sizeof(rollbackError)))
-                QMessageBox::critical(this, tr("Arrange rollback failed"),
+                ActivityLog::critical(this, tr("Arrange rollback failed"),
                     QStringLiteral("%1\n%2").arg(failure, QString::fromUtf8(rollbackError)));
             else
-                QMessageBox::warning(this, tr("Arrange failed"), failure);
+                ActivityLog::warning(this, tr("Arrange failed"), failure);
             scene_->refresh();
             return;
         }
     }
     if (!nn_app_end_edit(application_.get(), true, error, sizeof(error))) {
-        QMessageBox::warning(this, tr("Arrange failed"), QString::fromUtf8(error));
+        ActivityLog::warning(this, tr("Arrange failed"), QString::fromUtf8(error));
         scene_->refresh();
         return;
     }

@@ -1,4 +1,5 @@
 #include "MainWindow.hpp"
+#include "ActivityLog.hpp"
 
 #include "MainWindowUtils.hpp"
 #include "application/application.h"
@@ -262,14 +263,14 @@ void MainWindow::manageOperations() {
     char error[ErrorCapacity] = {};
     char *json = nn_app_operations_json(application_.get(), error, sizeof(error));
     if (!json) {
-        QMessageBox::critical(this, tr("Operations unavailable"), QString::fromUtf8(error));
+        ActivityLog::critical(this, tr("Operations unavailable"), QString::fromUtf8(error));
         return;
     }
     QJsonParseError parseError;
     const QJsonDocument document = QJsonDocument::fromJson(QByteArray(json), &parseError);
     nn_app_free_text(json);
     if (parseError.error != QJsonParseError::NoError || !document.isArray()) {
-        QMessageBox::critical(this, tr("Operations unavailable"), tr("The project operations could not be read."));
+        ActivityLog::critical(this, tr("Operations unavailable"), tr("The project operations could not be read."));
         return;
     }
     QJsonArray operations = document.array();
@@ -307,7 +308,7 @@ void MainWindow::manageOperations() {
         const int index = list->currentRow();
         if (index < 0 || index >= operations.size()) return;
         auto *form = new OperationForm(application_.get(), operations.at(index).toObject(), &dialog);
-        const int result = form->exec();
+        const int result = ActivityLog::exec("operation_edit", *form);
         const QJsonObject updated = form->value();
         // Keep the transient window alive until the parent dialog's event loop
         // resumes; the Qt VNC screen may still include it in a queued redraw.
@@ -320,7 +321,7 @@ void MainWindow::manageOperations() {
     };
     connect(newButton, &QPushButton::clicked, &dialog, [&] {
         auto *form = new OperationForm(application_.get(), {}, &dialog);
-        const int result = form->exec();
+        const int result = ActivityLog::exec("operation_edit", *form);
         const QJsonObject created = form->value();
         form->deleteLater();
         if (result == QDialog::Accepted) {
@@ -344,10 +345,10 @@ void MainWindow::manageOperations() {
         const QByteArray updated = QJsonDocument(operations).toJson(QJsonDocument::Compact);
         char saveError[ErrorCapacity] = {};
         if (!nn_app_set_operations_json(application_.get(), updated.constData(), saveError, sizeof(saveError))) {
-            QMessageBox::warning(&dialog, tr("Operations rejected"), QString::fromUtf8(saveError));
+            ActivityLog::warning(&dialog, tr("Operations rejected"), QString::fromUtf8(saveError));
             return;
         }
         dialog.accept();
     });
-    if (dialog.exec() == QDialog::Accepted) refreshAll();
+    if (ActivityLog::exec("operations", dialog) == QDialog::Accepted) refreshAll();
 }

@@ -1,4 +1,5 @@
 #include "MainWindow.hpp"
+#include "ActivityLog.hpp"
 #include "MainWindowUtils.hpp"
 
 #include "application/application.h"
@@ -59,13 +60,13 @@ void MainWindow::showParameterCounts()
         char error[ErrorCapacity] = {};
         char *text = nn_app_parameter_counts_json(application_.get(), error, sizeof(error));
         if (!text) {
-            QMessageBox::warning(dialog, tr("Parameter counts unavailable"), QString::fromUtf8(error));
+            ActivityLog::warning(dialog, tr("Parameter counts unavailable"), QString::fromUtf8(error));
             return;
         }
         const QJsonDocument document = QJsonDocument::fromJson(QByteArray(text));
         nn_app_free_text(text);
         if (!document.isObject()) {
-            QMessageBox::warning(dialog, tr("Parameter counts unavailable"),
+            ActivityLog::warning(dialog, tr("Parameter counts unavailable"),
                                  tr("The parameter count report could not be read."));
             return;
         }
@@ -93,7 +94,7 @@ void MainWindow::showParameterCounts()
     };
     QObject::connect(refresh, &QPushButton::clicked, dialog, load);
     load();
-    dialog->exec();
+    ActivityLog::exec("parameter_counts", *dialog);
     // Keep the modal and its children alive through Qt's queued redraw after close.
     dialog->deleteLater();
 }

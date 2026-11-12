@@ -47,7 +47,7 @@ private:
     bool confirmReplaceProject();
     bool saveProject();
     void createProject(const QString &initialTemplate = QString());
-    void addSelectedPackage();
+    void addSelectedPackage(const char *via);
     void arrangeCurrentScope(FlowDirection direction);
     void restoreEdit(bool redo);
     void editNodeName(const QString &nodeId, const QString &name);

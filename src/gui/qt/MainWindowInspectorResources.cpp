@@ -1,4 +1,5 @@
 #include "MainWindow.hpp"
+#include "ActivityLog.hpp"
 #include "GraphScene.hpp"
 #include "MainWindowUtils.hpp"
 #include "SourceEditor.hpp"
@@ -228,6 +229,10 @@ void MainWindow::refreshInspector() {
         auto *editSource = new QPushButton(tr("Edit source…"), inspector_);
         editSource->setObjectName(QStringLiteral("editStereotypeSource"));
         inspector_->setItemWidget(sourceRow, 1, editSource);
+        connect(editSource, &QPushButton::clicked, editSource, [] {
+            ActivityLog::record("ui.action", {{QStringLiteral("action"), QStringLiteral("editStereotypeSource")},
+                                              {QStringLiteral("via"), QStringLiteral("button")}});
+        });
         connect(editSource, &QPushButton::clicked, this, [this, packageIdentity, packageId,
                 packageVersion, initialInference, initialPython, inferenceLoadError,
                 pythonLoadError, hasInferenceSource, hasPythonSource] {
@@ -291,7 +296,7 @@ void MainWindow::refreshInspector() {
                 if (!nn_app_update_stereotype_source(application_.get(), packageId.constData(),
                         packageVersion.constData(), kind, draft.constData(), updateError,
                         sizeof(updateError))) {
-                    QMessageBox::warning(&dialog, tr("Source update rejected"),
+                    ActivityLog::warning(&dialog, tr("Source update rejected"),
                                          QString::fromUtf8(updateError));
                     return;
                 }
@@ -300,7 +305,7 @@ void MainWindow::refreshInspector() {
                          QString::fromUtf8(packageId)), 4000);
                 QTimer::singleShot(0, &dialog, [this] { refreshAll(); });
             });
-            dialog.exec();
+            ActivityLog::exec("stereotype_source", dialog);
             });
         });
     } else if (inferenceError[0] || pythonError[0]) {
@@ -379,7 +384,7 @@ void MainWindow::refreshInspector() {
                 char error[ErrorCapacity] = {};
                 if (!nn_app_set_boundary_handle(application_.get(), id.constData(), handle.constData(),
                                                 error, sizeof(error))) {
-                    QMessageBox::warning(this, tr("Boundary mapping rejected"), QString::fromUtf8(error));
+                    ActivityLog::warning(this, tr("Boundary mapping rejected"), QString::fromUtf8(error));
                 }
                 QMetaObject::invokeMethod(this, [this] { refreshAll(); }, Qt::QueuedConnection);
             });
@@ -600,7 +605,7 @@ void MainWindow::refreshInspector() {
                         connect(line, &QLineEdit::editingFinished, this, [this, line, parameterType, submit] {
                             const QJsonValue parsed = parameterEditorValue(parameterType, line->text());
                             if (parsed.isUndefined()) {
-                                QMessageBox::warning(this, tr("Parameter rejected"), tr("Invalid parameter value"));
+                                ActivityLog::warning(this, tr("Parameter rejected"), tr("Invalid parameter value"));
                                 return;
                             }
                             submit(parsed);
@@ -700,7 +705,7 @@ void MainWindow::editNodeName(const QString &nodeId, const QString &name) {
     char error[ErrorCapacity] = {};
     if (!nn_app_rename_node(application_.get(), id.constData(), label.constData(),
                             error, sizeof(error))) {
-        QMessageBox::warning(this, tr("Rename failed"), QString::fromUtf8(error));
+        ActivityLog::warning(this, tr("Rename failed"), QString::fromUtf8(error));
     }
     QTimer::singleShot(0, this, [this] { refreshAll(); });
 }
@@ -714,7 +719,7 @@ void MainWindow::editNodeParameter(const QString &nodeId, const QString &key,
     char error[ErrorCapacity] = {};
     if (!nn_app_set_parameter_text(application_.get(), id.constData(), keyBytes.constData(),
                                    text.constData(), error, sizeof(error))) {
-        QMessageBox::warning(this, tr("Parameter rejected"), QString::fromUtf8(error));
+        ActivityLog::warning(this, tr("Parameter rejected"), QString::fromUtf8(error));
         return;
     }
     QTimer::singleShot(0, this, [this] { refreshAll(); });

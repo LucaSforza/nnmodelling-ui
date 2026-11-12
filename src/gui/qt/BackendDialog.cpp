@@ -1,3 +1,4 @@
+#include "ActivityLog.hpp"
 #include "BackendDialog.hpp"
 
 #include "application/application.h"
@@ -464,7 +465,10 @@ BackendDialog::BackendDialog(NNApplication *application, std::function<bool()> s
     layout->addLayout(actions);
     connect(closeButton, &QPushButton::clicked, this, &QDialog::accept);
     connect(configurationButton_, &QPushButton::clicked, this, &BackendDialog::openBackendConfiguration);
-    connect(connectButton, &QPushButton::clicked, this, &BackendDialog::connectBackend);
+    connect(connectButton, &QPushButton::clicked, this, [this] {
+        explicitConnect_ = true;
+        connectBackend();
+    });
     connect(refreshButton, &QPushButton::clicked, this, &BackendDialog::refreshJobs);
     connect(submitButton, &QPushButton::clicked, this, &BackendDialog::submitJob);
     if (serviceManager_) {
@@ -774,6 +778,8 @@ void BackendDialog::setMessage(const QString &message, bool error)
 
 void BackendDialog::request(const QString &path, const QByteArray &method, const QByteArray &body)
 {
+    const bool explicitConnect = explicitConnect_ && path == QStringLiteral("/health");
+    explicitConnect_ = false;
     if (path == QStringLiteral("/v1/jobs") && jobsRequestInFlight_) return;
     const QUrl url = endpointUrl(path);
     if (!url.isValid()) { setMessage(tr("Enter a valid HTTP or HTTPS endpoint."), true); return; }
@@ -792,10 +798,18 @@ void BackendDialog::request(const QString &path, const QByteArray &method, const
     connect(reply, &QNetworkReply::downloadProgress, this, [reply](qint64 received, qint64) {
         if (received > MaxJsonReplyBytes) reply->abort();
     });
-    connect(reply, &QNetworkReply::finished, this, [this, reply, path, method] {
+    connect(reply, &QNetworkReply::finished, this, [this, reply, path, method, explicitConnect] {
         const QByteArray bytes = reply->readAll();
         const auto networkError = reply->error();
         const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        // Timer-driven GET polling is not an action; explicit POSTs and Connect are.
+        if (method != QByteArrayLiteral("GET") || explicitConnect)
+            ActivityLog::record("backend.request", {
+                {QStringLiteral("method"), QString::fromLatin1(method)},
+                {QStringLiteral("path"), path}, {QStringLiteral("status"), status}},
+                networkError == QNetworkReply::NoError && status >= 200 && status < 300,
+                networkError == QNetworkReply::NoError && status >= 200 && status < 300
+                    ? QString() : ActivityLog::redact(reply->errorString()));
         if (path == QStringLiteral("/v1/jobs")) jobsRequestInFlight_ = false;
         const bool staleEndpoint = reply->property("endpoint").toString() != endpoint_->text().trimmed();
         reply->deleteLater();
@@ -1249,7 +1263,7 @@ void BackendDialog::download(const QString &kind)
             return;
         }
         suggested = QFileInfo(suggested).fileName();
-        const QString destination = QFileDialog::getSaveFileName(this, tr("Download %1").arg(kind), suggested);
+        const QString destination = ActivityLog::saveFileName("backend_download", this, tr("Download %1").arg(kind), suggested);
         if (destination.isEmpty()) { file->close(); reply->deleteLater(); return; }
         if (!file->seek(0)) { file->close(); setMessage(tr("Cannot read temporary download."), true); reply->deleteLater(); return; }
         QSaveFile output(destination);
@@ -1297,10 +1311,13 @@ void BackendDialog::restoreSnapshot()
             !snapshot.value(QStringLiteral("files")).isObject()) {
             setMessage(tr("Invalid snapshot response: %1").arg(error.errorString()), true); return;
         }
-        const QString parent = QFileDialog::getExistingDirectory(this, tr("Choose parent for restored project"));
+        const QString parent = ActivityLog::existingDirectory("backend_restore_parent", this, tr("Choose parent for restored project"));
         if (parent.isEmpty()) return;
+        ActivityLog::dialogOpen("backend_restore_name");
+        bool nameAccepted = false;
         const QString name = QInputDialog::getText(this, tr("Restore snapshot"), tr("New project directory name"),
-            QLineEdit::Normal, QStringLiteral("restored-job-%1").arg(selectedJob_)).trimmed();
+            QLineEdit::Normal, QStringLiteral("restored-job-%1").arg(selectedJob_), &nameAccepted).trimmed();
+        ActivityLog::dialogClose("backend_restore_name", nameAccepted ? "accepted" : "rejected");
         if (name.isEmpty() || name == QStringLiteral(".") || name == QStringLiteral("..") || name.contains('/') || name.contains('\\')) {
             setMessage(tr("Choose a simple new directory name."), true); return;
         }

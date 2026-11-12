@@ -1,7 +1,9 @@
 #include "GraphView.hpp"
 
 #include "GraphScene.hpp"
+#include "ActivityLog.hpp"
 
+#include <QJsonArray>
 #include <QKeyEvent>
 #include <QMouseEvent>
 #include <QScrollBar>
@@ -59,6 +61,14 @@ void GraphView::zoomIn() { zoomAt(1.15, viewport()->rect().center()); }
 
 void GraphView::zoomOut() { zoomAt(1.0 / 1.15, viewport()->rect().center()); }
 
+void GraphView::noteViewChange() {
+    ActivityLog::debounce(this, "view.change", 1000, [this] {
+        const QPointF center = mapToScene(viewport()->rect().center());
+        ActivityLog::record("view.change", {{QStringLiteral("zoom"), zoom_},
+            {QStringLiteral("center"), QJsonArray{center.x(), center.y()}}});
+    });
+}
+
 void GraphView::zoomAt(qreal requestedFactor, const QPoint &viewportPosition) {
     const qreal next = qBound<qreal>(minimumZoom_, zoom_ * requestedFactor, 3.0);
     if (qFuzzyCompare(next, zoom_)) return;
@@ -71,6 +81,7 @@ void GraphView::zoomAt(qreal requestedFactor, const QPoint &viewportPosition) {
                                     mappedAnchor.x() - viewportPosition.x());
     verticalScrollBar()->setValue(verticalScrollBar()->value() +
                                   mappedAnchor.y() - viewportPosition.y());
+    noteViewChange();
 }
 
 void GraphView::wheelEvent(QWheelEvent *event) {
@@ -97,6 +108,7 @@ void GraphView::mouseMoveEvent(QMouseEvent *event) {
         lastPan_ = event->pos();
         horizontalScrollBar()->setValue(horizontalScrollBar()->value() - delta.x());
         verticalScrollBar()->setValue(verticalScrollBar()->value() - delta.y());
+        noteViewChange();
         event->accept();
         return;
     }
@@ -115,7 +127,7 @@ void GraphView::mouseReleaseEvent(QMouseEvent *event) {
 
 void GraphView::keyPressEvent(QKeyEvent *event) {
     if (event->key() == Qt::Key_Escape) {
-        if (auto *graph = qobject_cast<GraphScene *>(scene())) graph->cancelInteraction();
+        if (auto *graph = qobject_cast<GraphScene *>(scene())) graph->cancelInteraction(true);
         event->accept();
         return;
     }
@@ -132,6 +144,7 @@ void GraphView::keyPressEvent(QKeyEvent *event) {
     case Qt::Key_Down: verticalScrollBar()->setValue(verticalScrollBar()->value() + panStep); break;
     default: QGraphicsView::keyPressEvent(event); return;
     }
+    noteViewChange();
     event->accept();
 }
 

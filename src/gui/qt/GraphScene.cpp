@@ -1,4 +1,5 @@
 #include "GraphScene.hpp"
+#include "ActivityLog.hpp"
 
 #include "EdgeItem.hpp"
 #include "OrthogonalRouter.hpp"
@@ -375,7 +376,9 @@ void GraphScene::setFlowDirection(FlowDirection direction) {
 
 void GraphScene::goToParentScope() { setScope(parentScope()); }
 
-void GraphScene::cancelInteraction() {
+void GraphScene::cancelInteraction(bool escape) {
+    if (escape && draftSource_)
+        ActivityLog::record("connect.cancel", {{QStringLiteral("reason"), QStringLiteral("escape")}});
     cancelConnection();
     cancelNodeDrag();
 }
@@ -523,7 +526,7 @@ void GraphScene::revealNode(const QString &id) {
 
 void GraphScene::keyPressEvent(QKeyEvent *event) {
     if (event->key() == Qt::Key_Escape) {
-        cancelInteraction();
+        cancelInteraction(true);
         event->accept();
         return;
     }
@@ -557,6 +560,11 @@ void GraphScene::contextMenuEvent(QGraphicsSceneContextMenuEvent *event) {
 void GraphScene::updateEdgesForNode(const QString &nodeId) {
     Q_UNUSED(nodeId)
     if (refreshing_) return;
+    // A press alone is a click; the drag starts when a node actually moves.
+    if (!dragPositions_.isEmpty() && !dragLogged_) {
+        dragLogged_ = true;
+        ActivityLog::record("drag.start", {{QStringLiteral("nodes"), dragNodeIds()}});
+    }
     recomputeRoutes();
     if (draftPath_ && draftSource_) updateConnection(draftSource_->scenePos());
 }
@@ -564,6 +572,7 @@ void GraphScene::updateEdgesForNode(const QString &nodeId) {
 void GraphScene::beginNodeDrag(NodeItem *item) {
     if (!item || refreshing_) return;
     dragPositions_.clear();
+    dragLogged_ = false;
     for (QGraphicsItem *selected : selectedItems()) {
         if (auto *node = dynamic_cast<NodeItem *>(selected)) dragPositions_.insert(node->id(), node->pos());
     }
@@ -578,6 +587,7 @@ void GraphScene::commitNodeMoves() {
     if (dragPositions_.isEmpty()) return;
     const auto originals = dragPositions_;
     dragPositions_.clear();
+    dragLogged_ = false;
     char error[512] = {};
     if (!nn_app_begin_edit(application_, error, sizeof(error))) {
         reportError(error);
@@ -615,8 +625,10 @@ void GraphScene::commitNodeMoves() {
 
 void GraphScene::cancelNodeDrag() {
     if (dragPositions_.isEmpty()) return;
+    if (dragLogged_) ActivityLog::record("drag.cancel", {{QStringLiteral("nodes"), dragNodeIds()}});
     const auto originals = dragPositions_;
     dragPositions_.clear();
+    dragLogged_ = false;
     for (auto it = originals.cbegin(); it != originals.cend(); ++it) {
         if (NodeItem *item = nodes_.value(it.key(), nullptr)) {
             item->setPos(it.value());
@@ -639,6 +651,8 @@ void GraphScene::beginConnection(PortItem *port) {
     cancelConnection();
     if (!port || !port->isOutput()) return;
     draftSource_ = port;
+    ActivityLog::record("connect.start", {{QStringLiteral("node"), port->nodeId()},
+        {QStringLiteral("handle"), port->handleId()}, {QStringLiteral("output"), port->isOutput()}});
     const QColor color = port->outputType() == QStringLiteral("loss")
         ? QColor("#c62828") : QColor("#111111");
     draftPath_ = addPath(QPainterPath(), QPen(color, 1.8, Qt::DashLine,
@@ -671,6 +685,8 @@ void GraphScene::adjustJoinInputSlots(const QString &nodeId, bool add) {
     }
     sortInputHandles(&explicitHandles);
     explicitJoinInputHandles_[nodeId] = explicitHandles;
+    ActivityLog::record("join.slots", {{QStringLiteral("node"), nodeId},
+        {QStringLiteral("count"), static_cast<int>(add ? handles.size() + 1 : handles.size() - 1)}});
     scheduleRefresh();
 }
 
@@ -698,7 +714,11 @@ void GraphScene::updateConnection(const QPointF &position) {
 void GraphScene::finishConnection(PortItem *port) {
     PortItem *source = draftSource_;
     cancelConnection();
-    if (!source || !port || port->isOutput()) return;
+    if (!source) return;
+    if (!port || port->isOutput()) {
+        ActivityLog::record("connect.cancel", {{QStringLiteral("reason"), QStringLiteral("no_target")}});
+        return;
+    }
     const QByteArray sourceId = source->nodeId().toUtf8();
     const QByteArray sourceHandle = source->handleId().toUtf8();
     const QByteArray targetId = port->nodeId().toUtf8();
@@ -721,6 +741,12 @@ void GraphScene::cancelConnection() {
         delete draftPath_;
         draftPath_ = nullptr;
     }
+}
+
+QJsonArray GraphScene::dragNodeIds() const {
+    QStringList ids = dragPositions_.keys();
+    ids.sort();
+    return QJsonArray::fromStringList(ids);
 }
 
 void GraphScene::reportError(const char *message) {

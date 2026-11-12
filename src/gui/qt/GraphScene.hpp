@@ -2,6 +2,7 @@
 #define NN_GRAPH_SCENE_HPP
 
 #include <QGraphicsScene>
+#include <QJsonArray>
 #include <QHash>
 #include <QColor>
 #include <QPointF>
@@ -31,7 +32,7 @@ public:
     QString scope() const { return scopeId_; }
     void deleteSelection();
     void goToParentScope();
-    void cancelInteraction();
+    void cancelInteraction(bool escape = false);
     QString selectedNodeId() const;
     NodeItem *nodeItem(const QString &id) const;
     EdgeItem *edgeItem(const QString &id) const;
@@ -63,6 +64,7 @@ private:
     void finishConnection(PortItem *port);
     void cancelConnection();
     void reportError(const char *message);
+    QJsonArray dragNodeIds() const;
     QString parentScope() const;
 
     NNApplication *application_;
@@ -81,6 +83,7 @@ private:
     bool refreshing_ = false;
     bool refreshPending_ = false;
     QHash<QString, QPointF> dragPositions_;
+    bool dragLogged_ = false;
     QStringList lockedMovableNodes_;
 };
 
