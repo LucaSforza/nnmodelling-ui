@@ -217,6 +217,31 @@ private slots:
         QVERIFY(scene_->edgeItem(QString::fromUtf8(edge->id)));
     }
 
+    void portsConnectThroughCoveringOverlay() {
+        NodeItem *source = scene_->nodeItem(QStringLiteral("source"));
+        NodeItem *target = scene_->nodeItem(QStringLiteral("target"));
+        QVERIFY(source && target);
+        PortItem *out = nullptr;
+        PortItem *in = nullptr;
+        for (PortItem *port : source->ports())
+            if (port->isOutput() && port->handleId() == QStringLiteral("out")) out = port;
+        for (PortItem *port : target->ports())
+            if (!port->isOutput() && port->handleId() == QStringLiteral("in")) in = port;
+        QVERIFY(out && in);
+        // A popup above everything (like a hovered tensor tooltip) covers the input port.
+        auto *overlay = scene_->addRect(QRectF(in->scenePos() - QPointF(40, 12), QSizeF(80, 24)),
+                                        QPen(Qt::black), QBrush(Qt::white));
+        overlay->setZValue(1000.0);
+        const QPoint start = view_->mapFromScene(out->scenePos());
+        const QPoint end = view_->mapFromScene(in->scenePos());
+        QTest::mousePress(view_->viewport(), Qt::LeftButton, Qt::NoModifier, start);
+        QTest::mouseMove(view_->viewport(), end, 30);
+        QTest::mouseRelease(view_->viewport(), Qt::LeftButton, Qt::NoModifier, end);
+        pumpEvents();
+        // The scene owns the overlay; its refresh after connecting may already release it.
+        QCOMPARE(nn_model_edge_count(nn_app_model(application_)), size_t(1));
+    }
+
     void boundaryOutputAcceptsRealMouseDrag() {
         NodeItem *source = scene_->nodeItem(QStringLiteral("source"));
         QVERIFY(source);

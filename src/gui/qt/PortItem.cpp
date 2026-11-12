@@ -69,8 +69,13 @@ void PortItem::mouseMoveEvent(QGraphicsSceneMouseEvent *event) {
 }
 
 void PortItem::mouseReleaseEvent(QGraphicsSceneMouseEvent *event) {
-    QGraphicsItem *hit = scene()->itemAt(event->scenePos(), QTransform());
-    auto *port = dynamic_cast<PortItem *>(hit);
+    // Overlays such as the source port's tensor popup may cover the target;
+    // connect to the topmost port under the cursor rather than the topmost item.
+    PortItem *port = nullptr;
+    for (QGraphicsItem *item : scene()->items(event->scenePos())) {
+        port = dynamic_cast<PortItem *>(item);
+        if (port) break;
+    }
     owner_->finishConnection(port);
     event->accept();
 }

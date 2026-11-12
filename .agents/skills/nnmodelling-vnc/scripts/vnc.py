@@ -9,6 +9,8 @@ Steps (executed in order over one connection):
   click X Y            left click          dclick X Y   double click
   rclick X Y           right click         drag X1 Y1 X2 Y2   left drag
   wheel X Y N          scroll N notches (negative = down)
+  press X Y / release X Y   hold or release the left button (for mid-drag shots)
+  glide X Y            move with the current buttons in small steps
   type TEXT            type printable text character by character
   key NAME             press a key or chord, e.g. Return, Escape, ctrl+z, ctrl+shift+v
   wait SECONDS         sleep
@@ -215,6 +217,16 @@ def main(argv):
                 client.pointer(x, y)
             else:
                 client.click(x, y, 4 if step == 'rclick' else 1, 2 if step == 'dclick' else 1)
+            i += 3
+        elif step in ('press', 'release'):
+            client.pointer(int(args[0]), int(args[1]), 1 if step == 'press' else 0)
+            time.sleep(0.15)
+            i += 3
+        elif step == 'glide':
+            x0, y0, x1, y1 = client.x, client.y, int(args[0]), int(args[1])
+            for k in range(1, 21):
+                client.pointer(x0 + (x1 - x0) * k // 20, y0 + (y1 - y0) * k // 20)
+                time.sleep(0.03)
             i += 3
         elif step == 'drag':
             client.drag(*map(int, args[:4]))
