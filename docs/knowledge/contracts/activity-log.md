@@ -165,6 +165,20 @@ Qt `src:"ui"` events, emitted by `src/gui/qt/ActivityLog.*`:
 | `view.fit`, `layout.arrange` | `{}` / `direction` | fit or arrange |
 | `backend.request` | `method`,`path`,`status` | every non-GET backend request and explicit Connect |
 
+Implementation notes (accepted 2026-11-12): the Qt helper is the
+`ActivityLog` namespace (`record`, debounce/coalesce helpers and message-box,
+file-chooser and `exec` wrappers). `session.start.version` is the CMake project
+version. `drag.start` is emitted on the first real position change, so a plain
+click logs no drag; `drag.cancel` follows only a logged start. `error.shown`
+with `where:"dialog"` covers warning/critical boxes with only an Ok button;
+question boxes are dialogs. Additional dialog names include `operation_edit`,
+`metavariable_edit`, `replace_confirm`, `backend_stop_confirm`,
+`dataset_delete_confirm`, `project_parent_chooser`, `dataset_import_source`,
+`backend_download`, `backend_restore_parent`, `backend_restore_name` and generic
+`message`. `backend.request` uses `ok:false` and the error text for non-2xx or
+network failures. Free text (`ui.status`, `error.shown`) replaces every `$HOME`
+occurrence with `~`.
+
 ## Collection and analysis tools
 
 `tools/activity_log/collect.sh DEST` copies the current user's log to
