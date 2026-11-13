@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(NNModelling VERSION 0.1.0 LANGUAGES C)
+project(NNModelling VERSION 1.0.0 LANGUAGES C)
 
 option(NN_BUILD_GUI "Build the Qt 6 Widgets frontend" ON)
 include(CTest)
