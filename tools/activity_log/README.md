@@ -21,3 +21,12 @@ Il client scrive in append `~/nnmodelling.log` (o il file indicato da
 
 Le righe malformate o troncate e i salti di `seq` vengono saltati e riportati
 su stderr e in `summary.md`.
+
+## Report per il paper e prove a vuoto
+
+- `python3 tools/activity_log/paper_report.py results/ report/` legge i CSV del
+  parser e scrive `report/tables/*.tex`, `report/figures/*.pdf`, `measures.csv`
+  e (con `--body FILE.tex`) `report.pdf`. Richiede matplotlib e pdflatex.
+- `python3 tools/activity_log/simulate_sessions.py logs/` genera 5 log SINTETICI
+  (archetipi: fluente, vocabolario, collegamenti, parametri, interrotto) per
+  provare la pipeline; usare `--synthetic` in `paper_report.py` per marcare il PDF.
