@@ -54,16 +54,11 @@
         "id": "mnist-full",
         "version": "0.1.0",
         "path": "datasets/mnist-full"
-      },
-      {
-        "id": "llm.tokens",
-        "version": "1.0.0",
-        "path": "datasets/llm.tokens-1.0.0"
       }
     ],
     "operations": [],
     "activeDataset": {
-      "id": "mnist",
+      "id": "mnist-full",
       "version": "0.1.0"
     }
   }
