@@ -1,0 +1,230 @@
+\documentclass[10pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[italian]{babel}
+\usepackage[margin=2cm]{geometry}
+\usepackage{microtype}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{amsmath,amssymb}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{float}
+\usepackage[hidelinks]{hyperref}
+
+\definecolor{accent}{HTML}{24566B}
+\setlist{topsep=2pt, itemsep=2pt, parsep=0pt}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{4pt}
+
+\newcommand{\file}[1]{\texttt{\small\detokenize{#1}}}
+\newcommand{\shot}[2]{\fbox{\includegraphics[width=#1\textwidth,trim=240 85 315 58,clip]{img/#2.png}}}
+
+\title{\color{accent}Studio esperti: proposta di task, materiali e prova}
+\author{Proposta per il gruppo di ricerca --- NNModelling}
+\date{19 novembre 2026}
+
+\begin{document}
+\maketitle
+
+\section*{In breve}
+
+\begin{itemize}
+    \item \textbf{Tre task di difficoltà crescente}, svolti dagli esperti sia in
+    NNModelling sia in PyTorch (Jupyter), in ordine bilanciato:
+    (T1) lo stesso MLP degli studenti, (T2) self-attention a una testa,
+    (T3) attention multi-testa con metavariabili e subflow.
+    \item \textbf{Un solo foglio in inglese} per entrambi gli strumenti: una specifica
+    neutrale per ogni task e due riquadri brevi (``In NNModelling'' / ``In PyTorch'')
+    con il flusso di lavoro. Nessun addestramento in nessuno dei due strumenti.
+    \item \textbf{Correzione automatica con gli stessi criteri} per i due strumenti:
+    il progetto NNModelling viene eseguito in PyTorch dal runtime e sottoposto agli
+    stessi controlli dei notebook.
+    \item \textbf{Ho svolto io i tre task nell'app reale} (via VNC) partendo dai
+    progetti \emph{start}: il correttore li ha promossi tutti e tre. Le osservazioni
+    di usabilità emerse sono in Sezione~\ref{sec:usabilita}.
+\end{itemize}
+
+\section{Disegno dei task}
+
+L'MLP identico a quello degli studenti consente il confronto diretto tra novizi ed
+esperti; la crescita di difficoltà fornisce una curva di apprendimento; ogni task
+parte da un proprio progetto, quindi un blocco non si propaga ai task successivi.
+Il T3 introduce le funzioni avanzate scelte (metavariabili e subflow) e richiama
+l'idea originale dell'LLM: la multi-head attention ne è il nucleo.
+
+Tutti i task usano MNIST small: immagini \(x\in\mathbb{R}^{B\times1\times28\times28}\),
+target \(y\in\{0,\dots,9\}^B\). Nei task con attention ogni immagine è una sequenza
+di 28 righe (token) da 28 pixel, così si riusa lo stesso dataset e la stessa loss.
+
+\begin{table}[H]
+\centering\small
+\begin{tabularx}{\textwidth}{@{}l>{\raggedright\arraybackslash}Xr@{}}
+\toprule
+Task & Architettura & Parametri \\
+\midrule
+T1 MLP & Flatten \(\to\) Linear(784,64) \(\to\) ReLU \(\to\) Linear(64,10); Cross Entropy & 50\,890 \\
+T2 Attention, 1 testa & righe \([B,28,28]\) \(\to\) Linear(28,32)\(=H\);
+\(Q,K,V=\)Linear(32,32); \(\mathrm{softmax}(QK^\top/\sqrt{32})V\); \(H+AV\);
+Flatten \(\to\) Linear(896,10) & 13\,066 \\
+T3 Multi-testa & come T2 con \texttt{d-model}\(=32\), \texttt{num-heads}\(=4\): ogni testa
+\(Q_i,K_i,V_i=\)Linear\((d,d/h)\), scala \(1/\sqrt{d/h}\), teste concatenate &
+\(3d^2+312d+10\) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\textbf{Scaffolding.} In T2 e T3 embedding, Add residuo e classificatore sono già
+presenti in entrambi gli strumenti: l'esperto costruisce solo l'attention. Nel
+progetto \emph{start} l'Add residuo è volutamente scollegato: un Add con un solo
+input è valido e l'app mostrerebbe ``No model problems'' prima che il lavoro sia
+iniziato.
+
+\textbf{Stesse primitive.} In PyTorch sono vietati \texttt{nn.MultiheadAttention},
+\texttt{F.scaled\_dot\_product\_attention} e \texttt{nn.Transformer*}: si usano solo
+operazioni con un pacchetto equivalente in NNModelling (tabella sul foglio).
+Senza causal mask (classificazione per righe, bidirezionale) restano sufficienti
+i pacchetti \emph{core}.
+
+\section{Materiali prodotti}
+
+Tutto è nel repository, \textbf{non committato}:
+
+\begin{table}[H]
+\centering\small
+\begin{tabularx}{\textwidth}{@{}lX@{}}
+\toprule
+Percorso & Contenuto \\
+\midrule
+\file{study/experts/tasks/expert-tasks.tex} & Foglio dei task (2 pagine, inglese) \\
+\file{study/experts/projects/<task>/{start,solution}} & Progetti NNModelling di partenza e di riferimento \\
+\file{study/experts/notebooks/} & Notebook dei partecipanti e soluzioni (\file{solutions/}) \\
+\file{tools/expert_study/study_checks.py} & Controlli PyTorch, copiati accanto ai notebook (solo stdlib + torch) \\
+\file{tools/expert_study/grade.py} & Correzione automatica di progetti e notebook (tabella, JSON, CSV) \\
+\file{tools/expert_study/prepare_usb.py} & Prepara la pennetta: \file{master/}, \file{facilitator/}, \file{new_session.py} \\
+\file{tools/expert_study/analyse_activity.py} & Separa il log di NNModelling per progetto (\file{split_activity_log.py}) e calcola i tempi per sotto-obiettivo con \file{tasks_expert_tN.json} \\
+\file{tests/study_probe.c} & Analisi nativa a riga di comando (non salva mai il progetto) \\
+\file{tests/test_expert_study_*.py} & 61 test automatici (\texttt{just test-expert-study}) \\
+\file{docs/knowledge/testing/expert-study.md} & Specifica, criteri e risultati della prova \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Le parti di codice (notebook, controlli, correttore, probe, pennetta) sono state
+scritte da sottoagenti Sonnet e riviste da me. In review ho aggiunto un controllo:
+la softmax deve normalizzare sull'ultima dimensione, altrimenti una softmax sulla
+dimensione sbagliata passerebbe.
+
+\section{Correzione automatica}
+
+Gli stessi criteri valgono per il notebook e per il progetto NNModelling:
+
+\begin{enumerate}
+    \item forward su un batch fisso di 16 immagini: logits \([16,10]\) finiti; loss scalare
+    uguale a \texttt{cross\_entropy(logits, y)};
+    \item numero di parametri addestrabili pari alla tabella;
+    \item nessun costrutto vietato (moduli e chiamate intercettate durante il forward);
+    \item numero di mappe di attention \(28\times28\) per campione pari al numero di teste;
+    \item solo T3: il modello viene ricostruito anche con \((d,h)=(64,8)\) e \((32,2)\):
+    se un 32 è scritto a mano invece di usare la variabile, il controllo fallisce;
+    \item solo NNModelling: analisi nativa completa e senza problemi; per il T3 esistono
+    le metavariabili \texttt{d-model} e \texttt{num-heads}.
+\end{enumerate}
+
+Prova a vuoto della pennetta: una sessione nuova con i notebook risolti e i progetti
+non toccati produce
+
+{\small\begin{verbatim}
+participant  tool     task  result  failed checks
+P01          nnm      T1    FAIL    native analysis, logits, loss, parameters
+P01          nnm      T2    FAIL    native analysis, logits, loss, parameters, attention heads
+P01          nnm      T3    FAIL    d=32,h=4: native analysis, metavariables, ...
+P01          pytorch  T1    PASS
+P01          pytorch  T2    PASS
+P01          pytorch  T3    PASS
+\end{verbatim}}
+
+mentre i tre progetti completati da me nella GUI danno \texttt{PASS} su T1, T2 e T3.
+
+\section{Prova dei task nell'app}
+
+Ho risolto ogni progetto \emph{start} nell'app Qt reale tramite VNC (click e
+trascinamenti veri), seguendo solo il foglio. Le immagini a sinistra mostrano
+ciò che vede l'esperto all'apertura; quelle a destra il progetto completato
+(riordinato con \emph{Arrange} per la stampa).
+
+\begin{figure}[H]
+\centering
+\shot{0.47}{t1-start}\hfill\shot{0.47}{t1-done}
+\caption{T1 --- MLP. A sinistra lo \emph{start} (Input con MNIST small attivo, Output,
+Loss Output); a destra il modello completo, senza problemi.}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\shot{0.47}{t2-start}\hfill\shot{0.47}{t2-done}
+\caption{T2 --- self-attention a una testa. Lo \emph{start} lascia spazio tra
+embedding e Add residuo; la scala è stata inserita con la formula del foglio
+\texttt{\$(1/math.sqrt(32))}, risolta a \(0.1768\).}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\shot{0.47}{t3-start}\hfill\shot{0.47}{t3-done}
+\caption{T3 --- multi-testa. Lo \emph{start} coincide con quello del T2. A destra la
+radice completata: Horizontal Repeat con \texttt{times = \$num-heads}, embedding con
+\texttt{\$d-model} e classificatore con \texttt{\$(28 * meta["d-model"])}.}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\shot{0.6}{t3-done-heads}
+\caption{T3 --- interno dell'Horizontal Repeat: una testa con
+\(Q,K,V\) = Linear(\texttt{\$d-model}, \texttt{\$(params.in\_features / meta["num-heads"])})
+e scala \texttt{\$(1 / math.sqrt(meta["d-model"] / meta["num-heads"]))}, risolta a \(1/\sqrt8\).}
+\end{figure}
+
+\section{Osservazioni di usabilità emerse dalla prova}\label{sec:usabilita}
+
+Escludo i limiti dello strumento VNC (niente gestore di finestre, socket rimasto
+dopo l'arresto). Sono spunti da osservare negli esperti, non bug confermati:
+
+\begin{itemize}
+    \item \textbf{Nodi sovrapposti:} ogni nuovo nodo compare nello stesso punto, sopra gli
+    altri, finché non si usa \emph{Arrange}.
+    \item \textbf{Arrange e zoom:} con 14 nodi \emph{Arrange} rimpicciolisce molto schede e
+    handle (difficili da agganciare) e ogni \emph{Arrange} reimposta lo zoom.
+    \item \textbf{Pulsante che si sposta:} dopo aver selezionato un pacchetto, ``Add to graph''
+    cambia posizione; il doppio click sul pacchetto lo aggiunge direttamente.
+    \item \textbf{Inspector che scorre:} le righe si spostano quando un nodo ottiene un output
+    valido o una formula aggiunge la riga ``Resolved''; il campo sotto il puntatore cambia.
+    Anche \emph{Invio} su un parametro ha spostato la vista.
+    \item \textbf{Trascinamenti mancati:} un trascinamento che manca l'handle sposta il nodo
+    invece di creare l'arco.
+    \item \textbf{Dialogo delle metavariabili:} il tipo predefinito è \emph{boolean} con valore
+    \texttt{null}, e l'etichetta ``Value'' compare solo dopo aver scelto un altro tipo.
+    \item \textbf{Formule (positivo):} \texttt{\$nome} e \texttt{\$(\ldots)} sono state accettate
+    nello stesso campo, con il valore risolto mostrato subito sotto.
+\end{itemize}
+
+\section{Punti aperti per il gruppo}
+
+\begin{enumerate}
+    \item \textbf{SUS e NASA-TLX:} restano invariati. Se si compilano una sola volta alla
+    fine, il giudizio su NNModelling arriva subito per il gruppo PyTorch\(\to\)NNM e dopo
+    PyTorch per l'altro gruppo. Spostarli subito dopo la parte NNModelling non cambia i
+    questionari; altrimenti va indicato tra i limiti.
+    \item \textbf{Durata:} va misurata con un pilota. Stima: circa 5/10/10 minuti per task e
+    per strumento per un esperto. Se il pilota supera l'ora, il T3 è il primo da accorciare.
+    \item \textbf{Facilitatore:} tempo massimo per task, dopo il quale si passa al progetto
+    successivo (le soluzioni sono in \file{facilitator/}), e regola sui suggerimenti.
+    \item \textbf{Causal mask:} esclusa per restare nei pacchetti core; si può aggiungere al
+    T2/T3 includendo il pacchetto dell'esempio LLM nei progetti \emph{start}.
+    \item \textbf{Log di NNModelling:} i tre task vanno analizzati separatamente: gli \emph{start}
+    di T2 e T3 sono identici, quindi il log va diviso per progetto prima di calcolare i tempi
+    (\file{analyse_activity.py}); sulla mia prova tutti i 23 sotto-obiettivi risultano completati, ciascuno nel proprio task.
+\end{enumerate}
+
+\end{document}

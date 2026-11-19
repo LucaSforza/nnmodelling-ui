@@ -1,0 +1,227 @@
+{
+  "nodes": [
+    {
+      "id": "input",
+      "type": "custom",
+      "position": {
+        "x": 120,
+        "y": 80
+      },
+      "data": {
+        "name": "Input",
+        "scope": "",
+        "package": {
+          "id": "core.input",
+          "version": "0.1.0"
+        },
+        "params": {
+          "binding": "image"
+        }
+      }
+    },
+    {
+      "id": "output",
+      "type": "custom",
+      "position": {
+        "x": 260,
+        "y": 1300
+      },
+      "data": {
+        "name": "Output",
+        "scope": "",
+        "package": {
+          "id": "core.output",
+          "version": "0.1.0"
+        },
+        "params": {}
+      }
+    },
+    {
+      "id": "loss-output",
+      "type": "custom",
+      "position": {
+        "x": 0,
+        "y": 1300
+      },
+      "data": {
+        "name": "Loss Output",
+        "scope": "",
+        "package": {
+          "id": "core.loss-output",
+          "version": "0.1.0"
+        },
+        "params": {}
+      }
+    },
+    {
+      "id": "flatten",
+      "type": "custom",
+      "position": {
+        "x": 80,
+        "y": 240
+      },
+      "data": {
+        "name": "Flatten",
+        "scope": "",
+        "package": {
+          "id": "core.flatten",
+          "version": "0.1.0"
+        },
+        "params": {
+          "start_dim": 1,
+          "end_dim": -1
+        }
+      }
+    },
+    {
+      "id": "hidden",
+      "type": "custom",
+      "position": {
+        "x": 80,
+        "y": 420
+      },
+      "data": {
+        "name": "Linear",
+        "scope": "",
+        "package": {
+          "id": "core.linear",
+          "version": "0.1.0"
+        },
+        "params": {
+          "in_features": 784,
+          "out_features": 64,
+          "bias": true,
+          "dtype": "float32"
+        }
+      }
+    },
+    {
+      "id": "relu",
+      "type": "custom",
+      "position": {
+        "x": 80,
+        "y": 660
+      },
+      "data": {
+        "name": "ReLU",
+        "scope": "",
+        "package": {
+          "id": "core.relu",
+          "version": "0.1.0"
+        },
+        "params": {}
+      }
+    },
+    {
+      "id": "logits",
+      "type": "custom",
+      "position": {
+        "x": 80,
+        "y": 840
+      },
+      "data": {
+        "name": "Linear",
+        "scope": "",
+        "package": {
+          "id": "core.linear",
+          "version": "0.1.0"
+        },
+        "params": {
+          "in_features": 64,
+          "out_features": 10,
+          "bias": true,
+          "dtype": "float32"
+        }
+      }
+    },
+    {
+      "id": "cross-entropy",
+      "type": "custom",
+      "position": {
+        "x": 80,
+        "y": 1100
+      },
+      "data": {
+        "name": "Cross Entropy",
+        "scope": "",
+        "package": {
+          "id": "core.cross-entropy",
+          "version": "0.1.0"
+        },
+        "params": {}
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-input-flatten-in",
+      "source": "input",
+      "sourceHandle": "out",
+      "target": "flatten",
+      "targetHandle": "in"
+    },
+    {
+      "id": "e-flatten-hidden-in",
+      "source": "flatten",
+      "sourceHandle": "out",
+      "target": "hidden",
+      "targetHandle": "in"
+    },
+    {
+      "id": "e-hidden-relu-in",
+      "source": "hidden",
+      "sourceHandle": "out",
+      "target": "relu",
+      "targetHandle": "in"
+    },
+    {
+      "id": "e-relu-logits-in",
+      "source": "relu",
+      "sourceHandle": "out",
+      "target": "logits",
+      "targetHandle": "in"
+    },
+    {
+      "id": "e-logits-output-in",
+      "source": "logits",
+      "sourceHandle": "out",
+      "target": "output",
+      "targetHandle": "in"
+    },
+    {
+      "id": "e-logits-cross-entropy-in",
+      "source": "logits",
+      "sourceHandle": "out",
+      "target": "cross-entropy",
+      "targetHandle": "in"
+    },
+    {
+      "id": "e-cross-entropy-loss-output-in",
+      "source": "cross-entropy",
+      "sourceHandle": "loss",
+      "target": "loss-output",
+      "targetHandle": "in"
+    }
+  ],
+  "layoutDirection": "horizontal",
+  "manifest": {
+    "schemaVersion": 2,
+    "id": "expert-task1-mlp",
+    "version": "0.1.0",
+    "name": "Expert T1: MLP",
+    "description": "Expert usability study, task1-mlp (solution)",
+    "customPackages": [],
+    "customDatasets": [
+      {
+        "id": "mnist",
+        "version": "0.1.0",
+        "path": "datasets/mnist"
+      }
+    ],
+    "operations": [],
+    "activeDataset": {
+      "id": "mnist",
+      "version": "0.1.0"
+    }
+  }
+}

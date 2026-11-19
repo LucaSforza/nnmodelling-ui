@@ -1,0 +1,247 @@
+{
+  "nodes": [
+    {
+      "id": "input",
+      "type": "custom",
+      "position": {
+        "x": 300,
+        "y": 80
+      },
+      "data": {
+        "name": "Input",
+        "scope": "",
+        "package": {
+          "id": "core.input",
+          "version": "0.1.0"
+        },
+        "params": {
+          "binding": "image"
+        }
+      }
+    },
+    {
+      "id": "output",
+      "type": "custom",
+      "position": {
+        "x": 420,
+        "y": 1760
+      },
+      "data": {
+        "name": "Output",
+        "scope": "",
+        "package": {
+          "id": "core.output",
+          "version": "0.1.0"
+        },
+        "params": {}
+      }
+    },
+    {
+      "id": "loss-output",
+      "type": "custom",
+      "position": {
+        "x": 140,
+        "y": 1760
+      },
+      "data": {
+        "name": "Loss Output",
+        "scope": "",
+        "package": {
+          "id": "core.loss-output",
+          "version": "0.1.0"
+        },
+        "params": {}
+      }
+    },
+    {
+      "id": "rows",
+      "type": "custom",
+      "position": {
+        "x": 240,
+        "y": 220
+      },
+      "data": {
+        "name": "Flatten: image rows",
+        "scope": "",
+        "package": {
+          "id": "core.flatten",
+          "version": "0.1.0"
+        },
+        "params": {
+          "start_dim": 1,
+          "end_dim": 2
+        }
+      }
+    },
+    {
+      "id": "embed",
+      "type": "custom",
+      "position": {
+        "x": 240,
+        "y": 400
+      },
+      "data": {
+        "name": "Embedding Linear",
+        "scope": "",
+        "package": {
+          "id": "core.linear",
+          "version": "0.1.0"
+        },
+        "params": {
+          "in_features": 28,
+          "out_features": 32,
+          "bias": true,
+          "dtype": "float32"
+        }
+      }
+    },
+    {
+      "id": "residual",
+      "type": "custom",
+      "position": {
+        "x": 280,
+        "y": 1000
+      },
+      "data": {
+        "name": "Add: residual",
+        "scope": "",
+        "package": {
+          "id": "core.add",
+          "version": "0.1.0"
+        },
+        "params": {}
+      }
+    },
+    {
+      "id": "flatten",
+      "type": "custom",
+      "position": {
+        "x": 240,
+        "y": 1160
+      },
+      "data": {
+        "name": "Flatten",
+        "scope": "",
+        "package": {
+          "id": "core.flatten",
+          "version": "0.1.0"
+        },
+        "params": {
+          "start_dim": 1,
+          "end_dim": -1
+        }
+      }
+    },
+    {
+      "id": "classifier",
+      "type": "custom",
+      "position": {
+        "x": 240,
+        "y": 1340
+      },
+      "data": {
+        "name": "Classifier Linear",
+        "scope": "",
+        "package": {
+          "id": "core.linear",
+          "version": "0.1.0"
+        },
+        "params": {
+          "in_features": 896,
+          "out_features": 10,
+          "bias": true,
+          "dtype": "float32"
+        }
+      }
+    },
+    {
+      "id": "cross-entropy",
+      "type": "custom",
+      "position": {
+        "x": 100,
+        "y": 1560
+      },
+      "data": {
+        "name": "Cross Entropy",
+        "scope": "",
+        "package": {
+          "id": "core.cross-entropy",
+          "version": "0.1.0"
+        },
+        "params": {}
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-input-rows-in",
+      "source": "input",
+      "sourceHandle": "out",
+      "target": "rows",
+      "targetHandle": "in"
+    },
+    {
+      "id": "e-rows-embed-in",
+      "source": "rows",
+      "sourceHandle": "out",
+      "target": "embed",
+      "targetHandle": "in"
+    },
+    {
+      "id": "e-residual-flatten-in",
+      "source": "residual",
+      "sourceHandle": "out",
+      "target": "flatten",
+      "targetHandle": "in"
+    },
+    {
+      "id": "e-flatten-classifier-in",
+      "source": "flatten",
+      "sourceHandle": "out",
+      "target": "classifier",
+      "targetHandle": "in"
+    },
+    {
+      "id": "e-classifier-output-in",
+      "source": "classifier",
+      "sourceHandle": "out",
+      "target": "output",
+      "targetHandle": "in"
+    },
+    {
+      "id": "e-classifier-cross-entropy-in",
+      "source": "classifier",
+      "sourceHandle": "out",
+      "target": "cross-entropy",
+      "targetHandle": "in"
+    },
+    {
+      "id": "e-cross-entropy-loss-output-in",
+      "source": "cross-entropy",
+      "sourceHandle": "loss",
+      "target": "loss-output",
+      "targetHandle": "in"
+    }
+  ],
+  "layoutDirection": "horizontal",
+  "manifest": {
+    "schemaVersion": 2,
+    "id": "expert-task3-multihead",
+    "version": "0.1.0",
+    "name": "Expert T3: multi-head attention",
+    "description": "Expert usability study, task3-multihead (start)",
+    "customPackages": [],
+    "customDatasets": [
+      {
+        "id": "mnist",
+        "version": "0.1.0",
+        "path": "datasets/mnist"
+      }
+    ],
+    "operations": [],
+    "activeDataset": {
+      "id": "mnist",
+      "version": "0.1.0"
+    }
+  }
+}

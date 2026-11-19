@@ -1,0 +1,178 @@
+\documentclass[10pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[english]{babel}
+\usepackage[margin=1.5cm]{geometry}
+\usepackage{enumitem}
+\usepackage{microtype}
+\usepackage{xcolor}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage[most]{tcolorbox}
+
+\pagestyle{empty}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{3pt}
+
+\setlist[itemize]{leftmargin=*, topsep=2pt, itemsep=2pt, parsep=0pt}
+\setlist[enumerate]{leftmargin=*, topsep=2pt, itemsep=2pt, parsep=0pt}
+
+\definecolor{groupcolor}{HTML}{24566B}
+\definecolor{nnmcolor}{HTML}{4779C4}
+\definecolor{torchcolor}{HTML}{C0562F}
+
+% Task heading: number, title, right-aligned time hint.
+\newcommand{\task}[3]{%
+    \par\medskip
+    {\color{groupcolor}\large\bfseries #1\quad #2\hfill\normalfont\footnotesize #3}\par
+    \smallskip}
+
+\newtcolorbox{nnm}{colback=nnmcolor!6, colframe=nnmcolor, boxrule=0.5pt,
+    arc=1pt, left=4pt, right=4pt, top=2pt, bottom=2pt,
+    fonttitle=\small\bfseries, title={In NNModelling}}
+\newtcolorbox{torch}{colback=torchcolor!6, colframe=torchcolor, boxrule=0.5pt,
+    arc=1pt, left=4pt, right=4pt, top=2pt, bottom=2pt,
+    fonttitle=\small\bfseries, title={In PyTorch (Jupyter)}}
+
+\newcommand{\pkg}[1]{\textsf{#1}}
+
+\begin{document}
+\small
+
+{\Large\bfseries Tasks — Expert participants}\hfill{\footnotesize NNModelling usability study}
+
+\vspace{4pt}\hrule\vspace{6pt}
+
+You will build the same three models twice: once in NNModelling and once in
+PyTorch, in the order given by the facilitator. Each task has a tool-neutral
+specification, followed by a short note for each tool: read only the box of
+the tool you are using. Models are \emph{not} trained.
+
+\begin{itemize}
+    \item \textbf{Data.} MNIST small: images \(x\in\mathbb{R}^{B\times1\times28\times28}\)
+    (pixels in \([0,1]\)) and integer class targets \(y\in\{0,\dots,9\}^{B}\).
+    The dataset is already selected (NNModelling) or loaded (PyTorch).
+    \item \textbf{Each task starts from a prepared file}: open the project
+    \texttt{projects/taskN-\ldots} or the notebook \texttt{notebooks/taskN\_\ldots.ipynb}.
+    Parts marked as \emph{provided} are already there.
+    \item \textbf{A task is complete} when, in NNModelling, the \emph{Model Problems}
+    panel reports no problems and the logits have shape \([B,10]\); in PyTorch, when
+    the last cell of the notebook prints \texttt{PASSED}. Then tell the facilitator.
+    \item \textbf{Same building blocks in both tools.} Use only the operations
+    in the table below: no ready-made attention or transformer layers.
+\end{itemize}
+
+\vspace{2pt}
+{\footnotesize
+\begin{tabularx}{\textwidth}{@{}lXX@{}}
+\toprule
+Operation & NNModelling package & PyTorch \\
+\midrule
+Reshape to vectors / rows & \pkg{Flatten} (\texttt{start\_dim}, \texttt{end\_dim}) & \texttt{torch.flatten}, \texttt{nn.Flatten} \\
+Affine map on last dim & \pkg{Linear} (\texttt{in\_features}, \texttt{out\_features}) & \texttt{nn.Linear} \\
+Activation, normalisation & \pkg{ReLU}, \pkg{Softmax} (\texttt{dim}) & \texttt{torch.relu}, \texttt{nn.ReLU}, \texttt{softmax} \\
+Matrix product, transpose, scaling & \pkg{MatMul}, \pkg{Transpose}, \pkg{Scale} (\texttt{factor}) & \texttt{@}/\texttt{torch.matmul}, \texttt{.transpose}, \texttt{*} \\
+Sum, concatenation & \pkg{Add}, \pkg{Concat} & \texttt{+}, \texttt{torch.cat} \\
+Parallel copies of a block & \pkg{Horizontal Repeat} & loop / \texttt{nn.ModuleList} (or \texttt{view} to split heads) \\
+Loss & \pkg{Cross Entropy} \(\rightarrow\) \pkg{Loss Output} & \texttt{F.cross\_entropy} \\
+\midrule
+\multicolumn{3}{@{}l}{\textbf{Not allowed:} \texttt{nn.MultiheadAttention}, \texttt{F.scaled\_dot\_product\_attention}, \texttt{nn.Transformer*}.} \\
+\bottomrule
+\end{tabularx}}
+
+% ---------------------------------------------------------------------------
+\task{Task 1}{Multi-layer perceptron}{same model as the student group}
+
+Classify the digits with a two-layer perceptron:
+\[
+x \;\xrightarrow{\text{flatten}}\; \mathbb{R}^{784}
+  \;\xrightarrow{\text{Linear}}\; \mathbb{R}^{64}
+  \;\xrightarrow{\text{ReLU}}\; \mathbb{R}^{64}
+  \;\xrightarrow{\text{Linear}}\; \mathbb{R}^{10}\ (\text{logits}),
+\qquad \mathcal{L} = \mathrm{CrossEntropy}(\text{logits}, y).
+\]
+The logits are the output of the model; the cross-entropy is the loss that
+training would minimise.
+
+\begin{nnm}
+Input, Output and Loss Output are provided. Find packages in the
+\emph{Packages} panel (search or browse) and add them to the graph; draw an
+edge by dragging from a node's output handle to another node's input handle;
+set parameters in the \emph{Inspector} after selecting a node. Connect the last
+Linear to both \pkg{Output} and \pkg{Cross Entropy}, and \pkg{Cross Entropy} to
+\pkg{Loss Output} (the target \(y\) is supplied by the dataset automatically).
+\end{nnm}
+\begin{torch}
+Complete \texttt{class MLP(nn.Module)} (\texttt{forward(x)} returns the logits)
+and \texttt{compute\_loss(logits, target)}. Run the check cell.
+\end{torch}
+
+% ---------------------------------------------------------------------------
+\task{Task 2}{Self-attention over image rows}{one attention head}
+
+Treat each image as a sequence of 28 rows (tokens) of 28 pixels and let the
+rows attend to each other. With \(d = 32\):
+\begin{enumerate}
+    \item \emph{Provided:} rows \(X = \mathrm{flatten}(x, 1, 2) \in \mathbb{R}^{B\times28\times28}\)
+    and embedding \(H = \mathrm{Linear}_{28\to d}(X) \in \mathbb{R}^{B\times28\times d}\).
+    \item \textbf{Your part:} queries, keys and values
+    \(Q = \mathrm{Linear}_{d\to d}(H)\), \(K = \mathrm{Linear}_{d\to d}(H)\), \(V = \mathrm{Linear}_{d\to d}(H)\);
+    attention weights \(A = \mathrm{softmax}\!\left(Q K^{\top} / \sqrt{d}\right)\), softmax over the last dimension
+    (\(A\in\mathbb{R}^{B\times28\times28}\)); attended values \(AV\).
+    \item Residual connection \(H' = H + AV\).
+    \item \emph{Provided:} logits \(=\mathrm{Linear}_{28d\to10}(\mathrm{flatten}(H'))\) and the cross-entropy loss.
+\end{enumerate}
+
+\begin{nnm}
+The rows, embedding, residual \pkg{Add} and the classifier are provided. Build
+\(Q\), \(K\), \(V\) from the embedding (one output may feed several nodes);
+\(K^{\top}\) is \pkg{Transpose} with dims \(-2, -1\). \pkg{MatMul} multiplies its
+inputs in slot order (\texttt{in-1} \(\times\) \texttt{in-2}), so mind which
+edge goes to which slot. \(1/\sqrt{32} \approx 0.1768\); a parameter field
+also accepts a formula such as \texttt{\$(1/math.sqrt(32))}. Finally connect the
+embedding and \(AV\) to the two inputs of the residual \pkg{Add}.
+\end{nnm}
+\begin{torch}
+In \texttt{RowAttentionClassifier}, add the \(Q,K,V\) layers in \texttt{\_\_init\_\_}
+and compute \texttt{attn} \(=AV\) in the marked region of \texttt{forward}. The
+embedding, residual, classifier and loss are provided.
+\end{torch}
+
+\clearpage
+% ---------------------------------------------------------------------------
+\task{Task 3}{Multi-head attention with model-wide variables}{parametric model}
+
+Same model as Task 2, but with \(h\) attention heads and with the width and
+number of heads declared once, as variables used by the whole model:
+\texttt{d-model} \(=32\) and \texttt{num-heads} \(=4\).
+\begin{enumerate}
+    \item Every place that depends on the width must use \texttt{d-model}: embedding output
+    (\(d\)), and classifier input (\(28\,d\)).
+    \item Each head \(i = 1,\dots,h\) computes \(Q_i, K_i, V_i = \mathrm{Linear}_{d\to d/h}(H)\) and
+    \(\mathrm{softmax}\!\left(Q_i K_i^{\top}/\sqrt{d/h}\right)V_i \in \mathbb{R}^{B\times28\times d/h}\).
+    \item The \(h\) head outputs are concatenated on the last dimension (\(\mathbb{R}^{B\times28\times d}\))
+    and added to \(H\) by the residual connection, as in Task 2.
+\end{enumerate}
+Changing only the two variables (e.g.\ \(d = 64\), \(h = 8\)) must still give a valid model.
+
+\begin{nnm}
+Declare the variables in \emph{Model \(\rightarrow\) Manage metavariables}. In any
+parameter field, \texttt{\$d-model} uses a variable and \texttt{\$(\ldots)} evaluates a
+Lua expression, e.g.\ \texttt{\$(28 * meta["d-model"])}; inside a node,
+\texttt{params.in\_features} refers to its own parameter. Add one
+\pkg{Horizontal Repeat} (\texttt{times} = number of heads; its default join is
+\pkg{Concat} on dim \(-1\)) between the embedding and the residual \pkg{Add}.
+Open it with \emph{Enter subflow}: its Input and Output are already there; build
+\emph{one} head inside. Use the \emph{Scope} selector to return to \emph{Root}.
+\end{nnm}
+\begin{torch}
+Complete \texttt{MultiHeadRowAttentionClassifier(d\_model=32, num\_heads=4)}:
+the constructor arguments play the role of the variables, and the check also
+builds the model with other values. Heads may be separate modules in a loop or
+obtained by splitting with \texttt{view}.
+\end{torch}
+
+\end{document}

@@ -1,0 +1,79 @@
+{
+  "nodes": [
+    {
+      "id": "input",
+      "type": "custom",
+      "position": {
+        "x": 120,
+        "y": 80
+      },
+      "data": {
+        "name": "Input",
+        "scope": "",
+        "package": {
+          "id": "core.input",
+          "version": "0.1.0"
+        },
+        "params": {
+          "binding": "image"
+        }
+      }
+    },
+    {
+      "id": "output",
+      "type": "custom",
+      "position": {
+        "x": 160,
+        "y": 220
+      },
+      "data": {
+        "name": "Output",
+        "scope": "",
+        "package": {
+          "id": "core.output",
+          "version": "0.1.0"
+        },
+        "params": {}
+      }
+    },
+    {
+      "id": "loss-output",
+      "type": "custom",
+      "position": {
+        "x": -100,
+        "y": 220
+      },
+      "data": {
+        "name": "Loss Output",
+        "scope": "",
+        "package": {
+          "id": "core.loss-output",
+          "version": "0.1.0"
+        },
+        "params": {}
+      }
+    }
+  ],
+  "edges": [],
+  "layoutDirection": "horizontal",
+  "manifest": {
+    "schemaVersion": 2,
+    "id": "expert-task1-mlp",
+    "version": "0.1.0",
+    "name": "Expert T1: MLP",
+    "description": "Expert usability study, task1-mlp (start)",
+    "customPackages": [],
+    "customDatasets": [
+      {
+        "id": "mnist",
+        "version": "0.1.0",
+        "path": "datasets/mnist"
+      }
+    ],
+    "operations": [],
+    "activeDataset": {
+      "id": "mnist",
+      "version": "0.1.0"
+    }
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "comment": "Expert study task 1 (docs/knowledge/testing/expert-study.md). Parser grammar of tools/activity_log/parse_activity_log.py only. Analyse only the log portion recorded in this task's project (tools/expert_study/split_activity_log.py): the T2 and T3 start projects are identical, so state predicates cannot tell tasks apart in a combined log. Completion of every predicate does not imply a correct model: grade.py is authoritative. Gaps: none notable; edge handles are not matchable.",
+  "tasks": [
+    {"id": "E1a", "title": "T1 Input to Flatten(1,-1)", "predicate": {"edge": {"from": {"package": "core.input"}, "to": {"package": "core.flatten", "params": {"start_dim": 1, "end_dim": -1}}}}},
+    {"id": "E1b", "title": "T1 Flatten to Linear 784 to 64", "predicate": {"edge": {"from": {"package": "core.flatten"}, "to": {"package": "core.linear", "params": {"in_features": 784, "out_features": 64}}}}},
+    {"id": "E1c", "title": "T1 Linear(784,64) to ReLU", "predicate": {"edge": {"from": {"package": "core.linear", "params": {"in_features": 784, "out_features": 64}}, "to": {"package": "core.relu"}}}},
+    {"id": "E1d", "title": "T1 ReLU to Linear 64 to 10", "predicate": {"node": {"package": "core.linear", "params": {"in_features": 64, "out_features": 10}, "has_input_from": {"package": "core.relu"}}}},
+    {"id": "E1e", "title": "T1 Logits to Output", "predicate": {"edge": {"from": {"package": "core.linear", "params": {"in_features": 64, "out_features": 10}, "has_input_from": {"package": "core.relu"}}, "to": {"package": "core.output"}}}},
+    {"id": "E1f", "title": "T1 Logits to Cross Entropy to Loss Output", "predicate": {"all": [{"edge": {"from": {"package": "core.linear", "params": {"in_features": 64, "out_features": 10}, "has_input_from": {"package": "core.relu"}}, "to": {"package": "core.cross-entropy"}}}, {"edge": {"from": {"package": "core.cross-entropy"}, "to": {"package": "core.loss-output"}}}]}}
+  ]
+}
