@@ -147,7 +147,8 @@ and type `number` (wrongly rejected at the time). All four T3 errors shown by
 the client concerned binding syntax (`H`, `$$H`, `$D/$H`). T2 needed 86 zoom
 actions. Report, figures and the colleague's saved projects:
 `study/experts/report/pilot/`. Resulting changes: single-head task removed;
-the sheet gives navigation tips (arrow keys, Ctrl +/−, Fit, Arrange) with a
+the sheet gives navigation tips (arrow keys, group selection and move,
+Ctrl +/−, Fit, Arrange) with a
 toolbar screenshot, shows the Enter subflow button, lists every parameter
 value to enter, explains Scale and asks for final values 64/8; the grader
 accepts `number` metavariables and checks the scale factor.
