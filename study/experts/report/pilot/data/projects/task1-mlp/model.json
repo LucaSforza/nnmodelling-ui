@@ -4,7 +4,7 @@
       "id": "input",
       "type": "custom",
       "position": {
-        "x": 300,
+        "x": 120,
         "y": 80
       },
       "data": {
@@ -23,8 +23,8 @@
       "id": "output",
       "type": "custom",
       "position": {
-        "x": 420,
-        "y": 1760
+        "x": 260,
+        "y": 1300
       },
       "data": {
         "name": "Output",
@@ -40,8 +40,8 @@
       "id": "loss-output",
       "type": "custom",
       "position": {
-        "x": 140,
-        "y": 1760
+        "x": 0,
+        "y": 1300
       },
       "data": {
         "name": "Loss Output",
@@ -54,70 +54,11 @@
       }
     },
     {
-      "id": "rows",
+      "id": "node-a1cf0f95-f988-4501-ba05-45bfd4018290",
       "type": "custom",
       "position": {
-        "x": 240,
-        "y": 220
-      },
-      "data": {
-        "name": "Flatten: image rows",
-        "scope": "",
-        "package": {
-          "id": "core.flatten",
-          "version": "0.1.0"
-        },
-        "params": {
-          "start_dim": 1,
-          "end_dim": 2
-        }
-      }
-    },
-    {
-      "id": "embed",
-      "type": "custom",
-      "position": {
-        "x": 240,
-        "y": 400
-      },
-      "data": {
-        "name": "Embedding Linear",
-        "scope": "",
-        "package": {
-          "id": "core.linear",
-          "version": "0.1.0"
-        },
-        "params": {
-          "in_features": 28,
-          "out_features": 32,
-          "bias": true,
-          "dtype": "float32"
-        }
-      }
-    },
-    {
-      "id": "residual",
-      "type": "custom",
-      "position": {
-        "x": 280,
-        "y": 1000
-      },
-      "data": {
-        "name": "Add: residual",
-        "scope": "",
-        "package": {
-          "id": "core.add",
-          "version": "0.1.0"
-        },
-        "params": {}
-      }
-    },
-    {
-      "id": "flatten",
-      "type": "custom",
-      "position": {
-        "x": 240,
-        "y": 1160
+        "x": 80,
+        "y": 240
       },
       "data": {
         "name": "Flatten",
@@ -133,21 +74,62 @@
       }
     },
     {
-      "id": "classifier",
+      "id": "node-44a85f5a-1a1c-408e-9610-d2af956ee320",
       "type": "custom",
       "position": {
-        "x": 240,
-        "y": 1340
+        "x": 80,
+        "y": 420
       },
       "data": {
-        "name": "Classifier Linear",
+        "name": "Linear",
         "scope": "",
         "package": {
           "id": "core.linear",
           "version": "0.1.0"
         },
         "params": {
-          "in_features": 896,
+          "in_features": 784,
+          "out_features": 64,
+          "bias": true,
+          "dtype": "float32"
+        }
+      }
+    },
+    {
+      "id": "node-79f4660f-7940-495e-8cc9-15e90aef0898",
+      "type": "custom",
+      "position": {
+        "x": 80,
+        "y": 660
+      },
+      "data": {
+        "name": "ReLU",
+        "scope": "",
+        "package": {
+          "id": "core.relu",
+          "version": "0.1.0"
+        },
+        "params": {
+          "inplace": false
+        }
+      }
+    },
+    {
+      "id": "node-dc35386d-b860-46a5-85de-026f7a90a9d9",
+      "type": "custom",
+      "position": {
+        "x": 80,
+        "y": 840
+      },
+      "data": {
+        "name": "Linear",
+        "scope": "",
+        "package": {
+          "id": "core.linear",
+          "version": "0.1.0"
+        },
+        "params": {
+          "in_features": 64,
           "out_features": 10,
           "bias": true,
           "dtype": "float32"
@@ -155,11 +137,11 @@
       }
     },
     {
-      "id": "cross-entropy",
+      "id": "node-97b320b6-c116-48b7-a187-5acd45f3b7f2",
       "type": "custom",
       "position": {
-        "x": 100,
-        "y": 1560
+        "x": 80,
+        "y": 1100
       },
       "data": {
         "name": "Cross Entropy",
@@ -174,62 +156,62 @@
   ],
   "edges": [
     {
-      "id": "e-input-rows-in",
+      "id": "db8406c8-03dd-46e3-8a0f-ddc9f9630742",
       "source": "input",
       "sourceHandle": "out",
-      "target": "rows",
+      "target": "node-a1cf0f95-f988-4501-ba05-45bfd4018290",
       "targetHandle": "in"
     },
     {
-      "id": "e-rows-embed-in",
-      "source": "rows",
+      "id": "e1026108-aef0-450a-a3a9-7434354ae1f4",
+      "source": "node-a1cf0f95-f988-4501-ba05-45bfd4018290",
       "sourceHandle": "out",
-      "target": "embed",
+      "target": "node-44a85f5a-1a1c-408e-9610-d2af956ee320",
       "targetHandle": "in"
     },
     {
-      "id": "e-residual-flatten-in",
-      "source": "residual",
+      "id": "c41708af-c215-4b27-b631-d0ae1980fb55",
+      "source": "node-44a85f5a-1a1c-408e-9610-d2af956ee320",
       "sourceHandle": "out",
-      "target": "flatten",
+      "target": "node-79f4660f-7940-495e-8cc9-15e90aef0898",
       "targetHandle": "in"
     },
     {
-      "id": "e-flatten-classifier-in",
-      "source": "flatten",
+      "id": "0ef22718-b8a2-4c42-a8fb-e2588ecd47ff",
+      "source": "node-79f4660f-7940-495e-8cc9-15e90aef0898",
       "sourceHandle": "out",
-      "target": "classifier",
+      "target": "node-dc35386d-b860-46a5-85de-026f7a90a9d9",
       "targetHandle": "in"
     },
     {
-      "id": "e-classifier-output-in",
-      "source": "classifier",
+      "id": "cb20ede5-a814-4593-81ba-31ebfe817f7b",
+      "source": "node-dc35386d-b860-46a5-85de-026f7a90a9d9",
       "sourceHandle": "out",
-      "target": "output",
+      "target": "node-97b320b6-c116-48b7-a187-5acd45f3b7f2",
       "targetHandle": "in"
     },
     {
-      "id": "e-classifier-cross-entropy-in",
-      "source": "classifier",
-      "sourceHandle": "out",
-      "target": "cross-entropy",
-      "targetHandle": "in"
-    },
-    {
-      "id": "e-cross-entropy-loss-output-in",
-      "source": "cross-entropy",
+      "id": "6e896a85-11b5-47f8-acdc-3ada90628b9d",
+      "source": "node-97b320b6-c116-48b7-a187-5acd45f3b7f2",
       "sourceHandle": "loss",
       "target": "loss-output",
+      "targetHandle": "in"
+    },
+    {
+      "id": "7afd460c-c7f5-4ced-8c8f-00a54ece1263",
+      "source": "node-dc35386d-b860-46a5-85de-026f7a90a9d9",
+      "sourceHandle": "out",
+      "target": "output",
       "targetHandle": "in"
     }
   ],
   "layoutDirection": "horizontal",
   "manifest": {
     "schemaVersion": 2,
-    "id": "expert-task3-multihead",
+    "id": "expert-task1-mlp",
     "version": "0.1.0",
-    "name": "Expert T3: multi-head attention",
-    "description": "Expert usability study, task3-multihead (start)",
+    "name": "Expert T1: MLP",
+    "description": "Expert usability study, task1-mlp (start)",
     "customPackages": [],
     "customDatasets": [
       {

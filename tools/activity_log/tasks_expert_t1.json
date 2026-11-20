@@ -1,5 +1,5 @@
 {
-  "comment": "Expert study task 1 (docs/knowledge/testing/expert-study.md). Parser grammar of tools/activity_log/parse_activity_log.py only. Analyse only the log portion recorded in this task's project (tools/expert_study/split_activity_log.py): the T2 and T3 start projects are identical, so state predicates cannot tell tasks apart in a combined log. Completion of every predicate does not imply a correct model: grade.py is authoritative. Gaps: none notable; edge handles are not matchable.",
+  "comment": "Expert study task 1 (docs/knowledge/testing/expert-study.md). Parser grammar of tools/activity_log/parse_activity_log.py only. Analyse only the log portion recorded in this task's project (tools/expert_study/split_activity_log.py). Completion of every predicate does not imply a correct model: grade.py is authoritative. Gaps: none notable; edge handles are not matchable.",
   "tasks": [
     {"id": "E1a", "title": "T1 Input to Flatten(1,-1)", "predicate": {"edge": {"from": {"package": "core.input"}, "to": {"package": "core.flatten", "params": {"start_dim": 1, "end_dim": -1}}}}},
     {"id": "E1b", "title": "T1 Flatten to Linear 784 to 64", "predicate": {"edge": {"from": {"package": "core.flatten"}, "to": {"package": "core.linear", "params": {"in_features": 784, "out_features": 64}}}}},

@@ -1,0 +1,598 @@
+{
+  "nodes": [
+    {
+      "id": "input",
+      "type": "custom",
+      "position": {
+        "x": 120,
+        "y": 80
+      },
+      "data": {
+        "name": "Input",
+        "scope": "",
+        "package": {
+          "id": "core.input",
+          "version": "0.1.0"
+        },
+        "params": {
+          "binding": "image"
+        }
+      }
+    },
+    {
+      "id": "output",
+      "type": "custom",
+      "position": {
+        "x": 260,
+        "y": 1820
+      },
+      "data": {
+        "name": "Output",
+        "scope": "",
+        "package": {
+          "id": "core.output",
+          "version": "0.1.0"
+        },
+        "params": {}
+      }
+    },
+    {
+      "id": "loss-output",
+      "type": "custom",
+      "position": {
+        "x": 0,
+        "y": 1820
+      },
+      "data": {
+        "name": "Loss Output",
+        "scope": "",
+        "package": {
+          "id": "core.loss-output",
+          "version": "0.1.0"
+        },
+        "params": {}
+      }
+    },
+    {
+      "id": "rows",
+      "type": "custom",
+      "position": {
+        "x": 80,
+        "y": 240
+      },
+      "data": {
+        "name": "Flatten: image rows",
+        "scope": "",
+        "package": {
+          "id": "core.flatten",
+          "version": "0.1.0"
+        },
+        "params": {
+          "start_dim": 1,
+          "end_dim": 2
+        }
+      }
+    },
+    {
+      "id": "embed",
+      "type": "custom",
+      "position": {
+        "x": 80,
+        "y": 420
+      },
+      "data": {
+        "name": "Embedding Linear",
+        "scope": "",
+        "package": {
+          "id": "core.linear",
+          "version": "0.1.0"
+        },
+        "params": {
+          "in_features": 28,
+          "out_features": {
+            "$ref": "d-model"
+          },
+          "bias": true,
+          "dtype": "float32"
+        }
+      }
+    },
+    {
+      "id": "residual",
+      "type": "custom",
+      "position": {
+        "x": 60,
+        "y": 920
+      },
+      "data": {
+        "name": "Add: residual",
+        "scope": "",
+        "package": {
+          "id": "core.add",
+          "version": "0.1.0"
+        },
+        "params": {}
+      }
+    },
+    {
+      "id": "flatten",
+      "type": "custom",
+      "position": {
+        "x": 80,
+        "y": 1180
+      },
+      "data": {
+        "name": "Flatten",
+        "scope": "",
+        "package": {
+          "id": "core.flatten",
+          "version": "0.1.0"
+        },
+        "params": {
+          "start_dim": 1,
+          "end_dim": -1
+        }
+      }
+    },
+    {
+      "id": "classifier",
+      "type": "custom",
+      "position": {
+        "x": 80,
+        "y": 1360
+      },
+      "data": {
+        "name": "Classifier Linear",
+        "scope": "",
+        "package": {
+          "id": "core.linear",
+          "version": "0.1.0"
+        },
+        "params": {
+          "in_features": {
+            "$lua": "28 * meta[\"d-model\"]"
+          },
+          "out_features": 10,
+          "bias": true,
+          "dtype": "float32"
+        }
+      }
+    },
+    {
+      "id": "cross-entropy",
+      "type": "custom",
+      "position": {
+        "x": 80,
+        "y": 1620
+      },
+      "data": {
+        "name": "Cross Entropy",
+        "scope": "",
+        "package": {
+          "id": "core.cross-entropy",
+          "version": "0.1.0"
+        },
+        "params": {}
+      }
+    },
+    {
+      "id": "heads",
+      "type": "custom",
+      "position": {
+        "x": 80,
+        "y": 680
+      },
+      "data": {
+        "name": "Horizontal Repeat: heads",
+        "scope": "",
+        "package": {
+          "id": "core.horizontal-repeat",
+          "version": "0.1.0"
+        },
+        "params": {
+          "times": {
+            "$ref": "num-heads"
+          },
+          "join": {
+            "id": "core.concat",
+            "version": "0.1.0",
+            "parameters": {
+              "dim": -1
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "heads-input",
+      "type": "custom",
+      "position": {
+        "x": 120,
+        "y": 80
+      },
+      "data": {
+        "name": "Input",
+        "scope": "heads",
+        "package": {
+          "id": "core.input",
+          "version": "0.1.0"
+        },
+        "params": {
+          "binding": "image"
+        }
+      }
+    },
+    {
+      "id": "heads-output",
+      "type": "custom",
+      "position": {
+        "x": 180,
+        "y": 1820
+      },
+      "data": {
+        "name": "Output: out",
+        "scope": "heads",
+        "package": {
+          "id": "core.output",
+          "version": "0.1.0"
+        },
+        "params": {},
+        "boundaryHandle": "out"
+      }
+    },
+    {
+      "id": "headsquery",
+      "type": "custom",
+      "position": {
+        "x": 80,
+        "y": 280
+      },
+      "data": {
+        "name": "Query",
+        "scope": "heads",
+        "package": {
+          "id": "core.linear",
+          "version": "0.1.0"
+        },
+        "params": {
+          "in_features": {
+            "$ref": "d-model"
+          },
+          "out_features": {
+            "$lua": "params.in_features / meta[\"num-heads\"]"
+          },
+          "bias": true,
+          "dtype": "float32"
+        }
+      }
+    },
+    {
+      "id": "headskey",
+      "type": "custom",
+      "position": {
+        "x": -200,
+        "y": 280
+      },
+      "data": {
+        "name": "Key",
+        "scope": "heads",
+        "package": {
+          "id": "core.linear",
+          "version": "0.1.0"
+        },
+        "params": {
+          "in_features": {
+            "$ref": "d-model"
+          },
+          "out_features": {
+            "$lua": "params.in_features / meta[\"num-heads\"]"
+          },
+          "bias": true,
+          "dtype": "float32"
+        }
+      }
+    },
+    {
+      "id": "headsvalue",
+      "type": "custom",
+      "position": {
+        "x": 340,
+        "y": 280
+      },
+      "data": {
+        "name": "Value",
+        "scope": "heads",
+        "package": {
+          "id": "core.linear",
+          "version": "0.1.0"
+        },
+        "params": {
+          "in_features": {
+            "$ref": "d-model"
+          },
+          "out_features": {
+            "$lua": "params.in_features / meta[\"num-heads\"]"
+          },
+          "bias": true,
+          "dtype": "float32"
+        }
+      }
+    },
+    {
+      "id": "headskey-t",
+      "type": "custom",
+      "position": {
+        "x": -200,
+        "y": 560
+      },
+      "data": {
+        "name": "Transpose",
+        "scope": "heads",
+        "package": {
+          "id": "core.transpose",
+          "version": "0.1.0"
+        },
+        "params": {
+          "dim0": -2,
+          "dim1": -1
+        }
+      }
+    },
+    {
+      "id": "headsscores",
+      "type": "custom",
+      "position": {
+        "x": -80,
+        "y": 840
+      },
+      "data": {
+        "name": "MatMul: Q \u00d7 K\u1d40",
+        "scope": "heads",
+        "package": {
+          "id": "core.matmul",
+          "version": "0.1.0"
+        },
+        "params": {}
+      }
+    },
+    {
+      "id": "headsscale",
+      "type": "custom",
+      "position": {
+        "x": -80,
+        "y": 1120
+      },
+      "data": {
+        "name": "Scale",
+        "scope": "heads",
+        "package": {
+          "id": "core.scale",
+          "version": "0.1.0"
+        },
+        "params": {
+          "factor": {
+            "$lua": "1 / math.sqrt(meta[\"d-model\"] / meta[\"num-heads\"])"
+          }
+        }
+      }
+    },
+    {
+      "id": "headssoftmax",
+      "type": "custom",
+      "position": {
+        "x": -60,
+        "y": 1340
+      },
+      "data": {
+        "name": "Softmax",
+        "scope": "heads",
+        "package": {
+          "id": "core.softmax",
+          "version": "0.1.0"
+        },
+        "params": {
+          "dim": -1
+        }
+      }
+    },
+    {
+      "id": "headsweighted",
+      "type": "custom",
+      "position": {
+        "x": 120,
+        "y": 1560
+      },
+      "data": {
+        "name": "MatMul: A \u00d7 V",
+        "scope": "heads",
+        "package": {
+          "id": "core.matmul",
+          "version": "0.1.0"
+        },
+        "params": {}
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-input-rows-in",
+      "source": "input",
+      "sourceHandle": "out",
+      "target": "rows",
+      "targetHandle": "in"
+    },
+    {
+      "id": "e-rows-embed-in",
+      "source": "rows",
+      "sourceHandle": "out",
+      "target": "embed",
+      "targetHandle": "in"
+    },
+    {
+      "id": "e-residual-flatten-in",
+      "source": "residual",
+      "sourceHandle": "out",
+      "target": "flatten",
+      "targetHandle": "in"
+    },
+    {
+      "id": "e-flatten-classifier-in",
+      "source": "flatten",
+      "sourceHandle": "out",
+      "target": "classifier",
+      "targetHandle": "in"
+    },
+    {
+      "id": "e-classifier-output-in",
+      "source": "classifier",
+      "sourceHandle": "out",
+      "target": "output",
+      "targetHandle": "in"
+    },
+    {
+      "id": "e-classifier-cross-entropy-in",
+      "source": "classifier",
+      "sourceHandle": "out",
+      "target": "cross-entropy",
+      "targetHandle": "in"
+    },
+    {
+      "id": "e-cross-entropy-loss-output-in",
+      "source": "cross-entropy",
+      "sourceHandle": "loss",
+      "target": "loss-output",
+      "targetHandle": "in"
+    },
+    {
+      "id": "e-embed-residual-in-1",
+      "source": "embed",
+      "sourceHandle": "out",
+      "target": "residual",
+      "targetHandle": "in-1"
+    },
+    {
+      "id": "e-embed-heads-in",
+      "source": "embed",
+      "sourceHandle": "out",
+      "target": "heads",
+      "targetHandle": "in"
+    },
+    {
+      "id": "e-heads-residual-in-2",
+      "source": "heads",
+      "sourceHandle": "out",
+      "target": "residual",
+      "targetHandle": "in-2"
+    },
+    {
+      "id": "e-heads-input-headsquery-in",
+      "source": "heads-input",
+      "sourceHandle": "out",
+      "target": "headsquery",
+      "targetHandle": "in"
+    },
+    {
+      "id": "e-heads-input-headskey-in",
+      "source": "heads-input",
+      "sourceHandle": "out",
+      "target": "headskey",
+      "targetHandle": "in"
+    },
+    {
+      "id": "e-heads-input-headsvalue-in",
+      "source": "heads-input",
+      "sourceHandle": "out",
+      "target": "headsvalue",
+      "targetHandle": "in"
+    },
+    {
+      "id": "e-headskey-headskey-t-in",
+      "source": "headskey",
+      "sourceHandle": "out",
+      "target": "headskey-t",
+      "targetHandle": "in"
+    },
+    {
+      "id": "e-headsquery-headsscores-in-1",
+      "source": "headsquery",
+      "sourceHandle": "out",
+      "target": "headsscores",
+      "targetHandle": "in-1"
+    },
+    {
+      "id": "e-headskey-t-headsscores-in-2",
+      "source": "headskey-t",
+      "sourceHandle": "out",
+      "target": "headsscores",
+      "targetHandle": "in-2"
+    },
+    {
+      "id": "e-headsscores-headsscale-in",
+      "source": "headsscores",
+      "sourceHandle": "out",
+      "target": "headsscale",
+      "targetHandle": "in"
+    },
+    {
+      "id": "e-headsscale-headssoftmax-in",
+      "source": "headsscale",
+      "sourceHandle": "out",
+      "target": "headssoftmax",
+      "targetHandle": "in"
+    },
+    {
+      "id": "e-headssoftmax-headsweighted-in-1",
+      "source": "headssoftmax",
+      "sourceHandle": "out",
+      "target": "headsweighted",
+      "targetHandle": "in-1"
+    },
+    {
+      "id": "e-headsvalue-headsweighted-in-2",
+      "source": "headsvalue",
+      "sourceHandle": "out",
+      "target": "headsweighted",
+      "targetHandle": "in-2"
+    },
+    {
+      "id": "e-headsweighted-heads-output-in",
+      "source": "headsweighted",
+      "sourceHandle": "out",
+      "target": "heads-output",
+      "targetHandle": "in"
+    }
+  ],
+  "layoutDirection": "horizontal",
+  "manifest": {
+    "schemaVersion": 3,
+    "id": "expert-task2-multihead",
+    "version": "0.1.0",
+    "name": "Expert T2: multi-head attention",
+    "description": "Expert usability study, task2-multihead (solution)",
+    "customPackages": [],
+    "customDatasets": [
+      {
+        "id": "mnist",
+        "version": "0.1.0",
+        "path": "datasets/mnist"
+      }
+    ],
+    "operations": [],
+    "metavariables": [
+      {
+        "name": "d-model",
+        "type": "integer",
+        "value": 64
+      },
+      {
+        "name": "num-heads",
+        "type": "integer",
+        "value": 8
+      }
+    ],
+    "activeDataset": {
+      "id": "mnist",
+      "version": "0.1.0"
+    }
+  }
+}

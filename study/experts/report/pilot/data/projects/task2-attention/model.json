@@ -172,14 +172,14 @@
       }
     },
     {
-      "id": "query",
+      "id": "node-8d439866-f38f-4e61-b396-6ee7aaed4c66",
       "type": "custom",
       "position": {
         "x": 80,
         "y": 720
       },
       "data": {
-        "name": "Query",
+        "name": "LinearQ",
         "scope": "",
         "package": {
           "id": "core.linear",
@@ -194,14 +194,50 @@
       }
     },
     {
-      "id": "key",
+      "id": "node-79f36f87-36eb-4a72-84a5-712e3dfee6de",
+      "type": "custom",
+      "position": {
+        "x": -40,
+        "y": 1860
+      },
+      "data": {
+        "name": "Softmax",
+        "scope": "",
+        "package": {
+          "id": "core.softmax",
+          "version": "0.1.0"
+        },
+        "params": {
+          "dim": -1
+        }
+      }
+    },
+    {
+      "id": "node-4b1a3ced-33bd-4df3-a61f-583908daaf19",
+      "type": "custom",
+      "position": {
+        "x": -60,
+        "y": 1320
+      },
+      "data": {
+        "name": "MatMul",
+        "scope": "",
+        "package": {
+          "id": "core.matmul",
+          "version": "0.1.0"
+        },
+        "params": {}
+      }
+    },
+    {
+      "id": "node-51c36bc4-8596-42cd-b748-18ea119ad3f1",
       "type": "custom",
       "position": {
         "x": -180,
         "y": 720
       },
       "data": {
-        "name": "Key",
+        "name": "LinearK",
         "scope": "",
         "package": {
           "id": "core.linear",
@@ -216,14 +252,14 @@
       }
     },
     {
-      "id": "value",
+      "id": "node-eb727dd8-7428-498a-a825-d0e421a5f283",
       "type": "custom",
       "position": {
         "x": 340,
         "y": 720
       },
       "data": {
-        "name": "Value",
+        "name": "LinearV",
         "scope": "",
         "package": {
           "id": "core.linear",
@@ -238,7 +274,7 @@
       }
     },
     {
-      "id": "key-t",
+      "id": "node-d44f5ce4-ae6b-402b-b301-7227e282f22f",
       "type": "custom",
       "position": {
         "x": -180,
@@ -258,24 +294,7 @@
       }
     },
     {
-      "id": "scores",
-      "type": "custom",
-      "position": {
-        "x": -60,
-        "y": 1320
-      },
-      "data": {
-        "name": "MatMul: Q × Kᵀ",
-        "scope": "",
-        "package": {
-          "id": "core.matmul",
-          "version": "0.1.0"
-        },
-        "params": {}
-      }
-    },
-    {
-      "id": "scale",
+      "id": "node-02bfae61-9bf8-46c2-97d7-66ea3b1cf40d",
       "type": "custom",
       "position": {
         "x": -60,
@@ -289,38 +308,21 @@
           "version": "0.1.0"
         },
         "params": {
-          "factor": 0.17677669529663687
+          "factor": {
+            "$lua": "1/math.sqrt(32)"
+          }
         }
       }
     },
     {
-      "id": "softmax",
-      "type": "custom",
-      "position": {
-        "x": -40,
-        "y": 1860
-      },
-      "data": {
-        "name": "Softmax",
-        "scope": "",
-        "package": {
-          "id": "core.softmax",
-          "version": "0.1.0"
-        },
-        "params": {
-          "dim": -1
-        }
-      }
-    },
-    {
-      "id": "weighted",
+      "id": "node-9beb44df-26fe-4dc5-8ddd-8b6a1b85c379",
       "type": "custom",
       "position": {
         "x": 140,
         "y": 2100
       },
       "data": {
-        "name": "MatMul: A × V",
+        "name": "MatMul",
         "scope": "",
         "package": {
           "id": "core.matmul",
@@ -381,97 +383,97 @@
       "targetHandle": "in"
     },
     {
-      "id": "e-embed-residual-in-1",
+      "id": "f66500c2-8754-4396-b9e8-69b849ef1e1e",
+      "source": "embed",
+      "sourceHandle": "out",
+      "target": "node-8d439866-f38f-4e61-b396-6ee7aaed4c66",
+      "targetHandle": "in"
+    },
+    {
+      "id": "e9b8b9d3-b375-4974-8aa4-1bdc8bd4bb9a",
+      "source": "node-8d439866-f38f-4e61-b396-6ee7aaed4c66",
+      "sourceHandle": "out",
+      "target": "node-4b1a3ced-33bd-4df3-a61f-583908daaf19",
+      "targetHandle": "in-1"
+    },
+    {
+      "id": "671cba36-357f-47cf-b961-e42e74211297",
+      "source": "embed",
+      "sourceHandle": "out",
+      "target": "node-51c36bc4-8596-42cd-b748-18ea119ad3f1",
+      "targetHandle": "in"
+    },
+    {
+      "id": "4b094410-7171-4a7c-87a2-3fb4f5aaccc4",
+      "source": "node-51c36bc4-8596-42cd-b748-18ea119ad3f1",
+      "sourceHandle": "out",
+      "target": "node-d44f5ce4-ae6b-402b-b301-7227e282f22f",
+      "targetHandle": "in"
+    },
+    {
+      "id": "5f2f6315-7955-4e2f-8688-7e1f30a8fed2",
+      "source": "node-d44f5ce4-ae6b-402b-b301-7227e282f22f",
+      "sourceHandle": "out",
+      "target": "node-4b1a3ced-33bd-4df3-a61f-583908daaf19",
+      "targetHandle": "in-2"
+    },
+    {
+      "id": "5fbcbe92-cf8b-4f58-a280-b04dd05f31fa",
+      "source": "embed",
+      "sourceHandle": "out",
+      "target": "node-eb727dd8-7428-498a-a825-d0e421a5f283",
+      "targetHandle": "in"
+    },
+    {
+      "id": "e5bd9a90-0606-474e-9e8e-9111f883d18e",
+      "source": "node-4b1a3ced-33bd-4df3-a61f-583908daaf19",
+      "sourceHandle": "out",
+      "target": "node-02bfae61-9bf8-46c2-97d7-66ea3b1cf40d",
+      "targetHandle": "in"
+    },
+    {
+      "id": "2c380c30-54fe-4d66-bc7b-701c5f67d6f8",
+      "source": "node-02bfae61-9bf8-46c2-97d7-66ea3b1cf40d",
+      "sourceHandle": "out",
+      "target": "node-79f36f87-36eb-4a72-84a5-712e3dfee6de",
+      "targetHandle": "in"
+    },
+    {
+      "id": "9a75f899-d63f-49d5-9e42-944305069336",
+      "source": "node-79f36f87-36eb-4a72-84a5-712e3dfee6de",
+      "sourceHandle": "out",
+      "target": "node-9beb44df-26fe-4dc5-8ddd-8b6a1b85c379",
+      "targetHandle": "in-1"
+    },
+    {
+      "id": "05c7e32c-7667-4dbf-ad43-47666e59a3f4",
+      "source": "node-eb727dd8-7428-498a-a825-d0e421a5f283",
+      "sourceHandle": "out",
+      "target": "node-9beb44df-26fe-4dc5-8ddd-8b6a1b85c379",
+      "targetHandle": "in-2"
+    },
+    {
+      "id": "44c8ead6-29f6-48c0-90be-2264cf1cbb6e",
+      "source": "node-9beb44df-26fe-4dc5-8ddd-8b6a1b85c379",
+      "sourceHandle": "out",
+      "target": "residual",
+      "targetHandle": "in-2"
+    },
+    {
+      "id": "ec8f000a-3acf-4017-bf63-9f7d00dd10ba",
       "source": "embed",
       "sourceHandle": "out",
       "target": "residual",
       "targetHandle": "in-1"
-    },
-    {
-      "id": "e-embed-query-in",
-      "source": "embed",
-      "sourceHandle": "out",
-      "target": "query",
-      "targetHandle": "in"
-    },
-    {
-      "id": "e-embed-key-in",
-      "source": "embed",
-      "sourceHandle": "out",
-      "target": "key",
-      "targetHandle": "in"
-    },
-    {
-      "id": "e-embed-value-in",
-      "source": "embed",
-      "sourceHandle": "out",
-      "target": "value",
-      "targetHandle": "in"
-    },
-    {
-      "id": "e-key-key-t-in",
-      "source": "key",
-      "sourceHandle": "out",
-      "target": "key-t",
-      "targetHandle": "in"
-    },
-    {
-      "id": "e-query-scores-in-1",
-      "source": "query",
-      "sourceHandle": "out",
-      "target": "scores",
-      "targetHandle": "in-1"
-    },
-    {
-      "id": "e-key-t-scores-in-2",
-      "source": "key-t",
-      "sourceHandle": "out",
-      "target": "scores",
-      "targetHandle": "in-2"
-    },
-    {
-      "id": "e-scores-scale-in",
-      "source": "scores",
-      "sourceHandle": "out",
-      "target": "scale",
-      "targetHandle": "in"
-    },
-    {
-      "id": "e-scale-softmax-in",
-      "source": "scale",
-      "sourceHandle": "out",
-      "target": "softmax",
-      "targetHandle": "in"
-    },
-    {
-      "id": "e-softmax-weighted-in-1",
-      "source": "softmax",
-      "sourceHandle": "out",
-      "target": "weighted",
-      "targetHandle": "in-1"
-    },
-    {
-      "id": "e-value-weighted-in-2",
-      "source": "value",
-      "sourceHandle": "out",
-      "target": "weighted",
-      "targetHandle": "in-2"
-    },
-    {
-      "id": "e-weighted-residual-in-2",
-      "source": "weighted",
-      "sourceHandle": "out",
-      "target": "residual",
-      "targetHandle": "in-2"
     }
   ],
   "layoutDirection": "horizontal",
   "manifest": {
-    "schemaVersion": 2,
+    "schemaVersion": 3,
     "id": "expert-task2-attention",
     "version": "0.1.0",
     "name": "Expert T2: row self-attention",
-    "description": "Expert usability study, task2-attention (solution)",
+    "description": "Expert usability study, task2-attention (start)",
     "customPackages": [],
     "customDatasets": [
       {

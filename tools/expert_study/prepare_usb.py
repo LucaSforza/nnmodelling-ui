@@ -19,7 +19,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 STUDY = ROOT / "study" / "experts"
-TASKS = ("task1-mlp", "task2-attention", "task3-multihead")
+TASKS = ("task1-mlp", "task2-multihead")
 DATA = ROOT / "examples" / "test" / "datasets" / "mnist" / "data.json"
 IGNORE = shutil.ignore_patterns("__pycache__", "*.pyc", ".ipynb_checkpoints")
 
@@ -34,7 +34,7 @@ import shutil
 import sys
 from pathlib import Path
 
-TASKS = ("task1-mlp", "task2-attention", "task3-multihead")
+TASKS = ("task1-mlp", "task2-multihead")
 
 
 def main():
@@ -81,7 +81,9 @@ def build_task_sheet(master: Path) -> None:
             work = Path(temporary)
             shutil.copy(tex, work / tex.name)
             for sibling in tex.parent.iterdir():
-                if sibling != tex and sibling.is_file() and sibling.suffix != ".pdf":
+                if sibling.is_dir():  # e.g. img/ with the screenshots
+                    shutil.copytree(sibling, work / sibling.name)
+                elif sibling != tex and sibling.suffix != ".pdf":
                     shutil.copy(sibling, work / sibling.name)
             ok = True
             for _ in range(2):  # second pass resolves references

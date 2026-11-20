@@ -24,8 +24,7 @@ _MODULE_DIR = Path(__file__).resolve().parent
 
 EXPECTED = {
     "T1": {"params": 50890, "heads": None},
-    "T2": {"params": 13066, "heads": 1},
-    "T3": {"configs": ((32, 4), (64, 8), (32, 2))},
+    "T2": {"configs": ((32, 4), (64, 8), (32, 2))},
 }
 
 _FORBIDDEN_FUNCTIONS = {
@@ -43,8 +42,8 @@ _FORBIDDEN_MODULES = (
 )
 
 
-def expected_task3_params(d_model: int) -> int:
-    """Trainable parameters of the T3 model for any d_model and num_heads."""
+def expected_task2_params(d_model: int) -> int:
+    """Trainable parameters of the T2 model for any d_model and num_heads."""
     return 3 * d_model * d_model + 312 * d_model + 10
 
 
@@ -178,8 +177,34 @@ def start_session(task, log_dir=None, ip=None) -> bool:
 # --- checks -----------------------------------------------------------------
 
 
+_SCALE_OPS = {  # name -> 1 for multiplication, -1 for division by the scalar
+    "mul": 1, "__mul__": 1, "__rmul__": 1, "mul_": 1, "__imul__": 1, "multiply": 1,
+    "div": -1, "__truediv__": -1, "true_divide": -1, "divide": -1, "div_": -1, "__itruediv__": -1,
+}
+_MATMULS = {"matmul", "__matmul__", "__rmatmul__", "bmm", "mm"}
+_COPYING_SHAPE_OPS = {"reshape", "contiguous", "clone", "flatten", "unflatten"}
+
+
+def _scalar(value):
+    """The python number behind `value` (a number or a 0-dim tensor), else None."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)) or (isinstance(value, torch.Tensor) and value.dim() == 0):
+        return float(value)
+    return None
+
+
+def _storage(tensor):
+    return tensor.untyped_storage().data_ptr()
+
+
 class _Probe(TorchFunctionMode):
-    """Records forbidden function calls and 28x28 softmax maps during a forward pass."""
+    """Records forbidden calls, 28x28 softmax maps and their score scale during a forward pass.
+
+    The scale of a head is measured behaviourally: the softmax input divided by the score
+    matmul output, times the scalar factors already applied to the matmul operands (tracked
+    per storage, so head-split views of a pre-scaled Q or K are recognised).
+    """
 
     def __init__(self, batch_size: int, seq_len: int):
         super().__init__()
@@ -188,6 +213,58 @@ class _Probe(TorchFunctionMode):
         self.forbidden: list[str] = []
         self.maps = 0.0
         self.wrong_dim = 0
+        self.factors: list[float] = []  # one effective score factor per measured softmax
+        self._scaled: dict[int, tuple[object, float]] = {}  # storage ptr -> (storage, factor)
+        self._scores: list[tuple[torch.Tensor, float]] = []  # unconsumed (scores, operand factor)
+
+    def _factor(self, tensor):
+        entry = self._scaled.get(_storage(tensor))
+        return 1.0 if entry is None else entry[1]
+
+    def _set_factor(self, tensor, factor):
+        self._scaled[_storage(tensor)] = (tensor.untyped_storage(), factor)  # keeps the ptr unique
+
+    def _track(self, name, args, kwargs, out):
+        """Bookkeeping for scale measurement; unreadable tensors (e.g. under vmap) are ignored."""
+        tensors = [a for a in args[:2] if isinstance(a, torch.Tensor)]
+        if name in _SCALE_OPS and isinstance(out, torch.Tensor):
+            first, second = (list(args) + [kwargs.get("other")])[:2]
+            scalar = _scalar(second)
+            if isinstance(first, torch.Tensor) and first.dim() > 0 and scalar is not None and scalar != 0:
+                self._set_factor(out, self._factor(first) * (scalar if _SCALE_OPS[name] > 0 else 1 / scalar))
+            elif _SCALE_OPS[name] > 0 and _scalar(first) is not None and isinstance(second, torch.Tensor) \
+                    and second.dim() > 0:
+                self._set_factor(out, self._factor(second) * _scalar(first))
+        elif name in _COPYING_SHAPE_OPS and tensors and isinstance(out, torch.Tensor):
+            self._set_factor(out, self._factor(tensors[0]))
+        elif name in _MATMULS and len(tensors) == 2 and isinstance(out, torch.Tensor):
+            if tuple(out.shape[-2:]) == (self.seq_len, self.seq_len):
+                factor = self._factor(tensors[0]) * self._factor(tensors[1])
+                self._scores.append((out.detach().clone(), factor))
+
+    def _measure(self, args, kwargs):
+        """Effective score factor from the best matching pending score matmul, or None."""
+        source = args[0] if args else kwargs.get("input")
+        if not isinstance(source, torch.Tensor):
+            return None
+        best = None
+        with torch.no_grad():
+            for index, (scores, operands) in enumerate(self._scores):
+                if scores.shape != source.shape:
+                    continue
+                s, z = scores.double().flatten(), source.detach().double().flatten()
+                keep = s.abs() > 1e-3 * s.abs().max()
+                if not bool(keep.any()):
+                    continue
+                ratio = z[keep] / s[keep]
+                factor = ratio.median()
+                spread = (ratio - factor).abs().median() / factor.abs().clamp_min(1e-30)
+                if bool(spread < 1e-3) and (best is None or spread < best[0]):
+                    best = (spread, index, float(factor) * operands)
+        if best is None:
+            return None
+        del self._scores[best[1]]
+        return best[2]
 
     def __torch_function__(self, func, types, args=(), kwargs=None):
         name = getattr(func, "__name__", "")
@@ -205,8 +282,19 @@ class _Probe(TorchFunctionMode):
                     normalised = True
                 if normalised:
                     self.maps += out.numel() / (self.batch_size * self.seq_len * self.seq_len)
+                    try:
+                        factor = self._measure(args, kwargs or {})
+                    except Exception:  # noqa: BLE001 - e.g. under torch.func.vmap
+                        factor = None
+                    if factor is not None:
+                        self.factors.append(factor)
                 else:
                     self.wrong_dim += 1
+        else:
+            try:
+                self._track(name, args, kwargs or {}, out)
+            except Exception:  # noqa: BLE001 - e.g. under torch.func.vmap
+                pass
         return out
 
 
@@ -214,7 +302,7 @@ def _error(exc: Exception) -> str:
     return f"{type(exc).__name__}: {exc}"
 
 
-def _check_items(model, loss_fn, expected_params, expected_heads, batch, seq_len):
+def _check_items(model, loss_fn, expected_params, expected_heads, head_width, batch, seq_len):
     x, y = batch
     probe = _Probe(x.shape[0], seq_len)
     logits, forward_error = None, None
@@ -270,16 +358,36 @@ def _check_items(model, loss_fn, expected_params, expected_heads, batch, seq_len
         if probe.wrong_dim:
             detail += f"; {probe.wrong_dim} softmax call(s) not normalised over the last dimension"
         items.append(CheckItem("attention heads", ok, detail))
+        if head_width is not None:
+            items.append(_scale_item(probe.factors, head_width, forward_error))
     return items
 
 
-def check_module(task, model, loss_fn, *, expected_params, expected_heads, batch=None, seq_len=28):
-    """Check one model instance (x -> logits) and its loss against the study criteria."""
+def _scale_item(factors, head_width, forward_error):
+    """Every head's softmax input must be Q K^T * 1/sqrt(head_width)."""
+    if forward_error is not None:
+        return CheckItem("attention scale", False, "skipped: forward failed")
+    if not factors:
+        return CheckItem("attention scale", False, "could not determine the score scale: no 28x28 score "
+                         "matmul followed by a softmax of it was measurable")
+    expected = head_width ** -0.5
+    wrong = sorted({f"{f:.4g}" for f in factors if not math.isclose(f, expected, rel_tol=1e-3)}, key=float)
+    label = f"{expected:.4g} = 1/sqrt({head_width})"
+    if wrong:
+        return CheckItem("attention scale", False, f"scale {', '.join(wrong)} per head, expected {label}")
+    return CheckItem("attention scale", True, f"scale {expected:.4g} = 1/sqrt({head_width}) on {len(factors)} measured softmax call(s)")
+
+
+def check_module(task, model, loss_fn, *, expected_params, expected_heads, head_width=None, batch=None, seq_len=28):
+    """Check one model instance (x -> logits) and its loss against the study criteria.
+
+    With `expected_heads` and `head_width` (d_model // num_heads) the attention scale is checked too.
+    """
     try:
         batch = batch if batch is not None else load_batch()
     except Exception as exc:  # noqa: BLE001
         return CheckReport(task, False, [CheckItem("data", False, _error(exc))])
-    items = _check_items(model, loss_fn, expected_params, expected_heads, batch, seq_len)
+    items = _check_items(model, loss_fn, expected_params, expected_heads, head_width, batch, seq_len)
     return CheckReport(task, all(item.passed for item in items), items)
 
 
@@ -292,36 +400,31 @@ def _finish(report: CheckReport) -> CheckReport:
 
 
 def _check_class(task, model_cls, loss_fn, batch, configs):
-    """configs: (prefix, constructor kwargs, expected params, expected heads)."""
+    """configs: (prefix, constructor kwargs, expected params, expected heads, head width)."""
     try:
         batch = batch if batch is not None else load_batch()
     except Exception as exc:  # noqa: BLE001
         return _finish(CheckReport(task, False, [CheckItem("data", False, _error(exc))]))
     items = []
-    for prefix, kwargs, params, heads in configs:
+    for prefix, kwargs, params, heads, width in configs:
         try:
             model = model_cls(**kwargs)
         except Exception as exc:  # noqa: BLE001 - participant code
             items.append(CheckItem(f"{prefix}construct", False, _error(exc)))
             continue
-        for item in _check_items(model, loss_fn, params, heads, batch, 28):
+        for item in _check_items(model, loss_fn, params, heads, width, batch, 28):
             items.append(CheckItem(prefix + item.name, item.passed, item.detail))
     return _finish(CheckReport(task, all(item.passed for item in items), items))
 
 
 def check_task1(model_cls, loss_fn, batch=None):
     spec = EXPECTED["T1"]
-    return _check_class("T1", model_cls, loss_fn, batch, [("", {}, spec["params"], spec["heads"])])
+    return _check_class("T1", model_cls, loss_fn, batch, [("", {}, spec["params"], spec["heads"], None)])
 
 
 def check_task2(model_cls, loss_fn, batch=None):
-    spec = EXPECTED["T2"]
-    return _check_class("T2", model_cls, loss_fn, batch, [("", {}, spec["params"], spec["heads"])])
-
-
-def check_task3(model_cls, loss_fn, batch=None):
     configs = [
-        (f"d={d},h={h}: ", {"d_model": d, "num_heads": h}, expected_task3_params(d), h)
-        for d, h in EXPECTED["T3"]["configs"]
+        (f"d={d},h={h}: ", {"d_model": d, "num_heads": h}, expected_task2_params(d), h, d // h)
+        for d, h in EXPECTED["T2"]["configs"]
     ]
-    return _check_class("T3", model_cls, loss_fn, batch, configs)
+    return _check_class("T2", model_cls, loss_fn, batch, configs)

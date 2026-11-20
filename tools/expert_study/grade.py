@@ -32,15 +32,12 @@ import study_checks as sc  # noqa: E402
 import torch  # noqa: E402
 import torch.nn as nn  # noqa: E402
 
-MANIFEST_TASKS = {
-    "expert-task1-mlp": "T1",
-    "expert-task2-attention": "T2",
-    "expert-task3-multihead": "T3",
-}
-FIELDS = ["participant", "tool", "task", "target", "passed", "failed_checks", "detail"]
+MANIFEST_TASKS = {"expert-task1-mlp": "T1", "expert-task2-multihead": "T2"}
+FIELDS = ["participant", "tool", "task", "target", "passed", "failed_checks", "detail", "info"]
 NOTEBOOK_TIMEOUT = 120
 PROBE_TIMEOUT = 120
-T3_METAVARIABLES = (("d-model", 32), ("num-heads", 4))
+METAVARIABLES = ("d-model", "num-heads")
+SAVED_VALUES = ((32, 4), (64, 8))  # the sheet asks for 64/8 but 32/4 is accepted
 HARNESS = '''
 import json, sys
 nb_path, out_path = sys.argv[1], sys.argv[2]
@@ -69,8 +66,9 @@ with open(out_path, "w", encoding="utf-8") as handle:
 '''
 
 
-def check(name, passed, detail=""):
-    return {"name": name, "passed": bool(passed), "detail": str(detail)}
+def check(name, passed, detail="", info=False):
+    """info=True marks a note that never fails the task but is reported in JSON/CSV."""
+    return {"name": name, "passed": bool(passed), "detail": str(detail), **({"info": True} if info else {})}
 
 
 def row(participant, tool, task, target, checks):
@@ -80,6 +78,7 @@ def row(participant, tool, task, target, checks):
         "participant": participant, "tool": tool, "task": task, "target": str(target),
         "passed": not failed and bool(checks), "failed_checks": failed,
         "detail": detail[:600], "checks": checks,
+        "info": "; ".join(c["detail"] for c in checks if c.get("info")),
     }
 
 
@@ -168,7 +167,7 @@ def _unroll_horizontal_repeats(graph):
     return graph
 
 
-def graph_checks(project, resolved, core, expected_params, expected_heads, prefix=""):
+def graph_checks(project, resolved, core, expected_params, expected_heads, head_width, prefix=""):
     """Build GraphModule from the resolved model in a temporary copy, then run check_module."""
     from nnmodelling_runtime import GraphModule
 
@@ -184,7 +183,7 @@ def graph_checks(project, resolved, core, expected_params, expected_heads, prefi
             return [check(prefix + "graph", False, f"{type(exc).__name__}: {exc}")]
         report = sc.check_module(
             "", adapter, adapter.loss, expected_params=expected_params,
-            expected_heads=expected_heads,
+            expected_heads=expected_heads, head_width=head_width,
         )
     return [check(prefix + item.name, item.passed, item.detail) for item in report.checks]
 
@@ -208,30 +207,41 @@ def project_task(project, override):
             return task
     except (OSError, ValueError, KeyError, TypeError):
         pass
-    match = re.search(r"task([123])", Path(project).name)
+    match = re.search(r"task([12])", Path(project).name)
     return f"T{match.group(1)}" if match else None
 
 
 def configs_for(task):
-    if task == "T3":
-        # The first configuration is the project as saved (defaults), the rest are overrides.
-        return [(f"d={d},h={h}: ", [f"d-model={d}", f"num-heads={h}"] if index else [],
-                 sc.expected_task3_params(d), h)
-                for index, (d, h) in enumerate(sc.EXPECTED["T3"]["configs"])]
-    spec = sc.EXPECTED[task]
-    return [("", [], spec["params"], spec["heads"])]
+    """(prefix, --set overrides, expected params, expected heads, head width) per graded variant."""
+    if task == "T2":  # every variant goes through overrides, whatever values were saved
+        return [(f"d={d},h={h}: ", [f"d-model={d}", f"num-heads={h}"], sc.expected_task2_params(d), h, d // h)
+                for d, h in sc.EXPECTED["T2"]["configs"]]
+    return [("", [], sc.EXPECTED[task]["params"], sc.EXPECTED[task]["heads"], None)]
 
 
-def metavariables_check(variables):
+def metavariables_checks(variables):
+    """(checks, usable): exact names, integral type, saved values 32/4 or 64/8 (informational)."""
     found = {v.get("name"): v for v in variables or [] if isinstance(v, dict)}
-    problems = []
-    for name, value in T3_METAVARIABLES:
+    problems, values = [], []
+    for name in METAVARIABLES:
         item = found.get(name)
+        value = None if item is None else item.get("value")
         if item is None:
             problems.append(f"missing metavariable '{name}'")
-        elif item.get("type") != "integer" or item.get("value") != value:
-            problems.append(f"'{name}' must be integer {value}, found {item.get('type')} {item.get('value')}")
-    return check("metavariables", not problems, "; ".join(problems) or "d-model=32, num-heads=4")
+        elif item.get("type") == "integer" and type(value) is int:
+            values.append(value)
+        elif item.get("type") == "number" and type(value) in (int, float) and float(value).is_integer():
+            values.append(int(value))
+        else:
+            problems.append(f"'{name}' must be an integer, found {item.get('type')} {value!r}")
+    usable = not problems
+    if usable and tuple(values) not in SAVED_VALUES:
+        problems.append(f"saved values {values[0]}/{values[1]}, expected 32/4 or 64/8")
+    checks = [check("metavariables", not problems, "; ".join(problems) or "d-model, num-heads")]
+    if not problems:
+        note = "final values 64/8 as requested" if tuple(values) == (64, 8) else "final values 32/4 (sheet asks 64/8)"
+        checks.append(check("final values", True, note, info=True))
+    return checks, usable
 
 
 def grade_project(project, probe, core, participant="-", task_override=None):
@@ -239,26 +249,31 @@ def grade_project(project, probe, core, participant="-", task_override=None):
     task = project_task(project, task_override)
     if task not in sc.EXPECTED:
         return error_row(participant, "nnm", task or "?", project, "task", "cannot infer task (use --task)")
-    checks, skipped = [], False
+    checks = []
     try:
-        for index, (prefix, overrides, params, heads) in enumerate(configs_for(task)):
-            if skipped:
+        base, error = run_probe(probe, core, project)  # the project as saved
+        if base is None:
+            return error_row(participant, "nnm", task, project, "probe", error)
+        checks.append(analysis_check(base))
+        usable = True
+        if task == "T2":
+            found, usable = metavariables_checks(base.get("metavariables"))
+            checks.extend(found)
+        for prefix, overrides, params, heads, width in configs_for(task):
+            if not usable:
                 checks.append(check(prefix + "variant", False, "skipped: metavariables missing or wrong"))
                 continue
-            data, error = run_probe(probe, core, project, overrides)
+            data, error = (base, "") if not overrides else run_probe(probe, core, project, overrides)
             if data is None:
                 checks.append(check(prefix + "probe", False, error))
                 continue
-            checks.append(analysis_check(data, prefix))
-            if task == "T3" and index == 0:
-                checks.append(metavariables_check(data.get("metavariables")))
-                if not checks[-1]["passed"]:
-                    skipped = True  # overrides need the exact metavariables
+            if overrides:
+                checks.append(analysis_check(data, prefix))
             resolved = data.get("resolved_model")
             if resolved is None and data.get("resolved_error"):
                 checks.append(check(prefix + "resolved model", False, data["resolved_error"]))
                 continue
-            checks.extend(graph_checks(project, resolved, core, params, heads, prefix))
+            checks.extend(graph_checks(project, resolved, core, params, heads, width, prefix))
     except Exception as exc:  # noqa: BLE001 - never crash on a participant artefact
         checks.append(check("grader", False, f"{type(exc).__name__}: {exc}"))
     return row(participant, "nnm", task, project, checks)
@@ -270,7 +285,7 @@ def grade_project(project, probe, core, participant="-", task_override=None):
 def notebook_task(path, override):
     if override:
         return override
-    match = re.search(r"task([123])", Path(path).name)
+    match = re.search(r"task([12])", Path(path).name)
     return f"T{match.group(1)}" if match else None
 
 
@@ -385,7 +400,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--probe", help="study_probe executable (default build/qt/study_probe)")
     parser.add_argument("--core", default=str(ROOT / "stereotype-packages" / "core"))
-    parser.add_argument("--task", help="override the inferred task (T1, T2 or T3)")
+    parser.add_argument("--task", help="override the inferred task (T1 or T2)")
     parser.add_argument("--json", help="write rows as JSON")
     parser.add_argument("--csv", help="write rows as CSV")
     parser.add_argument("targets", nargs="+", metavar="TARGET")
@@ -394,7 +409,7 @@ def main(argv=None):
     if task:
         task = task.upper() if task.upper().startswith("T") else f"T{task}"
         if task not in sc.EXPECTED:
-            parser.error("--task must be T1, T2 or T3")
+            parser.error("--task must be T1 or T2")
     probe, core = find_probe(args.probe), Path(args.core).resolve()
     rows = []
     for target in args.targets:

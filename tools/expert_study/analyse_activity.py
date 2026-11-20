@@ -5,7 +5,7 @@ Usage: analyse_activity.py LOG... --out OUT [--idle-seconds N]
 
 Writes OUT/split/<task>/<participant>.jsonl (split_activity_log.py) and the
 parser outputs (events/sessions/tasks.csv, summary.md) into OUT/<task>/ using
-tools/activity_log/tasks_expert_t{1,2,3}.json. Prints a completion table.
+tools/activity_log/tasks_expert_t{1,2}.json. Prints a completion table.
 """
 import argparse
 import csv

@@ -4,7 +4,7 @@
 Usage: split_activity_log.py LOG... --out DIR
 
 An app session is assigned to a task by the path of its successful
-`project.open` events (task1-mlp, task2-attention or task3-multihead in the
+`project.open` events (task1-mlp or task2-multihead in the
 path). A later task project.open inside the same session starts a new
 segment; records before the first one go to `unassigned`. Records are copied
 verbatim (fields and seq unchanged) to DIR/<task>/<participant>.jsonl, where
@@ -16,7 +16,7 @@ import re
 import sys
 from pathlib import Path
 
-TASKS = ("task1-mlp", "task2-attention", "task3-multihead")
+TASKS = ("task1-mlp", "task2-multihead")
 UNASSIGNED = "unassigned"
 TASK_RE = re.compile("|".join(TASKS))
 

@@ -53,7 +53,7 @@ def records(path):
     return [json.loads(line) for line in Path(path).read_text().splitlines()]
 
 
-def test_split_three_sessions_one_per_task(tmp_path):
+def test_split_two_sessions_one_per_task(tmp_path):
     log = Log()
     for index, task in enumerate(TASKS):
         session = f"s{index}"
@@ -63,7 +63,7 @@ def test_split_three_sessions_one_per_task(tmp_path):
     source = log.write(tmp_path / "P01.log")
     original = source.read_text()
     counts = split.split_log(source, tmp_path / "out")
-    assert counts == {"unassigned": 3, **{t: 2 for t in TASKS}}
+    assert counts == {"unassigned": 2, **{t: 2 for t in TASKS}}
     for index, task in enumerate(TASKS):
         found = records(tmp_path / "out" / task / "P01.jsonl")
         assert [r["event"] for r in found] == ["project.open", "model.snapshot"]
@@ -77,22 +77,22 @@ def test_split_session_opening_two_projects_at_boundary(tmp_path):
     log.open("s", "task1-mlp")
     log.add("s", "model.snapshot", snapshot("task1-mlp", "start"))
     log.add("s", "project.open", {"path": "/home/p/elsewhere"})  # not a task project: no boundary
-    log.open("s", "task2-attention", ok=False)  # failed open: no boundary
+    log.open("s", "task2-multihead", ok=False)  # failed open: no boundary
     log.add("s", "edit.undo")
-    log.open("s", "task2-attention")
-    log.add("s", "model.snapshot", snapshot("task2-attention", "start"))
+    log.open("s", "task2-multihead")
+    log.add("s", "model.snapshot", snapshot("task2-multihead", "start"))
     source = log.write(tmp_path / "P02.log")
     with open(source, "a") as handle:
         handle.write("{truncated\n")
     warnings = []
     counts = split.split_log(source, tmp_path / "out", warnings.append)
-    assert counts == {"unassigned": 1, "task1-mlp": 5, "task2-attention": 2}
+    assert counts == {"unassigned": 1, "task1-mlp": 5, "task2-multihead": 2}
     assert len(warnings) == 1 and "malformed" in warnings[0]
     first = records(tmp_path / "out/task1-mlp/P02.jsonl")
-    second = records(tmp_path / "out/task2-attention/P02.jsonl")
+    second = records(tmp_path / "out/task2-multihead/P02.jsonl")
     assert [r["seq"] for r in first] == [2, 3, 4, 5, 6]
     assert [r["seq"] for r in second] == [7, 8]
-    assert second[0]["data"] == {"path": "/home/p/trial/task2-attention"} and second[0]["src"] == "core"
+    assert second[0]["data"] == {"path": "/home/p/trial/task2-multihead"} and second[0]["src"] == "core"
 
 
 def test_each_task_folder_completes_only_its_own_subgoals(tmp_path):
@@ -111,7 +111,7 @@ def test_each_task_folder_completes_only_its_own_subgoals(tmp_path):
             assert {r["task"][:2] for r in csv.DictReader(handle)} == {f"E{number}"}
 
 
-def test_identical_t2_t3_starts_complete_nothing(tmp_path):
+def test_start_projects_complete_nothing(tmp_path):
     log = Log()
     for task in TASKS:
         log.open(task, task)
@@ -125,10 +125,10 @@ def test_analyse_mixed_session_leaks_nothing_across_boundary(tmp_path):
     log = Log()
     log.open("s", "task1-mlp")
     log.add("s", "model.snapshot", snapshot("task1-mlp", "solution"))
-    log.open("s", "task3-multihead")
-    log.add("s", "model.snapshot", snapshot("task3-multihead", "start"))
+    log.open("s", "task2-multihead")
+    log.add("s", "model.snapshot", snapshot("task2-multihead", "start"))
     log.write(tmp_path / "P05.log")
     table = analyse.analyse([tmp_path / "P05.log"], tmp_path / "out")
     done = {(row[0], row[2]) for row in table if row[3] == "True"}
     assert {t for _, t in done} == {"E1a", "E1b", "E1c", "E1d", "E1e", "E1f"}
-    assert not any(task == "task3-multihead" for task, _ in done)
+    assert not any(task == "task2-multihead" for task, _ in done)

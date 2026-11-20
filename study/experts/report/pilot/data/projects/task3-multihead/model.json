@@ -90,7 +90,7 @@
         "params": {
           "in_features": 28,
           "out_features": {
-            "$ref": "d-model"
+            "$ref": "D"
           },
           "bias": true,
           "dtype": "float32"
@@ -150,7 +150,7 @@
         },
         "params": {
           "in_features": {
-            "$lua": "28 * meta[\"d-model\"]"
+            "$lua": "28*meta[\"D\"]"
           },
           "out_features": 10,
           "bias": true,
@@ -176,14 +176,14 @@
       }
     },
     {
-      "id": "heads",
+      "id": "node-a62b4245-759b-4902-9198-c03f388ff5c0",
       "type": "custom",
       "position": {
         "x": 80,
         "y": 680
       },
       "data": {
-        "name": "Horizontal Repeat: heads",
+        "name": "Horizontal Repeat",
         "scope": "",
         "package": {
           "id": "core.horizontal-repeat",
@@ -191,11 +191,11 @@
         },
         "params": {
           "times": {
-            "$ref": "num-heads"
+            "$ref": "H"
           },
           "join": {
             "id": "core.concat",
-            "version": "0.1.0",
+            "version": "^0.1.0",
             "parameters": {
               "dim": -1
             }
@@ -204,7 +204,7 @@
       }
     },
     {
-      "id": "heads-input",
+      "id": "node-a62b4245-759b-4902-9198-c03f388ff5c0-input",
       "type": "custom",
       "position": {
         "x": 120,
@@ -212,7 +212,7 @@
       },
       "data": {
         "name": "Input",
-        "scope": "heads",
+        "scope": "node-a62b4245-759b-4902-9198-c03f388ff5c0",
         "package": {
           "id": "core.input",
           "version": "0.1.0"
@@ -223,15 +223,15 @@
       }
     },
     {
-      "id": "heads-output",
+      "id": "node-a62b4245-759b-4902-9198-c03f388ff5c0-boundary-out",
       "type": "custom",
       "position": {
         "x": 180,
         "y": 1820
       },
       "data": {
-        "name": "Output: out",
-        "scope": "heads",
+        "name": "out",
+        "scope": "node-a62b4245-759b-4902-9198-c03f388ff5c0",
         "package": {
           "id": "core.output",
           "version": "0.1.0"
@@ -241,25 +241,25 @@
       }
     },
     {
-      "id": "headsquery",
+      "id": "node-a3f6f34a-d80e-4591-9d17-7ca031b53b09",
       "type": "custom",
       "position": {
         "x": 80,
         "y": 280
       },
       "data": {
-        "name": "Query",
-        "scope": "heads",
+        "name": "LinearQ",
+        "scope": "node-a62b4245-759b-4902-9198-c03f388ff5c0",
         "package": {
           "id": "core.linear",
           "version": "0.1.0"
         },
         "params": {
           "in_features": {
-            "$ref": "d-model"
+            "$ref": "D"
           },
           "out_features": {
-            "$lua": "params.in_features / meta[\"num-heads\"]"
+            "$lua": "meta[\"D\"]/meta[\"H\"]"
           },
           "bias": true,
           "dtype": "float32"
@@ -267,25 +267,25 @@
       }
     },
     {
-      "id": "headskey",
+      "id": "node-9dae12b8-3eec-4a87-a8ca-574cebff846c",
       "type": "custom",
       "position": {
         "x": -200,
         "y": 280
       },
       "data": {
-        "name": "Key",
-        "scope": "heads",
+        "name": "LinearK",
+        "scope": "node-a62b4245-759b-4902-9198-c03f388ff5c0",
         "package": {
           "id": "core.linear",
           "version": "0.1.0"
         },
         "params": {
           "in_features": {
-            "$ref": "d-model"
+            "$ref": "D"
           },
           "out_features": {
-            "$lua": "params.in_features / meta[\"num-heads\"]"
+            "$lua": "meta[\"D\"]/meta[\"H\"]"
           },
           "bias": true,
           "dtype": "float32"
@@ -293,33 +293,7 @@
       }
     },
     {
-      "id": "headsvalue",
-      "type": "custom",
-      "position": {
-        "x": 340,
-        "y": 280
-      },
-      "data": {
-        "name": "Value",
-        "scope": "heads",
-        "package": {
-          "id": "core.linear",
-          "version": "0.1.0"
-        },
-        "params": {
-          "in_features": {
-            "$ref": "d-model"
-          },
-          "out_features": {
-            "$lua": "params.in_features / meta[\"num-heads\"]"
-          },
-          "bias": true,
-          "dtype": "float32"
-        }
-      }
-    },
-    {
-      "id": "headskey-t",
+      "id": "node-154f0708-0447-4da5-a3b4-9038a97521b6",
       "type": "custom",
       "position": {
         "x": -200,
@@ -327,7 +301,7 @@
       },
       "data": {
         "name": "Transpose",
-        "scope": "heads",
+        "scope": "node-a62b4245-759b-4902-9198-c03f388ff5c0",
         "package": {
           "id": "core.transpose",
           "version": "0.1.0"
@@ -339,15 +313,15 @@
       }
     },
     {
-      "id": "headsscores",
+      "id": "node-1953f5fa-68d2-4228-8d89-2c48c445c822",
       "type": "custom",
       "position": {
         "x": -80,
         "y": 840
       },
       "data": {
-        "name": "MatMul: Q × Kᵀ",
-        "scope": "heads",
+        "name": "MatMul",
+        "scope": "node-a62b4245-759b-4902-9198-c03f388ff5c0",
         "package": {
           "id": "core.matmul",
           "version": "0.1.0"
@@ -356,28 +330,71 @@
       }
     },
     {
-      "id": "headsscale",
+      "id": "node-7c37dbdf-5493-4ae0-963f-748967af32e3",
       "type": "custom",
       "position": {
-        "x": -80,
+        "x": -60,
         "y": 1120
       },
       "data": {
         "name": "Scale",
-        "scope": "heads",
+        "scope": "node-a62b4245-759b-4902-9198-c03f388ff5c0",
         "package": {
           "id": "core.scale",
           "version": "0.1.0"
         },
         "params": {
           "factor": {
-            "$lua": "1 / math.sqrt(meta[\"d-model\"] / meta[\"num-heads\"])"
+            "$lua": "math.sqrt(meta[\"D\"]/meta[\"H\"]) "
           }
         }
       }
     },
     {
-      "id": "headssoftmax",
+      "id": "node-b073333b-ac37-40fa-a89e-8bec1dd0b3a6",
+      "type": "custom",
+      "position": {
+        "x": 340,
+        "y": 280
+      },
+      "data": {
+        "name": "LinearV",
+        "scope": "node-a62b4245-759b-4902-9198-c03f388ff5c0",
+        "package": {
+          "id": "core.linear",
+          "version": "0.1.0"
+        },
+        "params": {
+          "in_features": {
+            "$ref": "D"
+          },
+          "out_features": {
+            "$lua": "meta[\"D\"]/meta[\"H\"]"
+          },
+          "bias": true,
+          "dtype": "float32"
+        }
+      }
+    },
+    {
+      "id": "node-8a3cbdde-7a5b-488f-849b-a31460a45716",
+      "type": "custom",
+      "position": {
+        "x": 120,
+        "y": 1560
+      },
+      "data": {
+        "name": "MatMul",
+        "scope": "node-a62b4245-759b-4902-9198-c03f388ff5c0",
+        "package": {
+          "id": "core.matmul",
+          "version": "0.1.0"
+        },
+        "params": {}
+      }
+    },
+    {
+      "id": "node-ab1320a7-b61b-456a-9d5d-aab0c9e9eced",
       "type": "custom",
       "position": {
         "x": -60,
@@ -385,7 +402,7 @@
       },
       "data": {
         "name": "Softmax",
-        "scope": "heads",
+        "scope": "node-a62b4245-759b-4902-9198-c03f388ff5c0",
         "package": {
           "id": "core.softmax",
           "version": "0.1.0"
@@ -393,23 +410,6 @@
         "params": {
           "dim": -1
         }
-      }
-    },
-    {
-      "id": "headsweighted",
-      "type": "custom",
-      "position": {
-        "x": 120,
-        "y": 1560
-      },
-      "data": {
-        "name": "MatMul: A × V",
-        "scope": "heads",
-        "package": {
-          "id": "core.matmul",
-          "version": "0.1.0"
-        },
-        "params": {}
       }
     }
   ],
@@ -464,102 +464,102 @@
       "targetHandle": "in"
     },
     {
-      "id": "e-embed-residual-in-1",
+      "id": "d3a74647-d1d3-4957-b960-cb09f1a4bad4",
+      "source": "embed",
+      "sourceHandle": "out",
+      "target": "node-a62b4245-759b-4902-9198-c03f388ff5c0",
+      "targetHandle": "in"
+    },
+    {
+      "id": "185a24ab-11c8-497c-b259-66e35ea62f74",
+      "source": "node-a62b4245-759b-4902-9198-c03f388ff5c0-input",
+      "sourceHandle": "out",
+      "target": "node-a3f6f34a-d80e-4591-9d17-7ca031b53b09",
+      "targetHandle": "in"
+    },
+    {
+      "id": "e6673356-1da1-4d6e-86c7-3de7a583b0f1",
+      "source": "node-a62b4245-759b-4902-9198-c03f388ff5c0-input",
+      "sourceHandle": "out",
+      "target": "node-9dae12b8-3eec-4a87-a8ca-574cebff846c",
+      "targetHandle": "in"
+    },
+    {
+      "id": "9342c2a7-c796-4492-be37-26c10e5d3756",
+      "source": "node-9dae12b8-3eec-4a87-a8ca-574cebff846c",
+      "sourceHandle": "out",
+      "target": "node-154f0708-0447-4da5-a3b4-9038a97521b6",
+      "targetHandle": "in"
+    },
+    {
+      "id": "08b570dd-5a7d-4b0b-9d75-5f0ca959db53",
+      "source": "node-a3f6f34a-d80e-4591-9d17-7ca031b53b09",
+      "sourceHandle": "out",
+      "target": "node-1953f5fa-68d2-4228-8d89-2c48c445c822",
+      "targetHandle": "in-1"
+    },
+    {
+      "id": "cc4a84b6-99a0-4823-b492-58e861bea9f2",
+      "source": "node-154f0708-0447-4da5-a3b4-9038a97521b6",
+      "sourceHandle": "out",
+      "target": "node-1953f5fa-68d2-4228-8d89-2c48c445c822",
+      "targetHandle": "in-2"
+    },
+    {
+      "id": "8c46ec01-ca90-4435-ba65-0758f41d0fff",
+      "source": "node-1953f5fa-68d2-4228-8d89-2c48c445c822",
+      "sourceHandle": "out",
+      "target": "node-7c37dbdf-5493-4ae0-963f-748967af32e3",
+      "targetHandle": "in"
+    },
+    {
+      "id": "bec495fe-07bc-4826-8439-1ef3384cee65",
+      "source": "node-a62b4245-759b-4902-9198-c03f388ff5c0-input",
+      "sourceHandle": "out",
+      "target": "node-b073333b-ac37-40fa-a89e-8bec1dd0b3a6",
+      "targetHandle": "in"
+    },
+    {
+      "id": "4db280f7-db39-47f1-a4c2-6d519fb37ccb",
+      "source": "node-7c37dbdf-5493-4ae0-963f-748967af32e3",
+      "sourceHandle": "out",
+      "target": "node-ab1320a7-b61b-456a-9d5d-aab0c9e9eced",
+      "targetHandle": "in"
+    },
+    {
+      "id": "3bfb6604-a0ee-4a6f-bbe4-9f4a1158458e",
+      "source": "node-ab1320a7-b61b-456a-9d5d-aab0c9e9eced",
+      "sourceHandle": "out",
+      "target": "node-8a3cbdde-7a5b-488f-849b-a31460a45716",
+      "targetHandle": "in-1"
+    },
+    {
+      "id": "bdd6ca45-adbb-4a59-932e-5873aac7f1c5",
+      "source": "node-b073333b-ac37-40fa-a89e-8bec1dd0b3a6",
+      "sourceHandle": "out",
+      "target": "node-8a3cbdde-7a5b-488f-849b-a31460a45716",
+      "targetHandle": "in-2"
+    },
+    {
+      "id": "ac977096-7edb-41ce-bdbd-9d9dc8853150",
+      "source": "node-8a3cbdde-7a5b-488f-849b-a31460a45716",
+      "sourceHandle": "out",
+      "target": "node-a62b4245-759b-4902-9198-c03f388ff5c0-boundary-out",
+      "targetHandle": "in"
+    },
+    {
+      "id": "cc2e8527-b3c3-4812-943f-43f6d7eaba17",
       "source": "embed",
       "sourceHandle": "out",
       "target": "residual",
       "targetHandle": "in-1"
     },
     {
-      "id": "e-embed-heads-in",
-      "source": "embed",
-      "sourceHandle": "out",
-      "target": "heads",
-      "targetHandle": "in"
-    },
-    {
-      "id": "e-heads-residual-in-2",
-      "source": "heads",
+      "id": "7aa57fbe-e3d0-40e7-abd6-5679bb0c8675",
+      "source": "node-a62b4245-759b-4902-9198-c03f388ff5c0",
       "sourceHandle": "out",
       "target": "residual",
       "targetHandle": "in-2"
-    },
-    {
-      "id": "e-heads-input-headsquery-in",
-      "source": "heads-input",
-      "sourceHandle": "out",
-      "target": "headsquery",
-      "targetHandle": "in"
-    },
-    {
-      "id": "e-heads-input-headskey-in",
-      "source": "heads-input",
-      "sourceHandle": "out",
-      "target": "headskey",
-      "targetHandle": "in"
-    },
-    {
-      "id": "e-heads-input-headsvalue-in",
-      "source": "heads-input",
-      "sourceHandle": "out",
-      "target": "headsvalue",
-      "targetHandle": "in"
-    },
-    {
-      "id": "e-headskey-headskey-t-in",
-      "source": "headskey",
-      "sourceHandle": "out",
-      "target": "headskey-t",
-      "targetHandle": "in"
-    },
-    {
-      "id": "e-headsquery-headsscores-in-1",
-      "source": "headsquery",
-      "sourceHandle": "out",
-      "target": "headsscores",
-      "targetHandle": "in-1"
-    },
-    {
-      "id": "e-headskey-t-headsscores-in-2",
-      "source": "headskey-t",
-      "sourceHandle": "out",
-      "target": "headsscores",
-      "targetHandle": "in-2"
-    },
-    {
-      "id": "e-headsscores-headsscale-in",
-      "source": "headsscores",
-      "sourceHandle": "out",
-      "target": "headsscale",
-      "targetHandle": "in"
-    },
-    {
-      "id": "e-headsscale-headssoftmax-in",
-      "source": "headsscale",
-      "sourceHandle": "out",
-      "target": "headssoftmax",
-      "targetHandle": "in"
-    },
-    {
-      "id": "e-headssoftmax-headsweighted-in-1",
-      "source": "headssoftmax",
-      "sourceHandle": "out",
-      "target": "headsweighted",
-      "targetHandle": "in-1"
-    },
-    {
-      "id": "e-headsvalue-headsweighted-in-2",
-      "source": "headsvalue",
-      "sourceHandle": "out",
-      "target": "headsweighted",
-      "targetHandle": "in-2"
-    },
-    {
-      "id": "e-headsweighted-heads-output-in",
-      "source": "headsweighted",
-      "sourceHandle": "out",
-      "target": "heads-output",
-      "targetHandle": "in"
     }
   ],
   "layoutDirection": "horizontal",
@@ -568,7 +568,7 @@
     "id": "expert-task3-multihead",
     "version": "0.1.0",
     "name": "Expert T3: multi-head attention",
-    "description": "Expert usability study, task3-multihead (solution)",
+    "description": "Expert usability study, task3-multihead (start)",
     "customPackages": [],
     "customDatasets": [
       {
@@ -580,14 +580,14 @@
     "operations": [],
     "metavariables": [
       {
-        "name": "d-model",
-        "type": "integer",
-        "value": 32
+        "name": "D",
+        "type": "number",
+        "value": 32.0
       },
       {
-        "name": "num-heads",
-        "type": "integer",
-        "value": 4
+        "name": "H",
+        "type": "number",
+        "value": 8.0
       }
     ],
     "activeDataset": {

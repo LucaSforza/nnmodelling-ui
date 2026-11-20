@@ -226,10 +226,10 @@
   "layoutDirection": "horizontal",
   "manifest": {
     "schemaVersion": 2,
-    "id": "expert-task2-attention",
+    "id": "expert-task2-multihead",
     "version": "0.1.0",
-    "name": "Expert T2: row self-attention",
-    "description": "Expert usability study, task2-attention (start)",
+    "name": "Expert T2: multi-head attention",
+    "description": "Expert usability study, task2-multihead (start)",
     "customPackages": [],
     "customDatasets": [
       {

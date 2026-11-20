@@ -36,14 +36,43 @@ class MLP(nn.Module):
 
 
 class Head(nn.Module):
-    def __init__(self, d, dh, softmax="torch"):
+    """One attention head; `scale` selects how the 1/sqrt(dh) factor is applied."""
+
+    def __init__(self, d, dh, softmax="torch", scale="mul"):
         super().__init__()
         self.q, self.k, self.v = (nn.Linear(d, dh) for _ in range(3))
-        self.scale = 1 / math.sqrt(dh)
+        self.dh = dh
         self.softmax = softmax
+        self.scale = scale
+
+    def scores(self, q, k):
+        kt, dk = k.transpose(-2, -1), self.dh
+        if self.scale == "mul":
+            return q @ kt * (1 / math.sqrt(dk))
+        if self.scale == "div":
+            return torch.matmul(q, kt) / math.sqrt(dk)
+        if self.scale == "pre-q":
+            return (q * dk ** -0.5) @ kt
+        if self.scale == "quarter-each":
+            return (q * dk ** -0.25) @ (k / dk ** 0.25).transpose(-2, -1)
+        if self.scale == "inplace":
+            s = q @ kt
+            s *= dk ** -0.5
+            return s
+        if self.scale == "tensor-factor":
+            return torch.mul(q @ kt, torch.tensor(dk ** -0.5))
+        if self.scale == "sqrt":  # wrong: multiplies instead of dividing
+            return q @ kt * math.sqrt(dk)
+        if self.scale == "full-width":  # wrong: 1/sqrt(d_model) instead of 1/sqrt(head width)
+            return q @ kt * (1 / math.sqrt(4 * dk))
+        if self.scale == "none":
+            return q @ kt
+        if self.scale == "einsum":  # correct, but not a matmul the probe can pair with the softmax
+            return torch.einsum("bik,bjk->bij", q, k) * (1 / math.sqrt(dk))
+        raise ValueError(self.scale)
 
     def forward(self, h):
-        s = self.q(h) @ self.k(h).transpose(-2, -1) * self.scale
+        s = self.scores(self.q(h), self.k(h))
         a = {"torch": lambda: torch.softmax(s, -1), "F": lambda: F.softmax(s, -1),
              "method": lambda: s.softmax(-1), "module": lambda: nn.Softmax(-1)(s),
              "wrong-dim": lambda: torch.softmax(s, 1)}[self.softmax]()
@@ -53,11 +82,11 @@ class Head(nn.Module):
 class MultiHead(nn.Module):
     """Loop style; `attention` replaces the per-head loop when given."""
 
-    def __init__(self, d_model=32, num_heads=4, softmax="torch"):
+    def __init__(self, d_model=32, num_heads=4, softmax="torch", scale="mul"):
         super().__init__()
         self.embed = nn.Linear(28, d_model)
         self.classifier = nn.Linear(28 * d_model, 10)
-        self.heads = nn.ModuleList(Head(d_model, d_model // num_heads, softmax) for _ in range(num_heads))
+        self.heads = nn.ModuleList(Head(d_model, d_model // num_heads, softmax, scale) for _ in range(num_heads))
 
     def attend(self, h):
         return torch.cat([head(h) for head in self.heads], dim=-1)
@@ -68,9 +97,12 @@ class MultiHead(nn.Module):
 
 
 class BatchedMultiHead(nn.Module):
-    def __init__(self, d_model=32, num_heads=4):
+    """Wide Q/K/V Linear split into heads with view; `prescale` scales Q before the split."""
+
+    def __init__(self, d_model=32, num_heads=4, prescale=False, width=None):
         super().__init__()
         self.h, self.d = num_heads, d_model
+        self.prescale, self.width = prescale, width
         self.embed = nn.Linear(28, d_model)
         self.classifier = nn.Linear(28 * d_model, 10)
         self.q, self.k, self.v = (nn.Linear(d_model, d_model) for _ in range(3))
@@ -78,8 +110,11 @@ class BatchedMultiHead(nn.Module):
     def forward(self, x):
         h = self.embed(torch.flatten(x, 1, 2))
         split = lambda t: t.view(t.shape[0], 28, self.h, -1).transpose(1, 2)  # noqa: E731
-        q, k, v = split(self.q(h)), split(self.k(h)), split(self.v(h))
-        a = torch.softmax(q @ k.transpose(-2, -1) / math.sqrt(self.d // self.h), -1)
+        dk = self.width or self.d // self.h
+        q = self.q(h) * dk ** -0.5 if self.prescale else self.q(h)
+        q, k, v = split(q), split(self.k(h)), split(self.v(h))
+        scores = q @ k.transpose(-2, -1)
+        a = torch.softmax(scores if self.prescale else scores / math.sqrt(dk), -1)
         attn = (a @ v).transpose(1, 2).reshape(x.shape[0], 28, self.d)
         return self.classifier(torch.flatten(h + attn, 1))
 
@@ -96,11 +131,6 @@ class Hardcoded32(nn.Module):
 
     def forward(self, x):
         return self.inner(x)
-
-
-class T2(MultiHead):
-    def __init__(self):
-        super().__init__(32, 1)
 
 
 class SdpaModel(MultiHead):
@@ -126,23 +156,22 @@ def names(report):
 
 def test_reference_solutions_pass():
     assert sc.check_task1(MLP, loss).passed
-    assert sc.check_task2(T2, loss).passed
-    assert sc.check_task3(MultiHead, loss).passed
+    assert sc.check_task2(MultiHead, loss).passed
 
 
 @pytest.mark.parametrize("style", ["torch", "F", "method", "module"])
 def test_every_softmax_call_style_is_counted(style):
-    report = sc.check_task3(lambda **kw: MultiHead(softmax=style, **kw), loss)
+    report = sc.check_task2(lambda **kw: MultiHead(softmax=style, **kw), loss)
     assert report.passed, str(report)
 
 
-def test_batched_view_variant_passes_task3():
-    assert sc.check_task3(BatchedMultiHead, loss).passed
+def test_batched_view_variant_passes_task2():
+    assert sc.check_task2(BatchedMultiHead, loss).passed
 
 
-def test_expected_task3_params():
-    assert sc.expected_task3_params(32) == 13066
-    assert sc.expected_task3_params(64) == 32266
+def test_expected_task2_params():
+    assert sc.expected_task2_params(32) == 13066
+    assert sc.expected_task2_params(64) == 32266
     assert sum(p.numel() for p in MultiHead(64, 8).parameters()) == 32266
 
 
@@ -161,13 +190,13 @@ def test_wrong_loss():
 
 
 def test_multihead_attention_module_is_forbidden():
-    item = names(sc.check_task3(MhaModel, loss))["d=32,h=4: forbidden primitives"]
+    item = names(sc.check_task2(MhaModel, loss))["d=32,h=4: forbidden primitives"]
     assert not item.passed
     assert "MultiheadAttention" in item.detail and "multi_head_attention_forward" in item.detail
 
 
 def test_sdpa_is_forbidden():
-    item = names(sc.check_task2(lambda: SdpaModel(32, 1), loss))["forbidden primitives"]
+    item = names(sc.check_task2(SdpaModel, loss))["d=32,h=4: forbidden primitives"]
     assert not item.passed and "scaled_dot_product_attention" in item.detail
 
 
@@ -180,8 +209,8 @@ def test_transformer_module_is_forbidden():
     assert not names(sc.check_task1(Wrapped, loss))["forbidden primitives"].passed
 
 
-def test_single_head_fails_task3_heads_probe():
-    report = sc.check_task3(SingleHead, loss)
+def test_single_head_fails_task2_heads_probe():
+    report = sc.check_task2(SingleHead, loss)
     items = names(report)
     assert not report.passed
     assert items["d=32,h=4: attention heads"].passed is False
@@ -190,13 +219,13 @@ def test_single_head_fails_task3_heads_probe():
 
 
 def test_softmax_over_wrong_dimension_fails():
-    items = names(sc.check_task3(lambda **kw: MultiHead(softmax="wrong-dim", **kw), loss))
+    items = names(sc.check_task2(lambda **kw: MultiHead(softmax="wrong-dim", **kw), loss))
     heads = items["d=32,h=4: attention heads"]
     assert not heads.passed and "not normalised over the last dimension" in heads.detail
 
 
 def test_hardcoded_width_fails_at_d64():
-    items = names(sc.check_task3(Hardcoded32, loss))
+    items = names(sc.check_task2(Hardcoded32, loss))
     assert items["d=32,h=4: parameters"].passed
     assert not items["d=64,h=8: parameters"].passed
 
@@ -217,7 +246,7 @@ def test_exceptions_become_failed_items():
     report = sc.check_task1(BadForward, loss)
     assert "boom" in names(report)["logits"].detail and not report.passed
     assert "oops" in names(sc.check_task1(MLP, bad_loss))["loss"].detail
-    assert not sc.check_task3(BadInit, loss).passed
+    assert not sc.check_task2(BadInit, loss).passed
 
 
 def test_non_finite_and_wrong_shape_logits():
@@ -234,11 +263,70 @@ def test_non_finite_and_wrong_shape_logits():
 
 
 def test_check_module_generic():
-    report = sc.check_module("T2", T2(), loss, expected_params=13066, expected_heads=1)
-    assert report.passed
-    report = sc.check_module("T2", T2(), loss, expected_params=13066, expected_heads=2)
-    assert not names(report)["attention heads"].passed
+    report = sc.check_module("T2", MultiHead(), loss, expected_params=13066, expected_heads=4, head_width=8)
+    assert report.passed and names(report)["attention scale"].passed
+    report = sc.check_module("T2", MultiHead(), loss, expected_params=13066, expected_heads=2)
+    assert not names(report)["attention heads"].passed and "attention scale" not in names(report)
+    report = sc.check_module("T2", MultiHead(), loss, expected_params=13066, expected_heads=4, head_width=16)
+    assert not names(report)["attention scale"].passed
     assert "heads" not in " ".join(names(sc.check_module("T1", MLP(), loss, expected_params=50890, expected_heads=None)))
+
+
+# --- attention scale ----------------------------------------------------------
+
+VARIANT_NAMES = ("d=32,h=4: ", "d=64,h=8: ", "d=32,h=2: ")
+
+
+@pytest.mark.parametrize("scale", ["mul", "div", "pre-q", "quarter-each", "inplace", "tensor-factor"])
+def test_correct_scale_styles_pass(scale):
+    report = sc.check_task2(lambda **kw: MultiHead(scale=scale, **kw), loss)
+    assert report.passed, str(report)
+    assert all(names(report)[prefix + "attention scale"].passed for prefix in VARIANT_NAMES)
+    assert "scale 0.3536 = 1/sqrt(8)" in names(report)["d=64,h=8: attention scale"].detail
+    assert "scale 0.25 = 1/sqrt(16)" in names(report)["d=32,h=2: attention scale"].detail
+
+
+@pytest.mark.parametrize("prescale", [False, True])
+def test_view_based_head_split_passes_scale(prescale):
+    report = sc.check_task2(lambda **kw: BatchedMultiHead(prescale=prescale, **kw), loss)
+    assert report.passed, str(report)
+
+
+def test_multiplying_by_sqrt_instead_of_dividing_fails():
+    report = sc.check_task2(lambda **kw: MultiHead(scale="sqrt", **kw), loss)
+    item = names(report)["d=32,h=4: attention scale"]
+    assert not report.passed and not item.passed
+    assert item.detail == "scale 2.828 per head, expected 0.3536 = 1/sqrt(8)"
+    assert names(report)["d=32,h=4: attention heads"].passed and names(report)["d=32,h=4: parameters"].passed
+
+
+def test_missing_scale_fails():
+    item = names(sc.check_task2(lambda **kw: MultiHead(scale="none", **kw), loss))["d=64,h=8: attention scale"]
+    assert not item.passed and item.detail == "scale 1 per head, expected 0.3536 = 1/sqrt(8)"
+
+
+def test_scale_uses_head_width_not_model_width():
+    items = names(sc.check_task2(lambda **kw: MultiHead(scale="full-width", **kw), loss))
+    assert not items["d=32,h=4: attention scale"].passed
+    assert "expected 0.3536 = 1/sqrt(8)" in items["d=32,h=4: attention scale"].detail
+    items = names(sc.check_task2(lambda **kw: BatchedMultiHead(width=kw["d_model"], **kw), loss))
+    assert not items["d=64,h=8: attention scale"].passed and not items["d=32,h=2: attention scale"].passed
+
+
+def test_undeterminable_scale_is_a_failing_item_only_without_measurement():
+    report = sc.check_task2(lambda **kw: MultiHead(scale="einsum", **kw), loss)
+    item = names(report)["d=32,h=4: attention scale"]
+    assert not item.passed and "could not determine" in item.detail
+    assert names(report)["d=32,h=4: attention heads"].passed
+
+
+def test_scale_item_skipped_when_forward_fails():
+    class Broken(MultiHead):
+        def attend(self, h):
+            raise ValueError("boom")
+
+    item = names(sc.check_task2(Broken, loss))["d=32,h=4: attention scale"]
+    assert not item.passed and "skipped" in item.detail
 
 
 # --- reports and data -------------------------------------------------------
@@ -325,7 +413,7 @@ for c in cells:
 print("REPORT:" + json.dumps(ns["study_checks"].LAST_REPORT.to_dict()))
 """
 
-NOTEBOOK_NAMES = ["task1_mlp", "task2_attention", "task3_multihead"]
+NOTEBOOK_NAMES = ["task1_mlp", "task2_multihead"]
 
 
 def run_notebook(tmp_path, path):
