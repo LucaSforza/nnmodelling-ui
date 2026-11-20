@@ -1,0 +1,21 @@
+[
+  {
+    "participant": "solutions",
+    "tool": "?",
+    "task": "?",
+    "target": "study/experts/notebooks/solutions",
+    "passed": false,
+    "failed_checks": [
+      "target"
+    ],
+    "detail": "target: not a session, project or notebook",
+    "checks": [
+      {
+        "name": "target",
+        "passed": false,
+        "detail": "not a session, project or notebook"
+      }
+    ],
+    "info": ""
+  }
+]
