@@ -251,7 +251,9 @@ machine, one command at home.
 commands for each time the stick is plugged in), `OUT/master/` (start
 projects, `notebooks/` with the two start notebooks as Colab fallback and a
 README with the Colab links, task sheet PDF when `pdflatex` exists),
-`OUT/facilitator/` (solutions; never on the lab's shared drive),
+no solutions (they stay only in the repository: `study/experts/projects/*/solution`,
+`study/experts/notebooks/solutions/`; a `--force` rebuild removes a stale
+`facilitator/` folder),
 `OUT/new_session.py ID` (copies `master/` into `~/nnm-expert-study/<id>/`
 without touching earlier ones and prints the commands for that ID),
 `OUT/collect.py`, `OUT/collect.sh` (log only, for ssh use) and an empty

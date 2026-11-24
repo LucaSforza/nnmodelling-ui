@@ -317,7 +317,6 @@ def new_session(usb, dest, participant):
 def test_prepare_usb_layout_and_refusals(usb, tmp_path):
     for task in TASKS:
         assert (usb / "master/projects" / task / "model.json").is_file()
-        assert (usb / "facilitator/projects" / task / "model.json").is_file()
     notebooks = usb / "master/notebooks"
     assert sorted(p.name for p in notebooks.iterdir()) == ["README.txt", "task1_mlp.ipynb", "task2_multihead.ipynb"]
     for name in ("task1_mlp.ipynb", "task2_multihead.ipynb"):  # start notebooks, never the solutions
@@ -325,7 +324,10 @@ def test_prepare_usb_layout_and_refusals(usb, tmp_path):
     readme = (notebooks / "README.txt").read_text()
     for name in ("task1_mlp.ipynb", "task2_multihead.ipynb"):
         assert f"https://colab.research.google.com/github/LucaSforza/nnmodelling-ui/blob/" in readme and name in readme
-    assert len(list((usb / "facilitator/notebooks/solutions").glob("*.ipynb"))) == 2
+    assert not (usb / "facilitator").exists() and not list(usb.rglob("solution*"))  # solutions stay in the repo
+    for task in TASKS:  # start projects, never the solutions
+        start = ROOT / "study/experts/projects" / task / "start"
+        assert (usb / "master/projects" / task / "model.json").read_bytes() == (start / "model.json").read_bytes()
     assert (usb / "collect.sh").read_text() == (ROOT / "tools/activity_log/collect.sh").read_text()
     assert (usb / "master/tasks/expert-tasks.pdf").is_file() or (usb / "master/tasks/expert-tasks.tex").is_file()
     assert (usb / "collect.py").read_text() == (TOOLS / "collect_participant.py").read_text()
@@ -370,8 +372,9 @@ def test_session_grading_fresh_fails_and_finished_passes(usb, tmp_path):
     assert new_session(usb, tmp_path, "2").returncode == 0
     finished = tmp_path / "2"
     shutil.rmtree(finished / "projects")
-    shutil.copytree(usb / "facilitator/projects", finished / "projects")
-    for notebook in (usb / "facilitator/notebooks/solutions").glob("*.ipynb"):
+    for task in TASKS:
+        shutil.copytree(ROOT / "study/experts/projects" / task / "solution", finished / "projects" / task)
+    for notebook in NOTEBOOKS.joinpath("solutions").glob("*.ipynb"):
         shutil.copy(notebook, finished / "notebooks" / notebook.name)
     rows = grade.grade_session(finished, PROBE, CORE)
     assert sorted((r["tool"], r["task"]) for r in rows) == sorted(

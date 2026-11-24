@@ -4,10 +4,9 @@
 Usage: prepare_usb.py [--force] OUT
 
 Writes OUT/master (start projects, start notebooks and README.txt with the Colab links,
-task sheet), OUT/facilitator (solutions), OUT/new_session.py ID, which copies
-master/ into a fresh participant folder <id>/, and OUT/collect.sh (activity log
-as <id>.log). ID is the numeric participant ID. The PyTorch tasks run in Google Colab;
-their submission files go into the participant's notebooks/ folder.
+task sheet), OUT/README.md, OUT/new_session.py ID (copies master/ into a fresh
+participant folder <id>/), OUT/collect.py, OUT/collect.sh and OUT/data/. ID is the
+numeric participant ID. No solutions: they stay in the repository only.
 """
 from __future__ import annotations
 
@@ -135,8 +134,7 @@ cancelli `~/nnm-study-data/grades.csv`).
 
 ## Regole
 
-- `facilitator/` contiene le soluzioni: non copiarla mai sul drive condiviso né
-  sui PC del laboratorio.
+- Sulla chiavetta non ci sono soluzioni: restano solo nel repository.
 - Non cancellare `data/` dalla chiavetta finché non hai importato e fatto una copia.
 """
 
@@ -231,20 +229,18 @@ def prepare(out: Path, force: bool = False) -> None:
     if out.exists() and not out.is_dir():
         raise SystemExit(f"{out} exists and is not a directory")
     if out.is_dir() and any(out.iterdir()) and not force:
-        raise SystemExit(f"{out} is not empty (use --force to rebuild master/ and facilitator/)")
+        raise SystemExit(f"{out} is not empty (use --force to rebuild master/)")
     out.mkdir(parents=True, exist_ok=True)
-    for name in ("master", "facilitator"):
+    for name in ("master", "facilitator"):  # facilitator/: solutions of older layouts, removed
         shutil.rmtree(out / name, ignore_errors=True)
-    master, facilitator = out / "master", out / "facilitator"
+    master = out / "master"
     for task in TASKS:
         copy_tree(STUDY / "projects" / task / "start", master / "projects" / task)
-        copy_tree(STUDY / "projects" / task / "solution", facilitator / "projects" / task)
     notebooks = master / "notebooks"
     notebooks.mkdir(parents=True)
     (notebooks / "README.txt").write_text(NOTEBOOKS_README, encoding="utf-8")
-    for spec in NOTEBOOKS.values():  # start notebooks only; solutions go to facilitator/
+    for spec in NOTEBOOKS.values():  # start notebooks only, never the solutions
         shutil.copy(STUDY / "notebooks" / spec["file"], notebooks / spec["file"])
-    copy_tree(STUDY / "notebooks" / "solutions", facilitator / "notebooks" / "solutions")
     build_task_sheet(master)
     shutil.copy(ROOT / "tools" / "activity_log" / "collect.sh", out / "collect.sh")
     shutil.copy(HERE / "collect_participant.py", out / "collect.py")
@@ -253,13 +249,13 @@ def prepare(out: Path, force: bool = False) -> None:
     script = out / "new_session.py"
     script.write_text(NEW_SESSION, encoding="utf-8")
     script.chmod(0o755)
-    print(f"Prepared {out}: README.md, master/ (copy per participant), facilitator/ (solutions), "
+    print(f"Prepared {out}: README.md, master/ (copy per participant), "
           "new_session.py, collect.py, data/")
 
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--force", action="store_true", help="allow a non-empty OUT (rebuilds master/ and facilitator/)")
+    parser.add_argument("--force", action="store_true", help="allow a non-empty OUT (rebuilds master/)")
     parser.add_argument("out", metavar="OUT")
     args = parser.parse_args(argv)
     prepare(Path(args.out).expanduser(), args.force)

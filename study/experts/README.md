@@ -57,10 +57,9 @@ just test-expert-study
 .venv/bin/python tools/expert_study/prepare_usb.py /run/media/$USER/Chiavetta/nnm-study
 ```
 
-Sulla pennetta (`nnm-study/`): `master/` (copia per partecipante),
-`facilitator/` (soluzioni, **da non mettere sul drive condiviso**),
-`new_session.py`, `collect.sh`. Sul drive condiviso vanno solo `master/`,
-`new_session.py` e `collect.sh`. Sulle macchine servono NNModelling installato
+Sulla pennetta (`nnm-study/`): `README.md`, `master/` (copia per partecipante),
+`new_session.py`, `collect.py`, `collect.sh`, `data/`. Nessuna soluzione: le
+soluzioni restano solo in questo repository. Sulle macchine servono NNModelling installato
 e un browser per Colab. L'ID di ogni partecipante è un
 numero assegnato dal gruppo di ricerca (unico tra studenti ed esperti, es.
 `7`): lo stesso per foglio dei task (riquadro in alto, a penna), cartella,
