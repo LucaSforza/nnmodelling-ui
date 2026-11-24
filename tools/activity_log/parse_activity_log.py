@@ -3,7 +3,8 @@
 
 Usage: parse_activity_log.py LOG... --out DIR [--tasks FILE] [--idle-seconds 30]
 
-One input file is one participant (id = file stem). Sessions inside a file are
+One input file is one participant (id = file stem, the numeric participant ID
+written by collect.sh; other stems are reported). Sessions inside a file are
 ordered by their first ts and concatenated. Malformed lines, unsupported schema
 versions and seq gaps are skipped/reported, unknown events and keys ignored.
 
@@ -25,6 +26,7 @@ A task completes at the first record where its predicate holds.
 import argparse
 import csv
 import json
+import re
 import statistics
 import sys
 from datetime import datetime
@@ -341,20 +343,36 @@ def write_summary(path, tasks, task_all, quality, participants):
               f"- Malformed/skipped lines: {sum(len(q['bad']) for q in quality)}",
               f"- Seq gaps: {sum(len(q['gaps']) for q in quality)}",
               f"- Sessions without session.end: {sum(q['no_end'] for q in quality)}",
+              f"- File names that are not numeric participant IDs: "
+              f"{sum(1 for q in quality if q.get('bad_id'))}",
               ""]
     for q in quality:
         if q["bad"] or q["gaps"] or q["no_end"]:
             lines.append(f"- {q['participant']}: {len(q['bad'])} bad lines, "
                          f"{len(q['gaps'])} seq gaps, {q['no_end']} sessions without end")
+        if q.get("bad_id"):
+            lines.append(f"- {q['participant']}: file name is not a numeric participant ID")
     Path(path).write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 # ------------------------------------------------------------------- main
+def is_participant_id(stem):
+    """Canonical numeric participant ID: digits, no leading zeros, not 0."""
+    return re.fullmatch(r"[1-9][0-9]*", stem) is not None
+
+
+def participant_order(path):
+    stem = Path(path).stem
+    return (0, int(stem), "") if is_participant_id(stem) else (1, 0, stem)
+
+
 def process(paths, tasks, idle_seconds=30, warn=None):
     ev_rows, ses_rows, task_all, quality, parts = [], [], [], [], []
-    for p in paths:
+    for p in sorted(paths, key=participant_order):
         pid = Path(p).stem
         parts.append(pid)
+        if not is_participant_id(pid) and warn:
+            warn(f"{p}: file name is not a numeric participant ID")
         records, bad, gaps = load_log(p, warn)
         done = find_completions(records, tasks)
         ev_rows.extend(event_rows(pid, records))
@@ -362,7 +380,8 @@ def process(paths, tasks, idle_seconds=30, warn=None):
         ses_rows.extend(sr)
         task_all.extend(task_rows(pid, records, tasks, done))
         quality.append({"participant": pid, "bad": bad, "gaps": gaps,
-                        "no_end": sum(1 for s in sr if not s["ended_cleanly"])})
+                        "no_end": sum(1 for s in sr if not s["ended_cleanly"]),
+                        "bad_id": not is_participant_id(pid)})
     return ev_rows, ses_rows, task_all, quality, parts
 
 

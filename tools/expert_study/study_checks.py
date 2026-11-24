@@ -144,17 +144,21 @@ def _append(task: str, record: dict) -> None:
         pass  # logging must never disturb the participant
 
 
+def _ipython(ip):
+    if ip is not None:
+        return ip
+    try:
+        from IPython import get_ipython
+    except ImportError:
+        return None
+    return get_ipython()
+
+
 def start_session(task, log_dir=None, ip=None) -> bool:
     """Log every executed cell of an IPython session; returns False outside IPython."""
     if task in _SESSIONS:
         return True
-    if ip is None:
-        try:
-            from IPython import get_ipython
-
-            ip = get_ipython()
-        except ImportError:
-            ip = None
+    ip = _ipython(ip)
     if ip is None:
         return False
     _SESSIONS[task] = (Path(log_dir) if log_dir else Path.cwd() / "activity") / f"{task}.jsonl"
@@ -404,7 +408,7 @@ def _check_class(task, model_cls, loss_fn, batch, configs):
     try:
         batch = batch if batch is not None else load_batch()
     except Exception as exc:  # noqa: BLE001
-        return _finish(CheckReport(task, False, [CheckItem("data", False, _error(exc))]))
+        return CheckReport(task, False, [CheckItem("data", False, _error(exc))])
     items = []
     for prefix, kwargs, params, heads, width in configs:
         try:
@@ -414,17 +418,127 @@ def _check_class(task, model_cls, loss_fn, batch, configs):
             continue
         for item in _check_items(model, loss_fn, params, heads, width, batch, 28):
             items.append(CheckItem(prefix + item.name, item.passed, item.detail))
-    return _finish(CheckReport(task, all(item.passed for item in items), items))
+    return CheckReport(task, all(item.passed for item in items), items)
+
+
+def evaluate(task, model_cls, loss_fn, batch=None) -> CheckReport:
+    """The task's checks, silently: no printing, no logging, LAST_REPORT untouched."""
+    if task == "T1":
+        spec = EXPECTED["T1"]
+        configs = [("", {}, spec["params"], spec["heads"], None)]
+    elif task == "T2":
+        configs = [
+            (f"d={d},h={h}: ", {"d_model": d, "num_heads": h}, expected_task2_params(d), h, d // h)
+            for d, h in EXPECTED["T2"]["configs"]
+        ]
+    else:
+        raise ValueError(f"unknown task {task!r}")
+    return _check_class(task, model_cls, loss_fn, batch, configs)
 
 
 def check_task1(model_cls, loss_fn, batch=None):
-    spec = EXPECTED["T1"]
-    return _check_class("T1", model_cls, loss_fn, batch, [("", {}, spec["params"], spec["heads"], None)])
+    return _finish(evaluate("T1", model_cls, loss_fn, batch))
 
 
 def check_task2(model_cls, loss_fn, batch=None):
-    configs = [
-        (f"d={d},h={h}: ", {"d_model": d, "num_heads": h}, expected_task2_params(d), h, d // h)
-        for d, h in EXPECTED["T2"]["configs"]
-    ]
-    return _check_class("T2", model_cls, loss_fn, batch, configs)
+    return _finish(evaluate("T2", model_cls, loss_fn, batch))
+
+
+# --- study protocol (docs/knowledge/testing/expert-study.md) ------------------
+
+SUBMISSION_FORMAT = "nnm-expert-study-submission"
+_PARTICIPANTS: dict[str, str] = {}
+
+
+def participant_id(value) -> str:
+    """Canonical numeric participant ID ('007' -> '7'); ValueError when invalid."""
+    text = str(value if value is not None else "").strip()
+    if not text.isascii() or not text.isdigit() or int(text) == 0:
+        raise ValueError(f"participant ID must be a positive number, digits only (got {text!r})")
+    return str(int(text))
+
+
+def begin(task, participant, log_dir=None, ip=None) -> bool:
+    """Start the task: log every executed cell and a `start` event.
+
+    In IPython an invalid participant ID raises before anything is logged, so the timer
+    never starts without an ID. Outside IPython (grader replays) it does nothing.
+    """
+    ip = _ipython(ip)
+    if ip is None:
+        return False
+    try:
+        _PARTICIPANTS[task] = participant_id(participant)
+    except ValueError:
+        raise ValueError("Type your participant number (digits only, written at the top of your task "
+                         "sheet) in the participant_id field above, then run this cell again.") from None
+    if not start_session(task, log_dir, ip):
+        return False
+    _append(task, {"event": "start", "participant": _PARTICIPANTS[task]})
+    return True
+
+
+def _events(task) -> list:
+    path = _SESSIONS.get(task)
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines() if path else []
+    except OSError:
+        return []
+    events = []
+    for line in lines:
+        try:
+            events.append(json.loads(line))
+        except ValueError:
+            continue
+    return events
+
+
+def _history(ip) -> list:
+    """Every cell executed so far, in order (IPython input history)."""
+    manager = getattr(ip, "history_manager", None)
+    raw = getattr(manager, "input_hist_raw", None) or []
+    return [str(source) for source in raw[1:]]
+
+
+def _download(path) -> bool:
+    try:
+        from google.colab import files
+    except ImportError:
+        return False
+    try:
+        files.download(str(path))
+    except Exception:  # noqa: BLE001 - the file stays in the working directory
+        return False
+    return True
+
+
+def submit(task, model_cls, loss_fn, out_dir=None, ip=None, download=True) -> None:
+    """Final answer: check silently, log it, save the submission file; prints no result."""
+    ip = _ipython(ip)
+    report = evaluate(task, model_cls, loss_fn)
+    events = _events(task)
+    attempt = 1 + sum(1 for e in events if e.get("event") in ("submit", "resubmit"))
+    starts = [e["ts"] for e in events if e.get("event") == "start" and "ts" in e]
+    participant = _PARTICIPANTS.get(task, "")
+    now = datetime.now(timezone.utc)
+    record = {"ts": now.isoformat(), "task": task, "event": "submit" if attempt == 1 else "resubmit",
+              "attempt": attempt, "passed": report.passed, "checks": report.to_dict()["checks"]}
+    _append(task, {k: v for k, v in record.items() if k not in ("ts", "task")})
+    submission = {
+        "format": SUBMISSION_FORMAT, "version": 1, "task": task, "participant": participant,
+        "attempt": attempt, "started": starts[0] if starts else None, "submitted": record["ts"],
+        "code": _history(ip), "report": report.to_dict(), "events": events + [record],
+    }
+    path = Path(out_dir or Path.cwd()) / f"nnm-study-{participant or 'anon'}-{task}-{now:%Y%m%dT%H%M%SZ}-{attempt}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(submission, indent=1) + "\n", encoding="utf-8")
+    if attempt == 1:
+        print(f"Task {task} submitted. Your answer is final: do not run this cell again.")
+    else:
+        print(f"Task {task} was already submitted: only the first submission counts. "
+              f"This attempt ({attempt}) is recorded but not graded.")
+    if download and _download(path):
+        print(f"The file {path.name} is being saved to your Downloads folder "
+              "(allow the download if the browser asks). Then tell the facilitator.")
+    else:
+        print(f"Saved {path}. Then tell the facilitator.")

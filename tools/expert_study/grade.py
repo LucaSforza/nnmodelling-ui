@@ -3,8 +3,9 @@
 
 Usage: grade.py [--probe PATH] [--core DIR] [--task T] [--json OUT] [--csv OUT] TARGET...
 
-TARGET is a session directory (projects/<task>/ and notebooks/*.ipynb as made
-by prepare_usb.py), one NNM project directory, or one .ipynb. The criteria are
+TARGET is a session directory (projects/<task>/ and the Colab submission files
+nnm-study-*.json in notebooks/, as made by prepare_usb.py), one NNM project
+directory, one submission file or one .ipynb. The criteria are
 those of docs/knowledge/testing/expert-study.md; study_checks.check_module
 applies them to the resolved graph of an NNM project. Run it with an
 interpreter that has torch and nnmodelling_runtime installed. Broken
@@ -40,30 +41,32 @@ METAVARIABLES = ("d-model", "num-heads")
 SAVED_VALUES = ((32, 4), (64, 8))  # the sheet asks for 64/8 but 32/4 is accepted
 HARNESS = '''
 import json, sys
-nb_path, out_path = sys.argv[1], sys.argv[2]
-with open(nb_path, encoding="utf-8") as handle:
-    notebook = json.load(handle)
+spec_path, out_path = sys.argv[1], sys.argv[2]
+with open(spec_path, encoding="utf-8") as handle:
+    spec = json.load(handle)
+import study_checks
+study_checks.submit = lambda *args, **kwargs: None  # replaying never submits again
 namespace = {"__name__": "__main__"}
 errors = []
-for index, cell in enumerate(notebook.get("cells", [])):
-    if cell.get("cell_type") != "code":
-        continue
-    source = cell.get("source", "")
-    source = "".join(source) if isinstance(source, list) else source
+for index, source in enumerate(spec["sources"]):
     source = "\\n".join("" if line.lstrip().startswith(("%", "!")) else line for line in source.splitlines())
     try:
         exec(compile(source, f"<cell {index}>", "exec"), namespace)
     except BaseException as exc:  # participant code
         errors.append(f"cell {index}: {type(exc).__name__}: {exc}")
 report = None
-try:
-    import study_checks
-    report = study_checks.LAST_REPORT
-except Exception as exc:
-    errors.append(f"study_checks: {exc}")
+missing = [name for name in (spec["model"], "compute_loss") if name not in namespace]
+if missing:
+    errors.append("not defined: " + ", ".join(missing))
+else:
+    try:
+        report = study_checks.evaluate(spec["task"], namespace[spec["model"]], namespace["compute_loss"])
+    except Exception as exc:
+        errors.append(f"study_checks: {type(exc).__name__}: {exc}")
 with open(out_path, "w", encoding="utf-8") as handle:
     json.dump({"report": report.to_dict() if report is not None else None, "errors": errors}, handle)
 '''
+MODEL_CLASSES = {"T1": "MLP", "T2": "MultiHeadRowAttentionClassifier"}
 
 
 def check(name, passed, detail="", info=False):
@@ -289,13 +292,15 @@ def notebook_task(path, override):
     return f"T{match.group(1)}" if match else None
 
 
-def grade_notebook(path, participant="-", task_override=None):
-    path = Path(path).resolve()
-    task = notebook_task(path, task_override) or "?"
+def run_sources(sources, task):
+    """Replay code in a fresh interpreter and check it: (report dict or None, errors, failure text)."""
     data_env = ROOT / "examples/test/datasets/mnist/data.json"
     with tempfile.TemporaryDirectory(prefix="nnm-grade-") as temporary:
-        harness, output = Path(temporary) / "harness.py", Path(temporary) / "report.json"
+        harness, spec, output = (Path(temporary) / name for name in ("harness.py", "spec.json", "report.json"))
         harness.write_text(HARNESS, encoding="utf-8")
+        spec.write_text(json.dumps({"task": task, "model": MODEL_CLASSES[task], "sources": sources}), encoding="utf-8")
+        work = Path(temporary) / "work"
+        work.mkdir()
         env = dict(os.environ)
         env["PYTHONPATH"] = os.pathsep.join(filter(None, [str(HERE), env.get("PYTHONPATH", "")]))
         env["PYTHONDONTWRITEBYTECODE"] = "1"
@@ -304,23 +309,30 @@ def grade_notebook(path, participant="-", task_override=None):
             env["NNM_STUDY_DATA"] = str(data_env)
         try:
             done = subprocess.run(
-                [sys.executable, str(harness), str(path), str(output)], cwd=path.parent,
+                [sys.executable, str(harness), str(spec), str(output)], cwd=work,
                 env=env, capture_output=True, text=True, timeout=NOTEBOOK_TIMEOUT,
             )
         except subprocess.TimeoutExpired:
-            return error_row(participant, "pytorch", task, path, "execution", f"timeout after {NOTEBOOK_TIMEOUT} s")
+            return None, [], f"timeout after {NOTEBOOK_TIMEOUT} s"
         except OSError as exc:
-            return error_row(participant, "pytorch", task, path, "execution", str(exc))
+            return None, [], str(exc)
         try:
             result = json.loads(output.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             tail = (done.stderr or done.stdout).strip()[-300:]
-            return error_row(participant, "pytorch", task, path, "execution", f"notebook did not complete: {tail}")
-    report = result.get("report")
-    errors = result.get("errors") or []
+            return None, [], f"code did not complete: {tail}"
+    return result.get("report"), result.get("errors") or [], ""
+
+
+def code_row(participant, task, target, sources, extra=()):
+    if task not in MODEL_CLASSES:
+        return error_row(participant, "pytorch", task or "?", target, "task", "cannot infer task (use --task)")
+    report, errors, failure = run_sources(sources, task)
+    if failure:
+        return error_row(participant, "pytorch", task, target, "execution", failure)
     if report is None:
         detail = "no check report produced" + (f" ({'; '.join(errors)[:300]})" if errors else "")
-        return error_row(participant, "pytorch", task, path, "check", detail)
+        return row(participant, "pytorch", task, target, [check("check", False, detail), *extra])
     checks = [check(item["name"], item["passed"], item.get("detail", "")) for item in report.get("checks", [])]
     if not checks:
         checks = [check("check", report.get("passed", False), "empty report")]
@@ -328,7 +340,91 @@ def grade_notebook(path, participant="-", task_override=None):
         checks.append(check("cells", report.get("passed", False), "; ".join(errors)[:300]))
     if not report.get("passed", False) and all(c["passed"] for c in checks):
         checks.append(check("report", False, "check reported failure"))
-    return row(participant, "pytorch", report.get("task") or task, path, checks)
+    return row(participant, "pytorch", report.get("task") or task, target, checks + list(extra))
+
+
+def grade_notebook(path, participant="-", task_override=None):
+    """A notebook (solutions, tests): its code cells in order."""
+    path = Path(path).resolve()
+    task = notebook_task(path, task_override)
+    try:
+        cells = json.loads(path.read_text(encoding="utf-8")).get("cells", [])
+        sources = ["".join(c.get("source", "")) if isinstance(c.get("source"), list) else c.get("source", "")
+                   for c in cells if c.get("cell_type") == "code"]
+    except (OSError, ValueError, AttributeError) as exc:
+        return error_row(participant, "pytorch", task or "?", path, "notebook", f"unreadable: {exc}")
+    return code_row(participant, task, path, sources)
+
+
+def canonical_id(value):
+    """Numeric participant ID in canonical form, or None (docs/knowledge/testing/expert-study.md)."""
+    try:
+        return sc.participant_id(value)
+    except ValueError:
+        return None
+
+
+def read_submission(path):
+    try:
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) and data.get("format") == sc.SUBMISSION_FORMAT else None
+
+
+def _minutes(start, end):
+    from datetime import datetime
+
+    try:
+        return (datetime.fromisoformat(end) - datetime.fromisoformat(start)).total_seconds() / 60
+    except (TypeError, ValueError):
+        return None
+
+
+def grade_submission(path, participant=None, task_override=None, later=0):
+    """A Colab submission file: the code history at submission time.
+
+    With `participant` (the session folder's ID) the file's own participant must match it.
+    """
+    path = Path(path).resolve()
+    data = read_submission(path)
+    if data is None:
+        return error_row(participant or "-", "pytorch", task_override or "?", path, "submission", "not a submission file")
+    task = task_override or data.get("task")
+    declared = str(data.get("participant") or "")
+    id_check = []
+    if participant is not None:
+        folder_id = canonical_id(participant)
+        same = folder_id is not None and canonical_id(declared) == folder_id
+        id_check = [check("participant id", same, f"file says {declared or 'anon'!r}, folder is {participant!r}")]
+    participant = participant or declared or "-"
+    events = data.get("events") or []
+    submitted = data.get("submitted")
+    self_checks = sum(1 for e in events if e.get("event") == "check" and (e.get("ts") or "") < (submitted or ""))
+    minutes = _minutes(data.get("started"), submitted)
+    extra = [
+        check("time", True, "no start event" if minutes is None else f"{minutes:.1f} min from start to submission", info=True),
+        check("attempt", True, f"attempt {data.get('attempt')} graded"
+              + (f", {later} later attempt(s) ignored" if later else ""), info=True),
+    ]
+    if self_checks:
+        extra.append(check("self-checks", True, f"{self_checks} check call(s) before submission", info=True))
+    return code_row(participant, task, path, [str(s) for s in data.get("code") or []], id_check + extra)
+
+
+def grade_submissions(folder, participant, task_override=None):
+    """Per task, the lowest attempt present; later attempts are counted, never graded."""
+    by_task = {}
+    for path in sorted(Path(folder).glob("*.json")):
+        data = read_submission(path)
+        if data is not None:
+            by_task.setdefault(task_override or data.get("task"), []).append((data.get("attempt") or 0, data.get("submitted") or "", path))
+    rows = []
+    for task, found in sorted(by_task.items(), key=lambda item: str(item[0])):
+        found.sort()
+        later = max(attempt for attempt, _, _ in found) - found[0][0]
+        rows.append(grade_submission(found[0][2], participant, task, later))
+    return rows
 
 
 # --- targets ------------------------------------------------------------------
@@ -340,6 +436,8 @@ def is_project(path):
 
 def grade_session(session, probe, core, task_override=None):
     participant = session.name
+    if canonical_id(participant) != participant:
+        print(f"warning: session folder {session} is not named by a numeric participant ID", file=sys.stderr)
     rows, projects, notebooks = [], session / "projects", session / "notebooks"
     seen = set()
     for project in sorted(projects.iterdir()) if projects.is_dir() else []:
@@ -347,9 +445,12 @@ def grade_session(session, probe, core, task_override=None):
             result = grade_project(project, probe, core, participant, task_override)
             seen.add(("nnm", result["task"]))
             rows.append(result)
-    folder = notebooks if any(notebooks.glob("*.ipynb")) else notebooks / "solutions"
-    for notebook in sorted(folder.glob("*.ipynb")) if folder.is_dir() else []:
-        result = grade_notebook(notebook, participant, task_override)
+    found = grade_submissions(notebooks, participant, task_override) if notebooks.is_dir() else []
+    if not found:  # no Colab submissions: notebooks copied in by hand (solutions, tests)
+        folder = notebooks if any(notebooks.glob("*.ipynb")) else notebooks / "solutions"
+        found = [grade_notebook(notebook, participant, task_override)
+                 for notebook in (sorted(folder.glob("*.ipynb")) if folder.is_dir() else [])]
+    for result in found:
         seen.add(("pytorch", result["task"]))
         rows.append(result)
     if not task_override:
@@ -365,6 +466,8 @@ def grade_target(target, probe, core, task_override=None):
     try:
         if target.is_file() and target.suffix == ".ipynb":
             return [grade_notebook(target, target.parent.name, task_override)]
+        if target.is_file() and target.suffix == ".json":
+            return [grade_submission(target, None, task_override)]
         if target.is_dir() and is_project(target):
             return [grade_project(target, probe, core, target.parent.name, task_override)]
         if target.is_dir() and ((target / "projects").is_dir() or (target / "notebooks").is_dir()):

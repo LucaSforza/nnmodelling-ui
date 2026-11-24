@@ -300,17 +300,33 @@ def test_unknown_version_and_events_ignored(tmp_path):
 def test_collect_script(tmp_path):
     src = tmp_path / "log"
     src.write_text("x\n")
-    env = {"NNMODELLING_ACTIVITY_LOG": str(src), "PATH": "/usr/bin:/bin"}
+    env = {"NNMODELLING_ACTIVITY_LOG": str(src), "PATH": "/usr/bin:/bin", "LC_ALL": "C.UTF-8"}
     dest = tmp_path / "dest"
-    r = subprocess.run(["bash", str(TOOLS / "collect.sh"), str(dest)], env=env,
-                       capture_output=True, text=True)
-    assert r.returncode == 0
-    name = r.stdout.strip()
-    assert name.startswith("P-") and name.endswith(".jsonl") and len(name) == 24
-    assert (dest / name).read_text() == "x\n"
-    r = subprocess.run(["bash", str(TOOLS / "collect.sh"), "--reset", str(dest)],
-                       env=env, capture_output=True, text=True)
+
+    def collect(*args, stdin=None):
+        return subprocess.run(["bash", str(TOOLS / "collect.sh"), *args], env=env,
+                              capture_output=True, text=True, input=stdin)
+
+    r = collect(str(dest), "7")
+    assert r.returncode == 0, r.stderr
+    assert r.stdout.strip() == "7.log" and (dest / "7.log").read_text() == "x\n"
+    assert collect(str(dest), "007").returncode != 0  # same ID 7: never overwrites
+    r = collect(str(dest), stdin=" 0012 \n")  # asks when the ID is missing; canonical form
+    assert r.returncode == 0 and r.stdout.strip() == "12.log", r.stderr
+    for bad in ("Mario", "P07", "0", "", "1 2", "-3"):
+        assert collect(str(dest), bad).returncode == 2, bad
+    assert collect(str(dest), "Mario", "Rossi", "1234567").returncode == 2  # names are no longer accepted
+    r = collect("--reset", str(dest), "8")
     assert r.returncode == 0 and not src.exists()
-    r = subprocess.run(["bash", str(TOOLS / "collect.sh"), str(dest)], env=env,
-                       capture_output=True, text=True)
-    assert r.returncode != 0
+    assert collect(str(dest), "9").returncode != 0  # no log left
+    assert sorted(p.name for p in dest.iterdir()) == ["12.log", "7.log", "8.log"]
+
+
+def test_participants_are_numeric_ids_in_numeric_order(tmp_path):
+    b = LogBuilder()
+    initial(b)
+    logs = {"10": b.text(), "2": b.text(), "mario-rossi": b.text()}
+    _, _, _, _, quality, warnings = run(tmp_path, logs)
+    assert [q["participant"] for q in quality] == ["2", "10", "mario-rossi"]
+    assert [q["bad_id"] for q in quality] == [False, False, True]
+    assert len(warnings) == 1 and "mario-rossi" in warnings[0]

@@ -319,9 +319,14 @@ def test_prepare_usb_layout_and_refusals(usb, tmp_path):
         assert (usb / "master/projects" / task / "model.json").is_file()
         assert (usb / "facilitator/projects" / task / "model.json").is_file()
     notebooks = usb / "master/notebooks"
-    assert sorted(p.name for p in notebooks.iterdir()) == [
-        "mnist_small.json", "study_checks.py", "task1_mlp.ipynb", "task2_multihead.ipynb"]
+    assert sorted(p.name for p in notebooks.iterdir()) == ["README.txt", "task1_mlp.ipynb", "task2_multihead.ipynb"]
+    for name in ("task1_mlp.ipynb", "task2_multihead.ipynb"):  # start notebooks, never the solutions
+        assert (notebooks / name).read_bytes() == (NOTEBOOKS / name).read_bytes()
+    readme = (notebooks / "README.txt").read_text()
+    for name in ("task1_mlp.ipynb", "task2_multihead.ipynb"):
+        assert f"https://colab.research.google.com/github/LucaSforza/nnmodelling-ui/blob/" in readme and name in readme
     assert len(list((usb / "facilitator/notebooks/solutions").glob("*.ipynb"))) == 2
+    assert (usb / "collect.sh").read_text() == (ROOT / "tools/activity_log/collect.sh").read_text()
     assert (usb / "master/tasks/expert-tasks.pdf").is_file() or (usb / "master/tasks/expert-tasks.tex").is_file()
     assert not list(usb.rglob("__pycache__"))
     with pytest.raises(SystemExit, match="not empty"):
@@ -333,25 +338,29 @@ def test_prepare_usb_layout_and_refusals(usb, tmp_path):
 
 
 def test_new_session_copies_and_refuses_overwrite(usb, tmp_path):
-    done = new_session(usb, tmp_path / "sessions", "P01")
+    done = new_session(usb, tmp_path / "sessions", "001")
     assert done.returncode == 0, done.stderr
+    assert "Participant ID: 1" in done.stdout
     for task in TASKS:
-        assert str(tmp_path / "sessions/P01/projects" / task) in done.stdout
-    assert str(tmp_path / "sessions/P01/notebooks") in done.stdout
-    marker = tmp_path / "sessions/P01/projects/task1-mlp/marker.txt"
+        assert str(tmp_path / "sessions/1/projects" / task) in done.stdout
+    assert str(tmp_path / "sessions/1/notebooks") in done.stdout
+    assert f"collect.sh --reset {tmp_path / 'sessions/1'} 1" in done.stdout
+    marker = tmp_path / "sessions/1/projects/task1-mlp/marker.txt"
     marker.write_text("participant work")
-    again = new_session(usb, tmp_path / "sessions", "P01")
+    again = new_session(usb, tmp_path / "sessions", "1")
     assert again.returncode != 0 and "refusing" in again.stderr
     assert marker.read_text() == "participant work"
     assert new_session(usb, tmp_path / "sessions", "../escape").returncode != 0
-    assert new_session(usb, tmp_path / "sessions", "P02").returncode == 0
+    for bad in ("P02", "0", "mario-rossi-1234567", "../escape"):
+        assert new_session(usb, tmp_path / "sessions", bad).returncode != 0, bad
+    assert new_session(usb, tmp_path / "sessions", "2").returncode == 0
 
 
 @needs_probe
 def test_session_grading_fresh_fails_and_finished_passes(usb, tmp_path):
-    assert new_session(usb, tmp_path, "fresh").returncode == 0
-    assert new_session(usb, tmp_path, "done").returncode == 0
-    finished = tmp_path / "done"
+    assert new_session(usb, tmp_path, "1").returncode == 0
+    assert new_session(usb, tmp_path, "2").returncode == 0
+    finished = tmp_path / "2"
     shutil.rmtree(finished / "projects")
     shutil.copytree(usb / "facilitator/projects", finished / "projects")
     for notebook in (usb / "facilitator/notebooks/solutions").glob("*.ipynb"):
@@ -360,11 +369,65 @@ def test_session_grading_fresh_fails_and_finished_passes(usb, tmp_path):
     assert sorted((r["tool"], r["task"]) for r in rows) == sorted(
         (tool, f"T{n}") for tool in ("nnm", "pytorch") for n in (1, 2))
     assert all(r["passed"] for r in rows), [(r["tool"], r["task"], r["detail"]) for r in rows if not r["passed"]]
-    fresh_rows = grade.grade_session(tmp_path / "fresh", PROBE, CORE)
+    fresh_rows = grade.grade_session(tmp_path / "1", PROBE, CORE)
     assert len(fresh_rows) == 4 and not any(r["passed"] for r in fresh_rows)
     shutil.rmtree(finished / "projects/task2-multihead")
     rows = grade.grade_session(finished, PROBE, CORE)
     assert any(r["failed_checks"] == ["artefact"] and r["task"] == "T2" for r in rows)
+
+
+# --- Colab submission files -----------------------------------------------------
+
+
+def notebook_code(path):
+    cells = json.loads(Path(path).read_text())["cells"]
+    return ["".join(c["source"]) for c in cells if c["cell_type"] == "code"]
+
+
+def write_submission(folder, task, attempt, code, participant="9", minute=10):
+    record = {"ts": f"2026-11-24T10:{minute:02d}:00+00:00", "task": task, "event": "submit" if attempt == 1 else "resubmit",
+              "attempt": attempt}
+    data = {
+        "format": grade.sc.SUBMISSION_FORMAT, "version": 1, "task": task, "participant": participant,
+        "attempt": attempt, "started": "2026-11-24T10:00:00+00:00", "submitted": record["ts"], "code": code,
+        "report": {}, "events": [{"ts": "2026-11-24T10:00:00+00:00", "task": task, "event": "start"},
+                                 {"ts": "2026-11-24T10:05:00+00:00", "task": task, "event": "check"}, record],
+    }
+    path = Path(folder) / f"nnm-study-{task}-{participant}-{attempt}.json"
+    path.write_text(json.dumps(data))
+    return path
+
+
+@pytest.mark.parametrize("good_first", [True, False])
+def test_only_the_first_submission_is_graded(tmp_path, good_first):
+    solution = notebook_code(NOTEBOOKS / "solutions/task1_mlp.ipynb")
+    start = notebook_code(NOTEBOOKS / "task1_mlp.ipynb")
+    first, second = (solution, start) if good_first else (start, solution)
+    write_submission(tmp_path, "T1", 1, first + ['study_checks.submit("T1", MLP, compute_loss)'])
+    write_submission(tmp_path, "T1", 2, second, minute=20)
+    rows = grade.grade_submissions(tmp_path, "9")
+    assert len(rows) == 1 and rows[0]["passed"] is good_first and rows[0]["participant"] == "9"
+    assert "10.0 min from start to submission" in rows[0]["info"]
+    assert "1 later attempt(s) ignored" in rows[0]["info"] and "1 check call(s)" in rows[0]["info"]
+
+
+def test_submitted_t2_code_is_replayed_and_graded(tmp_path):
+    path = write_submission(tmp_path, "T2", 1, notebook_code(NOTEBOOKS / "solutions/task2_multihead.ipynb"))
+    result = grade.grade_target(path, PROBE, CORE)[0]
+    assert result["passed"] and result["tool"] == "pytorch" and result["task"] == "T2", result["detail"]
+    broken = write_submission(tmp_path, "T2", 1, ["x = 1"], participant="10")
+    result = grade.grade_target(broken, PROBE, CORE)[0]
+    assert not result["passed"] and "not defined" in result["detail"]
+
+
+@pytest.mark.parametrize("declared", ["8", "", "anon"])
+def test_submission_of_another_participant_fails_the_id_check(tmp_path, declared):
+    solution = notebook_code(NOTEBOOKS / "solutions/task1_mlp.ipynb")
+    write_submission(tmp_path, "T1", 1, solution, participant=declared)
+    result, = grade.grade_submissions(tmp_path, "9")
+    assert not result["passed"] and result["failed_checks"] == ["participant id"], result["detail"]
+    if declared == "8":  # the same file in folder 8 (any spelling of the ID) passes
+        assert grade.grade_submissions(tmp_path, "008")[0]["passed"]
 
 
 # --- task predicates for the activity-log parser -------------------------------

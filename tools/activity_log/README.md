@@ -7,15 +7,21 @@ Il client scrive in append `~/nnmodelling.log` (o il file indicato da
 
 1. Prima dello studio, su ogni macchina azzera il log:
    `mv ~/nnmodelling.log ~/nnmodelling.log.old` (se esiste).
-2. Gli studenti eseguono i dieci task partendo da `examples/test`.
-3. Raccolta, in locale: `bash tools/activity_log/collect.sh logs/`
-   oppure da remoto: `ssh host 'bash -s -- /tmp/logs' < tools/activity_log/collect.sh`
-   e poi `scp host:/tmp/logs/*.jsonl logs/`. Con `--reset` il log originale viene
+2. Ogni partecipante ha un ID numerico assegnato dal gruppo di ricerca (unico
+   tra studenti ed esperti), scritto dal facilitatore nel riquadro in alto del
+   foglio dei task (`study/students/tasks/student-tasks.pdf`). Gli studenti
+   eseguono i task partendo da `examples/test`.
+3. Raccolta, in locale: `bash tools/activity_log/collect.sh logs/` (chiede l'ID)
+   oppure `bash tools/activity_log/collect.sh logs/ 7`;
+   da remoto: `ssh host 'bash -s -- /tmp/logs 7' < tools/activity_log/collect.sh`
+   e poi `scp host:/tmp/logs/*.log logs/`. Con `--reset` il log originale viene
    spostato in `~/nnmodelling.log.collected-<timestamp>`.
-   Il file copiato ha un nome casuale `P-<hex>.jsonl`: e l'unico identificativo
-   del partecipante (anonimo).
+   Il file copiato si chiama `<id>.log` (solo cifre, senza zeri iniziali:
+   `007` → `7.log`): è l'identificativo del partecipante nell'analisi. Non
+   sovrascrive mai un file esistente. Nessun nome nei file: la tabella ID ↔
+   persona la tiene il gruppo di ricerca.
 4. Analisi:
-   `python3 tools/activity_log/parse_activity_log.py logs/*.jsonl --out results/`
+   `python3 tools/activity_log/parse_activity_log.py logs/*.log --out results/`
    produce `events.csv`, `sessions.csv`, `tasks.csv`, `summary.md`.
    Opzioni: `--tasks FILE` (default `tasks_bachelor.json`), `--idle-seconds 30`.
 

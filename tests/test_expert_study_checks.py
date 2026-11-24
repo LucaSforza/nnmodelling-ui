@@ -409,8 +409,14 @@ cells = json.load(open(sys.argv[1]))["cells"]
 ns = {"__name__": "__main__"}
 for c in cells:
     if c["cell_type"] == "code":
-        exec(compile("".join(c["source"]), sys.argv[1], "exec"), ns)
-print("REPORT:" + json.dumps(ns["study_checks"].LAST_REPORT.to_dict()))
+        try:
+            exec(compile("".join(c["source"]), sys.argv[1], "exec"), ns)
+        except NotImplementedError:  # a participant notebook's TODOs
+            pass
+task, model = ("T1", "MLP") if "task1" in sys.argv[1] else ("T2", "MultiHeadRowAttentionClassifier")
+sc = ns["study_checks"]
+assert sc.LAST_REPORT is None  # the notebooks never print or store a check result
+print("REPORT:" + json.dumps(sc.evaluate(task, ns[model], ns["compute_loss"]).to_dict()))
 """
 
 NOTEBOOK_NAMES = ["task1_mlp", "task2_multihead"]
@@ -445,7 +451,135 @@ def test_notebooks_are_clean_nbformat4(folder):
     for name in NOTEBOOK_NAMES:
         nb = json.loads((folder / f"{name}.ipynb").read_text())
         assert nb["nbformat"] == 4 and nb["metadata"]["kernelspec"]["name"] == "python3"
+        assert nb["metadata"]["colab"]["generative_ai_disabled"] is True  # no Gemini in Colab
         for cell in nb["cells"]:
             assert cell["cell_type"] in ("markdown", "code")
+            assert cell["id"] == cell["metadata"]["id"]
             if cell["cell_type"] == "code":
                 assert cell["outputs"] == [] and cell["execution_count"] is None
+
+
+@pytest.mark.parametrize("folder", [NOTEBOOKS, NOTEBOOKS / "solutions"])
+def test_notebooks_follow_the_colab_protocol(folder):
+    for name in NOTEBOOK_NAMES:
+        nb = json.loads((folder / f"{name}.ipynb").read_text())
+        task = "T1" if "task1" in name else "T2"
+        cells = nb["cells"]
+        code = [c for c in cells if c["cell_type"] == "code"]
+        start = code[0]
+        assert cells.index(start) == 1 and start["metadata"]["cellView"] == "form"
+        assert "run this cell first" in start["source"][0] and f'study_checks.begin("{task}", participant_id)' in "".join(start["source"])
+        headings = [c for c in cells if c["cell_type"] == "markdown" and "".join(c["source"]).startswith("## ")]
+        assert nb["metadata"]["colab"]["collapsed_sections"] == [c["id"] for c in headings]
+        assert len(headings) == 3 and cells.index(headings[0]) == 2  # everything after the start cell is collapsed
+        submit = "".join(code[-1]["source"])
+        assert "\n# study_checks.submit(" in submit and "\nstudy_checks.submit(" not in submit  # Run all never submits
+        assert "check_task" not in "".join("".join(c["source"]) for c in code)
+
+
+def test_notebooks_are_generated():
+    sys.path.insert(0, str(TOOLS))
+    import build_notebooks
+
+    assert build_notebooks.main(["--check"]) == 0
+
+
+COLAB_SETUP = """
+import json, shutil, sys, urllib.request
+from pathlib import Path
+root, notebook = Path(sys.argv[1]), sys.argv[2]
+prefix = "https://raw.githubusercontent.com/LucaSforza/nnmodelling-ui/"
+fetched = []
+def urlretrieve(url, dst):
+    assert url.startswith(prefix), url
+    rel = url[len(prefix):].split("/", 1)[1]
+    shutil.copy(root / rel, dst)
+    fetched.append(rel)
+urllib.request.urlretrieve = urlretrieve
+colab = Path("fake_site/google/colab")  # pretend to be Colab
+colab.mkdir(parents=True)
+(colab.parent / "__init__.py").write_text("")
+(colab / "__init__.py").write_text("")
+Path("study_checks.py").write_text("raise RuntimeError('stale helpers from an earlier run')")
+sys.path.insert(0, str(Path("fake_site").resolve()))
+cell = next(c for c in json.load(open(notebook))["cells"] if c["cell_type"] == "code")
+ns = {}
+exec("".join(cell["source"]), ns)
+print("SETUP:" + json.dumps({"fetched": fetched, "module": ns["study_checks"].__file__,
+                             "x": list(ns["x"].shape)}))
+"""
+
+
+@pytest.mark.parametrize("name", NOTEBOOK_NAMES)
+def test_notebook_setup_downloads_helpers_outside_repository(tmp_path, name):
+    """Colab: the current study_checks is always fetched from GitHub, over any stale copy."""
+    env = {k: v for k, v in os.environ.items() if k not in ("PYTHONPATH", "NNM_STUDY_DATA")}
+    done = subprocess.run(
+        [sys.executable, "-c", COLAB_SETUP, str(ROOT), str(NOTEBOOKS / f"{name}.ipynb")],
+        cwd=tmp_path, env=env, capture_output=True, text=True, timeout=120,
+    )
+    assert done.returncode == 0, done.stderr
+    line = next(line for line in done.stdout.splitlines() if line.startswith("SETUP:"))
+    result = json.loads(line[len("SETUP:"):])
+    assert result["fetched"] == ["tools/expert_study/study_checks.py", "examples/test/datasets/mnist/data.json"]
+    assert Path(result["module"]).parent == tmp_path.resolve()
+    assert result["x"] == [16, 1, 28, 28]
+
+
+# --- begin / submit -----------------------------------------------------------
+
+
+def fake_ipython(history):
+    return SimpleNamespace(events=SimpleNamespace(register=lambda name, fn: None),
+                           history_manager=SimpleNamespace(input_hist_raw=["", *history]))
+
+
+def test_submit_is_silent_final_and_saves_the_code(clean_sessions, tmp_path, capsys):
+    ip = fake_ipython(["import torch", "class MLP: ...", 'study_checks.submit("T1", MLP, compute_loss)'])
+    sc.LAST_REPORT = None
+    with pytest.raises(ValueError, match="participant number"):
+        sc.begin("T1", "P07", tmp_path / "activity", ip=ip)  # the timer never starts without an ID
+    assert not (tmp_path / "activity").exists()
+    assert sc.begin("T1", " 007 ", tmp_path / "activity", ip=ip) is True
+    assert sc.submit("T1", MLP, loss, out_dir=tmp_path, ip=ip) is None  # nothing displayed as Out[]
+    first, = tmp_path.glob("nnm-study-7-T1-*-1.json")
+    out = capsys.readouterr().out
+    assert "PASS" not in out and "parameters" not in out and "final" in out
+    assert sc.LAST_REPORT is None
+    data = json.loads(first.read_text())
+    assert data["format"] == sc.SUBMISSION_FORMAT
+    assert data["participant"] == "7" and data["attempt"] == 1 and data["report"]["passed"] is True
+    assert data["code"] == ip.history_manager.input_hist_raw[1:]
+    assert data["started"] and data["started"] <= data["submitted"]
+    assert [e["event"] for e in data["events"]] == ["start", "submit"]
+
+    sc.submit("T1", nn.Linear, loss, out_dir=tmp_path, ip=ip)  # a worse answer, later
+    second, = tmp_path.glob("nnm-study-7-T1-*-2.json")
+    assert "only the first submission counts" in capsys.readouterr().out
+    data = json.loads(second.read_text())
+    assert data["attempt"] == 2 and data["report"]["passed"] is False
+    log = [json.loads(line) for line in (tmp_path / "activity/T1.jsonl").read_text().splitlines()]
+    assert [e.get("event") for e in log] == ["start", "submit", "resubmit"]
+
+
+def test_submit_without_begin_still_writes_a_file(clean_sessions, tmp_path, capsys):
+    sc.submit("T2", MultiHead, loss, out_dir=tmp_path, ip=fake_ipython([]))
+    path, = tmp_path.glob("nnm-study-anon-T2-*.json")
+    data = json.loads(path.read_text())
+    assert data["participant"] == "" and data["started"] is None and data["attempt"] == 1
+    assert "Saved" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("value, expected", [("7", "7"), (" 007 ", "7"), (12, "12"), ("1234567", "1234567")])
+def test_participant_id_is_canonical(value, expected):
+    assert sc.participant_id(value) == expected
+
+
+@pytest.mark.parametrize("value", ["", "0", "000", "P07", "mario-rossi-1234567", "1 2", "-3", "٣", None])
+def test_participant_id_rejects_anything_but_a_number(value):
+    with pytest.raises(ValueError):
+        sc.participant_id(value)
+
+
+def test_begin_outside_ipython_ignores_the_id(clean_sessions):
+    assert sc.begin("T1", "", ip=None) is False  # grader replays of notebooks with an empty field

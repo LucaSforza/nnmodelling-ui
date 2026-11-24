@@ -1,0 +1,134 @@
+\documentclass[10pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[english,italian]{babel}
+\usepackage[margin=1.5cm]{geometry}
+\usepackage{enumitem}
+\usepackage{microtype}
+\usepackage{xcolor}
+
+\pagestyle{empty}
+\setlength{\parindent}{0pt}
+
+% Compact lists; adjust itemsep if needed.
+\setlist[itemize]{
+    leftmargin=*,
+    topsep=4pt,
+    itemsep=7pt,
+    parsep=0pt
+}
+
+% Section labels within the task lists.
+\definecolor{groupcolor}{HTML}{24566B}
+\newcommand{\taskgroup}[2]{%
+    \item[] {\color{groupcolor}\small\bfseries
+    #1 \hfill \normalfont\footnotesize #2}%
+}
+
+% Box where the facilitator writes the participant's numeric ID
+% (docs/knowledge/testing/expert-study.md, Participant ID).
+\newcommand{\idbox}[1]{\fbox{\rule[-6pt]{0pt}{20pt}\small\bfseries #1:\hspace{3.2cm}}}
+
+\begin{document}
+\small
+
+\hfill\idbox{Participant ID / ID partecipante}
+
+\vspace{8pt}
+\hrule
+\vspace{10pt}
+
+% English column
+\begin{minipage}[t]{0.48\textwidth}
+\selectlanguage{english}
+
+{\large\bfseries Tasks — English}
+
+\vspace{5pt}
+
+\begin{itemize}
+    \taskgroup{Input}{T1--T2}
+
+    \item \textbf{T1:} Find the Input package and place it in the project. Every machine learning model requires data for working and the data is managed through the package named Input.
+
+    \item \textbf{T2:} Activate "MNIST small" as the dataset for the Input node. The dataset needs to be activated between the ones available in the project.
+
+    \taskgroup{Data reshaping}{T3--T4}
+
+    \item \textbf{T3:} Find the Flatten package and place it in the project. The input data consists of images of size \(28 \times 28\) pixels that need to be reshaped into one-dimensional vectors; this transformation is provided by the package named Flatten.
+
+    \item \textbf{T4:} Draw an edge from the Input node to the Flatten node. The Flatten node needs to receive data from the Input, and data flows between nodes through edges.
+
+    \taskgroup{Hidden layer setup}{T5--T7}
+
+    \item \textbf{T5:} Find the Linear package and place it in the project. A machine learning model can use a linear layer to apply a linear function to its data.
+
+    \item \textbf{T6:} Find the ReLU package and place it in the project. A machine learning model can use a so-called activation function to introduce non-linearity; non-linearity allows the model to learn more complex relationships in the data, and the function \(f(x) = \max(0, x)\) is provided by the package named ReLU.
+
+    \item \textbf{T7:} Draw an edge from the Flatten node to the Linear node and set the input and output features of the Linear node accordingly. The Flatten node transforms the input image into a vector of length 784, and the Linear node aims to transform this vector into a smaller vector of length 64.
+
+    \taskgroup{Classification layer setup}{T8--T10}
+
+    \item \textbf{T8:} Draw an edge from the Linear node to the ReLU node. The ReLU activation function does not alter the length of the input vector.
+
+    \item \textbf{T9:} Add a new Linear node from the packages menu and draw an edge from the ReLU node to the new Linear node.
+
+    \item \textbf{T10:} Given that the new Linear node aims to transform the input vector into a smaller vector of length 10, set the input and output features of the new Linear node accordingly.
+
+    \taskgroup{Loss and output setup}{T11--T12}
+
+    \item \textbf{T11:} Find the Cross Entropy package and place it in the project, then draw an edge from the second Linear node to the Cross Entropy node and an edge from the Cross Entropy node to the Loss Output node. Machine learning models aim to minimize a loss function during training, and the output of the Cross Entropy node will be used to calculate this loss.
+
+    \item \textbf{T12:} Draw an edge from the second Linear node to the Output node. The Output node represents the model’s final output.
+\end{itemize}
+
+\end{minipage}
+\hfill
+% Italian column
+\begin{minipage}[t]{0.48\textwidth}
+\selectlanguage{italian}
+
+{\large\bfseries Task — Italiano}
+
+\vspace{5pt}
+
+\begin{itemize}
+    \taskgroup{Input}{T1--T2}
+
+    \item \textbf{T1:} Trova il pacchetto Input e inseriscilo nel progetto. Ogni modello di machine learning richiede dati per funzionare e i dati vengono gestiti tramite il pacchetto chiamato Input.
+
+    \item \textbf{T2:} Attiva "MNIST small" come dataset per il nodo Input. Il dataset deve essere attivato scegliendolo tra quelli disponibili nel progetto.
+
+    \taskgroup{Rimodellamento dei dati}{T3--T4}
+
+    \item \textbf{T3:} Trova il pacchetto Flatten e inseriscilo nel progetto. I dati di input sono immagini di dimensioni \(28 \times 28\) pixel che devono essere rimodellate in vettori monodimensionali; questa trasformazione è fornita dal pacchetto chiamato Flatten.
+
+    \item \textbf{T4:} Disegna un arco dal nodo Input al nodo Flatten. Il nodo Flatten deve ricevere i dati da Input e i dati fluiscono tra i nodi attraverso gli archi.
+
+    \taskgroup{Configurazione del hidden layer}{T5--T7}
+
+    \item \textbf{T5:} Trova il pacchetto Linear e inseriscilo nel progetto. Un modello di machine learning può usare un linear layer per applicare una funzione lineare ai propri dati.
+
+    \item \textbf{T6:} Trova il pacchetto ReLU e inseriscilo nel progetto. Un modello di machine learning può usare una cosiddetta funzione di attivazione per introdurre non linearità; la non linearità consente al modello di apprendere relazioni più complesse nei dati e la funzione \(f(x) = \max(0, x)\) è fornita dal pacchetto chiamato ReLU.
+
+    \item \textbf{T7:} Disegna un arco dal nodo Flatten al nodo Linear e imposta di conseguenza le input e output features del nodo Linear. Il nodo Flatten trasforma l'immagine di input in un vettore di lunghezza 784 e il nodo Linear ha lo scopo di trasformare questo vettore in un vettore più piccolo di lunghezza 64.
+
+    \taskgroup{Configurazione del classification layer}{T8--T10}
+
+    \item \textbf{T8:} Disegna un arco dal nodo Linear al nodo ReLU. La funzione di attivazione ReLU non modifica la lunghezza del vettore di input.
+
+    \item \textbf{T9:} Aggiungi un nuovo nodo Linear dal menu dei pacchetti e disegna un arco dal nodo ReLU al nuovo nodo Linear.
+
+    \item \textbf{T10:} Dato che il nuovo nodo Linear ha lo scopo di trasformare il vettore di input in un vettore più piccolo di lunghezza 10, imposta di conseguenza le features di input e di output del nuovo nodo Linear.
+
+    \taskgroup{Configurazione della loss e dell'output}{T11--T12}
+
+    \item \textbf{T11:} Trova il pacchetto Cross Entropy e inseriscilo nel progetto, quindi disegna un arco dal secondo nodo Linear al nodo Cross Entropy e un arco dal nodo Cross Entropy al nodo Loss Output. I modelli di machine learning hanno lo scopo di minimizzare una funzione di perdita durante l'addestramento, e l'output del nodo Cross Entropy verrà usato per calcolare questa perdita.
+
+    \item \textbf{T12:} Disegna un arco dal secondo nodo Linear al nodo Output. Il nodo Output rappresenta l'output finale del modello.
+\end{itemize}
+
+\end{minipage}
+
+\end{document}

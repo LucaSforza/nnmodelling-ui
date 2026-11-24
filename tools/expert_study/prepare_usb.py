@@ -3,9 +3,11 @@
 
 Usage: prepare_usb.py [--force] OUT
 
-Writes OUT/master (start projects, participant notebooks, study_checks.py,
-mnist_small.json, task sheet), OUT/facilitator (solutions) and
-OUT/new_session.py, which copies master/ into a fresh participant folder.
+Writes OUT/master (start projects, start notebooks and README.txt with the Colab links,
+task sheet), OUT/facilitator (solutions), OUT/new_session.py ID, which copies
+master/ into a fresh participant folder <id>/, and OUT/collect.sh (activity log
+as <id>.log). ID is the numeric participant ID. The PyTorch tasks run in Google Colab;
+their submission files go into the participant's notebooks/ folder.
 """
 from __future__ import annotations
 
@@ -20,13 +22,25 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 STUDY = ROOT / "study" / "experts"
 TASKS = ("task1-mlp", "task2-multihead")
-DATA = ROOT / "examples" / "test" / "datasets" / "mnist" / "data.json"
+sys.path.insert(0, str(HERE))
+from build_notebooks import DEFAULT_REF, REPO, TASKS as NOTEBOOKS  # noqa: E402
+
+COLAB = f"https://colab.research.google.com/github/{REPO}/blob/{DEFAULT_REF}/study/experts/notebooks/"
+NOTEBOOKS_README = """PyTorch tasks run in Google Colab (browser, the expert's Google account):
+
+""" + "".join(f"  {task}: {COLAB}{spec['file']}\n" for task, spec in NOTEBOOKS.items()) + """
+The .ipynb files here are the same start notebooks, as a fallback: in Colab use
+File > Upload notebook (the first cell still needs internet to reach GitHub).
+
+Submitting a task downloads nnm-study-<task>-<participant>-<time>.json into the
+expert's Downloads folder. Move that file into this folder, then run grade.py.
+"""
 IGNORE = shutil.ignore_patterns("__pycache__", "*.pyc", ".ipynb_checkpoints")
 
 NEW_SESSION = '''#!/usr/bin/env python3
 """Create a fresh participant folder from master/ (standard library only).
 
-Usage: new_session.py [--dest DIR] PARTICIPANT_ID
+Usage: new_session.py [--dest DIR] ID   (ID = numeric participant ID, digits only)
 """
 import argparse
 import re
@@ -40,22 +54,27 @@ TASKS = ("task1-mlp", "task2-multihead")
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dest", default="~/nnm-expert-study", help="folder holding one directory per participant")
-    parser.add_argument("participant", metavar="PARTICIPANT_ID")
+    parser.add_argument("participant", metavar="ID")
     args = parser.parse_args()
-    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}", args.participant):
-        sys.exit("PARTICIPANT_ID may contain letters, digits, '_', '-' and '.' only")
-    master = Path(__file__).resolve().parent / "master"
+    text = args.participant.strip()
+    if not re.fullmatch(r"[0-9]{1,9}", text) or int(text) == 0:
+        sys.exit("ID must be the numeric participant ID (digits only, not 0)")
+    pid = str(int(text))  # canonical: 007 -> 7
+    here = Path(__file__).resolve().parent
+    master = here / "master"
     if not master.is_dir():
         sys.exit(f"missing {master}")
-    target = Path(args.dest).expanduser() / args.participant
+    target = Path(args.dest).expanduser() / pid
     if target.exists():
         sys.exit(f"refusing to overwrite existing participant folder: {target}")
     target.parent.mkdir(parents=True, exist_ok=True)
     shutil.copytree(master, target, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+    print(f"Participant ID: {pid} (write it on the task sheet; the expert types it in Colab)")
     print(f"Participant folder: {target}")
     for task in TASKS:
         print(f"NNModelling project: {target / 'projects' / task}")
-    print(f"Notebook folder: {target / 'notebooks'}")
+    print(f"Colab submissions go into: {target / 'notebooks'} (links in README.txt there)")
+    print(f"At the end: bash {here / 'collect.sh'} --reset {target} {pid}")
 
 
 if __name__ == "__main__":
@@ -116,17 +135,12 @@ def prepare(out: Path, force: bool = False) -> None:
         copy_tree(STUDY / "projects" / task / "solution", facilitator / "projects" / task)
     notebooks = master / "notebooks"
     notebooks.mkdir(parents=True)
-    participant_notebooks = sorted((STUDY / "notebooks").glob("*.ipynb"))
-    if len(participant_notebooks) != len(TASKS):
-        raise SystemExit(f"expected {len(TASKS)} notebooks in {STUDY / 'notebooks'}")
-    for notebook in participant_notebooks:
-        shutil.copy(notebook, notebooks / notebook.name)
-    shutil.copy(HERE / "study_checks.py", notebooks / "study_checks.py")
-    if not DATA.is_file():
-        raise SystemExit(f"missing dataset file {DATA}")
-    shutil.copy(DATA, notebooks / "mnist_small.json")
+    (notebooks / "README.txt").write_text(NOTEBOOKS_README, encoding="utf-8")
+    for spec in NOTEBOOKS.values():  # start notebooks only; solutions go to facilitator/
+        shutil.copy(STUDY / "notebooks" / spec["file"], notebooks / spec["file"])
     copy_tree(STUDY / "notebooks" / "solutions", facilitator / "notebooks" / "solutions")
     build_task_sheet(master)
+    shutil.copy(ROOT / "tools" / "activity_log" / "collect.sh", out / "collect.sh")
     script = out / "new_session.py"
     script.write_text(NEW_SESSION, encoding="utf-8")
     script.chmod(0o755)

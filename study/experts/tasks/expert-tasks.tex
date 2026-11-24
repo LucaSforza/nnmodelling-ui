@@ -35,16 +35,18 @@
 
 \tcbset{boxrule=0.5pt, arc=1pt, left=4pt, right=4pt, top=2pt, bottom=2pt, fonttitle=\small\bfseries}
 \newtcolorbox{nnm}[1][In NNModelling]{colback=nnmcolor!6, colframe=nnmcolor, title={#1}}
-\newtcolorbox{torch}{colback=torchcolor!6, colframe=torchcolor, title={In PyTorch (Jupyter)}}
+\newtcolorbox{torch}{colback=torchcolor!6, colframe=torchcolor, title={In PyTorch (Google Colab)}}
 
 \newcommand{\pkg}[1]{\textsf{#1}}
+% Box where the facilitator writes the participant's numeric ID.
+\newcommand{\idbox}[1]{\fbox{\rule[-6pt]{0pt}{20pt}\small\bfseries #1:\hspace{3.2cm}}}
 \newcommand{\code}[1]{\texttt{\detokenize{#1}}}
 \newcommand{\key}[1]{\tikz[baseline=(k.base)]\node[draw=black!50, rounded corners=1.5pt, inner sep=1.5pt, font=\footnotesize\ttfamily](k){#1};}
 
 \begin{document}
 \small
 
-{\Large\bfseries Tasks — Expert participants}\hfill{\footnotesize NNModelling usability study}
+{\Large\bfseries Tasks — Expert participants}\ {\footnotesize NNModelling usability study}\hfill\idbox{Participant ID}
 
 \vspace{4pt}\hrule\vspace{6pt}
 
@@ -57,12 +59,16 @@ the tool you are using. Models are \emph{not} trained.
     \item \textbf{Data.} MNIST small: images \(x\in\mathbb{R}^{B\times1\times28\times28}\)
     (pixels in \([0,1]\)) and integer class targets \(y\in\{0,\dots,9\}^{B}\).
     The dataset is already selected (NNModelling) or loaded (PyTorch).
-    \item \textbf{Each task starts from a prepared file}: open the project
-    \texttt{projects/taskN-\ldots} or the notebook \texttt{notebooks/taskN\_\ldots.ipynb}.
-    Parts marked as \emph{provided} are already there.
-    \item \textbf{A task is complete} when, in NNModelling, the \emph{Model Problems}
-    panel reports no problems; in PyTorch, when the last cell of the notebook prints
-    \texttt{PASSED}. Then tell the facilitator.
+    \item \textbf{Each task starts from a prepared file}: in NNModelling open the project
+    \texttt{projects/taskN-\ldots}; in PyTorch open the Colab notebook from the link the
+    facilitator gives you and \textbf{run its first cell before anything else}: type your participant
+    number (the box at the top of this sheet), then \(\blacktriangleright\) (it starts the timer). Parts marked as
+    \emph{provided} are already there.
+    \item \textbf{Submitting.} When you think the model is complete, submit it.
+    \textbf{A submission is final}, and neither tool tells you whether it is correct.
+    In NNModelling: save the project (\emph{File \(\rightarrow\) Save}). In PyTorch: in the
+    \emph{Submit} section, remove the \texttt{\#} at the start of the code line and run that
+    cell once. Then tell the facilitator.
     \item \textbf{Same building blocks in both tools.} Use only the operations
     in the table below: no ready-made attention or transformer layers.
 \end{itemize}
@@ -141,7 +147,9 @@ Linear to both \pkg{Output} and \pkg{Cross Entropy}, and \pkg{Cross Entropy} to
 \end{nnm}
 \begin{torch}
 Complete \texttt{class MLP(nn.Module)} (\texttt{forward(x)} returns the logits)
-and \texttt{compute\_loss(logits, target)}. Run the check cell.
+and \texttt{compute\_loss(logits, target)} in the \emph{Your model} section. The optional
+\emph{Try it} section runs your model on a batch and prints shapes, loss and parameter
+count; it does not check your answer. Then submit.
 \end{torch}
 
 \clearpage
@@ -198,32 +206,31 @@ number of heads \(h\) are declared once, as variables used by the whole model:
     edge goes to which slot. To multiply by \(1/\sqrt{d/h}\) use \pkg{Scale}: connect the tensor
     \(Q_iK_i^{\top}\) to its input; its output is that tensor multiplied by \texttt{factor}, and goes
     into \pkg{Softmax} (\texttt{dim} \(=-1\)). One output may feed several nodes.
-    \item \textbf{Parameter values.} A parameter field accepts a number, \code{$name} (a variable) or
-    \code{$(...)} (an expression):\par\smallskip
+    \item \textbf{Parameter values.} Every parameter that depends on \(d\) or \(h\), including those
+    of the provided nodes, must be written with the variables, so that the model stays valid
+    when they change. A parameter field accepts:\par\smallskip
     {\footnotesize
-    \begin{tabularx}{\linewidth}{@{}llX@{}}
+    \begin{tabularx}{\linewidth}{@{}lXl@{}}
     \toprule
-    Node & Parameter & Value \\
+    Form & Meaning & Example \\
     \midrule
-    Embedding \pkg{Linear} (provided) & \texttt{out\_features} & \code{$d-model} \\
-    Classifier \pkg{Linear} (provided) & \texttt{in\_features} & \code{$(28 * meta["d-model"])} \\
-    \pkg{Horizontal Repeat} & \texttt{times} & \code{$num-heads} \\
-    \(Q\), \(K\), \(V\) \pkg{Linear} (inside) & \texttt{in\_features} & \code{$d-model} \\
-    \(Q\), \(K\), \(V\) \pkg{Linear} (inside) & \texttt{out\_features} & \code{$(meta["d-model"] / meta["num-heads"])} \\
-    \pkg{Scale} (inside) & \texttt{factor} & \code{$(1 / math.sqrt(meta["d-model"] / meta["num-heads"]))} \\
+    number & a constant & \code{16} \\
+    \code{$name} & the value of the variable \texttt{name} & \code{$name} \\
+    \code{$(...)} & a Python expression; \code{meta["name"]} is the value of a variable and the
+    \code{math} module is available & \code{$(2 * meta["name"] + 1)} \\
     \bottomrule
     \end{tabularx}}
-    \item \textbf{Final values.} With no problems left, set \texttt{d-model} \(=64\) and
-    \texttt{num-heads} \(=8\) in \emph{Manage metavariables}: \emph{Model Problems} must still
-    report no problems.
+    \item \textbf{Final values.} When the model is complete, set \texttt{d-model} \(=64\) and
+    \texttt{num-heads} \(=8\) in \emph{Manage metavariables}, check that the model is still
+    valid, then submit.
 \end{enumerate}
 \end{nnm}
 \begin{torch}
-Complete \texttt{MultiHeadRowAttentionClassifier(d\_model=32, num\_heads=4)}:
-the constructor arguments play the role of the variables, and the check cell builds the
-model with \((d,h) = (32,4)\), \((64,8)\) and \((32,2)\). Heads may be separate modules in a
-loop or obtained by splitting with \texttt{view}. The embedding, residual, classifier and
-loss are provided.
+Complete \texttt{MultiHeadRowAttentionClassifier(d\_model=32, num\_heads=4)} in the
+\emph{Your model} section: the constructor arguments play the role of the variables, and your
+submission is checked with \((d,h) = (32,4)\), \((64,8)\) and \((32,2)\). Heads may be separate
+modules in a loop or obtained by splitting with \texttt{view}. The embedding, residual,
+classifier and loss are provided. Then submit.
 \end{torch}
 
 \end{document}

@@ -87,7 +87,13 @@ or environment. Paths are redacted: a `$HOME` prefix becomes `~`. No raw key
 presses, pointer coordinates, clipboard or screenshots are logged. Values the
 user deliberately enters (parameter text, names, palette search) are logged
 because they are the studied interaction. Participant identity exists only
-through the anonymous file name assigned at collection.
+through the file name assigned at collection (revised 2026-11-24): the
+participant's numeric ID, assigned by the research team and shared by students
+and experts (one number per person in the whole study; digits only, canonical
+form without leading zeros, `0` invalid; rule in
+[expert-study](../testing/expert-study.md#participant-id)). The table linking IDs
+to people is kept by the research team outside the repository and the lab
+media; records and file names carry no names.
 
 ## Event catalog
 
@@ -181,12 +187,16 @@ occurrence with `~`.
 
 ## Collection and analysis tools
 
-`tools/activity_log/collect.sh DEST` copies the current user's log to
-`DEST/P-<random hex>.jsonl` (non-identifying name) and prints that name.
+`tools/activity_log/collect.sh [--reset] DEST [ID]` copies the current user's
+log to `DEST/<id>.log` and prints that name; without ID it asks for it. ID must
+be digits only and is written in canonical form (`007` → `7.log`); an empty or
+zero ID or an existing target file is an error.
 `tools/activity_log/parse_activity_log.py LOG... --out DIR [--tasks FILE]` is
 Python 3.10+ standard library only. It skips and reports malformed or truncated
 lines and `seq` gaps, and writes `events.csv`, `sessions.csv`, `tasks.csv` and
-`summary.md`. One participant is one input file; sessions within it are ordered
+`summary.md`. One participant is one input file whose stem is the participant
+ID; stems that are not canonical numeric IDs are reported as warnings, and
+participants are listed in numeric order. Sessions within a file are ordered
 by `ts` and concatenated. Task predicates live in
 `tools/activity_log/tasks_bachelor.json`: a task completes at the first record
 where its predicate holds over the latest `model.snapshot` (state predicates) or

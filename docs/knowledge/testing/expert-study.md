@@ -5,11 +5,26 @@ Status: PROPOSAL for the research team. Revised after a pilot session
 Study tooling only: no client, model, file-format or backend semantics change.
 
 Experts perform the same two tasks in NNModelling (NNM) and in PyTorch
-(Jupyter), in counterbalanced order. One English task sheet serves both tools:
+(Google Colab), in counterbalanced order. One English task sheet serves both tools:
 a tool-neutral specification per task plus an "In NNModelling" and an
-"In PyTorch" box. No training is performed in either tool; a task is complete
-when the model passes the automatic check. SUS and NASA-TLX are owned by the
+"In PyTorch" box. No training is performed in either tool; a task ends when
+the expert submits, and the submission is graded afterwards by the automatic
+checks. SUS and NASA-TLX are owned by the
 research team and are not part of these materials.
+
+## Participant ID
+
+Every participant, student or expert, has one numeric ID assigned by the
+research team; numbers are never reused across the two groups. An ID is
+digits only (outer spaces ignored), canonical form `str(int(id))` without
+leading zeros, `0` invalid. The ID is the only identity anywhere: written by
+the facilitator in the ID box of the paper task sheet, typed in the Colab
+start cell, used by `new_session.py`, `collect.sh` and the analysis, which
+takes it from the file or folder name. Artefacts per ID: `<id>.log`
+(activity log), `~/nnm-expert-study/<id>/` (expert session folder),
+`nnm-study-<id>-<task>-<UTC>-<attempt>.json` (Colab submission, field
+`participant`). `study_checks.participant_id` implements the rule in Python;
+`collect.sh` and `new_session.py` repeat it in bash and stdlib Python.
 
 ## Fixed data and dimensions
 
@@ -62,7 +77,8 @@ Python loops; `view`/`reshape` for splitting heads. Forbidden:
 ## Automatic checks (identical criteria for both tools)
 
 `tools/expert_study/study_checks.py` (stdlib + torch only, copied next to the
-notebooks) defines the PyTorch-side checks; `tools/expert_study/grade.py`
+notebooks) defines the PyTorch-side checks (notebook protocol below);
+`tools/expert_study/grade.py`
 applies the same criteria to NNM projects by building the resolved graph with
 `nnmodelling_runtime.GraphModule`.
 
@@ -94,10 +110,7 @@ applies the same criteria to NNM projects by building the resolved graph with
    memory, and prints `{complete, problems, tensors, parameters,
    metavariables, resolved_model}`. It never saves.
 
-Notebook execution timing: `study_checks.start_session(task)` registers an
-IPython `post_run_cell` hook appending `{ts, task, execution_count, success,
-error}` JSON lines to `activity/<task>.jsonl` beside the notebook; check
-results are appended to the same file. NNM timing uses the existing
+Notebook timing comes from the submission file (protocol below). NNM timing uses the existing
 [activity log](../contracts/activity-log.md) with one task file per task,
 `tools/activity_log/tasks_expert_t{1,2}.json` (sub-goals `E1a`–`E2k`).
 State predicates of different tasks can match each other's graphs, so
@@ -128,14 +141,120 @@ a "Value" label after another type is chosen. Formulas from the sheet
 (`$(1/math.sqrt(32))`, `$d-model`, `$(28 * meta["d-model"])`,
 `$(params.in_features / meta["num-heads"])`) were accepted and resolved.
 
+## PyTorch notebook protocol (Google Colab, accepted 2026-11-24)
+
+Experts run the notebooks in Google Colab in the browser with their own
+Google account; there is no local Jupyter path. Each notebook
+(`study/experts/notebooks/taskN_*.ipynb`, nbformat 4.5, cell ids mirrored in
+`metadata.id`) carries `metadata.colab.generative_ai_disabled: true`
+(Colab's per-notebook "Hide generative AI features"); experts also turn off
+AI inline completions in Tools → Settings → AI Assistance, an account
+setting. Cells, in order:
+
+1. **Start cell** — first, visible, code hidden (`cellView: form`), titled as
+   the first thing to run. A form field `participant_id` takes the numeric
+   participant ID (see Participant ID). It imports
+   `study_checks` from the notebook folder or the repository
+   (`tools/expert_study`); if neither has it, it downloads `study_checks.py`
+   and `examples/test/datasets/mnist/data.json` (as `mnist_small.json`) from
+   the public repository's raw files at the branch holding the study
+   materials (`expert-study-materials` until merged, then `main`; links in
+   `study/experts/README.md`). It then calls
+   `study_checks.begin(task, participant)` and loads the fixed batch `x, y`.
+2. **Your model** section — collapsed when the notebook opens
+   (`metadata.colab.collapsed_sections`): model class and `compute_loss`.
+3. **Try it** section — collapsed: optional, repeatable cell printing logits
+   shape, loss and trainable parameter count. This matches what NNM shows
+   natively (Inspector shapes, Model → Parameter counts, Model Problems) and
+   reveals no check result.
+4. **Submit** section — collapsed, large warning: to submit, remove the `#`
+   from the single line `study_checks.submit(task, Model, compute_loss)` and
+   run the cell once; the answer is final. The line is commented so that
+   Run all never submits.
+
+`begin` registers an IPython `post_run_cell` hook appending `{ts, task,
+execution_count, success, error}` JSON lines to `activity/<task>.jsonl`
+(working directory) and appends `{event: "start", participant}`; re-running
+it appends another `start`, the first one counts. An invalid or empty ID
+raises an error before anything is logged, so the timer never starts without
+an ID. `submit`:
+
+- runs the same checks as `check_task1`/`check_task2` but prints no result
+  and does not set `LAST_REPORT`; it prints only that the answer was
+  submitted, the attempt number and where the file is saved;
+- numbers the attempt from the `submit` events already in the log; attempts
+  after the first are recorded as `resubmit` and never graded, so running it
+  again cannot improve the result;
+- appends `{event: "submit"|"resubmit", attempt, passed, checks}` to the log;
+- writes `nnm-study-<id>-<task>-<UTC stamp>-<attempt>.json` (`anon` when
+  `begin` never ran) with
+  `{format: "nnm-expert-study-submission", version: 1, task, participant,
+  attempt, started, submitted, code, report, events}`, where `code` is the
+  IPython input history (every executed cell, in order) at submission time
+  and `events` the whole log; in Colab it triggers a browser download
+  (`google.colab.files.download`) into the expert's Downloads folder,
+  elsewhere it only writes the file to the working directory.
+
+`check_task1`/`check_task2` stay public and still print; any call logs a
+`check` event, which the grader reports (self-checks before submission).
+`study_checks.py` is public on GitHub: hiding the result is a deterrent, not
+a security boundary; the log and the code history make deviations visible.
+
+The session folder name is the participant ID; the grader warns when it is
+not a canonical numeric ID and fails the check `participant id` of any
+submission whose `participant` differs from it (including `anon`), so a file
+placed in the wrong folder is never silently attributed.
+
+The grader grades the code the expert submitted, not the notebook state
+afterwards: it replays `code` (skipping IPython `%`/`!` lines, with
+`submit` disabled) in a subprocess, then calls the task's check on
+`MLP`/`MultiHeadRowAttentionClassifier` and `compute_loss`. Per task it
+grades the lowest attempt present and reports as information the time from
+the first `start` to that submission, later attempts and self-checks. A
+`.ipynb` (solutions, tests) is graded the same way from its code cells.
+
+## Task sheet (revised 2026-11-24)
+
+`study/experts/tasks/expert-tasks.tex` follows the Colab protocol:
+
+- One completion rule for both tools: when you think the model is complete
+  you submit, and the submission is final; neither tool says whether it is
+  correct. PyTorch: remove the `#` from the submit line and run it once.
+  NNM: save the project (File → Save) and tell the facilitator; the NNM end
+  time is the last `project.save` before that (open: confirm with the
+  research team, and whether the facilitator notes the time).
+- PyTorch tasks open in Colab from the facilitator's link; the start cell
+  runs first (numeric participant ID, timer). The PyTorch box is titled "In PyTorch
+  (Google Colab)"; T1 mentions the optional Try it section; T2 says the
+  submission is checked with (32,4), (64,8) and (32,2).
+- Less guidance (PhD reviewer, 2026-11-24): the sheet no longer lists the
+  value of each T2 parameter. It explains the field syntax only — a number,
+  `$name` for a variable, `$(...)` for a Python expression where
+  `meta["name"]` is a variable's value and `math` is available — with a
+  generic example, and states that every parameter depending on d or h must
+  use the variables. Translating the specification into values is part of
+  the task, as writing the code is in PyTorch.
+- An ID box ("Participant ID: ____") at the top, filled in by the
+  facilitator; the Colab start cell asks for that number.
+
+The student sheet (`study/students/tasks/student-tasks.tex`, bilingual,
+T1–T12 of the guided MLP) has the same bilingual ID box; students never type
+the ID, the facilitator uses it with `collect.sh`.
+
 ## Lab flow
 
 `tools/expert_study/prepare_usb.py OUT` writes `OUT/master/` (start projects,
-notebooks, `study_checks.py`, `mnist_small.json`, task sheet PDF when
-`pdflatex` exists), `OUT/facilitator/` (solutions) and
-`OUT/new_session.py`, which copies `master/` into a fresh participant folder
-without touching earlier ones. `grade.py SESSION_DIR` grades the two
-projects and notebooks and writes `grades.json`/`grades.csv`.
+`notebooks/` with the two start notebooks (fallback: upload to Colab) and a
+README holding the Colab links, task sheet PDF
+when `pdflatex` exists), `OUT/facilitator/` (solutions; never on the lab's
+shared drive), `OUT/collect.sh` (activity log as `<id>.log`) and
+`OUT/new_session.py ID`, which copies `master/` into a fresh participant
+folder `<id>/` without touching earlier ones and prints the commands for that
+ID. `grade.py SESSION_DIR` grades the two
+projects and the submission files and writes `grades.json`/`grades.csv`.
+After each PyTorch task the facilitator moves the downloaded
+`nnm-study-*.json` from the expert's Downloads folder into the participant's
+`notebooks/` folder.
 
 ## Pilot session (2026-11-20)
 
@@ -150,5 +269,6 @@ actions. Report, figures and the colleague's saved projects:
 the sheet gives navigation tips (arrow keys, group selection and move,
 Ctrl +/−, Fit, Arrange) with a
 toolbar screenshot, shows the Enter subflow button, lists every parameter
-value to enter, explains Scale and asks for final values 64/8; the grader
+value to enter (removed again on 2026-11-24, see Task sheet), explains Scale
+and asks for final values 64/8; the grader
 accepts `number` metavariables and checks the scale factor.
