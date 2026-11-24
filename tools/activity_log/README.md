@@ -11,7 +11,9 @@ Il client scrive in append `~/nnmodelling.log` (o il file indicato da
    tra studenti ed esperti), scritto dal facilitatore nel riquadro in alto del
    foglio dei task (`study/students/tasks/student-tasks.pdf`). Gli studenti
    eseguono i task partendo da `examples/test`.
-3. Raccolta, in locale: `bash tools/activity_log/collect.sh logs/` (chiede l'ID)
+3. Raccolta in laboratorio con la chiavetta: `python3 <chiavetta>/nnm-study/collect.py ID student`
+   (vedi il `README.md` della chiavetta e `study/experts/README.md`).
+   Solo log, in locale: `bash tools/activity_log/collect.sh logs/` (chiede l'ID)
    oppure `bash tools/activity_log/collect.sh logs/ 7`;
    da remoto: `ssh host 'bash -s -- /tmp/logs 7' < tools/activity_log/collect.sh`
    e poi `scp host:/tmp/logs/*.log logs/`. Con `--reset` il log originale viene

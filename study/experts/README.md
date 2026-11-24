@@ -67,20 +67,19 @@ numero assegnato dal gruppo di ricerca (unico tra studenti ed esperti, es.
 campo `participant_id` della prima cella Colab, file di consegna e log.
 Nessun nome nei file: la tabella ID ↔ persona la tiene il gruppo di ricerca.
 
-## Per ogni partecipante (`D` = cartella `nnm-study` sul drive)
+## In laboratorio e a casa
 
-1. `mv ~/nnmodelling.log ~/nnmodelling.log.old` (se esiste).
-2. Scrivere l'ID (es. `7`) nel riquadro in alto del foglio dei task, poi
-   `python3 D/new_session.py 7` → crea `~/nnm-expert-study/7/` con progetti,
-   foglio e notebook, e stampa i comandi per quell'ID. Aprire sempre i
-   progetti di questa cartella.
-3. Ordine bilanciato: metà PyTorch→NNModelling, metà NNModelling→PyTorch.
-   Ogni task NNModelling si apre dal proprio progetto `projects/taskN-…`; i
-   task PyTorch dai link Colab in `notebooks/README.txt`.
-4. Dopo ogni task PyTorch: spostare `~/Downloads/nnm-study-*.json` in
-   `~/nnm-expert-study/7/notebooks/` (i file si chiamano `nnm-study-7-…`).
-5. Alla fine: `bash D/collect.sh --reset ~/nnm-expert-study/7 7`
-   (scrive `7.log`), poi copiare la cartella del partecipante sulla pennetta.
+La procedura completa, comando per comando, è nel `README.md` della chiavetta
+(generato da `prepare_usb.py`, testo in `tools/expert_study/prepare_usb.py`,
+`USB_README`). In breve, con `D` = cartella `nnm-study` della chiavetta:
+
+1. Prima di ogni partecipante: azzerare `~/nnmodelling.log`; per gli esperti
+   `python3 "$D/new_session.py" 7`; scrivere l'ID sul foglio.
+2. A fine attività, sul PC del laboratorio: `python3 "$D/collect.py" 7 student`
+   oppure `… 7 expert` → `$D/data/<gruppo>/7/` (log, e per gli esperti progetti
+   e consegne Colab cercate in `~/Scaricati`/`~/Downloads`).
+3. A casa: `.venv/bin/python tools/expert_study/import_usb.py "$D/data" ~/nnm-study-data --participants … --grade`.
+4. Un unico PDF: `uv run --with matplotlib python tools/expert_study/report_all.py ~/nnm-study-data`.
 
 ## Correzione e analisi
 

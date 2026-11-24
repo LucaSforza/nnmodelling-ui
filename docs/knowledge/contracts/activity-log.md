@@ -190,7 +190,10 @@ occurrence with `~`.
 `tools/activity_log/collect.sh [--reset] DEST [ID]` copies the current user's
 log to `DEST/<id>.log` and prints that name; without ID it asks for it. ID must
 be digits only and is written in canonical form (`007` → `7.log`); an empty or
-zero ID or an existing target file is an error.
+zero ID or an existing target file is an error. In the lab, the study's
+`collect.py` (see [expert-study](../testing/expert-study.md#lab-flow-and-data-collection-revised-2026-11-24))
+wraps the same copy and also collects expert projects and Colab submissions
+onto the USB stick.
 `tools/activity_log/parse_activity_log.py LOG... --out DIR [--tasks FILE]` is
 Python 3.10+ standard library only. It skips and reports malformed or truncated
 lines and `seq` gaps, and writes `events.csv`, `sessions.csv`, `tasks.csv` and

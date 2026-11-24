@@ -445,7 +445,10 @@ def grade_session(session, probe, core, task_override=None):
             result = grade_project(project, probe, core, participant, task_override)
             seen.add(("nnm", result["task"]))
             rows.append(result)
-    found = grade_submissions(notebooks, participant, task_override) if notebooks.is_dir() else []
+    found = []
+    for folder in (session / "colab", notebooks):  # colab/ as written by collect.py
+        if folder.is_dir() and not found:
+            found = grade_submissions(folder, participant, task_override)
     if not found:  # no Colab submissions: notebooks copied in by hand (solutions, tests)
         folder = notebooks if any(notebooks.glob("*.ipynb")) else notebooks / "solutions"
         found = [grade_notebook(notebook, participant, task_override)
@@ -470,7 +473,7 @@ def grade_target(target, probe, core, task_override=None):
             return [grade_submission(target, None, task_override)]
         if target.is_dir() and is_project(target):
             return [grade_project(target, probe, core, target.parent.name, task_override)]
-        if target.is_dir() and ((target / "projects").is_dir() or (target / "notebooks").is_dir()):
+        if target.is_dir() and any((target / name).is_dir() for name in ("projects", "notebooks", "colab")):
             return grade_session(target, probe, core, task_override)
     except Exception as exc:  # noqa: BLE001
         return [error_row(target.name, "?", "?", target, "grader", f"{type(exc).__name__}: {exc}")]

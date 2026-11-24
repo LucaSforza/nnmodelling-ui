@@ -328,10 +328,18 @@ def test_prepare_usb_layout_and_refusals(usb, tmp_path):
     assert len(list((usb / "facilitator/notebooks/solutions").glob("*.ipynb"))) == 2
     assert (usb / "collect.sh").read_text() == (ROOT / "tools/activity_log/collect.sh").read_text()
     assert (usb / "master/tasks/expert-tasks.pdf").is_file() or (usb / "master/tasks/expert-tasks.tex").is_file()
+    assert (usb / "collect.py").read_text() == (TOOLS / "collect_participant.py").read_text()
+    assert (usb / "data").is_dir()
+    guide = (usb / "README.md").read_text()
+    for command in ('"$D/new_session.py"', '"$D/collect.py"', "import_usb.py", "report_all.py"):
+        assert command in guide, command
     assert not list(usb.rglob("__pycache__"))
     with pytest.raises(SystemExit, match="not empty"):
         prepare_usb.prepare(usb)
+    (usb / "data/student/1").mkdir(parents=True)  # collected data survives a rebuild
+    (usb / "data/student/1/1.log").write_text("keep me\n")
     prepare_usb.prepare(usb, force=True)
+    assert (usb / "data/student/1/1.log").read_text() == "keep me\n"
     (tmp_path / "x").mkdir()
     with pytest.raises(SystemExit, match="not empty"):
         prepare_usb.prepare(tmp_path)
@@ -344,7 +352,7 @@ def test_new_session_copies_and_refuses_overwrite(usb, tmp_path):
     for task in TASKS:
         assert str(tmp_path / "sessions/1/projects" / task) in done.stdout
     assert str(tmp_path / "sessions/1/notebooks") in done.stdout
-    assert f"collect.sh --reset {tmp_path / 'sessions/1'} 1" in done.stdout
+    assert f"python3 {usb / 'collect.py'} 1 expert" in done.stdout
     marker = tmp_path / "sessions/1/projects/task1-mlp/marker.txt"
     marker.write_text("participant work")
     again = new_session(usb, tmp_path / "sessions", "1")

@@ -64,7 +64,7 @@ test-activity-log:
 
 # study_probe is part of the core build; grade.py finds it in build/qt or build/core.
 test-expert-study: core
-    uv run --group dev python -m pytest -q tests/test_expert_study_checks.py tests/test_expert_study_grader.py tests/test_expert_study_activity.py
+    uv run --group dev python -m pytest -q tests/test_expert_study_checks.py tests/test_expert_study_grader.py tests/test_expert_study_activity.py tests/test_expert_study_collect.py
 
 test-runtime:
     uv run --group dev pytest -q tests/test_runtime.py tests/test_operations.py

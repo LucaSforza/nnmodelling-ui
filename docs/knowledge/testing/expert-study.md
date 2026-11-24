@@ -241,20 +241,58 @@ The student sheet (`study/students/tasks/student-tasks.tex`, bilingual,
 T1–T12 of the guided MLP) has the same bilingual ID box; students never type
 the ID, the facilitator uses it with `collect.sh`.
 
-## Lab flow
+## Lab flow and data collection (revised 2026-11-24)
 
-`tools/expert_study/prepare_usb.py OUT` writes `OUT/master/` (start projects,
-`notebooks/` with the two start notebooks (fallback: upload to Colab) and a
-README holding the Colab links, task sheet PDF
-when `pdflatex` exists), `OUT/facilitator/` (solutions; never on the lab's
-shared drive), `OUT/collect.sh` (activity log as `<id>.log`) and
-`OUT/new_session.py ID`, which copies `master/` into a fresh participant
-folder `<id>/` without touching earlier ones and prints the commands for that
-ID. `grade.py SESSION_DIR` grades the two
-projects and the submission files and writes `grades.json`/`grades.csv`.
-After each PyTorch task the facilitator moves the downloaded
-`nnm-study-*.json` from the expert's Downloads folder into the participant's
-`notebooks/` folder.
+The lab network is unknown, so collection relies only on the USB stick (or a
+shared drive): no network transfer, one command per participant on the lab
+machine, one command at home.
+
+`tools/expert_study/prepare_usb.py OUT` writes `OUT/README.md` (exact
+commands for each time the stick is plugged in), `OUT/master/` (start
+projects, `notebooks/` with the two start notebooks as Colab fallback and a
+README with the Colab links, task sheet PDF when `pdflatex` exists),
+`OUT/facilitator/` (solutions; never on the lab's shared drive),
+`OUT/new_session.py ID` (copies `master/` into `~/nnm-expert-study/<id>/`
+without touching earlier ones and prints the commands for that ID),
+`OUT/collect.py`, `OUT/collect.sh` (log only, for ssh use) and an empty
+`OUT/data/`.
+
+`collect.py ID student|expert [--home DIR] [--keep]`
+(`tools/expert_study/collect_participant.py`, standard library only, ID
+rule repeated locally) runs on the lab machine at the end of a
+participant's activity and writes next to itself
+`data/<group>/<id>/`:
+
+- `<id>.log` from `~/nnmodelling.log` (or `NNMODELLING_ACTIVITY_LOG`);
+- experts only: `projects/` from `~/nnm-expert-study/<id>/projects/` and
+  `colab/nnm-study-<id>-*.json` found in `~/Scaricati`, `~/Downloads`, the
+  XDG download folder and `~/nnm-expert-study/<id>/notebooks/`.
+
+It never overwrites an existing `data/<group>/<id>/`, prints what was found
+and what is missing (log, project per task, submission per task), lists
+submissions of other IDs on the machine without copying them, and, unless
+`--keep`, moves the log to `~/nnmodelling.log.collected-<stamp>` and the
+collected submissions to `<download>/nnm-study-collected/` so the next
+participant on that machine starts clean. Missing items are warnings: what
+exists is always collected.
+
+`tools/expert_study/import_usb.py DATA DEST [--participants CSV] [--grade]`
+runs on the researcher's computer: it copies `DATA/<group>/<id>/` into
+`DEST/<group>/<id>/`, skipping identical files and stopping on a differing
+one; checks numeric IDs, that no ID appears in both groups and, with
+`--participants` (CSV with columns `id,group`), missing or unexpected IDs
+and group mismatches. With `--grade` it writes `DEST/grades.csv`/`.json`
+(`grade.py` on every expert folder; a folder's `colab/` counts as its
+submission folder, like `notebooks/`) and `DEST/analysis/students/` (activity
+log parser on the student logs).
+
+`tools/expert_study/report_all.py DEST` (needs matplotlib and pdflatex with
+pdfpages; `uv run --with matplotlib python …`) writes `DEST/report/results.pdf`:
+participants table (what was collected per ID, against `participants.csv`),
+expert grades with failed checks and timing notes, each expert's NNM activity
+figures (`plot_session.py`) and the student report (`paper_report.py`). It
+reuses `grades.csv` and `analysis/students/` when present and only writes
+under `DEST/report/` otherwise. The stick's `README.md` lists every command.
 
 ## Pilot session (2026-11-20)
 

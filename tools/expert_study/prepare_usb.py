@@ -35,6 +35,111 @@ File > Upload notebook (the first cell still needs internet to reach GitHub).
 Submitting a task downloads nnm-study-<task>-<participant>-<time>.json into the
 expert's Downloads folder. Move that file into this folder, then run grade.py.
 """
+USB_README = """# Studio NNModelling — cosa fare ogni volta che colleghi la chiavetta
+
+Tutti i comandi si lanciano da un terminale. La chiavetta non conserva i
+permessi: usa sempre `python3 …` o `bash …`, mai `./…`.
+
+Per prima cosa, in ogni terminale, trova la cartella `nnm-study` della chiavetta:
+
+```sh
+D="$(ls -d /media/$USER/*/nnm-study /run/media/$USER/*/nnm-study 2>/dev/null | head -1)"; echo "$D"
+```
+
+Se non stampa niente, apri la chiavetta nel file manager e scrivi a mano
+`D=/percorso/della/chiavetta/nnm-study`.
+
+Ogni partecipante ha un **ID numerico** (solo cifre, unico tra studenti ed
+esperti). Scrivilo nel riquadro in alto del foglio dei task. Nei file non va
+mai il nome: la tabella ID ↔ persona la tieni tu, a parte.
+
+## 1. PC del laboratorio — prima di ogni partecipante
+
+```sh
+[ -f ~/nnmodelling.log ] && mv ~/nnmodelling.log ~/nnmodelling.log.old-$(date +%H%M%S)
+```
+
+- **Studente**: apri NNModelling sul progetto dei task come al solito.
+- **Esperto** (esempio con ID 7):
+
+  ```sh
+  python3 "$D/new_session.py" 7
+  ```
+
+  Crea `~/nnm-expert-study/7/`: i progetti NNModelling si aprono **solo da lì**.
+  I task PyTorch si fanno su Colab, nel browser:
+""" + "".join(f"  - {task}: {COLAB}{spec['file']}\n" for task, spec in NOTEBOOKS.items()) + """
+  Al primo ▶ Colab chiede conferma: **Run anyway**. Nella prima cella va l'ID.
+  Ordine bilanciato: metà PyTorch→NNModelling, metà NNModelling→PyTorch.
+
+## 2. PC del laboratorio — quando il partecipante ha finito
+
+Prima **chiudi NNModelling** (e, per gli esperti, controlla con Ctrl+J in
+Chrome che le due consegne Colab siano state scaricate). Poi:
+
+```sh
+python3 "$D/collect.py" 7 student     # oppure: python3 "$D/collect.py" 7 expert
+```
+
+Copia sulla chiavetta, in `$D/data/<student|expert>/7/`:
+- il log di NNModelling (`7.log`);
+- per gli esperti, anche i progetti (`projects/`) e le consegne Colab
+  (`colab/nnm-study-7-T1-….json`, `…-T2-….json`, cercate in `~/Scaricati` e `~/Downloads`).
+
+Poi sposta da parte log e consegne, così il partecipante successivo sullo
+stesso PC parte pulito. **Leggi l'output**: `ok` per ogni cosa trovata,
+`MISSING` per quello che manca. Deve finire con `DONE`.
+
+- `MISSING Colab submission T…`: in Chrome premi Ctrl+J e guarda dove è finito il
+  file `nnm-study-7-T…-….json`; copialo a mano in `$D/data/expert/7/colab/`
+  (crea la cartella se manca).
+- `already collected`: quell'ID è già sulla chiavetta. Niente viene sovrascritto:
+  controlla di aver scritto l'ID giusto.
+- `nothing found`: nessun dato per quell'ID su questo PC (ID sbagliato, o PC sbagliato).
+
+## 3. Il tuo computer — a fine giornata
+
+Dalla cartella del repository `nnmodelling-ui`, con la chiavetta collegata:
+
+```sh
+.venv/bin/python tools/expert_study/import_usb.py "$D/data" ~/nnm-study-data \\
+    --participants ~/nnm-study-data/participants.csv --grade
+```
+
+`participants.csv` ha le colonne `id,group` (`group` = `student` o `expert`),
+una riga per partecipante; senza `--participants` il controllo degli ID salta.
+Risultato:
+- `~/nnm-study-data/student/<id>/<id>.log`
+- `~/nnm-study-data/expert/<id>/{<id>.log, projects/, colab/}`
+- `~/nnm-study-data/grades.csv` (esperti) e `~/nnm-study-data/analysis/students/` (studenti).
+
+Puoi rilanciarlo quando vuoi: i file già importati vengono saltati, niente
+viene sovrascritto. Ogni `PROBLEM:` va controllato a mano.
+
+## 4. Il tuo computer — grafici e un unico PDF con tutti i risultati
+
+Sempre dalla cartella del repository, dopo il passo 3:
+
+```sh
+uv run --with matplotlib python tools/expert_study/report_all.py ~/nnm-study-data
+xdg-open ~/nnm-study-data/report/results.pdf
+```
+
+`results.pdf` contiene: tabella dei partecipanti (cosa è stato raccolto per
+ogni ID), voti degli esperti per tool e task con i controlli falliti e i
+tempi, le figure dell'attività NNModelling di ogni esperto e il report degli
+studenti. Figure e tabelle singole restano in `~/nnm-study-data/report/`
+(`experts/<id>/`, `students/figures/`, `students/tables/`).
+Rilancialo dopo ogni nuovo import: rigenera il PDF (i voti si ricalcolano se
+cancelli `~/nnm-study-data/grades.csv`).
+
+## Regole
+
+- `facilitator/` contiene le soluzioni: non copiarla mai sul drive condiviso né
+  sui PC del laboratorio.
+- Non cancellare `data/` dalla chiavetta finché non hai importato e fatto una copia.
+"""
+
 IGNORE = shutil.ignore_patterns("__pycache__", "*.pyc", ".ipynb_checkpoints")
 
 NEW_SESSION = '''#!/usr/bin/env python3
@@ -74,7 +179,7 @@ def main():
     for task in TASKS:
         print(f"NNModelling project: {target / 'projects' / task}")
     print(f"Colab submissions go into: {target / 'notebooks'} (links in README.txt there)")
-    print(f"At the end: bash {here / 'collect.sh'} --reset {target} {pid}")
+    print(f"At the end: python3 {here / 'collect.py'} {pid} expert")
 
 
 if __name__ == "__main__":
@@ -141,10 +246,14 @@ def prepare(out: Path, force: bool = False) -> None:
     copy_tree(STUDY / "notebooks" / "solutions", facilitator / "notebooks" / "solutions")
     build_task_sheet(master)
     shutil.copy(ROOT / "tools" / "activity_log" / "collect.sh", out / "collect.sh")
+    shutil.copy(HERE / "collect_participant.py", out / "collect.py")
+    (out / "data").mkdir(exist_ok=True)  # collected data: never removed, even with --force
+    (out / "README.md").write_text(USB_README, encoding="utf-8")
     script = out / "new_session.py"
     script.write_text(NEW_SESSION, encoding="utf-8")
     script.chmod(0o755)
-    print(f"Prepared {out}: master/ (copy per participant), facilitator/ (solutions), new_session.py")
+    print(f"Prepared {out}: README.md, master/ (copy per participant), facilitator/ (solutions), "
+          "new_session.py, collect.py, data/")
 
 
 def main(argv=None) -> int:
