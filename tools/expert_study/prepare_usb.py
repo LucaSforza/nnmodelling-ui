@@ -132,6 +132,29 @@ studenti. Figure e tabelle singole restano in `~/nnm-study-data/report/`
 Rilancialo dopo ogni nuovo import: rigenera il PDF (i voti si ricalcolano se
 cancelli `~/nnm-study-data/grades.csv`).
 
+## Prova con i dati simulati (ID 9xx)
+
+Se sulla chiavetta ci sono partecipanti `9xx` (studenti 901, 903, 905, 907,
+909, 910; esperti 902, 904, 906, 908), sono **simulati** con
+`tools/expert_study/simulate_lab.py`. Servono a provare i passi 3 e 4, non
+sono dati dello studio:
+
+```sh
+.venv/bin/python tools/expert_study/import_usb.py "$D/data" ~/nnm-study-sim-data \\
+    --participants "$D/participants-sim.csv" --grade
+uv run --with matplotlib python tools/expert_study/report_all.py ~/nnm-study-sim-data
+xdg-open ~/nnm-study-sim-data/report/results.pdf
+```
+
+**Prima del laboratorio cancellali** dalla chiavetta:
+
+```sh
+rm -r "$D"/data/student/9?? "$D"/data/expert/9?? "$D/participants-sim.csv"
+```
+
+(Se te ne dimentichi, `import_usb.py` con il `participants.csv` vero li
+segnala come `not in the participants list`.)
+
 ## Regole
 
 - Sulla chiavetta non ci sono soluzioni: restano solo nel repository.

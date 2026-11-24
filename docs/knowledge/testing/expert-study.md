@@ -296,6 +296,22 @@ figures (`plot_session.py`) and the student report (`paper_report.py`). It
 reuses `grades.csv` and `analysis/students/` when present and only writes
 under `DEST/report/` otherwise. The stick's `README.md` lists every command.
 
+### Lab rehearsal (simulated, 2026-11-24)
+
+`tools/expert_study/simulate_lab.py OUT` rehearses a lab day with scripted
+participant profiles, never as study data. Each participant gets a fake lab
+machine `OUT/machines/<pc>/home` (experts prepared with the stick's
+`new_session.py`), a real NNModelling instance (`HOME` = that home, Qt VNC
+platform, `--socket`) driven by `nnmodelctl` with realistic pauses (records
+carry `src=ipc`; palette/focus UI events are absent) and, for experts, real
+notebooks executed in a local IPython kernel whose stand-in
+`google.colab.files.download` writes to that home's `Scaricati/`. Automation
+has no metavariable operation, so the T2 metavariables are entered through
+the real *Manage metavariables* dialog with scripted VNC input. Simulated IDs
+are 9xx (`OUT/participants.csv`); the facilitator collects them with the
+stick's `collect.py` like real participants and must delete
+`data/*/9xx` before a real session (a real `participants.csv` flags them).
+
 ## Pilot session (2026-11-20)
 
 One colleague performed the then three NNM tasks (8.4 / 19.7 / 20.8 min,
