@@ -178,7 +178,8 @@ def main():
     print(f"Participant folder: {target}")
     for task in TASKS:
         print(f"NNModelling project: {target / 'projects' / task}")
-    print(f"Colab submissions go into: {target / 'notebooks'} (links in README.txt there)")
+    print(f"Colab links: {target / 'notebooks' / 'README.txt'}; submissions stay in the browser's "
+          "download folder (~/Scaricati or ~/Downloads), collect.py finds them")
     print(f"At the end: python3 {here / 'collect.py'} {pid} expert")
 
 

@@ -94,7 +94,7 @@ It starts the timer of this task.
 SUBMIT_HEADING = '''## ⚠️ Step 3: Submit — remove the `#` in the cell below and run it ONCE
 
 - Your answer is **final**: only the first submission counts, running it again changes nothing.
-- No result is shown. A file `nnm-study-{task}-….json` is saved to your **Downloads** folder: \
+- No result is shown. A file `nnm-study-<your number>-{task}-….json` is saved to your **Downloads** folder: \
 allow the download if the browser asks and leave the file there.
 - Then tell the facilitator.'''
 
