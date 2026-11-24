@@ -105,6 +105,7 @@ def import_data(data: Path, dest: Path, expected: dict[str, str] | None = None) 
 
 
 def grade(dest: Path) -> None:
+    sys.stdout.flush()  # import messages before the graders' output
     experts = sorted((p for p in (dest / "expert").iterdir() if p.is_dir()), key=lambda p: int(p.name)) \
         if (dest / "expert").is_dir() else []
     if experts:
